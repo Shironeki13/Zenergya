@@ -77,7 +77,6 @@ export default function NewContractPage() {
 
   async function onSubmit(data: ContractFormValues) {
     try {
-      // @ts-ignore
       await createContract(data);
       toast({
         title: "Contract Created",

@@ -10,6 +10,7 @@ import {
   query,
   where,
 } from 'firebase/firestore';
+import { format } from 'date-fns';
 
 // Contracts
 export async function getContracts(): Promise<Contract[]> {
@@ -32,12 +33,12 @@ export async function getContract(id: string): Promise<Contract | null> {
   }
 }
 
-export async function createContract(contract: Omit<Contract, 'id' | 'status' | 'clientName'> & { clientName: string }) {
+export async function createContract(contract: Omit<Contract, 'id' | 'status' | 'clientName' | 'startDate' | 'endDate'> & { clientName: string; startDate: Date; endDate: Date; }) {
     const newContract = {
       ...contract,
       status: 'pending',
-      startDate: contract.startDate.toISOString().split('T')[0],
-      endDate: contract.endDate.toISOString().split('T')[0],
+      startDate: format(contract.startDate, 'yyyy-MM-dd'),
+      endDate: format(contract.endDate, 'yyyy-MM-dd'),
     };
     const docRef = await addDoc(collection(db, "contracts"), newContract);
     return docRef.id;
