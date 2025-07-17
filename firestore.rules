@@ -1,0 +1,11 @@
+
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // ATTENTION : Ces règles sont permissives et ne sont destinées qu'au développement.
+    // Pour la production, vous devez mettre en place des règles de sécurité plus strictes.
+    match /{document=**} {
+      allow read, write: if true;
+    }
+  }
+}
