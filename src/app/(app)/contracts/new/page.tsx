@@ -1,6 +1,7 @@
 "use client"
 
 import Link from "next/link"
+import { useRouter } from "next/navigation"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { useForm } from "react-hook-form"
 import * as z from "zod"
@@ -35,6 +36,7 @@ import {
 } from "@/components/ui/select"
 import { useToast } from "@/hooks/use-toast"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { createContract } from "@/services/firestore"
 
 
 const contractFormSchema = z.object({
@@ -66,18 +68,30 @@ const serviceItems = [
 ]
 
 export default function NewContractPage() {
+  const router = useRouter();
   const { toast } = useToast()
   const form = useForm<ContractFormValues>({
     resolver: zodResolver(contractFormSchema),
     defaultValues,
   })
 
-  function onSubmit(data: ContractFormValues) {
-    toast({
-      title: "Contract Created",
-      description: "The new contract has been successfully created.",
-    })
-    console.log(data)
+  async function onSubmit(data: ContractFormValues) {
+    try {
+      // @ts-ignore
+      await createContract(data);
+      toast({
+        title: "Contract Created",
+        description: "The new contract has been successfully created.",
+      });
+      router.push('/contracts');
+    } catch (error) {
+      console.error("Failed to create contract:", error);
+      toast({
+        title: "Error",
+        description: "Failed to create contract. Please try again.",
+        variant: "destructive"
+      });
+    }
   }
 
   return (

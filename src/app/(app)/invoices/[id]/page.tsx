@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { invoices } from '@/data/mock-data';
+import { getInvoice } from '@/services/firestore';
 import { Button } from '@/components/ui/button';
 import {
   Table,
@@ -16,8 +16,8 @@ import { Separator } from '@/components/ui/separator';
 import { ChevronLeft, Printer, Mail } from 'lucide-react';
 import { Logo } from '@/components/logo';
 
-export default function InvoiceDetailPage({ params }: { params: { id: string } }) {
-  const invoice = invoices.find((inv) => inv.id === params.id);
+export default async function InvoiceDetailPage({ params }: { params: { id: string } }) {
+  const invoice = await getInvoice(params.id);
 
   if (!invoice) {
     notFound();

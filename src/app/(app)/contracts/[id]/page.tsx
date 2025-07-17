@@ -1,5 +1,4 @@
 import Link from "next/link";
-import { contracts, meterReadings, invoices } from "@/data/mock-data";
 import { notFound } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -30,25 +29,24 @@ import {
   FileText,
   PlusCircle,
 } from "lucide-react";
+import { getContract, getMeterReadingsByContract, getInvoicesByContract } from "@/services/firestore";
 
-export default function ContractDetailPage({
+export default async function ContractDetailPage({
   params,
 }: {
   params: { id: string };
 }) {
-  const contract = contracts.find((c) => c.id === params.id);
+  const contract = await getContract(params.id);
   if (!contract) {
     notFound();
   }
 
-  const contractMeterReadings = meterReadings.filter(
-    (mr) => mr.contractId === contract.id
-  );
-  const contractInvoices = invoices.filter(
-    (inv) => inv.contractId === contract.id
-  );
+  const [contractMeterReadings, contractInvoices] = await Promise.all([
+    getMeterReadingsByContract(contract.id),
+    getInvoicesByContract(contract.id),
+  ]);
 
-  const serviceLabels = {
+  const serviceLabels: Record<string, string> = {
     hot_water: "Hot Water",
     heating: "Heating",
     fixed_subscription: "Fixed Subscription",

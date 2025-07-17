@@ -24,11 +24,16 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { contracts, invoices } from '@/data/mock-data';
+import { getContracts, getInvoices } from '@/services/firestore';
+import type { Invoice, Contract } from '@/lib/types';
 
-export default function Dashboard() {
-  const activeContracts = contracts.filter((c) => c.status === 'active').length;
-  const overdueInvoices = invoices.filter((i) => i.status === 'overdue').length;
+
+export default async function Dashboard() {
+  const [contracts, invoices] = await Promise.all([getContracts(), getInvoices()]);
+
+  const activeContracts = contracts.filter((c: Contract) => c.status === 'active').length;
+  const overdueInvoices = invoices.filter((i: Invoice) => i.status === 'overdue').length;
+  const recentInvoices = invoices.sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime()).slice(0, 5);
 
   return (
     <>
@@ -114,7 +119,7 @@ export default function Dashboard() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {invoices.slice(0, 5).map((invoice) => (
+              {recentInvoices.map((invoice) => (
                 <TableRow key={invoice.id}>
                   <TableCell>
                     <div className="font-medium">{invoice.clientName}</div>

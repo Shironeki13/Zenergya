@@ -24,9 +24,12 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { contracts } from '@/data/mock-data';
+import { getContracts } from '@/services/firestore';
+import type { Contract } from '@/lib/types';
 
-export default function ContractsPage() {
+export default async function ContractsPage() {
+  const contracts: Contract[] = await getContracts();
+  
   return (
     <Card>
       <CardHeader>

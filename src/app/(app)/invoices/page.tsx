@@ -24,10 +24,12 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { invoices } from '@/data/mock-data';
-import type { InvoiceStatus } from '@/lib/types';
+import { getInvoices } from '@/services/firestore';
+import type { InvoiceStatus, Invoice } from '@/lib/types';
 
-export default function InvoicesPage() {
+export default async function InvoicesPage() {
+  const invoices = await getInvoices();
+
   const getBadgeVariant = (status: InvoiceStatus) => {
     switch (status) {
       case 'paid':
@@ -69,7 +71,7 @@ export default function InvoicesPage() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {invoices.map((invoice) => (
+            {invoices.map((invoice: Invoice) => (
               <TableRow key={invoice.id}>
                 <TableCell className="font-medium">{invoice.id}</TableCell>
                 <TableCell>{invoice.clientName}</TableCell>
