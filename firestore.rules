@@ -2,9 +2,9 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Allow read/write access to all collections for development purposes.
-    // WARNING: This is insecure for production. You should implement
-    // proper authentication and security rules before deploying to production.
+    // This rule allows anyone with your Firestore project ID to read and write
+    // to all collections. This is useful for getting started, but it's
+    // important to secure your database once you've launched your app.
     match /{document=**} {
       allow read, write: if true;
     }
