@@ -38,8 +38,8 @@ import {
 } from "@/components/ui/select"
 import { useToast } from "@/hooks/use-toast"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { createContract, getActivities } from "@/services/firestore"
-import type { Activity } from "@/lib/types"
+import { createContract, getActivities, getSchedules } from "@/services/firestore"
+import type { Activity, Schedule } from "@/lib/types"
 
 
 const contractFormSchema = z.object({
@@ -52,7 +52,9 @@ const contractFormSchema = z.object({
   endDate: z.date({
     required_error: "Une date de fin est requise.",
   }),
-  billingSchedule: z.enum(["quarterly", "annually", "end_of_term"]),
+  billingSchedule: z.string({
+    required_error: "Un échéancier de facturation est requis.",
+  }),
   activities: z.array(z.string()).refine((value) => value.some((item) => item), {
     message: "Vous devez sélectionner au moins une prestation.",
   }),
@@ -68,25 +70,31 @@ export default function NewContractPage() {
   const router = useRouter();
   const { toast } = useToast()
   const [activities, setActivities] = useState<Activity[]>([]);
+  const [schedules, setSchedules] = useState<Schedule[]>([]);
+
   const form = useForm<ContractFormValues>({
     resolver: zodResolver(contractFormSchema),
     defaultValues,
   })
 
   useEffect(() => {
-    async function fetchActivities() {
+    async function fetchData() {
       try {
-        const fetchedActivities = await getActivities();
+        const [fetchedActivities, fetchedSchedules] = await Promise.all([
+            getActivities(),
+            getSchedules()
+        ]);
         setActivities(fetchedActivities);
+        setSchedules(fetchedSchedules);
       } catch (error) {
         toast({
           title: "Erreur",
-          description: "Impossible de charger les activités.",
+          description: "Impossible de charger les données de paramétrage.",
           variant: "destructive"
         })
       }
     }
-    fetchActivities();
+    fetchData();
   }, [toast]);
 
   async function onSubmit(data: ContractFormValues) {
@@ -236,9 +244,11 @@ export default function NewContractPage() {
                     </SelectTrigger>
                   </FormControl>
                   <SelectContent>
-                    <SelectItem value="quarterly">Trimestriel</SelectItem>
-                    <SelectItem value="annually">Annuel</SelectItem>
-                    <SelectItem value="end_of_term">Fin de contrat</SelectItem>
+                    {schedules.map((schedule) => (
+                      <SelectItem key={schedule.id} value={schedule.name}>
+                        {schedule.name}
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
                 <FormMessage />

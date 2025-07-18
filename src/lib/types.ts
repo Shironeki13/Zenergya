@@ -3,18 +3,14 @@ export type Client = {
   name: string;
 };
 
-export type BillingSchedule = "quarterly" | "annually" | "end_of_term";
-
-export type ContractService = "hot_water" | "heating" | "fixed_subscription";
-
 export type Contract = {
   id: string;
   clientId: string;
   clientName: string;
   startDate: string;
   endDate: string;
-  billingSchedule: BillingSchedule;
-  activities: string[]; // Remplacement de 'services' par 'activities'
+  billingSchedule: string;
+  activities: string[];
   status: "active" | "expired" | "pending";
 };
 

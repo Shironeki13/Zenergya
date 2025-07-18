@@ -76,7 +76,7 @@ export default async function ContractsPage() {
                   </Badge>
                 </TableCell>
                 <TableCell className="hidden md:table-cell">
-                  {contract.billingSchedule.charAt(0).toUpperCase() + contract.billingSchedule.replace('_', ' ').slice(1)}
+                  {contract.billingSchedule}
                 </TableCell>
                 <TableCell className="hidden md:table-cell">
                   {new Date(contract.startDate).toLocaleDateString()}

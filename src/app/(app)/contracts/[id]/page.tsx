@@ -85,9 +85,7 @@ export default async function ContractDetailPage({
               <div className="flex items-center">
                 <FileClock className="mr-2 h-4 w-4 text-muted-foreground" />
                 <span>
-                  Facturé{" "}
-                  {contract.billingSchedule.charAt(0).toUpperCase() +
-                    contract.billingSchedule.replace("_", " ").slice(1)}
+                  Facturé {contract.billingSchedule}
                 </span>
               </div>
               <div className="flex items-start">
