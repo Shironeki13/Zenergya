@@ -7,6 +7,7 @@ import { useForm } from "react-hook-form"
 import * as z from "zod"
 import { CalendarIcon, ChevronLeft } from "lucide-react"
 import { format } from "date-fns"
+import { fr } from "date-fns/locale"
 
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
@@ -41,17 +42,17 @@ import { createContract } from "@/services/firestore"
 
 const contractFormSchema = z.object({
   clientName: z.string().min(2, {
-    message: "Client name must be at least 2 characters.",
+    message: "Le nom du client doit comporter au moins 2 caractères.",
   }),
   startDate: z.date({
-    required_error: "A start date is required.",
+    required_error: "Une date de début est requise.",
   }),
   endDate: z.date({
-    required_error: "An end date is required.",
+    required_error: "Une date de fin est requise.",
   }),
   billingSchedule: z.enum(["quarterly", "annually", "end_of_term"]),
   services: z.array(z.string()).refine((value) => value.some((item) => item), {
-    message: "You have to select at least one service.",
+    message: "Vous devez sélectionner au moins un service.",
   }),
 })
 
@@ -62,9 +63,9 @@ const defaultValues: Partial<ContractFormValues> = {
 }
 
 const serviceItems = [
-    { id: "hot_water", label: "Hot Water" },
-    { id: "heating", label: "Heating" },
-    { id: "fixed_subscription", label: "Fixed Subscription" },
+    { id: "hot_water", label: "Eau Chaude" },
+    { id: "heating", label: "Chauffage" },
+    { id: "fixed_subscription", label: "Abonnement Fixe" },
 ]
 
 export default function NewContractPage() {
@@ -79,15 +80,15 @@ export default function NewContractPage() {
     try {
       await createContract(data);
       toast({
-        title: "Contract Created",
-        description: "The new contract has been successfully created.",
+        title: "Contrat Créé",
+        description: "Le nouveau contrat a été créé avec succès.",
       });
       router.push('/contracts');
     } catch (error) {
-      console.error("Failed to create contract:", error);
+      console.error("Échec de la création du contrat:", error);
       toast({
-        title: "Error",
-        description: "Failed to create contract. Please try again.",
+        title: "Erreur",
+        description: "Échec de la création du contrat. Veuillez réessayer.",
         variant: "destructive"
       });
     }
@@ -103,8 +104,8 @@ export default function NewContractPage() {
                 </Button>
             </Link>
             <div>
-              <CardTitle>New Contract</CardTitle>
-              <CardDescription>Fill out the form to create a new client contract.</CardDescription>
+              <CardTitle>Nouveau Contrat</CardTitle>
+              <CardDescription>Remplissez le formulaire pour créer un nouveau contrat client.</CardDescription>
             </div>
         </div>
       </CardHeader>
@@ -116,7 +117,7 @@ export default function NewContractPage() {
             name="clientName"
             render={({ field }) => (
               <FormItem>
-                <FormLabel>Client Name</FormLabel>
+                <FormLabel>Nom du Client</FormLabel>
                 <FormControl>
                   <Input placeholder="Stark Industries" {...field} />
                 </FormControl>
@@ -131,7 +132,7 @@ export default function NewContractPage() {
               name="startDate"
               render={({ field }) => (
                 <FormItem className="flex flex-col">
-                  <FormLabel>Start Date</FormLabel>
+                  <FormLabel>Date de Début</FormLabel>
                   <Popover>
                     <PopoverTrigger asChild>
                       <FormControl>
@@ -143,9 +144,9 @@ export default function NewContractPage() {
                           )}
                         >
                           {field.value ? (
-                            format(field.value, "PPP")
+                            format(field.value, "PPP", { locale: fr })
                           ) : (
-                            <span>Pick a date</span>
+                            <span>Choisir une date</span>
                           )}
                           <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
                         </Button>
@@ -160,6 +161,7 @@ export default function NewContractPage() {
                           date < new Date("1900-01-01")
                         }
                         initialFocus
+                        locale={fr}
                       />
                     </PopoverContent>
                   </Popover>
@@ -172,7 +174,7 @@ export default function NewContractPage() {
               name="endDate"
               render={({ field }) => (
                 <FormItem className="flex flex-col">
-                  <FormLabel>End Date</FormLabel>
+                  <FormLabel>Date de Fin</FormLabel>
                   <Popover>
                     <PopoverTrigger asChild>
                       <FormControl>
@@ -184,9 +186,9 @@ export default function NewContractPage() {
                           )}
                         >
                           {field.value ? (
-                            format(field.value, "PPP")
+                            format(field.value, "PPP", { locale: fr })
                           ) : (
-                            <span>Pick a date</span>
+                            <span>Choisir une date</span>
                           )}
                           <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
                         </Button>
@@ -198,6 +200,7 @@ export default function NewContractPage() {
                         selected={field.value}
                         onSelect={field.onChange}
                         initialFocus
+                        locale={fr}
                       />
                     </PopoverContent>
                   </Popover>
@@ -212,17 +215,17 @@ export default function NewContractPage() {
             name="billingSchedule"
             render={({ field }) => (
               <FormItem>
-                <FormLabel>Billing Schedule</FormLabel>
+                <FormLabel>Échéancier de Facturation</FormLabel>
                 <Select onValueChange={field.onChange} defaultValue={field.value}>
                   <FormControl>
                     <SelectTrigger>
-                      <SelectValue placeholder="Select a billing schedule" />
+                      <SelectValue placeholder="Sélectionnez un échéancier" />
                     </SelectTrigger>
                   </FormControl>
                   <SelectContent>
-                    <SelectItem value="quarterly">Quarterly</SelectItem>
-                    <SelectItem value="annually">Annually</SelectItem>
-                    <SelectItem value="end_of_term">End of Term</SelectItem>
+                    <SelectItem value="quarterly">Trimestriel</SelectItem>
+                    <SelectItem value="annually">Annuel</SelectItem>
+                    <SelectItem value="end_of_term">Fin de contrat</SelectItem>
                   </SelectContent>
                 </Select>
                 <FormMessage />
@@ -238,7 +241,7 @@ export default function NewContractPage() {
                 <div className="mb-4">
                   <FormLabel className="text-base">Services</FormLabel>
                   <FormDescription>
-                    Select the services included in this contract.
+                    Sélectionnez les services inclus dans ce contrat.
                   </FormDescription>
                 </div>
                 {serviceItems.map((item) => (
@@ -279,7 +282,7 @@ export default function NewContractPage() {
             )}
           />
 
-          <Button type="submit">Create Contract</Button>
+          <Button type="submit">Créer le Contrat</Button>
         </form>
       </Form>
       </CardContent>

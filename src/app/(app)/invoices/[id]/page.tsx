@@ -42,18 +42,18 @@ export default async function InvoiceDetailPage({ params }: { params: { id: stri
         <Button asChild variant="outline" size="icon" className="h-7 w-7">
           <Link href="/invoices">
             <ChevronLeft className="h-4 w-4" />
-            <span className="sr-only">Back</span>
+            <span className="sr-only">Retour</span>
           </Link>
         </Button>
-        <h1 className="text-lg font-semibold md:text-2xl">Invoice {invoice.id}</h1>
+        <h1 className="text-lg font-semibold md:text-2xl">Facture {invoice.id}</h1>
         <div className="ml-auto flex items-center gap-2">
           <Button variant="outline" size="sm">
             <Mail className="h-4 w-4 mr-2" />
-            Send Email
+            Envoyer par email
           </Button>
           <Button size="sm">
             <Printer className="h-4 w-4 mr-2" />
-            Download PDF
+            Télécharger en PDF
           </Button>
         </div>
       </div>
@@ -62,12 +62,12 @@ export default async function InvoiceDetailPage({ params }: { params: { id: stri
           <div>
             <Logo />
             <p className="text-muted-foreground text-sm mt-2">
-              123 Energy Lane<br/>
-              Power City, PC 12345
+              123 Avenue de l'Énergie<br/>
+              Villelumière, 75000
             </p>
           </div>
           <div className="text-right">
-            <h1 className="text-2xl font-bold text-primary">INVOICE</h1>
+            <h1 className="text-2xl font-bold text-primary">FACTURE</h1>
             <p className="text-muted-foreground">{invoice.id}</p>
             <Badge variant={getBadgeVariant(invoice.status)} className="mt-2">
               {invoice.status.toUpperCase()}
@@ -77,13 +77,13 @@ export default async function InvoiceDetailPage({ params }: { params: { id: stri
 
         <section className="grid grid-cols-2 gap-4 pb-8">
           <div>
-            <h2 className="font-semibold text-sm mb-1">BILL TO</h2>
+            <h2 className="font-semibold text-sm mb-1">FACTURÉ À</h2>
             <p className="font-bold">{invoice.clientName}</p>
-            {/* Add more client details here if available */}
+            {/* Ajoutez plus de détails sur le client ici si disponibles */}
           </div>
           <div className="text-right">
-            <p><span className="font-semibold text-sm">Invoice Date:</span> {new Date(invoice.date).toLocaleDateString()}</p>
-            <p><span className="font-semibold text-sm">Due Date:</span> {new Date(invoice.dueDate).toLocaleDateString()}</p>
+            <p><span className="font-semibold text-sm">Date de facturation :</span> {new Date(invoice.date).toLocaleDateString()}</p>
+            <p><span className="font-semibold text-sm">Date d'échéance :</span> {new Date(invoice.dueDate).toLocaleDateString()}</p>
           </div>
         </section>
 
@@ -92,8 +92,8 @@ export default async function InvoiceDetailPage({ params }: { params: { id: stri
             <TableHeader>
               <TableRow>
                 <TableHead className="w-[60%]">Description</TableHead>
-                <TableHead>Quantity</TableHead>
-                <TableHead>Unit Price</TableHead>
+                <TableHead>Quantité</TableHead>
+                <TableHead>Prix Unitaire</TableHead>
                 <TableHead className="text-right">Total</TableHead>
               </TableRow>
             </TableHeader>
@@ -102,33 +102,33 @@ export default async function InvoiceDetailPage({ params }: { params: { id: stri
                 <TableRow key={index}>
                   <TableCell className="font-medium">{item.description}</TableCell>
                   <TableCell>{item.quantity}</TableCell>
-                  <TableCell>${item.unitPrice.toFixed(2)}</TableCell>
-                  <TableCell className="text-right">${item.total.toFixed(2)}</TableCell>
+                  <TableCell>{item.unitPrice.toFixed(2)} €</TableCell>
+                  <TableCell className="text-right">{item.total.toFixed(2)} €</TableCell>
                 </TableRow>
               ))}
             </TableBody>
             <TableFooter>
               <TableRow>
-                <TableCell colSpan={3} className="text-right font-semibold">Subtotal</TableCell>
-                <TableCell className="text-right">${invoice.subtotal.toFixed(2)}</TableCell>
+                <TableCell colSpan={3} className="text-right font-semibold">Sous-total</TableCell>
+                <TableCell className="text-right">{invoice.subtotal.toFixed(2)} €</TableCell>
               </TableRow>
               <TableRow>
-                <TableCell colSpan={3} className="text-right font-semibold">Tax (10%)</TableCell>
-                <TableCell className="text-right">${invoice.tax.toFixed(2)}</TableCell>
+                <TableCell colSpan={3} className="text-right font-semibold">TVA (10%)</TableCell>
+                <TableCell className="text-right">{invoice.tax.toFixed(2)} €</TableCell>
               </TableRow>
               <TableRow className="text-lg font-bold">
                 <TableCell colSpan={3} className="text-right">Total</TableCell>
-                <TableCell className="text-right text-primary">${invoice.total.toFixed(2)}</TableCell>
+                <TableCell className="text-right text-primary">{invoice.total.toFixed(2)} €</TableCell>
               </TableRow>
             </TableFooter>
           </Table>
         </section>
 
         <footer className="mt-8 pt-8 border-t">
-            <h3 className="font-semibold text-sm mb-2">Payment Terms</h3>
+            <h3 className="font-semibold text-sm mb-2">Conditions de paiement</h3>
             <p className="text-muted-foreground text-sm">
-              Please pay within 30 days of the invoice date. Late payments are subject to a 1.5% monthly fee.
-              <br/>Thank you for your business!
+              Paiement sous 30 jours à compter de la date de facturation. Les retards de paiement sont soumis à des frais mensuels de 1,5%.
+              <br/>Merci de votre confiance !
             </p>
         </footer>
       </div>

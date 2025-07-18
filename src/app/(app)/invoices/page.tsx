@@ -48,9 +48,9 @@ export default async function InvoicesPage() {
       <CardHeader>
         <div className="flex items-center justify-between">
           <div>
-            <CardTitle>Invoices</CardTitle>
+            <CardTitle>Factures</CardTitle>
             <CardDescription>
-              A list of all invoices for all clients.
+              Liste de toutes les factures pour tous les clients.
             </CardDescription>
           </div>
         </div>
@@ -59,12 +59,12 @@ export default async function InvoicesPage() {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Invoice ID</TableHead>
+              <TableHead>ID Facture</TableHead>
               <TableHead>Client</TableHead>
-              <TableHead>Status</TableHead>
+              <TableHead>Statut</TableHead>
               <TableHead className="hidden md:table-cell">Date</TableHead>
-              <TableHead className="hidden md:table-cell">Due Date</TableHead>
-              <TableHead className="text-right">Amount</TableHead>
+              <TableHead className="hidden md:table-cell">Date d'échéance</TableHead>
+              <TableHead className="text-right">Montant</TableHead>
               <TableHead>
                 <span className="sr-only">Actions</span>
               </TableHead>
@@ -87,23 +87,23 @@ export default async function InvoicesPage() {
                   {new Date(invoice.dueDate).toLocaleDateString()}
                 </TableCell>
                 <TableCell className="text-right">
-                  ${invoice.total.toFixed(2)}
+                  {invoice.total.toFixed(2)} €
                 </TableCell>
                 <TableCell>
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
                       <Button aria-haspopup="true" size="icon" variant="ghost">
                         <MoreHorizontal className="h-4 w-4" />
-                        <span className="sr-only">Toggle menu</span>
+                        <span className="sr-only">Ouvrir le menu</span>
                       </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
                       <DropdownMenuLabel>Actions</DropdownMenuLabel>
                       <DropdownMenuItem asChild>
-                        <Link href={`/invoices/${invoice.id}`}>View Details</Link>
+                        <Link href={`/invoices/${invoice.id}`}>Voir les détails</Link>
                       </DropdownMenuItem>
-                      <DropdownMenuItem>Mark as Paid</DropdownMenuItem>
-                      <DropdownMenuItem>Send Reminder</DropdownMenuItem>
+                      <DropdownMenuItem>Marquer comme payée</DropdownMenuItem>
+                      <DropdownMenuItem>Envoyer un rappel</DropdownMenuItem>
                     </DropdownMenuContent>
                   </DropdownMenu>
                 </TableCell>

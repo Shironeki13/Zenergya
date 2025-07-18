@@ -35,15 +35,15 @@ export default async function ContractsPage() {
       <CardHeader>
         <div className="flex items-center justify-between">
           <div>
-            <CardTitle>Contracts</CardTitle>
+            <CardTitle>Contrats</CardTitle>
             <CardDescription>
-              Manage all your client contracts.
+              Gérez tous les contrats de vos clients.
             </CardDescription>
           </div>
           <Button asChild size="sm" className="gap-1">
             <Link href="/contracts/new">
               <PlusCircle className="h-4 w-4" />
-              New Contract
+              Nouveau Contrat
             </Link>
           </Button>
         </div>
@@ -53,14 +53,14 @@ export default async function ContractsPage() {
           <TableHeader>
             <TableRow>
               <TableHead>Client</TableHead>
-              <TableHead>Status</TableHead>
+              <TableHead>Statut</TableHead>
               <TableHead className="hidden md:table-cell">
-                Billing Schedule
+                Échéancier
               </TableHead>
               <TableHead className="hidden md:table-cell">
-                Start Date
+                Date de début
               </TableHead>
-              <TableHead className="hidden md:table-cell">End Date</TableHead>
+              <TableHead className="hidden md:table-cell">Date de fin</TableHead>
               <TableHead>
                 <span className="sr-only">Actions</span>
               </TableHead>
@@ -89,15 +89,15 @@ export default async function ContractsPage() {
                     <DropdownMenuTrigger asChild>
                       <Button aria-haspopup="true" size="icon" variant="ghost">
                         <MoreHorizontal className="h-4 w-4" />
-                        <span className="sr-only">Toggle menu</span>
+                        <span className="sr-only">Ouvrir le menu</span>
                       </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
                       <DropdownMenuLabel>Actions</DropdownMenuLabel>
-                      <DropdownMenuItem asChild><Link href={`/contracts/${contract.id}`}>View Details</Link></DropdownMenuItem>
-                      <DropdownMenuItem>Edit</DropdownMenuItem>
+                      <DropdownMenuItem asChild><Link href={`/contracts/${contract.id}`}>Voir les détails</Link></DropdownMenuItem>
+                      <DropdownMenuItem>Modifier</DropdownMenuItem>
                       <DropdownMenuItem className="text-destructive">
-                        Delete
+                        Supprimer
                       </DropdownMenuItem>
                     </DropdownMenuContent>
                   </DropdownMenu>

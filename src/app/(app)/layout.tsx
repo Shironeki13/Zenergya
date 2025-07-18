@@ -15,14 +15,6 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
 import { UserNav } from '@/components/user-nav';
 import { Logo } from '@/components/logo';
@@ -33,9 +25,9 @@ export default function AppLayout({
   children: React.ReactNode;
 }) {
   const navItems = [
-    { href: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
-    { href: '/contracts', icon: FileSignature, label: 'Contracts' },
-    { href: '/invoices', icon: FileText, label: 'Invoices' },
+    { href: '/dashboard', icon: LayoutDashboard, label: 'Tableau de bord' },
+    { href: '/contracts', icon: FileSignature, label: 'Contrats' },
+    { href: '/invoices', icon: FileText, label: 'Factures' },
     { href: '/settings', icon: Settings, label: 'Paramétrage' },
   ];
 
@@ -65,14 +57,14 @@ export default function AppLayout({
           <div className="mt-auto p-4">
             <Card>
               <CardHeader className="p-2 pt-0 md:p-4">
-                <CardTitle>Need Help?</CardTitle>
+                <CardTitle>Besoin d'aide ?</CardTitle>
                 <CardDescription>
-                  Contact support for assistance with your account.
+                  Contactez le support pour une assistance avec votre compte.
                 </CardDescription>
               </CardHeader>
               <CardContent className="p-2 pt-0 md:p-4 md:pt-0">
                 <Button size="sm" className="w-full">
-                  Contact Support
+                  Contacter le support
                 </Button>
               </CardContent>
             </Card>
@@ -89,7 +81,7 @@ export default function AppLayout({
                 className="shrink-0 md:hidden"
               >
                 <Menu className="h-5 w-5" />
-                <span className="sr-only">Toggle navigation menu</span>
+                <span className="sr-only">Ouvrir le menu de navigation</span>
               </Button>
             </SheetTrigger>
             <SheetContent side="left" className="flex flex-col">
@@ -114,14 +106,14 @@ export default function AppLayout({
               <div className="mt-auto">
                 <Card>
                   <CardHeader>
-                    <CardTitle>Need Help?</CardTitle>
+                    <CardTitle>Besoin d'aide ?</CardTitle>
                     <CardDescription>
-                      Contact support for assistance with your account.
+                      Contactez le support pour une assistance avec votre compte.
                     </CardDescription>
                   </CardHeader>
                   <CardContent>
                     <Button size="sm" className="w-full">
-                      Contact Support
+                      Contacter le support
                     </Button>
                   </CardContent>
                 </Card>

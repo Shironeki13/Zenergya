@@ -19,8 +19,7 @@ export default function LoginPage() {
 
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
-    // In a real app, you'd have auth logic here.
-    // For this scaffold, we'll just navigate to the dashboard.
+    // Pour cette démo, nous naviguons simplement vers le tableau de bord.
     router.push("/dashboard");
   };
 
@@ -29,27 +28,27 @@ export default function LoginPage() {
       <Card className="w-full max-w-sm">
         <CardHeader className="items-center">
           <Logo />
-          <CardTitle className="pt-4">Welcome Back</CardTitle>
-          <CardDescription>Enter your credentials to access your account</CardDescription>
+          <CardTitle className="pt-4">Bon retour</CardTitle>
+          <CardDescription>Entrez vos identifiants pour accéder à votre compte</CardDescription>
         </CardHeader>
         <form onSubmit={handleLogin}>
           <CardContent className="space-y-4">
             <div className="space-y-2">
               <Label htmlFor="email">Email</Label>
-              <Input id="email" type="email" placeholder="m@example.com" required />
+              <Input id="email" type="email" placeholder="m@exemple.com" required />
             </div>
             <div className="space-y-2">
               <div className="flex items-center">
-                <Label htmlFor="password">Password</Label>
+                <Label htmlFor="password">Mot de passe</Label>
                 <a href="#" className="ml-auto inline-block text-sm underline">
-                  Forgot your password?
+                  Mot de passe oublié ?
                 </a>
               </div>
               <Input id="password" type="password" required />
             </div>
           </CardContent>
           <CardFooter>
-            <Button type="submit" className="w-full">Sign in</Button>
+            <Button type="submit" className="w-full">Se connecter</Button>
           </CardFooter>
         </form>
       </Card>

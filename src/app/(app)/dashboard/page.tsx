@@ -41,52 +41,52 @@ export default async function Dashboard() {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">
-              Total Revenue
+              Revenu Total
             </CardTitle>
             <CircleDollarSign className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">$45,231.89</div>
+            <div className="text-2xl font-bold">45,231.89 €</div>
             <p className="text-xs text-muted-foreground">
-              +20.1% from last month
+              +20.1% depuis le mois dernier
             </p>
           </CardContent>
         </Card>
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">
-              Active Contracts
+              Contrats Actifs
             </CardTitle>
             <FileSignature className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">+{activeContracts}</div>
             <p className="text-xs text-muted-foreground">
-              +2 since last quarter
+              +2 depuis le dernier trimestre
             </p>
           </CardContent>
         </Card>
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Overdue Invoices</CardTitle>
+            <CardTitle className="text-sm font-medium">Factures en Retard</CardTitle>
             <FileText className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{overdueInvoices}</div>
             <p className="text-xs text-muted-foreground">
-              Totaling $2,350.00
+              Pour un total de 2,350.00 €
             </p>
           </CardContent>
         </Card>
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Energy Consumed</CardTitle>
+            <CardTitle className="text-sm font-medium">Énergie Consommée</CardTitle>
             <Clock className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">38,300 kWh</div>
             <p className="text-xs text-muted-foreground">
-              +19% from last month
+              +19% depuis le mois dernier
             </p>
           </CardContent>
         </Card>
@@ -94,14 +94,14 @@ export default async function Dashboard() {
       <Card>
         <CardHeader className="flex flex-row items-center">
           <div className="grid gap-2">
-            <CardTitle>Recent Invoices</CardTitle>
+            <CardTitle>Factures Récentes</CardTitle>
             <CardDescription>
-              A list of the most recently created invoices.
+              Liste des dernières factures créées.
             </CardDescription>
           </div>
           <Button asChild size="sm" className="ml-auto gap-1">
             <Link href="/invoices">
-              View All
+              Voir tout
               <ArrowUpRight className="h-4 w-4" />
             </Link>
           </Button>
@@ -112,10 +112,10 @@ export default async function Dashboard() {
               <TableRow>
                 <TableHead>Client</TableHead>
                 <TableHead className="hidden md:table-cell">
-                  Status
+                  Statut
                 </TableHead>
                 <TableHead className="hidden md:table-cell">Date</TableHead>
-                <TableHead className="text-right">Amount</TableHead>
+                <TableHead className="text-right">Montant</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -136,7 +136,7 @@ export default async function Dashboard() {
                     {new Date(invoice.date).toLocaleDateString()}
                   </TableCell>
                   <TableCell className="text-right">
-                    ${invoice.total.toFixed(2)}
+                    {invoice.total.toFixed(2)} €
                   </TableCell>
                 </TableRow>
               ))}
