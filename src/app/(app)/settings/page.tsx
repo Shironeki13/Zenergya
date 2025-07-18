@@ -1,108 +1,195 @@
 'use client';
-import React, { useState, useEffect, useOptimistic, useCallback } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
+import Image from 'next/image';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { PlusCircle, Trash2, Edit } from "lucide-react";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger, DialogClose } from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
+import { PlusCircle, Trash2, Edit, UploadCloud } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 import { 
-  createCompany, getCompanies, 
-  createAgency, getAgencies, 
-  createSector, getSectors, 
-  createActivity, getActivities 
+  createCompany, getCompanies, updateCompany, deleteCompany,
+  createAgency, getAgencies, updateAgency, deleteAgency,
+  createSector, getSectors, updateSector, deleteSector,
+  createActivity, getActivities, updateActivity, deleteActivity
 } from "@/services/firestore";
 import type { Company, Agency, Sector, Activity } from "@/lib/types";
 
-// Section simple pour Sociétés et Activités
-const SimpleSettingsSection: React.FC<{
-  title: string;
-  description: string;
-  fetchItems: () => Promise<{ id: string; name: string }[]>;
-  createItem: (name: string) => Promise<any>;
-}> = ({ title, description, fetchItems, createItem }) => {
-  const [items, setItems] = useState<{ id: string; name: string }[]>([]);
-  const [newItemName, setNewItemName] = useState("");
-  const [isLoading, setIsLoading] = useState(true);
-  const { toast } = useToast();
 
-  const loadItems = useCallback(async () => {
-    try {
-      setIsLoading(true);
-      const fetchedItems = await fetchItems();
-      setItems(fetchedItems);
-    } catch (error) {
-      console.error(`Failed to fetch ${title}:`, error);
-      toast({ title: "Erreur", description: `Impossible de charger les ${description}.`, variant: "destructive" });
-    } finally {
-      setIsLoading(false);
-    }
-  }, [fetchItems, title, description, toast]);
+const fileToDataUrl = (file: File): Promise<string> => {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+};
 
-  useEffect(() => {
-    loadItems();
-  }, [loadItems]);
+// Section pour les Sociétés
+const CompaniesSection = () => {
+    const [companies, setCompanies] = useState<Company[]>([]);
+    const [isLoading, setIsLoading] = useState(true);
+    const { toast } = useToast();
+    const [isSubmitting, setIsSubmitting] = useState(false);
+    const [dialogOpen, setDialogOpen] = useState(false);
+    const [editingCompany, setEditingCompany] = useState<Company | null>(null);
+    const [companyToDelete, setCompanyToDelete] = useState<Company | null>(null);
 
-  const handleCreate = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newItemName.trim()) return;
+    const [name, setName] = useState('');
+    const [logoFile, setLogoFile] = useState<File | null>(null);
+    const [logoPreview, setLogoPreview] = useState<string | null>(null);
 
-    try {
-      await createItem(newItemName);
-      setNewItemName("");
-      toast({ title: "Succès", description: `${title.slice(0,-1)} créé avec succès.` });
-      await loadItems(); // Re-fetch
-    } catch (error) {
-      console.error(`Failed to create ${title}:`, error);
-      toast({ title: "Erreur", description: `Impossible de créer le ${title.toLowerCase().slice(0,-1)}.`, variant: "destructive" });
-    }
-  };
-  
-  return (
+    const loadCompanies = useCallback(async () => {
+        try {
+            setIsLoading(true);
+            const fetchedCompanies = await getCompanies();
+            setCompanies(fetchedCompanies);
+        } catch (error) {
+            toast({ title: "Erreur", description: "Impossible de charger les sociétés.", variant: "destructive" });
+        } finally {
+            setIsLoading(false);
+        }
+    }, [toast]);
+
+    useEffect(() => {
+        loadCompanies();
+    }, [loadCompanies]);
+
+    const resetForm = () => {
+        setName('');
+        setLogoFile(null);
+        setLogoPreview(null);
+        setEditingCompany(null);
+    };
+
+    const handleOpenDialog = (company: Company | null = null) => {
+        setEditingCompany(company);
+        if (company) {
+            setName(company.name);
+            setLogoPreview(company.logoUrl || null);
+        } else {
+            resetForm();
+        }
+        setDialogOpen(true);
+    };
+
+    const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (file) {
+            setLogoFile(file);
+            const previewUrl = URL.createObjectURL(file);
+            setLogoPreview(previewUrl);
+        }
+    };
+
+    const handleSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!name.trim()) return;
+        setIsSubmitting(true);
+
+        try {
+            let logoUrl: string | undefined = editingCompany?.logoUrl;
+            if (logoFile) {
+                logoUrl = await fileToDataUrl(logoFile);
+            }
+            
+            if (editingCompany) {
+                await updateCompany(editingCompany.id, name, logoUrl);
+                toast({ title: "Succès", description: "Société mise à jour." });
+            } else {
+                await createCompany(name, logoUrl);
+                toast({ title: "Succès", description: "Société créée." });
+            }
+            
+            await loadCompanies();
+            setDialogOpen(false);
+            resetForm();
+        } catch (error) {
+            toast({ title: "Erreur", description: "L'opération a échoué.", variant: "destructive" });
+        } finally {
+            setIsSubmitting(false);
+        }
+    };
+
+    const handleDelete = async () => {
+        if (!companyToDelete) return;
+        try {
+            await deleteCompany(companyToDelete.id);
+            toast({ title: "Succès", description: `${companyToDelete.name} a été supprimée.` });
+            await loadCompanies();
+            setCompanyToDelete(null);
+        } catch (error) {
+            toast({ title: "Erreur", description: "Impossible de supprimer la société.", variant: "destructive" });
+        }
+    };
+    
+    return (
     <Card>
       <CardHeader>
-        <CardTitle>{title}</CardTitle>
-        <CardDescription>Gérez vos {description}</CardDescription>
+        <div className="flex justify-between items-center">
+            <div>
+                <CardTitle>Sociétés</CardTitle>
+                <CardDescription>Gérez vos sociétés et leurs logos.</CardDescription>
+            </div>
+            <Button size="sm" className="gap-1" onClick={() => handleOpenDialog()}>
+                <PlusCircle className="h-4 w-4" /> Créer
+            </Button>
+        </div>
       </CardHeader>
-      <CardContent className="space-y-4">
-        <form onSubmit={handleCreate} className="flex items-center gap-2">
-          <Input 
-            placeholder={`Nom de la nouvelle ${description.toLowerCase().slice(0, -1)}...`} 
-            value={newItemName}
-            onChange={(e) => setNewItemName(e.target.value)}
-          />
-          <Button type="submit" size="sm" className="gap-1">
-            <PlusCircle className="h-4 w-4" />
-            Créer
-          </Button>
-        </form>
+      <CardContent>
         <div className="border rounded-md">
           <Table>
             <TableHeader>
               <TableRow>
+                <TableHead className="w-[80px]">Logo</TableHead>
                 <TableHead>Nom</TableHead>
                 <TableHead className="w-[100px] text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {isLoading ? (
-                <TableRow><TableCell colSpan={2} className="text-center">Chargement...</TableCell></TableRow>
-              ) : items.length === 0 ? (
-                <TableRow><TableCell colSpan={2} className="text-center">Aucun élément trouvé.</TableCell></TableRow>
+                <TableRow><TableCell colSpan={3} className="text-center">Chargement...</TableCell></TableRow>
+              ) : companies.length === 0 ? (
+                <TableRow><TableCell colSpan={3} className="text-center">Aucune société trouvée.</TableCell></TableRow>
               ) : (
-                items.map((item) => (
-                  <TableRow key={item.id}>
-                    <TableCell className="font-medium">{item.name}</TableCell>
+                companies.map((company) => (
+                  <TableRow key={company.id}>
+                    <TableCell>
+                      {company.logoUrl ? (
+                         <Image src={company.logoUrl} alt={company.name} width={40} height={40} className="rounded-md object-contain" />
+                      ) : (
+                        <div className="h-10 w-10 bg-muted rounded-md flex items-center justify-center text-muted-foreground">?</div>
+                      )}
+                    </TableCell>
+                    <TableCell className="font-medium">{company.name}</TableCell>
                     <TableCell className="text-right">
-                       <Button variant="ghost" size="icon" className="h-8 w-8">
+                       <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleOpenDialog(company)}>
                           <Edit className="h-4 w-4" />
                        </Button>
-                       <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive">
-                          <Trash2 className="h-4 w-4" />
-                       </Button>
+                       <Dialog open={!!companyToDelete && companyToDelete.id === company.id} onOpenChange={(isOpen) => !isOpen && setCompanyToDelete(null)}>
+                          <DialogTrigger asChild>
+                             <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive" onClick={() => setCompanyToDelete(company)}>
+                                <Trash2 className="h-4 w-4" />
+                             </Button>
+                          </DialogTrigger>
+                          <DialogContent>
+                              <DialogHeader>
+                                  <DialogTitle>Supprimer {companyToDelete?.name}</DialogTitle>
+                                  <DialogDescription>
+                                      Cette action est irréversible. La suppression de cette société entraînera la suppression de toutes les agences et secteurs associés.
+                                  </DialogDescription>
+                              </DialogHeader>
+                              <DialogFooter>
+                                  <Button variant="outline" onClick={() => setCompanyToDelete(null)}>Annuler</Button>
+                                  <Button variant="destructive" onClick={handleDelete}>Confirmer</Button>
+                              </DialogFooter>
+                          </DialogContent>
+                       </Dialog>
                     </TableCell>
                   </TableRow>
                 ))
@@ -110,19 +197,52 @@ const SimpleSettingsSection: React.FC<{
             </TableBody>
           </Table>
         </div>
+
+        <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+            <DialogContent>
+                <DialogHeader>
+                    <DialogTitle>{editingCompany ? 'Modifier la société' : 'Nouvelle société'}</DialogTitle>
+                </DialogHeader>
+                <form onSubmit={handleSubmit} className="space-y-4">
+                    <div className="space-y-2">
+                        <Label htmlFor="name">Nom</Label>
+                        <Input id="name" value={name} onChange={(e) => setName(e.target.value)} required />
+                    </div>
+                    <div className="space-y-2">
+                        <Label>Logo</Label>
+                        <div className="flex items-center gap-4">
+                            <div className="h-20 w-20 border rounded-md flex items-center justify-center bg-muted overflow-hidden">
+                                {logoPreview ? <Image src={logoPreview} alt="Aperçu" width={80} height={80} className="object-contain"/> : <UploadCloud className="h-8 w-8 text-muted-foreground" />}
+                            </div>
+                            <Input id="logo" type="file" accept="image/*" onChange={handleFileChange} className="flex-1" />
+                        </div>
+                    </div>
+                    <DialogFooter>
+                        <DialogClose asChild><Button type="button" variant="outline">Annuler</Button></DialogClose>
+                        <Button type="submit" disabled={isSubmitting}>{isSubmitting ? "Enregistrement..." : "Enregistrer"}</Button>
+                    </DialogFooter>
+                </form>
+            </DialogContent>
+        </Dialog>
       </CardContent>
     </Card>
   );
 };
 
+
 // Section pour les Agences
 const AgenciesSection = () => {
     const [agencies, setAgencies] = useState<Agency[]>([]);
     const [companies, setCompanies] = useState<Company[]>([]);
-    const [selectedCompany, setSelectedCompany] = useState<string>('');
-    const [newAgencyName, setNewAgencyName] = useState('');
     const [isLoading, setIsLoading] = useState(true);
     const { toast } = useToast();
+    const [isSubmitting, setIsSubmitting] = useState(false);
+    const [dialogOpen, setDialogOpen] = useState(false);
+    const [editingAgency, setEditingAgency] = useState<Agency | null>(null);
+    const [agencyToDelete, setAgencyToDelete] = useState<Agency | null>(null);
+
+    const [name, setName] = useState('');
+    const [companyId, setCompanyId] = useState('');
 
     const loadData = useCallback(async () => {
         setIsLoading(true);
@@ -131,62 +251,75 @@ const AgenciesSection = () => {
             setAgencies(fetchedAgencies);
             setCompanies(fetchedCompanies);
         } catch (error) {
-            console.error("Failed to fetch data for agencies:", error);
-            toast({ title: "Erreur", description: "Impossible de charger les agences et sociétés.", variant: "destructive" });
+            toast({ title: "Erreur", description: "Impossible de charger les données.", variant: "destructive" });
         } finally {
             setIsLoading(false);
         }
     }, [toast]);
 
-    useEffect(() => {
-        loadData();
-    }, [loadData]);
+    useEffect(() => { loadData(); }, [loadData]);
+    
+    const resetForm = () => { setName(''); setCompanyId(''); setEditingAgency(null); };
 
-    const handleCreate = async (e: React.FormEvent) => {
-        e.preventDefault();
-        if (!newAgencyName.trim() || !selectedCompany) {
-            toast({ title: "Erreur", description: "Veuillez sélectionner une société et donner un nom à l'agence.", variant: "destructive" });
-            return;
+    const handleOpenDialog = (agency: Agency | null = null) => {
+        setEditingAgency(agency);
+        if (agency) {
+            setName(agency.name);
+            setCompanyId(agency.companyId);
+        } else {
+            resetForm();
         }
+        setDialogOpen(true);
+    };
+
+    const handleSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!name.trim() || !companyId) return;
+        setIsSubmitting(true);
         try {
-            await createAgency(newAgencyName, selectedCompany);
-            setNewAgencyName('');
-            setSelectedCompany('');
-            toast({ title: "Succès", description: "Agence créée avec succès." });
+            if (editingAgency) {
+                await updateAgency(editingAgency.id, name, companyId);
+                toast({ title: "Succès", description: "Agence mise à jour." });
+            } else {
+                await createAgency(name, companyId);
+                toast({ title: "Succès", description: "Agence créée." });
+            }
             await loadData();
+            setDialogOpen(false);
+            resetForm();
         } catch (error) {
-            console.error("Failed to create agency:", error);
-            toast({ title: "Erreur", description: "Impossible de créer l'agence.", variant: "destructive" });
+            toast({ title: "Erreur", description: "L'opération a échoué.", variant: "destructive" });
+        } finally {
+            setIsSubmitting(false);
+        }
+    };
+
+    const handleDelete = async () => {
+        if (!agencyToDelete) return;
+        try {
+            await deleteAgency(agencyToDelete.id);
+            toast({ title: "Succès", description: "L'agence et ses secteurs ont été supprimés." });
+            await loadData();
+            setAgencyToDelete(null);
+        } catch (error) {
+            toast({ title: "Erreur", description: "Impossible de supprimer l'agence.", variant: "destructive" });
         }
     };
 
     return (
         <Card>
             <CardHeader>
-                <CardTitle>Agences</CardTitle>
-                <CardDescription>Gérez vos agences et leur rattachement aux sociétés.</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-                <form onSubmit={handleCreate} className="flex items-end gap-2">
-                    <div className='flex-1 space-y-2'>
-                        <label className='text-sm font-medium'>Société</label>
-                        <Select onValueChange={setSelectedCompany} value={selectedCompany}>
-                            <SelectTrigger>
-                                <SelectValue placeholder="Sélectionner une société" />
-                            </SelectTrigger>
-                            <SelectContent>
-                                {companies.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
-                            </SelectContent>
-                        </Select>
+                <div className="flex justify-between items-center">
+                    <div>
+                        <CardTitle>Agences</CardTitle>
+                        <CardDescription>Gérez vos agences et leur rattachement aux sociétés.</CardDescription>
                     </div>
-                    <div className='flex-1 space-y-2'>
-                        <label className='text-sm font-medium'>Nom de la nouvelle agence</label>
-                        <Input placeholder="Nom de l'agence..." value={newAgencyName} onChange={e => setNewAgencyName(e.target.value)} />
-                    </div>
-                    <Button type="submit" size="sm" className="gap-1 self-end h-10">
+                     <Button size="sm" className="gap-1" onClick={() => handleOpenDialog()}>
                         <PlusCircle className="h-4 w-4" /> Créer
                     </Button>
-                </form>
+                </div>
+            </CardHeader>
+            <CardContent>
                 <div className="border rounded-md">
                     <Table>
                         <TableHeader>
@@ -197,18 +330,30 @@ const AgenciesSection = () => {
                             </TableRow>
                         </TableHeader>
                         <TableBody>
-                            {isLoading ? (
-                                <TableRow><TableCell colSpan={3} className="text-center">Chargement...</TableCell></TableRow>
-                            ) : agencies.length === 0 ? (
-                                <TableRow><TableCell colSpan={3} className="text-center">Aucune agence trouvée.</TableCell></TableRow>
+                            {isLoading ? ( <TableRow><TableCell colSpan={3} className="text-center">Chargement...</TableCell></TableRow>
+                            ) : agencies.length === 0 ? ( <TableRow><TableCell colSpan={3} className="text-center">Aucune agence.</TableCell></TableRow>
                             ) : (
                                 agencies.map(agency => (
                                     <TableRow key={agency.id}>
                                         <TableCell className="font-medium">{agency.name}</TableCell>
                                         <TableCell>{agency.companyName}</TableCell>
                                         <TableCell className="text-right">
-                                            <Button variant="ghost" size="icon" className="h-8 w-8"><Edit className="h-4 w-4" /></Button>
-                                            <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive"><Trash2 className="h-4 w-4" /></Button>
+                                            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleOpenDialog(agency)}><Edit className="h-4 w-4" /></Button>
+                                            <Dialog open={!!agencyToDelete && agencyToDelete.id === agency.id} onOpenChange={(isOpen) => !isOpen && setAgencyToDelete(null)}>
+                                                <DialogTrigger asChild>
+                                                    <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive" onClick={() => setAgencyToDelete(agency)}><Trash2 className="h-4 w-4" /></Button>
+                                                </DialogTrigger>
+                                                <DialogContent>
+                                                    <DialogHeader>
+                                                        <DialogTitle>Supprimer {agencyToDelete?.name}</DialogTitle>
+                                                        <DialogDescription>Cette action est irréversible et supprimera les secteurs associés.</DialogDescription>
+                                                    </DialogHeader>
+                                                    <DialogFooter>
+                                                        <Button variant="outline" onClick={() => setAgencyToDelete(null)}>Annuler</Button>
+                                                        <Button variant="destructive" onClick={handleDelete}>Confirmer</Button>
+                                                    </DialogFooter>
+                                                </DialogContent>
+                                            </Dialog>
                                         </TableCell>
                                     </TableRow>
                                 ))
@@ -216,19 +361,49 @@ const AgenciesSection = () => {
                         </TableBody>
                     </Table>
                 </div>
+                <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+                    <DialogContent>
+                        <DialogHeader><DialogTitle>{editingAgency ? "Modifier l'agence" : "Nouvelle agence"}</DialogTitle></DialogHeader>
+                        <form onSubmit={handleSubmit} className="space-y-4">
+                            <div className="space-y-2">
+                                <Label htmlFor="agencyName">Nom de l'agence</Label>
+                                <Input id="agencyName" value={name} onChange={e => setName(e.target.value)} required />
+                            </div>
+                            <div className="space-y-2">
+                                <Label htmlFor="company">Société</Label>
+                                <Select onValueChange={setCompanyId} value={companyId}>
+                                    <SelectTrigger><SelectValue placeholder="Sélectionner une société" /></SelectTrigger>
+                                    <SelectContent>
+                                        {companies.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                            <DialogFooter>
+                                <DialogClose asChild><Button variant="outline">Annuler</Button></DialogClose>
+                                <Button type="submit" disabled={isSubmitting}>{isSubmitting ? "Enregistrement..." : "Enregistrer"}</Button>
+                            </DialogFooter>
+                        </form>
+                    </DialogContent>
+                </Dialog>
             </CardContent>
         </Card>
     );
 };
 
+
 // Section pour les Secteurs
 const SectorsSection = () => {
     const [sectors, setSectors] = useState<Sector[]>([]);
     const [agencies, setAgencies] = useState<Agency[]>([]);
-    const [selectedAgency, setSelectedAgency] = useState<string>('');
-    const [newSectorName, setNewSectorName] = useState('');
     const [isLoading, setIsLoading] = useState(true);
     const { toast } = useToast();
+    const [isSubmitting, setIsSubmitting] = useState(false);
+    const [dialogOpen, setDialogOpen] = useState(false);
+    const [editingSector, setEditingSector] = useState<Sector | null>(null);
+    const [sectorToDelete, setSectorToDelete] = useState<Sector | null>(null);
+
+    const [name, setName] = useState('');
+    const [agencyId, setAgencyId] = useState('');
 
     const loadData = useCallback(async () => {
         setIsLoading(true);
@@ -236,63 +411,73 @@ const SectorsSection = () => {
             const [fetchedSectors, fetchedAgencies] = await Promise.all([getSectors(), getAgencies()]);
             setSectors(fetchedSectors);
             setAgencies(fetchedAgencies);
-        } catch (error) {
-            console.error("Failed to fetch data for sectors:", error);
-            toast({ title: "Erreur", description: "Impossible de charger les secteurs et agences.", variant: "destructive" });
-        } finally {
-            setIsLoading(false);
-        }
+        } catch (error) { toast({ title: "Erreur", description: "Impossible de charger les données.", variant: "destructive" }); } 
+        finally { setIsLoading(false); }
     }, [toast]);
 
-    useEffect(() => {
-        loadData();
-    }, [loadData]);
+    useEffect(() => { loadData(); }, [loadData]);
+    
+    const resetForm = () => { setName(''); setAgencyId(''); setEditingSector(null); };
 
-    const handleCreate = async (e: React.FormEvent) => {
-        e.preventDefault();
-        if (!newSectorName.trim() || !selectedAgency) {
-            toast({ title: "Erreur", description: "Veuillez sélectionner une agence et donner un nom au secteur.", variant: "destructive" });
-            return;
+    const handleOpenDialog = (sector: Sector | null = null) => {
+        setEditingSector(sector);
+        if (sector) {
+            setName(sector.name);
+            setAgencyId(sector.agencyId);
+        } else {
+            resetForm();
         }
+        setDialogOpen(true);
+    };
+
+    const handleSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!name.trim() || !agencyId) return;
+        setIsSubmitting(true);
         try {
-            await createSector(newSectorName, selectedAgency);
-            setNewSectorName('');
-            setSelectedAgency('');
-            toast({ title: "Succès", description: "Secteur créé avec succès." });
+            if (editingSector) {
+                await updateSector(editingSector.id, name, agencyId);
+                toast({ title: "Succès", description: "Secteur mis à jour." });
+            } else {
+                await createSector(name, agencyId);
+                toast({ title: "Succès", description: "Secteur créé." });
+            }
             await loadData();
+            setDialogOpen(false);
+            resetForm();
         } catch (error) {
-            console.error("Failed to create sector:", error);
-            toast({ title: "Erreur", description: "Impossible de créer le secteur.", variant: "destructive" });
+            toast({ title: "Erreur", description: "L'opération a échoué.", variant: "destructive" });
+        } finally {
+            setIsSubmitting(false);
+        }
+    };
+    
+    const handleDelete = async () => {
+        if (!sectorToDelete) return;
+        try {
+            await deleteSector(sectorToDelete.id);
+            toast({ title: "Succès", description: "Secteur supprimé." });
+            await loadData();
+            setSectorToDelete(null);
+        } catch (error) {
+            toast({ title: "Erreur", description: "Impossible de supprimer le secteur.", variant: "destructive" });
         }
     };
 
     return (
         <Card>
             <CardHeader>
-                <CardTitle>Secteurs</CardTitle>
-                <CardDescription>Gérez vos secteurs et leur rattachement aux agences.</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-                <form onSubmit={handleCreate} className="flex items-end gap-2">
-                    <div className='flex-1 space-y-2'>
-                        <label className='text-sm font-medium'>Agence</label>
-                        <Select onValueChange={setSelectedAgency} value={selectedAgency}>
-                            <SelectTrigger>
-                                <SelectValue placeholder="Sélectionner une agence" />
-                            </SelectTrigger>
-                            <SelectContent>
-                                {agencies.map(a => <SelectItem key={a.id} value={a.id}>{a.name} ({a.companyName})</SelectItem>)}
-                            </SelectContent>
-                        </Select>
+                 <div className="flex justify-between items-center">
+                    <div>
+                        <CardTitle>Secteurs</CardTitle>
+                        <CardDescription>Gérez vos secteurs et leur rattachement aux agences.</CardDescription>
                     </div>
-                     <div className='flex-1 space-y-2'>
-                        <label className='text-sm font-medium'>Nom du nouveau secteur</label>
-                        <Input placeholder="Nom du secteur..." value={newSectorName} onChange={e => setNewSectorName(e.target.value)} />
-                    </div>
-                    <Button type="submit" size="sm" className="gap-1 self-end h-10">
+                     <Button size="sm" className="gap-1" onClick={() => handleOpenDialog()}>
                         <PlusCircle className="h-4 w-4" /> Créer
                     </Button>
-                </form>
+                </div>
+            </CardHeader>
+            <CardContent>
                 <div className="border rounded-md">
                     <Table>
                         <TableHeader>
@@ -303,18 +488,27 @@ const SectorsSection = () => {
                             </TableRow>
                         </TableHeader>
                         <TableBody>
-                            {isLoading ? (
-                                <TableRow><TableCell colSpan={3} className="text-center">Chargement...</TableCell></TableRow>
-                            ) : sectors.length === 0 ? (
-                                <TableRow><TableCell colSpan={3} className="text-center">Aucun secteur trouvé.</TableCell></TableRow>
+                            {isLoading ? ( <TableRow><TableCell colSpan={3} className="text-center">Chargement...</TableCell></TableRow>
+                            ) : sectors.length === 0 ? ( <TableRow><TableCell colSpan={3} className="text-center">Aucun secteur.</TableCell></TableRow>
                             ) : (
                                 sectors.map(sector => (
                                     <TableRow key={sector.id}>
                                         <TableCell className="font-medium">{sector.name}</TableCell>
                                         <TableCell>{sector.agencyName}</TableCell>
                                         <TableCell className="text-right">
-                                            <Button variant="ghost" size="icon" className="h-8 w-8"><Edit className="h-4 w-4" /></Button>
-                                            <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive"><Trash2 className="h-4 w-4" /></Button>
+                                            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleOpenDialog(sector)}><Edit className="h-4 w-4" /></Button>
+                                             <Dialog open={!!sectorToDelete && sectorToDelete.id === sector.id} onOpenChange={(isOpen) => !isOpen && setSectorToDelete(null)}>
+                                                <DialogTrigger asChild>
+                                                    <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive" onClick={() => setSectorToDelete(sector)}><Trash2 className="h-4 w-4" /></Button>
+                                                </DialogTrigger>
+                                                <DialogContent>
+                                                    <DialogHeader><DialogTitle>Supprimer {sectorToDelete?.name}</DialogTitle><DialogDescription>Cette action est irréversible.</DialogDescription></DialogHeader>
+                                                    <DialogFooter>
+                                                        <Button variant="outline" onClick={() => setSectorToDelete(null)}>Annuler</Button>
+                                                        <Button variant="destructive" onClick={handleDelete}>Confirmer</Button>
+                                                    </DialogFooter>
+                                                </DialogContent>
+                                            </Dialog>
                                         </TableCell>
                                     </TableRow>
                                 ))
@@ -322,6 +516,150 @@ const SectorsSection = () => {
                         </TableBody>
                     </Table>
                 </div>
+                <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+                    <DialogContent>
+                        <DialogHeader><DialogTitle>{editingSector ? "Modifier le secteur" : "Nouveau secteur"}</DialogTitle></DialogHeader>
+                        <form onSubmit={handleSubmit} className="space-y-4">
+                            <div className="space-y-2"><Label htmlFor="sectorName">Nom du secteur</Label><Input id="sectorName" value={name} onChange={e => setName(e.target.value)} required /></div>
+                            <div className="space-y-2"><Label htmlFor="agency">Agence</Label>
+                                <Select onValueChange={setAgencyId} value={agencyId}>
+                                    <SelectTrigger><SelectValue placeholder="Sélectionner une agence" /></SelectTrigger>
+                                    <SelectContent>{agencies.map(a => <SelectItem key={a.id} value={a.id}>{a.name} ({a.companyName})</SelectItem>)}</SelectContent>
+                                </Select>
+                            </div>
+                            <DialogFooter>
+                                <DialogClose asChild><Button variant="outline">Annuler</Button></DialogClose>
+                                <Button type="submit" disabled={isSubmitting}>{isSubmitting ? "Enregistrement..." : "Enregistrer"}</Button>
+                            </DialogFooter>
+                        </form>
+                    </DialogContent>
+                </Dialog>
+            </CardContent>
+        </Card>
+    );
+};
+
+
+// Section pour les Activités
+const ActivitiesSection = () => {
+    const [activities, setActivities] = useState<Activity[]>([]);
+    const [isLoading, setIsLoading] = useState(true);
+    const { toast } = useToast();
+    const [isSubmitting, setIsSubmitting] = useState(false);
+    const [dialogOpen, setDialogOpen] = useState(false);
+    const [editingActivity, setEditingActivity] = useState<Activity | null>(null);
+    const [activityToDelete, setActivityToDelete] = useState<Activity | null>(null);
+    const [name, setName] = useState('');
+
+    const loadActivities = useCallback(async () => {
+        setIsLoading(true);
+        try {
+            setActivities(await getActivities());
+        } catch (error) { toast({ title: "Erreur", description: "Impossible de charger les activités.", variant: "destructive" }); } 
+        finally { setIsLoading(false); }
+    }, [toast]);
+
+    useEffect(() => { loadActivities(); }, [loadActivities]);
+    
+    const resetForm = () => { setName(''); setEditingActivity(null); };
+
+    const handleOpenDialog = (activity: Activity | null = null) => {
+        setEditingActivity(activity);
+        setName(activity ? activity.name : '');
+        setDialogOpen(true);
+    };
+
+    const handleSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!name.trim()) return;
+        setIsSubmitting(true);
+        try {
+            if (editingActivity) {
+                await updateActivity(editingActivity.id, name);
+                toast({ title: "Succès", description: "Activité mise à jour." });
+            } else {
+                await createActivity(name);
+                toast({ title: "Succès", description: "Activité créée." });
+            }
+            await loadActivities();
+            setDialogOpen(false);
+            resetForm();
+        } catch (error) {
+            toast({ title: "Erreur", description: "L'opération a échoué.", variant: "destructive" });
+        } finally {
+            setIsSubmitting(false);
+        }
+    };
+    
+    const handleDelete = async () => {
+        if (!activityToDelete) return;
+        try {
+            await deleteActivity(activityToDelete.id);
+            toast({ title: "Succès", description: "Activité supprimée." });
+            await loadActivities();
+            setActivityToDelete(null);
+        } catch (error) {
+            toast({ title: "Erreur", description: "Impossible de supprimer l'activité.", variant: "destructive" });
+        }
+    };
+
+    return (
+        <Card>
+             <CardHeader>
+                <div className="flex justify-between items-center">
+                    <div>
+                        <CardTitle>Activités</CardTitle>
+                        <CardDescription>Gérez vos activités.</CardDescription>
+                    </div>
+                     <Button size="sm" className="gap-1" onClick={() => handleOpenDialog()}>
+                        <PlusCircle className="h-4 w-4" /> Créer
+                    </Button>
+                </div>
+            </CardHeader>
+            <CardContent>
+                <div className="border rounded-md">
+                    <Table>
+                        <TableHeader><TableRow><TableHead>Nom</TableHead><TableHead className="w-[100px] text-right">Actions</TableHead></TableRow></TableHeader>
+                        <TableBody>
+                            {isLoading ? ( <TableRow><TableCell colSpan={2} className="text-center">Chargement...</TableCell></TableRow>
+                            ) : activities.length === 0 ? ( <TableRow><TableCell colSpan={2} className="text-center">Aucune activité.</TableCell></TableRow>
+                            ) : (
+                                activities.map(activity => (
+                                    <TableRow key={activity.id}>
+                                        <TableCell className="font-medium">{activity.name}</TableCell>
+                                        <TableCell className="text-right">
+                                            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleOpenDialog(activity)}><Edit className="h-4 w-4" /></Button>
+                                            <Dialog open={!!activityToDelete && activityToDelete.id === activity.id} onOpenChange={(isOpen) => !isOpen && setActivityToDelete(null)}>
+                                                <DialogTrigger asChild>
+                                                    <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive" onClick={() => setActivityToDelete(activity)}><Trash2 className="h-4 w-4" /></Button>
+                                                </DialogTrigger>
+                                                <DialogContent>
+                                                    <DialogHeader><DialogTitle>Supprimer {activityToDelete?.name}</DialogTitle><DialogDescription>Cette action est irréversible.</DialogDescription></DialogHeader>
+                                                    <DialogFooter>
+                                                        <Button variant="outline" onClick={() => setActivityToDelete(null)}>Annuler</Button>
+                                                        <Button variant="destructive" onClick={handleDelete}>Confirmer</Button>
+                                                    </DialogFooter>
+                                                </DialogContent>
+                                            </Dialog>
+                                        </TableCell>
+                                    </TableRow>
+                                ))
+                            )}
+                        </TableBody>
+                    </Table>
+                </div>
+                <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+                    <DialogContent>
+                        <DialogHeader><DialogTitle>{editingActivity ? "Modifier l'activité" : "Nouvelle activité"}</DialogTitle></DialogHeader>
+                        <form onSubmit={handleSubmit} className="space-y-4">
+                            <div className="space-y-2"><Label htmlFor="activityName">Nom de l'activité</Label><Input id="activityName" value={name} onChange={e => setName(e.target.value)} required /></div>
+                            <DialogFooter>
+                                <DialogClose asChild><Button variant="outline">Annuler</Button></DialogClose>
+                                <Button type="submit" disabled={isSubmitting}>{isSubmitting ? "Enregistrement..." : "Enregistrer"}</Button>
+                            </DialogFooter>
+                        </form>
+                    </DialogContent>
+                </Dialog>
             </CardContent>
         </Card>
     );
@@ -344,7 +682,7 @@ export default function SettingsPage() {
           <TabsTrigger value="activities">Activités</TabsTrigger>
         </TabsList>
         <TabsContent value="companies">
-          <SimpleSettingsSection title="Sociétés" description="sociétés" fetchItems={getCompanies} createItem={createCompany} />
+          <CompaniesSection />
         </TabsContent>
         <TabsContent value="agencies">
           <AgenciesSection />
@@ -353,7 +691,7 @@ export default function SettingsPage() {
           <SectorsSection />
         </TabsContent>
         <TabsContent value="activities">
-          <SimpleSettingsSection title="Activités" description="activités" fetchItems={getActivities} createItem={createActivity} />
+          <ActivitiesSection />
         </TabsContent>
       </Tabs>
     </div>

@@ -1,7 +1,7 @@
 'use server';
 import { db } from '@/lib/firebase';
 import type { Contract, Invoice, MeterReading, Company, Agency, Sector, Activity } from '@/lib/types';
-import { collection, getDocs, doc, getDoc, addDoc, query, where, DocumentData } from 'firebase/firestore';
+import { collection, getDocs, doc, getDoc, addDoc, updateDoc, deleteDoc, query, where, DocumentData, writeBatch } from 'firebase/firestore';
 
 // --- Fonctions de Service (Firestore) ---
 
@@ -78,13 +78,54 @@ async function getSettingItems<T extends {id: string}>(collectionName: string): 
     return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as T));
 }
 
-export async function createCompany(name: string) {
-    return createSettingItem('companies', { name });
+async function updateSettingItem(collectionName: string, id: string, data: DocumentData): Promise<void> {
+    const docRef = doc(db, collectionName, id);
+    await updateDoc(docRef, data);
+}
+
+async function deleteSettingItem(collectionName: string, id: string): Promise<void> {
+    const docRef = doc(db, collectionName, id);
+    await deleteDoc(docRef);
+}
+
+// Sociétés
+export async function createCompany(name: string, logoUrl?: string) {
+    return createSettingItem('companies', { name, logoUrl: logoUrl || null });
 }
 export async function getCompanies(): Promise<Company[]> {
     return getSettingItems<Company>('companies');
 }
+export async function updateCompany(id: string, name: string, logoUrl?: string) {
+    const data: {name: string, logoUrl?: string} = { name };
+    if (logoUrl) data.logoUrl = logoUrl;
+    return updateSettingItem('companies', id, data);
+}
+export async function deleteCompany(id: string) {
+    // Advanced delete: also delete related agencies and sectors
+    const batch = writeBatch(db);
 
+    // Delete company
+    const companyRef = doc(db, "companies", id);
+    batch.delete(companyRef);
+
+    // Find and delete agencies of this company
+    const agenciesQuery = query(collection(db, "agencies"), where("companyId", "==", id));
+    const agenciesSnapshot = await getDocs(agenciesQuery);
+    
+    for (const agencyDoc of agenciesSnapshot.docs) {
+        // Find and delete sectors of this agency
+        const sectorsQuery = query(collection(db, "sectors"), where("agencyId", "==", agencyDoc.id));
+        const sectorsSnapshot = await getDocs(sectorsQuery);
+        sectorsSnapshot.forEach(sectorDoc => batch.delete(sectorDoc.ref));
+        
+        batch.delete(agencyDoc.ref);
+    }
+    
+    await batch.commit();
+}
+
+
+// Agences
 export async function createAgency(name: string, companyId: string) {
     return createSettingItem('agencies', { name, companyId });
 }
@@ -97,7 +138,20 @@ export async function getAgencies(): Promise<Agency[]> {
         companyName: companyMap.get(agency.companyId) || 'N/A'
     }));
 }
+export async function updateAgency(id: string, name: string, companyId: string) {
+    return updateSettingItem('agencies', id, { name, companyId });
+}
+export async function deleteAgency(id: string) {
+    const batch = writeBatch(db);
+    const agencyRef = doc(db, "agencies", id);
+    batch.delete(agencyRef);
+    const sectorsQuery = query(collection(db, "sectors"), where("agencyId", "==", id));
+    const sectorsSnapshot = await getDocs(sectorsQuery);
+    sectorsSnapshot.forEach(sectorDoc => batch.delete(sectorDoc.ref));
+    await batch.commit();
+}
 
+// Secteurs
 export async function createSector(name: string, agencyId: string) {
     return createSettingItem('sectors', { name, agencyId });
 }
@@ -110,10 +164,24 @@ export async function getSectors(): Promise<Sector[]> {
         agencyName: agencyMap.get(sector.agencyId) || 'N/A'
     }));
 }
+export async function updateSector(id: string, name: string, agencyId: string) {
+    return updateSettingItem('sectors', id, { name, agencyId });
+}
+export async function deleteSector(id: string) {
+    return deleteSettingItem('sectors', id);
+}
 
+
+// Activités
 export async function createActivity(name: string) {
     return createSettingItem('activities', { name });
 }
 export async function getActivities(): Promise<Activity[]> {
     return getSettingItems<Activity>('activities');
+}
+export async function updateActivity(id: string, name: string) {
+    return updateSettingItem('activities', id, { name });
+}
+export async function deleteActivity(id: string) {
+    return deleteSettingItem('activities', id);
 }

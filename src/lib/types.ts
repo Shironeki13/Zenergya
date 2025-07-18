@@ -53,6 +53,7 @@ export type Invoice = {
 export type Company = {
     id: string;
     name: string;
+    logoUrl?: string;
 }
 
 export type Agency = {
