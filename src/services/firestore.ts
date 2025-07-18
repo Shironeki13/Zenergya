@@ -1,6 +1,6 @@
 'use server';
 import { db } from '@/lib/firebase';
-import type { Contract, Invoice, MeterReading, Company, Agency, Sector, Activity } from '@/lib/types';
+import type { Contract, Invoice, MeterReading, Company, Agency, Sector, Activity, User, Role } from '@/lib/types';
 import { collection, getDocs, doc, getDoc, addDoc, updateDoc, deleteDoc, query, where, DocumentData, writeBatch } from 'firebase/firestore';
 
 // --- Fonctions de Service (Firestore) ---
@@ -184,4 +184,41 @@ export async function updateActivity(id: string, name: string) {
 }
 export async function deleteActivity(id: string) {
     return deleteSettingItem('activities', id);
+}
+
+// --- Fonctions de Gestion des Utilisateurs (Firestore) ---
+
+// Rôles
+export async function createRole(name: string) {
+    return createSettingItem('roles', { name });
+}
+export async function getRoles(): Promise<Role[]> {
+    return getSettingItems<Role>('roles');
+}
+export async function updateRole(id: string, name: string) {
+    return updateSettingItem('roles', id, { name });
+}
+export async function deleteRole(id: string) {
+    // Optional: Add logic to handle users with this role
+    return deleteSettingItem('roles', id);
+}
+
+// Utilisateurs
+export async function createUser(data: Omit<User, 'id'>) {
+    return createSettingItem('users', data);
+}
+export async function getUsers(): Promise<User[]> {
+    const users = await getSettingItems<User>('users');
+    const roles = await getRoles();
+    const roleMap = new Map(roles.map(r => [r.id, r.name]));
+    return users.map(user => ({
+        ...user,
+        roleName: roleMap.get(user.roleId) || 'N/A'
+    }));
+}
+export async function updateUser(id: string, data: Partial<Omit<User, 'id'>>) {
+    return updateSettingItem('users', id, data);
+}
+export async function deleteUser(id: string) {
+    return deleteSettingItem('users', id);
 }

@@ -5,6 +5,7 @@ import {
   FileText,
   Settings,
   Menu,
+  Users,
 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
@@ -28,6 +29,7 @@ export default function AppLayout({
     { href: '/dashboard', icon: LayoutDashboard, label: 'Tableau de bord' },
     { href: '/contracts', icon: FileSignature, label: 'Contrats' },
     { href: '/invoices', icon: FileText, label: 'Factures' },
+    { href: '/users', icon: Users, label: 'Utilisateurs' },
     { href: '/settings', icon: Settings, label: 'Paramétrage' },
   ];
 

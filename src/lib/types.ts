@@ -74,3 +74,18 @@ export type Activity = {
     id: string;
     name: string;
 }
+
+// User Management Types
+export type Role = {
+    id: string;
+    name: string;
+    // permissions: string[]; // Future use
+}
+
+export type User = {
+    id: string;
+    name: string;
+    email: string;
+    roleId: string;
+    roleName?: string; // Optional for display
+}
