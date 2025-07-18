@@ -1,153 +1,172 @@
 'use server';
-import type { Contract, Invoice, MeterReading } from '@/lib/types';
-import { format } from 'date-fns';
+import type { Contract, Invoice, MeterReading, Company, Agency, Sector, Activity } from '@/lib/types';
+import { Timestamp } from 'firebase/firestore';
 
-const MOCK_CONTRACTS: Contract[] = [
+// --- Static Data for Demonstration ---
+
+const contracts: Contract[] = [
   {
     id: 'contract-1',
+    clientId: 'client-1',
     clientName: 'Stark Industries',
-    startDate: '2023-01-15',
-    endDate: '2024-01-14',
+    startDate: '2023-01-01T00:00:00.000Z',
+    endDate: '2023-12-31T00:00:00.000Z',
     billingSchedule: 'quarterly',
     services: ['hot_water', 'heating'],
     status: 'active',
-    clientId: 'client-1',
   },
   {
     id: 'contract-2',
+    clientId: 'client-2',
     clientName: 'Wayne Enterprises',
-    startDate: '2023-03-01',
-    endDate: '2025-02-28',
+    startDate: '2024-03-15T00:00:00.000Z',
+    endDate: '2025-03-14T00:00:00.000Z',
     billingSchedule: 'annually',
     services: ['hot_water', 'heating', 'fixed_subscription'],
-    status: 'active',
-    clientId: 'client-2',
+    status: 'pending',
   },
   {
     id: 'contract-3',
+    clientId: 'client-3',
     clientName: 'Oscorp',
-    startDate: '2024-05-20',
-    endDate: '2024-11-20',
+    startDate: '2022-06-01T00:00:00.000Z',
+    endDate: '2023-05-31T00:00:00.000Z',
     billingSchedule: 'end_of_term',
     services: ['heating'],
-    status: 'pending',
-    clientId: 'client-3',
-  },
-  {
-    id: 'contract-4',
-    clientName: 'Cyberdyne Systems',
-    startDate: '2022-01-01',
-    endDate: '2023-12-31',
-    billingSchedule: 'annually',
-    services: ['fixed_subscription'],
     status: 'expired',
-    clientId: 'client-4',
   },
 ];
 
-const MOCK_INVOICES: Invoice[] = [
+const invoices: Invoice[] = [
   {
-    id: 'invoice-001',
+    id: 'invoice-1',
     contractId: 'contract-1',
     clientName: 'Stark Industries',
-    date: '2023-10-15',
-    dueDate: '2023-11-14',
+    date: '2023-03-31T00:00:00.000Z',
+    dueDate: '2023-04-30T00:00:00.000Z',
     status: 'paid',
     lineItems: [
-      { description: 'Hot Water Usage (Q3)', quantity: 500, unitPrice: 0.15, total: 75.0 },
-      { description: 'Heating Usage (Q3)', quantity: 800, unitPrice: 0.12, total: 96.0 },
+      { description: 'Hot Water Usage (Q1)', quantity: 300, unitPrice: 0.5, total: 150 },
+      { description: 'Heating Usage (Q1)', quantity: 500, unitPrice: 0.4, total: 200 },
     ],
-    subtotal: 171.0,
-    tax: 17.1,
-    total: 188.1,
+    subtotal: 350,
+    tax: 35,
+    total: 385,
   },
   {
-    id: 'invoice-002',
-    contractId: 'contract-2',
-    clientName: 'Wayne Enterprises',
-    date: '2024-03-01',
-    dueDate: '2024-03-31',
-    status: 'due',
-    lineItems: [
-        { description: 'Annual Subscription', quantity: 1, unitPrice: 1200, total: 1200.0 },
-    ],
-    subtotal: 1200.0,
-    tax: 120.0,
-    total: 1320.0,
-  },
-   {
-    id: 'invoice-003',
+    id: 'invoice-2',
     contractId: 'contract-1',
     clientName: 'Stark Industries',
-    date: '2024-01-15',
-    dueDate: '2024-02-14',
+    date: '2023-06-30T00:00:00.000Z',
+    dueDate: '2023-07-30T00:00:00.000Z',
+    status: 'due',
+    lineItems: [
+      { description: 'Hot Water Usage (Q2)', quantity: 320, unitPrice: 0.5, total: 160 },
+      { description: 'Heating Usage (Q2)', quantity: 100, unitPrice: 0.4, total: 40 },
+    ],
+    subtotal: 200,
+    tax: 20,
+    total: 220,
+  },
+    {
+    id: 'invoice-3',
+    contractId: 'contract-2',
+    clientName: 'Wayne Enterprises',
+    date: '2024-04-01T00:00:00.000Z',
+    dueDate: '2024-05-01T00:00:00.000Z',
     status: 'overdue',
     lineItems: [
-      { description: 'Hot Water Usage (Q4)', quantity: 550, unitPrice: 0.15, total: 82.5 },
-      { description: 'Heating Usage (Q4)', quantity: 900, unitPrice: 0.12, total: 108.0 },
+      { description: 'Annual Subscription', quantity: 1, unitPrice: 1200, total: 1200 },
     ],
-    subtotal: 190.5,
-    tax: 19.05,
-    total: 209.55,
+    subtotal: 1200,
+    tax: 120,
+    total: 1320,
   },
 ];
 
-const MOCK_METER_READINGS: MeterReading[] = [
-    { id: 'mr-1', contractId: 'contract-1', date: '2023-07-15', reading: 12500, unit: 'kWh', service: 'hot_water'},
-    { id: 'mr-2', contractId: 'contract-1', date: '2023-07-15', reading: 34000, unit: 'kWh', service: 'heating'},
-    { id: 'mr-3', contractId: 'contract-1', date: '2023-10-15', reading: 13000, unit: 'kWh', service: 'hot_water'},
-    { id: 'mr-4', contractId: 'contract-1', date: '2023-10-15', reading: 34800, unit: 'kWh', service: 'heating'},
-]
+const meterReadings: MeterReading[] = [
+    { id: 'reading-1', contractId: 'contract-1', date: '2023-01-01T00:00:00.000Z', reading: 1000, unit: 'kWh', service: 'hot_water' },
+    { id: 'reading-2', contractId: 'contract-1', date: '2023-03-31T00:00:00.000Z', reading: 1300, unit: 'kWh', service: 'hot_water' },
+    { id: 'reading-3', contractId: 'contract-1', date: '2023-01-01T00:00:00.000Z', reading: 5000, unit: 'kWh', service: 'heating' },
+    { id: 'reading-4', contractId: 'contract-1', date: '2023-03-31T00:00:00.000Z', reading: 5500, unit: 'kWh', service: 'heating' },
+];
+
+let companies: Company[] = [{id: '1', name: 'Zenergy Corp'}];
+let agencies: Agency[] = [{id: '1', name: 'Main Agency'}];
+let sectors: Sector[] = [{id: '1', name: 'North Sector'}];
+let activities: Activity[] = [{id: '1', name: 'Energy Distribution'}];
+
+
+// --- Mock Firestore Functions ---
 
 // Contracts
 export async function getContracts(): Promise<Contract[]> {
-  console.log("Firestore Service: Faking getting contracts");
-  return Promise.resolve(MOCK_CONTRACTS);
+  return Promise.resolve(contracts);
 }
 
 export async function getContract(id: string): Promise<Contract | null> {
-  console.log(`Firestore Service: Faking getting contract ${id}`);
-  const contract = MOCK_CONTRACTS.find(c => c.id === id) || null;
-  return Promise.resolve(contract);
+    const contract = contracts.find(c => c.id === id) || null;
+    return Promise.resolve(contract);
 }
 
-export async function createContract(contract: Omit<Contract, 'id' | 'status' | 'clientId' | 'startDate' | 'endDate'> & { clientName: string; startDate: Date; endDate: Date; }) {
-    console.log("Firestore Service: Faking creating contract", contract);
-    const newId = `contract-${MOCK_CONTRACTS.length + 1}`;
+export async function createContract(contract: Omit<Contract, 'id' | 'status' | 'clientId'> & { clientName: string; startDate: Date; endDate: Date; }) {
+    console.log("Creating contract (static):", contract);
     const newContract: Contract = {
-      ...contract,
-      id: newId,
-      clientId: `client-${MOCK_CONTRACTS.length + 1}`,
-      status: 'pending',
-      startDate: format(contract.startDate, 'yyyy-MM-dd'),
-      endDate: format(contract.endDate, 'yyyy-MM-dd'),
+        id: `contract-${Date.now()}`,
+        clientId: `client-${Date.now()}`,
+        status: 'pending',
+        ...contract,
+        startDate: contract.startDate.toISOString(),
+        endDate: contract.endDate.toISOString(),
     };
-    MOCK_CONTRACTS.push(newContract);
-    return Promise.resolve(newId);
+    contracts.push(newContract);
+    return Promise.resolve(newContract.id);
 }
 
 
 // Invoices
 export async function getInvoices(): Promise<Invoice[]> {
-  console.log("Firestore Service: Faking getting invoices");
-  return Promise.resolve(MOCK_INVOICES);
+  return Promise.resolve(invoices);
 }
 
 export async function getInvoice(id: string): Promise<Invoice | null> {
-  console.log(`Firestore Service: Faking getting invoice ${id}`);
-  const invoice = MOCK_INVOICES.find(i => i.id === id) || null;
-  return Promise.resolve(invoice);
+    const invoice = invoices.find(i => i.id === id) || null;
+    return Promise.resolve(invoice);
 }
 
 export async function getInvoicesByContract(contractId: string): Promise<Invoice[]> {
-  console.log(`Firestore Service: Faking getting invoices for contract ${contractId}`);
-  const invoices = MOCK_INVOICES.filter(i => i.contractId === contractId);
-  return Promise.resolve(invoices);
+  const contractInvoices = invoices.filter(i => i.contractId === contractId);
+  return Promise.resolve(contractInvoices);
 }
 
 // Meter Readings
 export async function getMeterReadingsByContract(contractId: string): Promise<MeterReading[]> {
-    console.log(`Firestore Service: Faking getting meter readings for contract ${contractId}`);
-    const readings = MOCK_METER_READINGS.filter(r => r.contractId === contractId);
+    const readings = meterReadings.filter(r => r.contractId === contractId);
     return Promise.resolve(readings);
 }
+
+// Settings
+const createSetting = (collection: SettingItem[]) => async (name: string) => {
+    const newItem = { id: Date.now().toString(), name };
+    collection.push(newItem);
+    console.log(`Created in ${collection}:`, newItem);
+    return Promise.resolve();
+};
+
+type SettingItem = { id: string; name: string };
+
+const getSettings = (collection: SettingItem[]) => async () => {
+    return Promise.resolve(collection);
+};
+
+export const createCompany = createSetting(companies);
+export const getCompanies = getSettings(companies);
+
+export const createAgency = createSetting(agencies);
+export const getAgencies = getSettings(agencies);
+
+export const createSector = createSetting(sectors);
+export const getSectors = getSettings(sectors);
+
+export const createActivity = createSetting(activities);
+export const getActivities = getSettings(activities);

@@ -48,3 +48,24 @@ export type Invoice = {
   tax: number;
   total: number;
 };
+
+// Settings Types
+export type Company = {
+    id: string;
+    name: string;
+}
+
+export type Agency = {
+    id: string;
+    name: string;
+}
+
+export type Sector = {
+    id: string;
+    name: string;
+}
+
+export type Activity = {
+    id: string;
+    name: string;
+}

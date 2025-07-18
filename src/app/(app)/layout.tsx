@@ -36,6 +36,7 @@ export default function AppLayout({
     { href: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
     { href: '/contracts', icon: FileSignature, label: 'Contracts' },
     { href: '/invoices', icon: FileText, label: 'Invoices' },
+    // { href: '/settings', icon: Settings, label: 'Paramétrage' }, // Temporarily disabled
   ];
 
   return (
