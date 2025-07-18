@@ -47,9 +47,8 @@ export default async function ContractDetailPage({
   ]);
 
   const serviceLabels: Record<string, string> = {
-    hot_water: "Hot Water",
-    heating: "Heating",
-    fixed_subscription: "Fixed Subscription",
+    hot_water: "Eau Chaude",
+    heating: "Chauffage",
   };
 
   return (
@@ -58,7 +57,7 @@ export default async function ContractDetailPage({
         <Link href="/contracts">
           <Button variant="outline" size="icon" className="h-7 w-7">
             <ChevronLeft className="h-4 w-4" />
-            <span className="sr-only">Back</span>
+            <span className="sr-only">Retour</span>
           </Button>
         </Link>
         <h1 className="flex-1 shrink-0 whitespace-nowrap text-xl font-semibold tracking-tight sm:grow-0">
@@ -71,7 +70,7 @@ export default async function ContractDetailPage({
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
         <Card>
           <CardHeader className="pb-4">
-            <CardTitle>Contract Details</CardTitle>
+            <CardTitle>Détails du Contrat</CardTitle>
             <CardDescription>{contract.id}</CardDescription>
           </CardHeader>
           <CardContent>
@@ -86,7 +85,7 @@ export default async function ContractDetailPage({
               <div className="flex items-center">
                 <FileClock className="mr-2 h-4 w-4 text-muted-foreground" />
                 <span>
-                  Billed{" "}
+                  Facturé{" "}
                   {contract.billingSchedule.charAt(0).toUpperCase() +
                     contract.billingSchedule.replace("_", " ").slice(1)}
                 </span>
@@ -94,10 +93,10 @@ export default async function ContractDetailPage({
               <div className="flex items-start">
                 <CheckCircle className="mr-2 h-4 w-4 mt-1 text-muted-foreground" />
                 <div>
-                  <span className="font-medium">Services:</span>
+                  <span className="font-medium">Prestations :</span>
                   <ul className="list-disc pl-5">
-                    {contract.services.map((service) => (
-                      <li key={service}>{serviceLabels[service]}</li>
+                    {contract.activities.map((activity) => (
+                      <li key={activity}>{activity}</li>
                     ))}
                   </ul>
                 </div>
@@ -109,25 +108,25 @@ export default async function ContractDetailPage({
         <Card>
           <CardHeader className="pb-4">
             <CardTitle className="flex items-center gap-2">
-              <Gauge className="h-5 w-5" /> Meter Readings
+              <Gauge className="h-5 w-5" /> Relevés de Compteur
             </CardTitle>
             <CardDescription>
-              Input and view historical meter readings.
+              Saisissez et consultez les relevés de compteur historiques.
             </CardDescription>
           </CardHeader>
           <CardContent>
             <form className="flex items-end gap-2">
               <div className="grid gap-2 flex-1">
                 <Label htmlFor="reading" className="sr-only">
-                  Reading
+                  Relevé
                 </Label>
-                <Input id="reading" type="number" placeholder="Enter reading..." />
+                <Input id="reading" type="number" placeholder="Saisir le relevé..." />
               </div>
-              <Button type="submit">Save</Button>
+              <Button type="submit">Enregistrer</Button>
             </form>
           </CardContent>
           <CardFooter className="flex flex-col items-start gap-2 text-sm">
-             <div className="font-medium">Previous Readings</div>
+             <div className="font-medium">Relevés précédents</div>
              <ul className="w-full">
               {contractMeterReadings.map(r => (
                 <li key={r.id} className="flex justify-between py-1 border-b last:border-0">
@@ -142,18 +141,18 @@ export default async function ContractDetailPage({
         <Card>
           <CardHeader className="pb-4">
             <CardTitle className="flex items-center gap-2">
-              <FileText className="h-5 w-5" /> Invoices
+              <FileText className="h-5 w-5" /> Factures
             </CardTitle>
             <CardDescription>
-              Generate and track invoices for this contract.
+              Générez et suivez les factures pour ce contrat.
             </CardDescription>
           </CardHeader>
           <CardContent>
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Invoice</TableHead>
-                  <TableHead>Status</TableHead>
+                  <TableHead>Facture</TableHead>
+                  <TableHead>Statut</TableHead>
                   <TableHead className="text-right">Total</TableHead>
                 </TableRow>
               </TableHeader>
@@ -165,7 +164,7 @@ export default async function ContractDetailPage({
                       <Badge variant="outline">{invoice.status}</Badge>
                     </TableCell>
                     <TableCell className="text-right">
-                      ${invoice.total.toFixed(2)}
+                      {invoice.total.toFixed(2)} €
                     </TableCell>
                   </TableRow>
                 ))}
@@ -175,7 +174,7 @@ export default async function ContractDetailPage({
           <CardFooter>
             <Button size="sm" variant="outline" className="w-full gap-1">
               <PlusCircle className="h-4 w-4" />
-              Generate Invoice
+              Générer une Facture
             </Button>
           </CardFooter>
         </Card>

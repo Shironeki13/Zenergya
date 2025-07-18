@@ -14,7 +14,7 @@ export type Contract = {
   startDate: string;
   endDate: string;
   billingSchedule: BillingSchedule;
-  services: ContractService[];
+  activities: string[]; // Remplacement de 'services' par 'activities'
   status: "active" | "expired" | "pending";
 };
 

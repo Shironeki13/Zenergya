@@ -8,6 +8,7 @@ import * as z from "zod"
 import { CalendarIcon, ChevronLeft } from "lucide-react"
 import { format } from "date-fns"
 import { fr } from "date-fns/locale"
+import React, { useState, useEffect } from 'react';
 
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
@@ -37,7 +38,8 @@ import {
 } from "@/components/ui/select"
 import { useToast } from "@/hooks/use-toast"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { createContract } from "@/services/firestore"
+import { createContract, getActivities } from "@/services/firestore"
+import type { Activity } from "@/lib/types"
 
 
 const contractFormSchema = z.object({
@@ -51,30 +53,41 @@ const contractFormSchema = z.object({
     required_error: "Une date de fin est requise.",
   }),
   billingSchedule: z.enum(["quarterly", "annually", "end_of_term"]),
-  services: z.array(z.string()).refine((value) => value.some((item) => item), {
-    message: "Vous devez sélectionner au moins un service.",
+  activities: z.array(z.string()).refine((value) => value.some((item) => item), {
+    message: "Vous devez sélectionner au moins une prestation.",
   }),
 })
 
 type ContractFormValues = z.infer<typeof contractFormSchema>
 
 const defaultValues: Partial<ContractFormValues> = {
-  services: [],
+  activities: [],
 }
-
-const serviceItems = [
-    { id: "hot_water", label: "Eau Chaude" },
-    { id: "heating", label: "Chauffage" },
-    { id: "fixed_subscription", label: "Abonnement Fixe" },
-]
 
 export default function NewContractPage() {
   const router = useRouter();
   const { toast } = useToast()
+  const [activities, setActivities] = useState<Activity[]>([]);
   const form = useForm<ContractFormValues>({
     resolver: zodResolver(contractFormSchema),
     defaultValues,
   })
+
+  useEffect(() => {
+    async function fetchActivities() {
+      try {
+        const fetchedActivities = await getActivities();
+        setActivities(fetchedActivities);
+      } catch (error) {
+        toast({
+          title: "Erreur",
+          description: "Impossible de charger les activités.",
+          variant: "destructive"
+        })
+      }
+    }
+    fetchActivities();
+  }, [toast]);
 
   async function onSubmit(data: ContractFormValues) {
     try {
@@ -235,20 +248,20 @@ export default function NewContractPage() {
 
           <FormField
             control={form.control}
-            name="services"
+            name="activities"
             render={() => (
               <FormItem>
                 <div className="mb-4">
-                  <FormLabel className="text-base">Services</FormLabel>
+                  <FormLabel className="text-base">Prestations</FormLabel>
                   <FormDescription>
-                    Sélectionnez les services inclus dans ce contrat.
+                    Sélectionnez les prestations incluses dans ce contrat.
                   </FormDescription>
                 </div>
-                {serviceItems.map((item) => (
+                {activities.map((item) => (
                   <FormField
                     key={item.id}
                     control={form.control}
-                    name="services"
+                    name="activities"
                     render={({ field }) => {
                       return (
                         <FormItem
@@ -257,20 +270,20 @@ export default function NewContractPage() {
                         >
                           <FormControl>
                             <Checkbox
-                              checked={field.value?.includes(item.id)}
+                              checked={field.value?.includes(item.name)}
                               onCheckedChange={(checked) => {
                                 return checked
-                                  ? field.onChange([...(field.value || []), item.id])
+                                  ? field.onChange([...(field.value || []), item.name])
                                   : field.onChange(
                                       field.value?.filter(
-                                        (value) => value !== item.id
+                                        (value) => value !== item.name
                                       )
                                     )
                               }}
                             />
                           </FormControl>
                           <FormLabel className="font-normal">
-                            {item.label}
+                            {item.name}
                           </FormLabel>
                         </FormItem>
                       )
