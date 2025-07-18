@@ -1,149 +1,89 @@
 'use server';
-import { db } from '@/lib/firebase';
-import { collection, getDocs, getDoc, doc, addDoc, serverTimestamp } from 'firebase/firestore';
 import type { Contract, Invoice, MeterReading, Company, Agency, Sector, Activity } from '@/lib/types';
 import { format } from 'date-fns';
 
-// Helper to convert Firestore docs to plain objects
-function docToItem<T>(d: any): T {
-    const data = d.data();
-    return {
-        ...data,
-        id: d.id,
-    };
-}
+// --- Static Data ---
 
-// --- Firestore Functions ---
+const staticContracts: Contract[] = [];
+const staticInvoices: Invoice[] = [];
+const staticMeterReadings: MeterReading[] = [];
+const staticCompanies: Company[] = [];
+const staticAgencies: Agency[] = [];
+const staticSectors: Sector[] = [];
+const staticActivities: Activity[] = [];
+
+let nextContractId = 1;
+let nextInvoiceId = 1;
+let nextReadingId = 1;
+
+// --- Mock Firestore Functions ---
 
 // Contracts
 export async function getContracts(): Promise<Contract[]> {
-    try {
-        const contractsCol = collection(db, 'contracts');
-        const contractSnapshot = await getDocs(contractsCol);
-        const contractList = contractSnapshot.docs.map(d => docToItem<Contract>(d));
-        return contractList;
-    } catch (error) {
-        console.error("Error getting contracts:", error);
-        // On permission errors, it's better to return an empty array than to crash
-        return [];
-    }
+    return Promise.resolve(staticContracts);
 }
 
 export async function getContract(id: string): Promise<Contract | null> {
-    try {
-        const contractRef = doc(db, 'contracts', id);
-        const contractSnap = await getDoc(contractRef);
-        if (contractSnap.exists()) {
-            return docToItem<Contract>(contractSnap);
-        } else {
-            return null;
-        }
-    } catch (error) {
-        console.error(`Error getting contract ${id}:`, error);
-        return null;
-    }
+    const contract = staticContracts.find(c => c.id === id) || null;
+    return Promise.resolve(contract);
 }
 
 export async function createContract(data: Omit<Contract, 'id' | 'status' | 'clientId'> & { startDate: Date; endDate: Date }) {
-    try {
-        const contractsCol = collection(db, 'contracts');
-        await addDoc(contractsCol, {
-            ...data,
-            startDate: format(data.startDate, 'yyyy-MM-dd'),
-            endDate: format(data.endDate, 'yyyy-MM-dd'),
-            status: 'pending',
-            clientId: `client-${Date.now()}`, // Placeholder client ID
-            createdAt: serverTimestamp(),
-        });
-    } catch (error) {
-        console.error("Error creating contract:", error);
-        throw new Error('Failed to create contract');
-    }
+    const newContract: Contract = {
+        ...data,
+        id: `CTR-00${nextContractId++}`,
+        startDate: format(data.startDate, 'yyyy-MM-dd'),
+        endDate: format(data.endDate, 'yyyy-MM-dd'),
+        status: 'pending',
+        clientId: `client-${Date.now()}`,
+    };
+    staticContracts.push(newContract);
+    return Promise.resolve();
 }
 
 // Invoices
 export async function getInvoices(): Promise<Invoice[]> {
-    try {
-        const invoicesCol = collection(db, 'invoices');
-        const invoiceSnapshot = await getDocs(invoicesCol);
-        return invoiceSnapshot.docs.map(d => docToItem<Invoice>(d));
-    } catch (error) {
-        console.error("Error getting invoices:", error);
-        return [];
-    }
+    return Promise.resolve(staticInvoices);
 }
 
 export async function getInvoice(id: string): Promise<Invoice | null> {
-    try {
-        const invoiceRef = doc(db, 'invoices', id);
-        const invoiceSnap = await getDoc(invoiceRef);
-        if (invoiceSnap.exists()) {
-            return docToItem<Invoice>(invoiceSnap);
-        } else {
-            return null;
-        }
-    } catch (error) {
-        console.error(`Error getting invoice ${id}:`, error);
-        return null;
-    }
+    const invoice = staticInvoices.find(i => i.id === id) || null;
+    return Promise.resolve(invoice);
 }
 
 export async function getInvoicesByContract(contractId: string): Promise<Invoice[]> {
-    // This is a simplified version. A real implementation would use a query.
-    try {
-        const allInvoices = await getInvoices();
-        return allInvoices.filter(invoice => invoice.contractId === contractId);
-    } catch (error) {
-        console.error(`Error getting invoices for contract ${contractId}:`, error);
-        return [];
-    }
+    const invoices = staticInvoices.filter(invoice => invoice.contractId === contractId);
+    return Promise.resolve(invoices);
 }
 
 // Meter Readings
 export async function getMeterReadingsByContract(contractId: string): Promise<MeterReading[]> {
-    // This is a simplified version. A real implementation would use a query.
-     try {
-        const allReadings = await getDocs(collection(db, 'meterReadings'));
-        const readingsList = allReadings.docs.map(d => docToItem<MeterReading>(d));
-        return readingsList.filter(reading => reading.contractId === contractId);
-    } catch (error) {
-        console.error(`Error getting meter readings for contract ${contractId}:`, error);
-        return [];
-    }
+    const readings = staticMeterReadings.filter(reading => reading.contractId === contractId);
+    return Promise.resolve(readings);
 }
 
 // --- Settings Functions ---
 type SettingItem = { id: string; name: string };
 
-const createSetting = (collectionName: string) => async (name: string): Promise<void> => {
-    try {
-        await addDoc(collection(db, collectionName), { name, createdAt: serverTimestamp() });
-    } catch (error) {
-        console.error(`Error creating item in ${collectionName}:`, error);
-        throw new Error(`Failed to create item in ${collectionName}`);
-    }
+const createSetting = (collection: SettingItem[]) => async (name: string): Promise<void> => {
+    const newItem = { id: `${collection.length + 1}`, name };
+    collection.push(newItem);
+    return Promise.resolve();
 };
 
-const getSettings = <T extends SettingItem>(collectionName: string) => async (): Promise<T[]> => {
-    try {
-        const col = collection(db, collectionName);
-        const snapshot = await getDocs(col);
-        return snapshot.docs.map(d => docToItem<T>(d));
-    } catch (error) {
-        console.error(`Error getting items from ${collectionName}:`, error);
-        return [];
-    }
+const getSettings = <T extends SettingItem>(collection: T[]) => async (): Promise<T[]> => {
+    return Promise.resolve(collection);
 };
 
 
-export const createCompany = createSetting('companies');
-export const getCompanies = getSettings<Company>('companies');
+export const createCompany = createSetting(staticCompanies);
+export const getCompanies = getSettings<Company>(staticCompanies);
 
-export const createAgency = createSetting('agencies');
-export const getAgencies = getSettings<Agency>('agencies');
+export const createAgency = createSetting(staticAgencies);
+export const getAgencies = getSettings<Agency>(staticAgencies);
 
-export const createSector = createSetting('sectors');
-export const getSectors = getSettings<Sector>('sectors');
+export const createSector = createSetting(staticSectors);
+export const getSectors = getSettings<Sector>(staticSectors);
 
-export const createActivity = createSetting('activities');
-export const getActivities = getSettings<Activity>('activities');
+export const createActivity = createSetting(staticActivities);
+export const getActivities = getSettings<Activity>(staticActivities);
