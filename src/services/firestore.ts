@@ -1,7 +1,7 @@
 'use server';
 import { db } from '@/lib/firebase';
 import type { Contract, Invoice, MeterReading, Company, Agency, Sector, Activity } from '@/lib/types';
-import { collection, getDocs, doc, getDoc, addDoc, query, where } from 'firebase/firestore';
+import { collection, getDocs, doc, getDoc, addDoc, query, where, DocumentData } from 'firebase/firestore';
 
 // --- Fonctions de Service (Firestore) ---
 
@@ -66,41 +66,53 @@ export async function getMeterReadingsByContract(contractId: string): Promise<Me
 }
 
 // --- Fonctions de Paramétrage (Firestore) ---
-async function createSettingItem(collectionName: string, name: string): Promise<any> {
+async function createSettingItem(collectionName: string, data: DocumentData): Promise<any> {
     const collectionRef = collection(db, collectionName);
-    const docRef = await addDoc(collectionRef, { name });
-    return { id: docRef.id, name };
+    const docRef = await addDoc(collectionRef, data);
+    return { id: docRef.id, ...data };
 }
 
-async function getSettingItems<T extends {id: string, name: string}>(collectionName: string): Promise<T[]> {
+async function getSettingItems<T extends {id: string}>(collectionName: string): Promise<T[]> {
     const collectionRef = collection(db, collectionName);
     const snapshot = await getDocs(collectionRef);
     return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as T));
 }
 
 export async function createCompany(name: string) {
-    return createSettingItem('companies', name);
+    return createSettingItem('companies', { name });
 }
 export async function getCompanies(): Promise<Company[]> {
     return getSettingItems<Company>('companies');
 }
 
-export async function createAgency(name: string) {
-    return createSettingItem('agencies', name);
+export async function createAgency(name: string, companyId: string) {
+    return createSettingItem('agencies', { name, companyId });
 }
 export async function getAgencies(): Promise<Agency[]> {
-    return getSettingItems<Agency>('agencies');
+    const agencies = await getSettingItems<Agency>('agencies');
+    const companies = await getCompanies();
+    const companyMap = new Map(companies.map(c => [c.id, c.name]));
+    return agencies.map(agency => ({
+        ...agency,
+        companyName: companyMap.get(agency.companyId) || 'N/A'
+    }));
 }
 
-export async function createSector(name: string) {
-    return createSettingItem('sectors', name);
+export async function createSector(name: string, agencyId: string) {
+    return createSettingItem('sectors', { name, agencyId });
 }
 export async function getSectors(): Promise<Sector[]> {
-    return getSettingItems<Sector>('sectors');
+    const sectors = await getSettingItems<Sector>('sectors');
+    const agencies = await getAgencies();
+    const agencyMap = new Map(agencies.map(a => [a.id, a.name]));
+     return sectors.map(sector => ({
+        ...sector,
+        agencyName: agencyMap.get(sector.agencyId) || 'N/A'
+    }));
 }
 
 export async function createActivity(name: string) {
-    return createSettingItem('activities', name);
+    return createSettingItem('activities', { name });
 }
 export async function getActivities(): Promise<Activity[]> {
     return getSettingItems<Activity>('activities');

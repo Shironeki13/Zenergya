@@ -58,11 +58,15 @@ export type Company = {
 export type Agency = {
     id: string;
     name: string;
+    companyId: string;
+    companyName?: string; // Optional for display
 }
 
 export type Sector = {
     id: string;
     name: string;
+    agencyId: string;
+    agencyName?: string; // Optional for display
 }
 
 export type Activity = {
