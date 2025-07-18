@@ -10,8 +10,8 @@ const firebaseConfig = {
   projectId: "zenergy-f8276",
   storageBucket: "zenergy-f8276.firebasestorage.app",
   messagingSenderId: "105631849496",
-  appId: "1:105631849496:web:3aecd74c9b6ea5e59bf76d",
-  measurementId: "G-9WCFHKE6B3"
+  appId: "1:105631849496:web:ba5d073bee98e99b9bf76d",
+  measurementId: "G-MHF0K9NRFP"
 };
 
 // Initialize Firebase
