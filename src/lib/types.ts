@@ -75,6 +75,16 @@ export type Activity = {
     name: string;
 }
 
+export type Schedule = {
+    id: string;
+    name: string;
+}
+
+export type Term = {
+    id: string;
+    name: string;
+}
+
 // User Management Types
 export type Role = {
     id: string;

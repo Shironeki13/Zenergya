@@ -16,9 +16,11 @@ import {
   createCompany, getCompanies, updateCompany, deleteCompany,
   createAgency, getAgencies, updateAgency, deleteAgency,
   createSector, getSectors, updateSector, deleteSector,
-  createActivity, getActivities, updateActivity, deleteActivity
+  createActivity, getActivities, updateActivity, deleteActivity,
+  createSchedule, getSchedules, updateSchedule, deleteSchedule,
+  createTerm, getTerms, updateTerm, deleteTerm
 } from "@/services/firestore";
-import type { Company, Agency, Sector, Activity } from "@/lib/types";
+import type { Company, Agency, Sector, Activity, Schedule, Term } from "@/lib/types";
 
 
 const fileToDataUrl = (file: File): Promise<string> => {
@@ -665,6 +667,148 @@ const ActivitiesSection = () => {
     );
 };
 
+// Generic CRUD Section for simple name-based entities
+const SimpleCrudSection = ({
+  title,
+  description,
+  dataType,
+  getItems,
+  createItem,
+  updateItem,
+  deleteItem,
+}: {
+  title: string;
+  description: string;
+  dataType: "schedule" | "term";
+  getItems: () => Promise<{ id: string; name: string }[]>;
+  createItem: (name: string) => Promise<any>;
+  updateItem: (id: string, name: string) => Promise<void>;
+  deleteItem: (id: string) => Promise<void>;
+}) => {
+    const [items, setItems] = useState<{ id: string; name: string }[]>([]);
+    const [isLoading, setIsLoading] = useState(true);
+    const { toast } = useToast();
+    const [isSubmitting, setIsSubmitting] = useState(false);
+    const [dialogOpen, setDialogOpen] = useState(false);
+    const [editingItem, setEditingItem] = useState<{ id: string; name: string } | null>(null);
+    const [itemToDelete, setItemToDelete] = useState<{ id: string; name: string } | null>(null);
+    const [name, setName] = useState('');
+
+    const loadItems = useCallback(async () => {
+        setIsLoading(true);
+        try {
+            setItems(await getItems());
+        } catch (error) { toast({ title: "Erreur", description: `Impossible de charger les ${title.toLowerCase()}.`, variant: "destructive" }); } 
+        finally { setIsLoading(false); }
+    }, [getItems, title, toast]);
+
+    useEffect(() => { loadItems(); }, [loadItems]);
+    
+    const resetForm = () => { setName(''); setEditingItem(null); };
+
+    const handleOpenDialog = (item: { id: string; name: string } | null = null) => {
+        setEditingItem(item);
+        setName(item ? item.name : '');
+        setDialogOpen(true);
+    };
+
+    const handleSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!name.trim()) return;
+        setIsSubmitting(true);
+        try {
+            if (editingItem) {
+                await updateItem(editingItem.id, name);
+                toast({ title: "Succès", description: `${title} mis à jour.` });
+            } else {
+                await createItem(name);
+                toast({ title: "Succès", description: `${title} créé.` });
+            }
+            await loadItems();
+            setDialogOpen(false);
+            resetForm();
+        } catch (error) {
+            toast({ title: "Erreur", description: "L'opération a échoué.", variant: "destructive" });
+        } finally {
+            setIsSubmitting(false);
+        }
+    };
+    
+    const handleDelete = async () => {
+        if (!itemToDelete) return;
+        try {
+            await deleteItem(itemToDelete.id);
+            toast({ title: "Succès", description: `${title} supprimé.` });
+            await loadItems();
+            setItemToDelete(null);
+        } catch (error) {
+            toast({ title: "Erreur", description: `Impossible de supprimer: ${title}.`, variant: "destructive" });
+        }
+    };
+
+    return (
+        <Card>
+             <CardHeader>
+                <div className="flex justify-between items-center">
+                    <div>
+                        <CardTitle>{title}</CardTitle>
+                        <CardDescription>{description}</CardDescription>
+                    </div>
+                     <Button size="sm" className="gap-1" onClick={() => handleOpenDialog()}>
+                        <PlusCircle className="h-4 w-4" /> Créer
+                    </Button>
+                </div>
+            </CardHeader>
+            <CardContent>
+                <div className="border rounded-md">
+                    <Table>
+                        <TableHeader><TableRow><TableHead>Nom</TableHead><TableHead className="w-[100px] text-right">Actions</TableHead></TableRow></TableHeader>
+                        <TableBody>
+                            {isLoading ? ( <TableRow><TableCell colSpan={2} className="text-center">Chargement...</TableCell></TableRow>
+                            ) : items.length === 0 ? ( <TableRow><TableCell colSpan={2} className="text-center">Aucun élément.</TableCell></TableRow>
+                            ) : (
+                                items.map(item => (
+                                    <TableRow key={item.id}>
+                                        <TableCell className="font-medium">{item.name}</TableCell>
+                                        <TableCell className="text-right">
+                                            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleOpenDialog(item)}><Edit className="h-4 w-4" /></Button>
+                                            <Dialog open={!!itemToDelete && itemToDelete.id === item.id} onOpenChange={(isOpen) => !isOpen && setItemToDelete(null)}>
+                                                <DialogTrigger asChild>
+                                                    <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive" onClick={() => setItemToDelete(item)}><Trash2 className="h-4 w-4" /></Button>
+                                                </DialogTrigger>
+                                                <DialogContent>
+                                                    <DialogHeader><DialogTitle>Supprimer {itemToDelete?.name}</DialogTitle><DialogDescription>Cette action est irréversible.</DialogDescription></DialogHeader>
+                                                    <DialogFooter>
+                                                        <Button variant="outline" onClick={() => setItemToDelete(null)}>Annuler</Button>
+                                                        <Button variant="destructive" onClick={handleDelete}>Confirmer</Button>
+                                                    </DialogFooter>
+                                                </DialogContent>
+                                            </Dialog>
+                                        </TableCell>
+                                    </TableRow>
+                                ))
+                            )}
+                        </TableBody>
+                    </Table>
+                </div>
+                <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+                    <DialogContent>
+                        <DialogHeader><DialogTitle>{editingItem ? `Modifier: ${title}` : `Nouveau: ${title}`}</DialogTitle></DialogHeader>
+                        <form onSubmit={handleSubmit} className="space-y-4">
+                            <div className="space-y-2"><Label htmlFor={`${dataType}Name`}>Nom</Label><Input id={`${dataType}Name`} value={name} onChange={e => setName(e.target.value)} required /></div>
+                            <DialogFooter>
+                                <DialogClose asChild><Button variant="outline">Annuler</Button></DialogClose>
+                                <Button type="submit" disabled={isSubmitting}>{isSubmitting ? "Enregistrement..." : "Enregistrer"}</Button>
+                            </DialogFooter>
+                        </form>
+                    </DialogContent>
+                </Dialog>
+            </CardContent>
+        </Card>
+    );
+};
+
+
 export default function SettingsPage() {
   return (
     <div className="space-y-6">
@@ -680,6 +824,8 @@ export default function SettingsPage() {
           <TabsTrigger value="agencies">Agences</TabsTrigger>
           <TabsTrigger value="sectors">Secteurs</TabsTrigger>
           <TabsTrigger value="activities">Activités</TabsTrigger>
+          <TabsTrigger value="schedules">Échéanciers</TabsTrigger>
+          <TabsTrigger value="terms">Termes</TabsTrigger>
         </TabsList>
         <TabsContent value="companies">
           <CompaniesSection />
@@ -692,6 +838,28 @@ export default function SettingsPage() {
         </TabsContent>
         <TabsContent value="activities">
           <ActivitiesSection />
+        </TabsContent>
+        <TabsContent value="schedules">
+            <SimpleCrudSection 
+                title="Échéanciers"
+                description="Gérez les échéanciers de facturation."
+                dataType="schedule"
+                getItems={getSchedules}
+                createItem={createSchedule}
+                updateItem={updateSchedule}
+                deleteItem={deleteSchedule}
+            />
+        </TabsContent>
+        <TabsContent value="terms">
+             <SimpleCrudSection 
+                title="Termes"
+                description="Gérez les termes de paiement."
+                dataType="term"
+                getItems={getTerms}
+                createItem={createTerm}
+                updateItem={updateTerm}
+                deleteItem={deleteTerm}
+            />
         </TabsContent>
       </Tabs>
     </div>

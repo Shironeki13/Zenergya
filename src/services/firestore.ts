@@ -1,6 +1,6 @@
 'use server';
 import { db } from '@/lib/firebase';
-import type { Contract, Invoice, MeterReading, Company, Agency, Sector, Activity, User, Role } from '@/lib/types';
+import type { Contract, Invoice, MeterReading, Company, Agency, Sector, Activity, User, Role, Schedule, Term } from '@/lib/types';
 import { collection, getDocs, doc, getDoc, addDoc, updateDoc, deleteDoc, query, where, DocumentData, writeBatch } from 'firebase/firestore';
 
 // --- Fonctions de Service (Firestore) ---
@@ -185,6 +185,35 @@ export async function updateActivity(id: string, name: string) {
 export async function deleteActivity(id: string) {
     return deleteSettingItem('activities', id);
 }
+
+// Échéanciers
+export async function createSchedule(name: string) {
+    return createSettingItem('schedules', { name });
+}
+export async function getSchedules(): Promise<Schedule[]> {
+    return getSettingItems<Schedule>('schedules');
+}
+export async function updateSchedule(id: string, name: string) {
+    return updateSettingItem('schedules', id, { name });
+}
+export async function deleteSchedule(id: string) {
+    return deleteSettingItem('schedules', id);
+}
+
+// Termes
+export async function createTerm(name: string) {
+    return createSettingItem('terms', { name });
+}
+export async function getTerms(): Promise<Term[]> {
+    return getSettingItems<Term>('terms');
+}
+export async function updateTerm(id: string, name: string) {
+    return updateSettingItem('terms', id, { name });
+}
+export async function deleteTerm(id: string) {
+    return deleteSettingItem('terms', id);
+}
+
 
 // --- Fonctions de Gestion des Utilisateurs (Firestore) ---
 
