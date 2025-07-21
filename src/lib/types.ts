@@ -10,6 +10,7 @@ export type Contract = {
   startDate: string;
   endDate: string;
   billingSchedule: string;
+  term: string;
   activities: string[];
   status: "active" | "expired" | "pending";
 };

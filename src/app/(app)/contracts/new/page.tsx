@@ -38,8 +38,8 @@ import {
 } from "@/components/ui/select"
 import { useToast } from "@/hooks/use-toast"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { createContract, getActivities, getSchedules } from "@/services/firestore"
-import type { Activity, Schedule } from "@/lib/types"
+import { createContract, getActivities, getSchedules, getTerms } from "@/services/firestore"
+import type { Activity, Schedule, Term } from "@/lib/types"
 
 
 const contractFormSchema = z.object({
@@ -54,6 +54,9 @@ const contractFormSchema = z.object({
   }),
   billingSchedule: z.string({
     required_error: "Un échéancier de facturation est requis.",
+  }),
+  term: z.string({
+    required_error: "Un terme de facturation est requis.",
   }),
   activities: z.array(z.string()).refine((value) => value.some((item) => item), {
     message: "Vous devez sélectionner au moins une prestation.",
@@ -71,6 +74,7 @@ export default function NewContractPage() {
   const { toast } = useToast()
   const [activities, setActivities] = useState<Activity[]>([]);
   const [schedules, setSchedules] = useState<Schedule[]>([]);
+  const [terms, setTerms] = useState<Term[]>([]);
 
   const form = useForm<ContractFormValues>({
     resolver: zodResolver(contractFormSchema),
@@ -80,12 +84,14 @@ export default function NewContractPage() {
   useEffect(() => {
     async function fetchData() {
       try {
-        const [fetchedActivities, fetchedSchedules] = await Promise.all([
+        const [fetchedActivities, fetchedSchedules, fetchedTerms] = await Promise.all([
             getActivities(),
-            getSchedules()
+            getSchedules(),
+            getTerms()
         ]);
         setActivities(fetchedActivities);
         setSchedules(fetchedSchedules);
+        setTerms(fetchedTerms);
       } catch (error) {
         toast({
           title: "Erreur",
@@ -231,30 +237,57 @@ export default function NewContractPage() {
             />
           </div>
 
-          <FormField
-            control={form.control}
-            name="billingSchedule"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>Échéancier de Facturation</FormLabel>
-                <Select onValueChange={field.onChange} defaultValue={field.value}>
-                  <FormControl>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Sélectionnez un échéancier" />
-                    </SelectTrigger>
-                  </FormControl>
-                  <SelectContent>
-                    {schedules.map((schedule) => (
-                      <SelectItem key={schedule.id} value={schedule.name}>
-                        {schedule.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+            <FormField
+              control={form.control}
+              name="billingSchedule"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Échéancier de Facturation</FormLabel>
+                  <Select onValueChange={field.onChange} defaultValue={field.value}>
+                    <FormControl>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Sélectionnez un échéancier" />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      {schedules.map((schedule) => (
+                        <SelectItem key={schedule.id} value={schedule.name}>
+                          {schedule.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name="term"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Terme de Facturation</FormLabel>
+                  <Select onValueChange={field.onChange} defaultValue={field.value}>
+                    <FormControl>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Sélectionnez un terme" />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      {terms.map((term) => (
+                        <SelectItem key={term.id} value={term.name}>
+                          {term.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+          </div>
+          
 
           <FormField
             control={form.control}

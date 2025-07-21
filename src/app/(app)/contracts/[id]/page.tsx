@@ -28,6 +28,7 @@ import {
   Gauge,
   FileText,
   PlusCircle,
+  ClipboardList,
 } from "lucide-react";
 import { getContract, getMeterReadingsByContract, getInvoicesByContract } from "@/services/firestore";
 
@@ -86,6 +87,12 @@ export default async function ContractDetailPage({
                 <FileClock className="mr-2 h-4 w-4 text-muted-foreground" />
                 <span>
                   Facturé {contract.billingSchedule}
+                </span>
+              </div>
+               <div className="flex items-center">
+                <ClipboardList className="mr-2 h-4 w-4 text-muted-foreground" />
+                <span>
+                  Terme : {contract.term}
                 </span>
               </div>
               <div className="flex items-start">
