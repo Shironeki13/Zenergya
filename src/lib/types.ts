@@ -108,6 +108,19 @@ export type VatRate = {
     rate: number;
 }
 
+export type RevisionFormula = {
+    id: string;
+    code: string;
+    formula: string;
+}
+
+export type PaymentTerm = {
+    id: string;
+    code: string;
+    deadline: string;
+}
+
+
 // User Management Types
 export type Role = {
     id: string;

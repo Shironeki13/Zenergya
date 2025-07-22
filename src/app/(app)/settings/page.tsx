@@ -12,6 +12,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Label } from "@/components/ui/label";
 import { PlusCircle, Trash2, Edit, UploadCloud } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { Textarea } from '@/components/ui/textarea';
 
 import { 
   createCompany, getCompanies, updateCompany, deleteCompany,
@@ -21,9 +22,11 @@ import {
   createSchedule, getSchedules, updateSchedule, deleteSchedule,
   createTerm, getTerms, updateTerm, deleteTerm,
   createTypology, getTypologies, updateTypology, deleteTypology,
-  createVatRate, getVatRates, updateVatRate, deleteVatRate
+  createVatRate, getVatRates, updateVatRate, deleteVatRate,
+  createRevisionFormula, getRevisionFormulas, updateRevisionFormula, deleteRevisionFormula,
+  createPaymentTerm, getPaymentTerms, updatePaymentTerm, deletePaymentTerm
 } from "@/services/firestore";
-import type { Company, Agency, Sector, Activity, Schedule, Term, VatRate } from "@/lib/types";
+import type { Company, Agency, Sector, Activity, Schedule, Term, VatRate, Typology, RevisionFormula, PaymentTerm } from "@/lib/types";
 
 
 const fileToDataUrl = (file: File): Promise<string> => {
@@ -812,6 +815,220 @@ const VatRatesSection = () => {
     );
 };
 
+// Section Formules de révision
+const RevisionFormulasSection = () => {
+    const [items, setItems] = useState<RevisionFormula[]>([]);
+    const [isLoading, setIsLoading] = useState(true);
+    const { toast } = useToast();
+    const [isSubmitting, setIsSubmitting] = useState(false);
+    const [dialogOpen, setDialogOpen] = useState(false);
+    const [editingItem, setEditingItem] = useState<RevisionFormula | null>(null);
+    const [itemToDelete, setItemToDelete] = useState<RevisionFormula | null>(null);
+    const [code, setCode] = useState('');
+    const [formula, setFormula] = useState('');
+
+    const loadItems = useCallback(async () => {
+        setIsLoading(true);
+        try { setItems(await getRevisionFormulas()); } 
+        catch (error) { toast({ title: "Erreur", description: "Impossible de charger les formules.", variant: "destructive" }); } 
+        finally { setIsLoading(false); }
+    }, [toast]);
+
+    useEffect(() => { loadItems(); }, [loadItems]);
+
+    const resetForm = () => { setCode(''); setFormula(''); setEditingItem(null); };
+
+    const handleOpenDialog = (item: RevisionFormula | null = null) => {
+        setEditingItem(item);
+        setCode(item ? item.code : '');
+        setFormula(item ? item.formula : '');
+        setDialogOpen(true);
+    };
+
+    const handleSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!code.trim() || !formula.trim()) return;
+        setIsSubmitting(true);
+        try {
+            const data = { code, formula };
+            if (editingItem) {
+                await updateRevisionFormula(editingItem.id, data);
+                toast({ title: "Succès", description: "Formule mise à jour." });
+            } else {
+                await createRevisionFormula(data);
+                toast({ title: "Succès", description: "Formule créée." });
+            }
+            await loadItems(); setDialogOpen(false); resetForm();
+        } catch (error) { toast({ title: "Erreur", description: "L'opération a échoué.", variant: "destructive" });
+        } finally { setIsSubmitting(false); }
+    };
+
+    const handleDelete = async () => {
+        if (!itemToDelete) return;
+        try {
+            await deleteRevisionFormula(itemToDelete.id);
+            toast({ title: "Succès", description: "Formule supprimée." });
+            await loadItems(); setItemToDelete(null);
+        } catch (error) { toast({ title: "Erreur", description: "Impossible de supprimer la formule.", variant: "destructive" }); }
+    };
+
+    return (
+        <Card>
+            <CardHeader>
+                <div className="flex justify-between items-center">
+                    <div><CardTitle>Formules de Révision</CardTitle><CardDescription>Gérez les formules de révision pour les contrats.</CardDescription></div>
+                    <Button size="sm" className="gap-1" onClick={() => handleOpenDialog()}><PlusCircle className="h-4 w-4" /> Créer</Button>
+                </div>
+            </CardHeader>
+            <CardContent>
+                <div className="border rounded-md">
+                    <Table>
+                        <TableHeader><TableRow><TableHead>Code</TableHead><TableHead>Formule</TableHead><TableHead className="w-[100px] text-right">Actions</TableHead></TableRow></TableHeader>
+                        <TableBody>
+                            {isLoading ? (<TableRow><TableCell colSpan={3} className="text-center">Chargement...</TableCell></TableRow>) 
+                            : items.length === 0 ? (<TableRow><TableCell colSpan={3} className="text-center">Aucune formule.</TableCell></TableRow>) 
+                            : (items.map(item => (
+                                <TableRow key={item.id}>
+                                    <TableCell className="font-medium">{item.code}</TableCell>
+                                    <TableCell className="font-mono text-xs">{item.formula}</TableCell>
+                                    <TableCell className="text-right">
+                                        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleOpenDialog(item)}><Edit className="h-4 w-4" /></Button>
+                                        <Dialog open={!!itemToDelete && itemToDelete.id === item.id} onOpenChange={(isOpen) => !isOpen && setItemToDelete(null)}>
+                                            <DialogTrigger asChild><Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive" onClick={() => setItemToDelete(item)}><Trash2 className="h-4 w-4" /></Button></DialogTrigger>
+                                            <DialogContent>
+                                                <DialogHeader><DialogTitle>Supprimer {itemToDelete?.code}</DialogTitle><DialogDescription>Cette action est irréversible.</DialogDescription></DialogHeader>
+                                                <DialogFooter><Button variant="outline" onClick={() => setItemToDelete(null)}>Annuler</Button><Button variant="destructive" onClick={handleDelete}>Confirmer</Button></DialogFooter>
+                                            </DialogContent>
+                                        </Dialog>
+                                    </TableCell>
+                                </TableRow>
+                            )))}
+                        </TableBody>
+                    </Table>
+                </div>
+                <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+                    <DialogContent>
+                        <DialogHeader><DialogTitle>{editingItem ? "Modifier la formule" : "Nouvelle formule"}</DialogTitle></DialogHeader>
+                        <form onSubmit={handleSubmit} className="space-y-4">
+                            <div className="space-y-2"><Label htmlFor="revCode">Code Formule</Label><Input id="revCode" value={code} onChange={e => setCode(e.target.value)} required /></div>
+                            <div className="space-y-2"><Label htmlFor="revFormula">Formule</Label><Textarea id="revFormula" value={formula} onChange={e => setFormula(e.target.value)} required rows={4} className="font-mono"/></div>
+                            <DialogFooter><DialogClose asChild><Button variant="outline">Annuler</Button></DialogClose><Button type="submit" disabled={isSubmitting}>{isSubmitting ? "Enregistrement..." : "Enregistrer"}</Button></DialogFooter>
+                        </form>
+                    </DialogContent>
+                </Dialog>
+            </CardContent>
+        </Card>
+    );
+};
+
+
+// Section Règlements
+const PaymentTermsSection = () => {
+    const [items, setItems] = useState<PaymentTerm[]>([]);
+    const [isLoading, setIsLoading] = useState(true);
+    const { toast } = useToast();
+    const [isSubmitting, setIsSubmitting] = useState(false);
+    const [dialogOpen, setDialogOpen] = useState(false);
+    const [editingItem, setEditingItem] = useState<PaymentTerm | null>(null);
+    const [itemToDelete, setItemToDelete] = useState<PaymentTerm | null>(null);
+    const [code, setCode] = useState('');
+    const [deadline, setDeadline] = useState('');
+
+    const loadItems = useCallback(async () => {
+        setIsLoading(true);
+        try { setItems(await getPaymentTerms()); } 
+        catch (error) { toast({ title: "Erreur", description: "Impossible de charger les règlements.", variant: "destructive" }); } 
+        finally { setIsLoading(false); }
+    }, [toast]);
+
+    useEffect(() => { loadItems(); }, [loadItems]);
+
+    const resetForm = () => { setCode(''); setDeadline(''); setEditingItem(null); };
+
+    const handleOpenDialog = (item: PaymentTerm | null = null) => {
+        setEditingItem(item);
+        setCode(item ? item.code : '');
+        setDeadline(item ? item.deadline : '');
+        setDialogOpen(true);
+    };
+
+    const handleSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!code.trim() || !deadline.trim()) return;
+        setIsSubmitting(true);
+        try {
+            const data = { code, deadline };
+            if (editingItem) {
+                await updatePaymentTerm(editingItem.id, data);
+                toast({ title: "Succès", description: "Règlement mis à jour." });
+            } else {
+                await createPaymentTerm(data);
+                toast({ title: "Succès", description: "Règlement créé." });
+            }
+            await loadItems(); setDialogOpen(false); resetForm();
+        } catch (error) { toast({ title: "Erreur", description: "L'opération a échoué.", variant: "destructive" });
+        } finally { setIsSubmitting(false); }
+    };
+
+    const handleDelete = async () => {
+        if (!itemToDelete) return;
+        try {
+            await deletePaymentTerm(itemToDelete.id);
+            toast({ title: "Succès", description: "Règlement supprimé." });
+            await loadItems(); setItemToDelete(null);
+        } catch (error) { toast({ title: "Erreur", description: "Impossible de supprimer le règlement.", variant: "destructive" }); }
+    };
+
+    return (
+        <Card>
+            <CardHeader>
+                <div className="flex justify-between items-center">
+                    <div><CardTitle>Règlements</CardTitle><CardDescription>Gérez les échéances de règlements.</CardDescription></div>
+                    <Button size="sm" className="gap-1" onClick={() => handleOpenDialog()}><PlusCircle className="h-4 w-4" /> Créer</Button>
+                </div>
+            </CardHeader>
+            <CardContent>
+                <div className="border rounded-md">
+                    <Table>
+                        <TableHeader><TableRow><TableHead>Code</TableHead><TableHead>Échéance</TableHead><TableHead className="w-[100px] text-right">Actions</TableHead></TableRow></TableHeader>
+                        <TableBody>
+                            {isLoading ? (<TableRow><TableCell colSpan={3} className="text-center">Chargement...</TableCell></TableRow>) 
+                            : items.length === 0 ? (<TableRow><TableCell colSpan={3} className="text-center">Aucun règlement.</TableCell></TableRow>) 
+                            : (items.map(item => (
+                                <TableRow key={item.id}>
+                                    <TableCell className="font-medium">{item.code}</TableCell>
+                                    <TableCell>{item.deadline}</TableCell>
+                                    <TableCell className="text-right">
+                                        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleOpenDialog(item)}><Edit className="h-4 w-4" /></Button>
+                                        <Dialog open={!!itemToDelete && itemToDelete.id === item.id} onOpenChange={(isOpen) => !isOpen && setItemToDelete(null)}>
+                                            <DialogTrigger asChild><Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive" onClick={() => setItemToDelete(item)}><Trash2 className="h-4 w-4" /></Button></DialogTrigger>
+                                            <DialogContent>
+                                                <DialogHeader><DialogTitle>Supprimer {itemToDelete?.code}</DialogTitle><DialogDescription>Cette action est irréversible.</DialogDescription></DialogHeader>
+                                                <DialogFooter><Button variant="outline" onClick={() => setItemToDelete(null)}>Annuler</Button><Button variant="destructive" onClick={handleDelete}>Confirmer</Button></DialogFooter>
+                                            </DialogContent>
+                                        </Dialog>
+                                    </TableCell>
+                                </TableRow>
+                            )))}
+                        </TableBody>
+                    </Table>
+                </div>
+                <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+                    <DialogContent>
+                        <DialogHeader><DialogTitle>{editingItem ? "Modifier le règlement" : "Nouveau règlement"}</DialogTitle></DialogHeader>
+                        <form onSubmit={handleSubmit} className="space-y-4">
+                            <div className="space-y-2"><Label htmlFor="payCode">Code Règlement</Label><Input id="payCode" value={code} onChange={e => setCode(e.target.value)} required /></div>
+                            <div className="space-y-2"><Label htmlFor="payDeadline">Échéance</Label><Input id="payDeadline" value={deadline} onChange={e => setDeadline(e.target.value)} required placeholder="Ex: 30 jours net"/></div>
+                            <DialogFooter><DialogClose asChild><Button variant="outline">Annuler</Button></DialogClose><Button type="submit" disabled={isSubmitting}>{isSubmitting ? "Enregistrement..." : "Enregistrer"}</Button></DialogFooter>
+                        </form>
+                    </DialogContent>
+                </Dialog>
+            </CardContent>
+        </Card>
+    );
+};
+
+
 // Generic CRUD Section for simple name-based entities
 const SimpleCrudSection = ({
   title,
@@ -964,7 +1181,7 @@ export default function SettingsPage() {
         </p>
       </div>
       <Tabs defaultValue="companies" className="w-full">
-        <TabsList>
+        <TabsList className="flex-wrap h-auto justify-start">
           <TabsTrigger value="companies">Sociétés</TabsTrigger>
           <TabsTrigger value="agencies">Agences</TabsTrigger>
           <TabsTrigger value="sectors">Secteurs</TabsTrigger>
@@ -973,6 +1190,8 @@ export default function SettingsPage() {
           <TabsTrigger value="schedules">Échéanciers</TabsTrigger>
           <TabsTrigger value="terms">Termes</TabsTrigger>
           <TabsTrigger value="vat_rates">Taux TVA</TabsTrigger>
+          <TabsTrigger value="revisions">Révisions</TabsTrigger>
+          <TabsTrigger value="payment_terms">Règlements</TabsTrigger>
         </TabsList>
         <TabsContent value="companies">
           <CompaniesSection />
@@ -1021,6 +1240,12 @@ export default function SettingsPage() {
         </TabsContent>
         <TabsContent value="vat_rates">
             <VatRatesSection />
+        </TabsContent>
+        <TabsContent value="revisions">
+            <RevisionFormulasSection />
+        </TabsContent>
+        <TabsContent value="payment_terms">
+            <PaymentTermsSection />
         </TabsContent>
       </Tabs>
     </div>

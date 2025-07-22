@@ -1,7 +1,7 @@
 
 'use server';
 import { db } from '@/lib/firebase';
-import type { Client, Site, Contract, Invoice, MeterReading, Company, Agency, Sector, Activity, User, Role, Schedule, Term, Typology, VatRate } from '@/lib/types';
+import type { Client, Site, Contract, Invoice, MeterReading, Company, Agency, Sector, Activity, User, Role, Schedule, Term, Typology, VatRate, RevisionFormula, PaymentTerm } from '@/lib/types';
 import { collection, getDocs, doc, getDoc, addDoc, updateDoc, deleteDoc, query, where, DocumentData, writeBatch } from 'firebase/firestore';
 
 // --- Fonctions de Service (Firestore) ---
@@ -290,6 +290,34 @@ export async function updateVatRate(id: string, data: { name: string, rate: numb
 }
 export async function deleteVatRate(id: string) {
     return deleteSettingItem('vatRates', id);
+}
+
+// Formules de Révision
+export async function createRevisionFormula(data: Omit<RevisionFormula, 'id'>) {
+    return createSettingItem('revisionFormulas', data);
+}
+export async function getRevisionFormulas(): Promise<RevisionFormula[]> {
+    return getSettingItems<RevisionFormula>('revisionFormulas');
+}
+export async function updateRevisionFormula(id: string, data: Partial<Omit<RevisionFormula, 'id'>>) {
+    return updateSettingItem('revisionFormulas', id, data);
+}
+export async function deleteRevisionFormula(id: string) {
+    return deleteSettingItem('revisionFormulas', id);
+}
+
+// Règlements
+export async function createPaymentTerm(data: Omit<PaymentTerm, 'id'>) {
+    return createSettingItem('paymentTerms', data);
+}
+export async function getPaymentTerms(): Promise<PaymentTerm[]> {
+    return getSettingItems<PaymentTerm>('paymentTerms');
+}
+export async function updatePaymentTerm(id: string, data: Partial<Omit<PaymentTerm, 'id'>>) {
+    return updateSettingItem('paymentTerms', id, data);
+}
+export async function deletePaymentTerm(id: string) {
+    return deleteSettingItem('paymentTerms', id);
 }
 
 
