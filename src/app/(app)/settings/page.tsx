@@ -892,6 +892,7 @@ const MarketsSection = () => {
     const [itemToDelete, setItemToDelete] = useState<Market | null>(null);
     const [code, setCode] = useState('');
     const [label, setLabel] = useState('');
+    const [description, setDescription] = useState('');
 
     const loadItems = useCallback(async () => {
         setIsLoading(true);
@@ -903,12 +904,13 @@ const MarketsSection = () => {
 
     useEffect(() => { loadItems(); }, [loadItems]);
     
-    const resetForm = () => { setCode(''); setLabel(''); setEditingItem(null); };
+    const resetForm = () => { setCode(''); setLabel(''); setDescription(''); setEditingItem(null); };
 
     const handleOpenDialog = (item: Market | null = null) => {
         setEditingItem(item);
         setCode(item ? item.code : '');
         setLabel(item ? item.label : '');
+        setDescription(item ? item.description || '' : '');
         setDialogOpen(true);
     };
 
@@ -917,11 +919,12 @@ const MarketsSection = () => {
         if (!code.trim() || !label.trim()) return;
         setIsSubmitting(true);
         try {
+            const data = { code, label, description };
             if (editingItem) {
-                await updateMarket(editingItem.id, { code, label });
+                await updateMarket(editingItem.id, data);
                 toast({ title: "Succès", description: "Marché mis à jour." });
             } else {
-                await createMarket({ code, label });
+                await createMarket(data);
                 toast({ title: "Succès", description: "Marché créé." });
             }
             await loadItems();
@@ -962,15 +965,16 @@ const MarketsSection = () => {
             <CardContent>
                 <div className="border rounded-md">
                     <Table>
-                        <TableHeader><TableRow><TableHead className="w-[150px]">Code</TableHead><TableHead>Libellé</TableHead><TableHead className="w-[100px] text-right">Actions</TableHead></TableRow></TableHeader>
+                        <TableHeader><TableRow><TableHead className="w-[150px]">Code</TableHead><TableHead>Libellé</TableHead><TableHead>Description</TableHead><TableHead className="w-[100px] text-right">Actions</TableHead></TableRow></TableHeader>
                         <TableBody>
-                            {isLoading ? ( <TableRow><TableCell colSpan={3} className="text-center">Chargement...</TableCell></TableRow>
-                            ) : items.length === 0 ? ( <TableRow><TableCell colSpan={3} className="text-center">Aucun marché.</TableCell></TableRow>
+                            {isLoading ? ( <TableRow><TableCell colSpan={4} className="text-center">Chargement...</TableCell></TableRow>
+                            ) : items.length === 0 ? ( <TableRow><TableCell colSpan={4} className="text-center">Aucun marché.</TableCell></TableRow>
                             ) : (
                                 items.map(item => (
                                     <TableRow key={item.id}>
                                         <TableCell className="font-medium">{item.code}</TableCell>
                                         <TableCell>{item.label}</TableCell>
+                                        <TableCell>{item.description}</TableCell>
                                         <TableCell className="text-right">
                                             <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleOpenDialog(item)}><Edit className="h-4 w-4" /></Button>
                                             <Dialog open={!!itemToDelete && itemToDelete.id === item.id} onOpenChange={(isOpen) => !isOpen && setItemToDelete(null)}>
@@ -1003,6 +1007,10 @@ const MarketsSection = () => {
                             <div className="space-y-2">
                                 <Label htmlFor="marketLabel">Libellé</Label>
                                 <Input id="marketLabel" value={label} onChange={e => setLabel(e.target.value)} required />
+                            </div>
+                            <div className="space-y-2">
+                                <Label htmlFor="marketDescription">Description</Label>
+                                <Textarea id="marketDescription" value={description} onChange={e => setDescription(e.target.value)} />
                             </div>
                             <DialogFooter>
                                 <DialogClose asChild><Button variant="outline">Annuler</Button></DialogClose>
