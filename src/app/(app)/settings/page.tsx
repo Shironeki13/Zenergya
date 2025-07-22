@@ -26,9 +26,10 @@ import {
   createVatRate, getVatRates, updateVatRate, deleteVatRate,
   createRevisionFormula, getRevisionFormulas, updateRevisionFormula, deleteRevisionFormula,
   createPaymentTerm, getPaymentTerms, updatePaymentTerm, deletePaymentTerm,
-  createPricingRule, getPricingRules, updatePricingRule, deletePricingRule
+  createPricingRule, getPricingRules, updatePricingRule, deletePricingRule,
+  createMarket, getMarkets, updateMarket, deleteMarket
 } from "@/services/firestore";
-import type { Company, Agency, Sector, Activity, Schedule, Term, VatRate, Typology, RevisionFormula, PaymentTerm, PricingRule } from "@/lib/types";
+import type { Company, Agency, Sector, Activity, Schedule, Term, VatRate, Typology, RevisionFormula, PaymentTerm, PricingRule, Market } from "@/lib/types";
 
 
 const fileToDataUrl = (file: File): Promise<string> => {
@@ -880,6 +881,141 @@ const PricingRulesSection = () => {
     );
 };
 
+// Section Marchés
+const MarketsSection = () => {
+    const [items, setItems] = useState<Market[]>([]);
+    const [isLoading, setIsLoading] = useState(true);
+    const { toast } = useToast();
+    const [isSubmitting, setIsSubmitting] = useState(false);
+    const [dialogOpen, setDialogOpen] = useState(false);
+    const [editingItem, setEditingItem] = useState<Market | null>(null);
+    const [itemToDelete, setItemToDelete] = useState<Market | null>(null);
+    const [code, setCode] = useState('');
+    const [label, setLabel] = useState('');
+
+    const loadItems = useCallback(async () => {
+        setIsLoading(true);
+        try {
+            setItems(await getMarkets());
+        } catch (error) { toast({ title: "Erreur", description: "Impossible de charger les marchés.", variant: "destructive" }); } 
+        finally { setIsLoading(false); }
+    }, [toast]);
+
+    useEffect(() => { loadItems(); }, [loadItems]);
+    
+    const resetForm = () => { setCode(''); setLabel(''); setEditingItem(null); };
+
+    const handleOpenDialog = (item: Market | null = null) => {
+        setEditingItem(item);
+        setCode(item ? item.code : '');
+        setLabel(item ? item.label : '');
+        setDialogOpen(true);
+    };
+
+    const handleSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!code.trim() || !label.trim()) return;
+        setIsSubmitting(true);
+        try {
+            if (editingItem) {
+                await updateMarket(editingItem.id, { code, label });
+                toast({ title: "Succès", description: "Marché mis à jour." });
+            } else {
+                await createMarket({ code, label });
+                toast({ title: "Succès", description: "Marché créé." });
+            }
+            await loadItems();
+            setDialogOpen(false);
+            resetForm();
+        } catch (error) {
+            toast({ title: "Erreur", description: "L'opération a échoué.", variant: "destructive" });
+        } finally {
+            setIsSubmitting(false);
+        }
+    };
+    
+    const handleDelete = async () => {
+        if (!itemToDelete) return;
+        try {
+            await deleteMarket(itemToDelete.id);
+            toast({ title: "Succès", description: "Marché supprimé." });
+            await loadItems();
+            setItemToDelete(null);
+        } catch (error) {
+            toast({ title: "Erreur", description: "Impossible de supprimer le marché.", variant: "destructive" });
+        }
+    };
+
+    return (
+        <Card>
+             <CardHeader>
+                <div className="flex justify-between items-center">
+                    <div>
+                        <CardTitle>Marchés</CardTitle>
+                        <CardDescription>Gérez les types de marchés pour les contrats.</CardDescription>
+                    </div>
+                     <Button size="sm" className="gap-1" onClick={() => handleOpenDialog()}>
+                        <PlusCircle className="h-4 w-4" /> Créer
+                    </Button>
+                </div>
+            </CardHeader>
+            <CardContent>
+                <div className="border rounded-md">
+                    <Table>
+                        <TableHeader><TableRow><TableHead className="w-[150px]">Code</TableHead><TableHead>Libellé</TableHead><TableHead className="w-[100px] text-right">Actions</TableHead></TableRow></TableHeader>
+                        <TableBody>
+                            {isLoading ? ( <TableRow><TableCell colSpan={3} className="text-center">Chargement...</TableCell></TableRow>
+                            ) : items.length === 0 ? ( <TableRow><TableCell colSpan={3} className="text-center">Aucun marché.</TableCell></TableRow>
+                            ) : (
+                                items.map(item => (
+                                    <TableRow key={item.id}>
+                                        <TableCell className="font-medium">{item.code}</TableCell>
+                                        <TableCell>{item.label}</TableCell>
+                                        <TableCell className="text-right">
+                                            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleOpenDialog(item)}><Edit className="h-4 w-4" /></Button>
+                                            <Dialog open={!!itemToDelete && itemToDelete.id === item.id} onOpenChange={(isOpen) => !isOpen && setItemToDelete(null)}>
+                                                <DialogTrigger asChild>
+                                                    <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive" onClick={() => setItemToDelete(item)}><Trash2 className="h-4 w-4" /></Button>
+                                                </DialogTrigger>
+                                                <DialogContent>
+                                                    <DialogHeader><DialogTitle>Supprimer {itemToDelete?.code}</DialogTitle><DialogDescription>Cette action est irréversible.</DialogDescription></DialogHeader>
+                                                    <DialogFooter>
+                                                        <Button variant="outline" onClick={() => setItemToDelete(null)}>Annuler</Button>
+                                                        <Button variant="destructive" onClick={handleDelete}>Confirmer</Button>
+                                                    </DialogFooter>
+                                                </DialogContent>
+                                            </Dialog>
+                                        </TableCell>
+                                    </TableRow>
+                                ))
+                            )}
+                        </TableBody>
+                    </Table>
+                </div>
+                <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+                    <DialogContent>
+                        <DialogHeader><DialogTitle>{editingItem ? "Modifier le marché" : "Nouveau marché"}</DialogTitle></DialogHeader>
+                        <form onSubmit={handleSubmit} className="space-y-4">
+                            <div className="space-y-2">
+                                <Label htmlFor="marketCode">Code</Label>
+                                <Input id="marketCode" value={code} onChange={e => setCode(e.target.value)} required />
+                            </div>
+                            <div className="space-y-2">
+                                <Label htmlFor="marketLabel">Libellé</Label>
+                                <Input id="marketLabel" value={label} onChange={e => setLabel(e.target.value)} required />
+                            </div>
+                            <DialogFooter>
+                                <DialogClose asChild><Button variant="outline">Annuler</Button></DialogClose>
+                                <Button type="submit" disabled={isSubmitting}>{isSubmitting ? "Enregistrement..." : "Enregistrer"}</Button>
+                            </DialogFooter>
+                        </form>
+                    </DialogContent>
+                </Dialog>
+            </CardContent>
+        </Card>
+    );
+};
+
 
 // Section Taux de TVA
 const VatRatesSection = () => {
@@ -1395,6 +1531,7 @@ export default function SettingsPage() {
           <TabsTrigger value="sectors">Secteurs</TabsTrigger>
           <TabsTrigger value="activities">Activités</TabsTrigger>
           <TabsTrigger value="pricing_rules">Règles de prix</TabsTrigger>
+          <TabsTrigger value="markets">Marchés</TabsTrigger>
           <TabsTrigger value="typologies">Typologies</TabsTrigger>
           <TabsTrigger value="schedules">Échéanciers</TabsTrigger>
           <TabsTrigger value="terms">Termes</TabsTrigger>
@@ -1416,6 +1553,9 @@ export default function SettingsPage() {
         </TabsContent>
         <TabsContent value="pricing_rules">
           <PricingRulesSection />
+        </TabsContent>
+        <TabsContent value="markets">
+            <MarketsSection />
         </TabsContent>
         <TabsContent value="typologies">
             <SimpleCrudSection 

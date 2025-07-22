@@ -8,7 +8,9 @@ export type Client = {
   city?: string;
   clientType: 'private' | 'public';
   typologyId: string;
+  typologyName?: string; // denormalized for display
   representedBy?: string; // Si typologyId correspond à 'Copropriété'
+  externalCode?: string;
   isBe: boolean; // Bureau d'études
   beName?: string;
   beEmail?: string;
@@ -18,8 +20,6 @@ export type Client = {
   chorusServiceCode?: string;
   chorusLegalCommitmentNumber?: string;
   chorusMarketNumber?: string;
-  externalCode?: string;
-  typologyName?: string; // denormalized for display
 };
 
 export type Site = {
@@ -28,6 +28,12 @@ export type Site = {
     name: string;
     address: string;
     meterReference?: string;
+}
+
+export type MonthlyBilling = {
+  month: string;
+  date: number; // jour du mois
+  percentage: number;
 }
 
 export type Contract = {
@@ -41,6 +47,11 @@ export type Contract = {
   term: string;
   activityIds: string[];
   status: "active" | "expired" | "pending";
+  marketId?: string;
+  hasInterest?: boolean;
+  revisionFormulaId?: string;
+  revisionDate?: string;
+  monthlyBilling?: MonthlyBilling[];
 };
 
 export type MeterReading = {
@@ -147,6 +158,12 @@ export type PricingRule = {
     description: string;
     activityCode?: string; // For display purposes
     activityLabel?: string; // For display purposes
+}
+
+export type Market = {
+    id: string;
+    code: string;
+    label: string;
 }
 
 

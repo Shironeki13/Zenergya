@@ -2,7 +2,7 @@
 
 'use server';
 import { db } from '@/lib/firebase';
-import type { Client, Site, Contract, Invoice, MeterReading, Company, Agency, Sector, Activity, User, Role, Schedule, Term, Typology, VatRate, RevisionFormula, PaymentTerm, PricingRule } from '@/lib/types';
+import type { Client, Site, Contract, Invoice, MeterReading, Company, Agency, Sector, Activity, User, Role, Schedule, Term, Typology, VatRate, RevisionFormula, PaymentTerm, PricingRule, Market } from '@/lib/types';
 import { collection, getDocs, doc, getDoc, addDoc, updateDoc, deleteDoc, query, where, DocumentData, writeBatch } from 'firebase/firestore';
 
 // --- Fonctions de Service (Firestore) ---
@@ -338,6 +338,20 @@ export async function updatePricingRule(id: string, data: Partial<Omit<PricingRu
 }
 export async function deletePricingRule(id: string) {
     return deleteSettingItem('pricingRules', id);
+}
+
+// Marchés
+export async function createMarket(data: Omit<Market, 'id'>) {
+    return createSettingItem('markets', data);
+}
+export async function getMarkets(): Promise<Market[]> {
+    return getSettingItems<Market>('markets');
+}
+export async function updateMarket(id: string, data: Partial<Omit<Market, 'id'>>) {
+    return updateSettingItem('markets', id, data);
+}
+export async function deleteMarket(id: string) {
+    return deleteSettingItem('markets', id);
 }
 
 
