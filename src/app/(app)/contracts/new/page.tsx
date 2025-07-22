@@ -720,15 +720,18 @@ export default function NewContractPage() {
                 <FormItem>
                    <FormLabel>Taux de partage (%) Client / Exploitant</FormLabel>
                     <div className="flex items-center gap-4 pt-2">
-                        <span className="text-sm text-muted-foreground">Client: {value?.[0]}%</span>
+                        <span className="text-sm text-muted-foreground w-24">Client: {value?.[0]}%</span>
                         <Slider
-                            defaultValue={[50, 50]}
-                            value={value}
-                            onValueChange={onChange}
+                            defaultValue={[50]}
+                            value={[value?.[0] || 50]}
+                            onValueChange={(newVal) => {
+                                const clientShare = newVal[0];
+                                onChange([clientShare, 100 - clientShare]);
+                            }}
                             max={100}
                             step={1}
                         />
-                         <span className="text-sm text-muted-foreground">Exploitant: {value?.[1]}%</span>
+                         <span className="text-sm text-muted-foreground w-28 text-right">Exploitant: {value?.[1]}%</span>
                     </div>
                    <FormDescription>Faites glisser pour ajuster le partage.</FormDescription>
                   <FormMessage />
@@ -744,3 +747,5 @@ export default function NewContractPage() {
     </Card>
   )
 }
+
+    
