@@ -278,13 +278,13 @@ export async function deleteTypology(id: string) {
 }
 
 // Taux TVA
-export async function createVatRate(name: string, rate: number) {
-    return createSettingItem('vatRates', { name, rate });
+export async function createVatRate(code: string, rate: number) {
+    return createSettingItem('vatRates', { code, rate });
 }
 export async function getVatRates(): Promise<VatRate[]> {
     return getSettingItems<VatRate>('vatRates');
 }
-export async function updateVatRate(id: string, data: { name: string, rate: number }) {
+export async function updateVatRate(id: string, data: { code: string, rate: number }) {
     return updateSettingItem('vatRates', id, data);
 }
 export async function deleteVatRate(id: string) {

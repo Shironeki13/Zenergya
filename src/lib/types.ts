@@ -109,7 +109,7 @@ export type Typology = {
 
 export type VatRate = {
     id: string;
-    name: string;
+    code: string;
     rate: number;
 }
 

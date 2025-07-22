@@ -890,7 +890,7 @@ const VatRatesSection = () => {
     const [dialogOpen, setDialogOpen] = useState(false);
     const [editingVatRate, setEditingVatRate] = useState<VatRate | null>(null);
     const [vatRateToDelete, setVatRateToDelete] = useState<VatRate | null>(null);
-    const [name, setName] = useState('');
+    const [code, setCode] = useState('');
     const [rate, setRate] = useState<number | string>('');
 
     const loadVatRates = useCallback(async () => {
@@ -903,11 +903,11 @@ const VatRatesSection = () => {
 
     useEffect(() => { loadVatRates(); }, [loadVatRates]);
     
-    const resetForm = () => { setName(''); setRate(''); setEditingVatRate(null); };
+    const resetForm = () => { setCode(''); setRate(''); setEditingVatRate(null); };
 
     const handleOpenDialog = (vatRate: VatRate | null = null) => {
         setEditingVatRate(vatRate);
-        setName(vatRate ? vatRate.name : '');
+        setCode(vatRate ? vatRate.code : '');
         setRate(vatRate ? vatRate.rate : '');
         setDialogOpen(true);
     };
@@ -915,14 +915,14 @@ const VatRatesSection = () => {
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         const numericRate = parseFloat(rate as string);
-        if (!name.trim() || isNaN(numericRate)) return;
+        if (!code.trim() || isNaN(numericRate)) return;
         setIsSubmitting(true);
         try {
             if (editingVatRate) {
-                await updateVatRate(editingVatRate.id, { name, rate: numericRate });
+                await updateVatRate(editingVatRate.id, { code, rate: numericRate });
                 toast({ title: "Succès", description: "Taux de TVA mis à jour." });
             } else {
-                await createVatRate(name, numericRate);
+                await createVatRate(code, numericRate);
                 toast({ title: "Succès", description: "Taux de TVA créé." });
             }
             await loadVatRates();
@@ -965,7 +965,7 @@ const VatRatesSection = () => {
                     <Table>
                         <TableHeader>
                           <TableRow>
-                            <TableHead>Nom du Taux</TableHead>
+                            <TableHead>Code</TableHead>
                             <TableHead>Taux (%)</TableHead>
                             <TableHead className="w-[100px] text-right">Actions</TableHead>
                           </TableRow>
@@ -976,7 +976,7 @@ const VatRatesSection = () => {
                             ) : (
                                 vatRates.map(item => (
                                     <TableRow key={item.id}>
-                                        <TableCell className="font-medium">{item.name}</TableCell>
+                                        <TableCell className="font-medium">{item.code}</TableCell>
                                         <TableCell>{item.rate}%</TableCell>
                                         <TableCell className="text-right">
                                             <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleOpenDialog(item)}><Edit className="h-4 w-4" /></Button>
@@ -985,7 +985,7 @@ const VatRatesSection = () => {
                                                     <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive" onClick={() => setVatRateToDelete(item)}><Trash2 className="h-4 w-4" /></Button>
                                                 </DialogTrigger>
                                                 <DialogContent>
-                                                    <DialogHeader><DialogTitle>Supprimer {vatRateToDelete?.name}</DialogTitle><DialogDescription>Cette action est irréversible.</DialogDescription></DialogHeader>
+                                                    <DialogHeader><DialogTitle>Supprimer {vatRateToDelete?.code}</DialogTitle><DialogDescription>Cette action est irréversible.</DialogDescription></DialogHeader>
                                                     <DialogFooter>
                                                         <Button variant="outline" onClick={() => setVatRateToDelete(null)}>Annuler</Button>
                                                         <Button variant="destructive" onClick={handleDelete}>Confirmer</Button>
@@ -1004,8 +1004,8 @@ const VatRatesSection = () => {
                         <DialogHeader><DialogTitle>{editingVatRate ? "Modifier le taux de TVA" : "Nouveau taux de TVA"}</DialogTitle></DialogHeader>
                         <form onSubmit={handleSubmit} className="space-y-4">
                             <div className="space-y-2">
-                                <Label htmlFor="vatName">Nom du taux</Label>
-                                <Input id="vatName" value={name} onChange={e => setName(e.target.value)} required />
+                                <Label htmlFor="vatCode">Code</Label>
+                                <Input id="vatCode" value={code} onChange={e => setCode(e.target.value)} required />
                             </div>
                             <div className="space-y-2">
                                 <Label htmlFor="vatRate">Taux (%)</Label>
