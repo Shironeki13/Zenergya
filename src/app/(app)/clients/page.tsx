@@ -1,7 +1,6 @@
 
 import Link from 'next/link';
-import { PlusCircle, MoreHorizontal } from 'lucide-react';
-import { Badge } from '@/components/ui/badge';
+import { PlusCircle, MoreHorizontal, Building } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   Card,
@@ -25,26 +24,26 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { getContracts } from '@/services/firestore';
-import type { Contract } from '@/lib/types';
+import { getClients } from '@/services/firestore';
+import type { Client } from '@/lib/types';
 
-export default async function ContractsPage() {
-  const contracts: Contract[] = await getContracts();
+export default async function ClientsPage() {
+  const clients: Client[] = await getClients();
   
   return (
     <Card>
       <CardHeader>
         <div className="flex items-center justify-between">
           <div>
-            <CardTitle>Contrats</CardTitle>
+            <CardTitle>Clients</CardTitle>
             <CardDescription>
-              Gérez tous les contrats de vos clients.
+              Gérez les entités clientes et leurs sites.
             </CardDescription>
           </div>
           <Button asChild size="sm" className="gap-1">
-            <Link href="/contracts/new">
+            <Link href="/clients/new">
               <PlusCircle className="h-4 w-4" />
-              Nouveau Contrat
+              Nouveau Client
             </Link>
           </Button>
         </div>
@@ -53,32 +52,18 @@ export default async function ContractsPage() {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Client</TableHead>
-              <TableHead>Sites</TableHead>
-              <TableHead>Statut</TableHead>
-              <TableHead className="hidden md:table-cell">
-                Date de début
-              </TableHead>
+              <TableHead>Nom du Client</TableHead>
+              <TableHead>Email de Contact</TableHead>
               <TableHead>
                 <span className="sr-only">Actions</span>
               </TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
-            {contracts.map((contract) => (
-              <TableRow key={contract.id}>
-                <TableCell className="font-medium">{contract.clientName}</TableCell>
-                <TableCell>
-                   <Badge variant="outline">{contract.siteIds.length}</Badge>
-                </TableCell>
-                <TableCell>
-                  <Badge variant={contract.status === 'active' ? 'secondary' : contract.status === 'pending' ? 'outline' : 'destructive'}>
-                    {contract.status.charAt(0).toUpperCase() + contract.status.slice(1)}
-                  </Badge>
-                </TableCell>
-                <TableCell className="hidden md:table-cell">
-                  {new Date(contract.startDate).toLocaleDateString()}
-                </TableCell>
+            {clients.map((client) => (
+              <TableRow key={client.id}>
+                <TableCell className="font-medium">{client.name}</TableCell>
+                <TableCell>{client.contactEmail || 'N/A'}</TableCell>
                 <TableCell>
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
@@ -89,7 +74,7 @@ export default async function ContractsPage() {
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
                       <DropdownMenuLabel>Actions</DropdownMenuLabel>
-                      <DropdownMenuItem asChild><Link href={`/contracts/${contract.id}`}>Voir les détails</Link></DropdownMenuItem>
+                      <DropdownMenuItem asChild><Link href={`/clients/${client.id}`}>Gérer les sites</Link></DropdownMenuItem>
                       <DropdownMenuItem>Modifier</DropdownMenuItem>
                       <DropdownMenuItem className="text-destructive">
                         Supprimer

@@ -1,16 +1,76 @@
+
 'use server';
 import { db } from '@/lib/firebase';
-import type { Contract, Invoice, MeterReading, Company, Agency, Sector, Activity, User, Role, Schedule, Term } from '@/lib/types';
+import type { Client, Site, Contract, Invoice, MeterReading, Company, Agency, Sector, Activity, User, Role, Schedule, Term } from '@/lib/types';
 import { collection, getDocs, doc, getDoc, addDoc, updateDoc, deleteDoc, query, where, DocumentData, writeBatch } from 'firebase/firestore';
 
 // --- Fonctions de Service (Firestore) ---
+
+// Clients
+export async function getClients(): Promise<Client[]> {
+    const clientsCollection = collection(db, 'clients');
+    const clientSnapshot = await getDocs(clientsCollection);
+    return clientSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Client));
+}
+
+export async function getClient(id: string): Promise<Client | null> {
+    const clientDoc = doc(db, 'clients', id);
+    const clientSnapshot = await getDoc(clientDoc);
+    if (clientSnapshot.exists()) {
+        return { id: clientSnapshot.id, ...clientSnapshot.data() } as Client;
+    }
+    return null;
+}
+
+export async function createClient(data: Omit<Client, 'id'>) {
+    const clientsCollection = collection(db, 'clients');
+    const docRef = await addDoc(clientsCollection, data);
+    return { id: docRef.id, ...data };
+}
+
+export async function updateClient(id: string, data: Partial<Omit<Client, 'id'>>) {
+    const clientDoc = doc(db, 'clients', id);
+    await updateDoc(clientDoc, data);
+}
+
+export async function deleteClient(id: string) {
+    // This should also delete associated sites, contracts, invoices etc.
+    // For now, simple delete.
+    const clientDoc = doc(db, 'clients', id);
+    await deleteDoc(clientDoc);
+}
+
+
+// Sites
+export async function getSitesByClient(clientId: string): Promise<Site[]> {
+    const sitesCollection = collection(db, 'sites');
+    const q = query(sitesCollection, where("clientId", "==", clientId));
+    const siteSnapshot = await getDocs(q);
+    return siteSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Site));
+}
+
+export async function createSite(data: Omit<Site, 'id'>) {
+    const sitesCollection = collection(db, 'sites');
+    const docRef = await addDoc(sitesCollection, data);
+    return { id: docRef.id, ...data };
+}
+
+export async function updateSite(id: string, data: Partial<Omit<Site, 'id'>>) {
+    const siteDoc = doc(db, 'sites', id);
+    await updateDoc(siteDoc, data);
+}
+
+export async function deleteSite(id: string) {
+    const siteDoc = doc(db, 'sites', id);
+    await deleteDoc(siteDoc);
+}
+
 
 // Contrats
 export async function getContracts(): Promise<Contract[]> {
     const contractsCollection = collection(db, 'contracts');
     const contractSnapshot = await getDocs(contractsCollection);
-    const contractList = contractSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Contract));
-    return contractList;
+    return contractSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Contract));
 }
 
 export async function getContract(id: string): Promise<Contract | null> {
@@ -22,10 +82,9 @@ export async function getContract(id: string): Promise<Contract | null> {
     return null;
 }
 
-export async function createContract(data: Omit<Contract, 'id' | 'status' | 'clientId'>) {
+export async function createContract(data: Omit<Contract, 'id' | 'status'>) {
     const newContractData = {
         ...data,
-        clientId: `CLI-${Date.now()}`, // Placeholder for client management
         status: 'pending',
     };
     const contractsCollection = collection(db, 'contracts');
@@ -101,26 +160,17 @@ export async function updateCompany(id: string, name: string, logoUrl?: string) 
     return updateSettingItem('companies', id, data);
 }
 export async function deleteCompany(id: string) {
-    // Advanced delete: also delete related agencies and sectors
     const batch = writeBatch(db);
-
-    // Delete company
     const companyRef = doc(db, "companies", id);
     batch.delete(companyRef);
-
-    // Find and delete agencies of this company
     const agenciesQuery = query(collection(db, "agencies"), where("companyId", "==", id));
     const agenciesSnapshot = await getDocs(agenciesQuery);
-    
     for (const agencyDoc of agenciesSnapshot.docs) {
-        // Find and delete sectors of this agency
         const sectorsQuery = query(collection(db, "sectors"), where("agencyId", "==", agencyDoc.id));
         const sectorsSnapshot = await getDocs(sectorsQuery);
         sectorsSnapshot.forEach(sectorDoc => batch.delete(sectorDoc.ref));
-        
         batch.delete(agencyDoc.ref);
     }
-    
     await batch.commit();
 }
 
@@ -228,7 +278,6 @@ export async function updateRole(id: string, name: string) {
     return updateSettingItem('roles', id, { name });
 }
 export async function deleteRole(id: string) {
-    // Optional: Add logic to handle users with this role
     return deleteSettingItem('roles', id);
 }
 

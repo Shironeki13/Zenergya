@@ -1,12 +1,24 @@
+
 export type Client = {
   id: string;
   name: string;
+  billingAddress?: string;
+  contactEmail?: string;
 };
+
+export type Site = {
+    id: string;
+    clientId: string;
+    name: string;
+    address: string;
+    meterReference?: string;
+}
 
 export type Contract = {
   id: string;
   clientId: string;
-  clientName: string;
+  clientName: string; // Denormalized for easy display
+  siteIds: string[];
   startDate: string;
   endDate: string;
   billingSchedule: string;
@@ -17,7 +29,8 @@ export type Contract = {
 
 export type MeterReading = {
   id: string;
-  contractId: string;
+  siteId: string;
+  contractId: string; // To know which contract the reading applies to for billing
   date: string;
   reading: number;
   unit: "kWh";
@@ -31,12 +44,14 @@ export type InvoiceLineItem = {
   quantity: number;
   unitPrice: number;
   total: number;
+  siteId?: string; // Optional: for detailed billing per site
 };
 
 export type Invoice = {
   id: string;
   contractId: string;
-  clientName: string;
+  clientId: string;
+  clientName: string; // Denormalized
   date: string;
   dueDate: string;
   status: InvoiceStatus;
@@ -86,7 +101,6 @@ export type Term = {
 export type Role = {
     id: string;
     name: string;
-    // permissions: string[]; // Future use
 }
 
 export type User = {

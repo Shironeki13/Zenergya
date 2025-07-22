@@ -1,3 +1,4 @@
+
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
@@ -29,6 +30,7 @@ import {
   FileText,
   PlusCircle,
   ClipboardList,
+  MapPin,
 } from "lucide-react";
 import { getContract, getMeterReadingsByContract, getInvoicesByContract } from "@/services/firestore";
 
@@ -62,7 +64,7 @@ export default async function ContractDetailPage({
           </Button>
         </Link>
         <h1 className="flex-1 shrink-0 whitespace-nowrap text-xl font-semibold tracking-tight sm:grow-0">
-          {contract.clientName}
+          Contrat pour {contract.clientName}
         </h1>
         <Badge variant="outline" className="ml-auto sm:ml-0">
           {contract.status.charAt(0).toUpperCase() + contract.status.slice(1)}
@@ -95,6 +97,18 @@ export default async function ContractDetailPage({
                   Terme : {contract.term}
                 </span>
               </div>
+               <div className="flex items-start">
+                <MapPin className="mr-2 h-4 w-4 mt-1 text-muted-foreground" />
+                <div>
+                  <span className="font-medium">Sites ({contract.siteIds.length}) :</span>
+                  {/* Here you would ideally fetch site names from their IDs */}
+                  <ul className="list-disc pl-5">
+                    {contract.siteIds.map((siteId) => (
+                      <li key={siteId} className="truncate">{siteId}</li>
+                    ))}
+                  </ul>
+                </div>
+              </div>
               <div className="flex items-start">
                 <CheckCircle className="mr-2 h-4 w-4 mt-1 text-muted-foreground" />
                 <div>
@@ -116,7 +130,7 @@ export default async function ContractDetailPage({
               <Gauge className="h-5 w-5" /> Relevés de Compteur
             </CardTitle>
             <CardDescription>
-              Saisissez et consultez les relevés de compteur historiques.
+              Saisissez et consultez les relevés de compteur historiques pour les sites de ce contrat.
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -135,7 +149,7 @@ export default async function ContractDetailPage({
              <ul className="w-full">
               {contractMeterReadings.map(r => (
                 <li key={r.id} className="flex justify-between py-1 border-b last:border-0">
-                  <span>{new Date(r.date).toLocaleDateString()} - {serviceLabels[r.service]}</span>
+                  <span>{new Date(r.date).toLocaleDateString()} - {r.siteId}</span>
                   <span>{r.reading} {r.unit}</span>
                 </li>
               ))}
