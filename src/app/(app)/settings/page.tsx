@@ -49,6 +49,9 @@ const CompaniesSection = () => {
     const [companyToDelete, setCompanyToDelete] = useState<Company | null>(null);
 
     const [name, setName] = useState('');
+    const [address, setAddress] = useState('');
+    const [postalCode, setPostalCode] = useState('');
+    const [city, setCity] = useState('');
     const [logoFile, setLogoFile] = useState<File | null>(null);
     const [logoPreview, setLogoPreview] = useState<string | null>(null);
 
@@ -70,6 +73,9 @@ const CompaniesSection = () => {
 
     const resetForm = () => {
         setName('');
+        setAddress('');
+        setPostalCode('');
+        setCity('');
         setLogoFile(null);
         setLogoPreview(null);
         setEditingCompany(null);
@@ -79,6 +85,9 @@ const CompaniesSection = () => {
         setEditingCompany(company);
         if (company) {
             setName(company.name);
+            setAddress(company.address || '');
+            setPostalCode(company.postalCode || '');
+            setCity(company.city || '');
             setLogoPreview(company.logoUrl || null);
         } else {
             resetForm();
@@ -105,12 +114,14 @@ const CompaniesSection = () => {
             if (logoFile) {
                 logoUrl = await fileToDataUrl(logoFile);
             }
+
+            const companyData: Partial<Company> = { name, address, postalCode, city, logoUrl };
             
             if (editingCompany) {
-                await updateCompany(editingCompany.id, name, logoUrl);
+                await updateCompany(editingCompany.id, companyData);
                 toast({ title: "Succès", description: "Société mise à jour." });
             } else {
-                await createCompany(name, logoUrl);
+                await createCompany(companyData as any);
                 toast({ title: "Succès", description: "Société créée." });
             }
             
@@ -142,7 +153,7 @@ const CompaniesSection = () => {
         <div className="flex justify-between items-center">
             <div>
                 <CardTitle>Sociétés</CardTitle>
-                <CardDescription>Gérez vos sociétés et leurs logos.</CardDescription>
+                <CardDescription>Gérez vos sociétés, leurs logos et leurs adresses.</CardDescription>
             </div>
             <Button size="sm" className="gap-1" onClick={() => handleOpenDialog()}>
                 <PlusCircle className="h-4 w-4" /> Créer
@@ -156,14 +167,15 @@ const CompaniesSection = () => {
               <TableRow>
                 <TableHead className="w-[80px]">Logo</TableHead>
                 <TableHead>Nom</TableHead>
+                <TableHead>Adresse</TableHead>
                 <TableHead className="w-[100px] text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {isLoading ? (
-                <TableRow><TableCell colSpan={3} className="text-center">Chargement...</TableCell></TableRow>
+                <TableRow><TableCell colSpan={4} className="text-center">Chargement...</TableCell></TableRow>
               ) : companies.length === 0 ? (
-                <TableRow><TableCell colSpan={3} className="text-center">Aucune société trouvée.</TableCell></TableRow>
+                <TableRow><TableCell colSpan={4} className="text-center">Aucune société trouvée.</TableCell></TableRow>
               ) : (
                 companies.map((company) => (
                   <TableRow key={company.id}>
@@ -175,6 +187,9 @@ const CompaniesSection = () => {
                       )}
                     </TableCell>
                     <TableCell className="font-medium">{company.name}</TableCell>
+                    <TableCell>
+                        {company.address ? `${company.address}, ${company.postalCode} ${company.city}` : 'N/A'}
+                    </TableCell>
                     <TableCell className="text-right">
                        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleOpenDialog(company)}>
                           <Edit className="h-4 w-4" />
@@ -207,7 +222,7 @@ const CompaniesSection = () => {
         </div>
 
         <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-            <DialogContent>
+            <DialogContent className="sm:max-w-[600px]">
                 <DialogHeader>
                     <DialogTitle>{editingCompany ? 'Modifier la société' : 'Nouvelle société'}</DialogTitle>
                 </DialogHeader>
@@ -215,6 +230,20 @@ const CompaniesSection = () => {
                     <div className="space-y-2">
                         <Label htmlFor="name">Nom</Label>
                         <Input id="name" value={name} onChange={(e) => setName(e.target.value)} required />
+                    </div>
+                     <div className="space-y-2">
+                        <Label htmlFor="address">Adresse</Label>
+                        <Input id="address" value={address} onChange={(e) => setAddress(e.target.value)} />
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                            <Label htmlFor="postalCode">Code Postal</Label>
+                            <Input id="postalCode" value={postalCode} onChange={(e) => setPostalCode(e.target.value)} />
+                        </div>
+                        <div className="space-y-2">
+                            <Label htmlFor="city">Ville</Label>
+                            <Input id="city" value={city} onChange={(e) => setCity(e.target.value)} />
+                        </div>
                     </div>
                     <div className="space-y-2">
                         <Label>Logo</Label>

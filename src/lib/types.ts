@@ -66,6 +66,9 @@ export type Company = {
     id: string;
     name: string;
     logoUrl?: string;
+    address?: string;
+    postalCode?: string;
+    city?: string;
 }
 
 export type Agency = {
