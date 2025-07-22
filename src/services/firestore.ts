@@ -1,7 +1,8 @@
 
+
 'use server';
 import { db } from '@/lib/firebase';
-import type { Client, Site, Contract, Invoice, MeterReading, Company, Agency, Sector, Activity, User, Role, Schedule, Term, Typology, VatRate, RevisionFormula, PaymentTerm } from '@/lib/types';
+import type { Client, Site, Contract, Invoice, MeterReading, Company, Agency, Sector, Activity, User, Role, Schedule, Term, Typology, VatRate, RevisionFormula, PaymentTerm, PricingRule } from '@/lib/types';
 import { collection, getDocs, doc, getDoc, addDoc, updateDoc, deleteDoc, query, where, DocumentData, writeBatch } from 'firebase/firestore';
 
 // --- Fonctions de Service (Firestore) ---
@@ -316,6 +317,27 @@ export async function updatePaymentTerm(id: string, data: Partial<Omit<PaymentTe
 }
 export async function deletePaymentTerm(id: string) {
     return deleteSettingItem('paymentTerms', id);
+}
+
+// Règles de prix
+export async function createPricingRule(data: Omit<PricingRule, 'id'>) {
+    return createSettingItem('pricingRules', data);
+}
+export async function getPricingRules(): Promise<PricingRule[]> {
+    const rules = await getSettingItems<PricingRule>('pricingRules');
+    const activities = await getActivities();
+    const activityMap = new Map(activities.map(a => [a.id, {code: a.code, label: a.label}]));
+    return rules.map(rule => ({
+        ...rule,
+        activityCode: activityMap.get(rule.activityId)?.code || 'N/A',
+        activityLabel: activityMap.get(rule.activityId)?.label || 'N/A',
+    }));
+}
+export async function updatePricingRule(id: string, data: Partial<Omit<PricingRule, 'id'>>) {
+    return updateSettingItem('pricingRules', id, data);
+}
+export async function deletePricingRule(id: string) {
+    return deleteSettingItem('pricingRules', id);
 }
 
 

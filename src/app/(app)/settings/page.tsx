@@ -1,4 +1,5 @@
 
+
 'use client';
 import React, { useState, useEffect, useCallback } from 'react';
 import Image from 'next/image';
@@ -24,9 +25,10 @@ import {
   createTypology, getTypologies, updateTypology, deleteTypology,
   createVatRate, getVatRates, updateVatRate, deleteVatRate,
   createRevisionFormula, getRevisionFormulas, updateRevisionFormula, deleteRevisionFormula,
-  createPaymentTerm, getPaymentTerms, updatePaymentTerm, deletePaymentTerm
+  createPaymentTerm, getPaymentTerms, updatePaymentTerm, deletePaymentTerm,
+  createPricingRule, getPricingRules, updatePricingRule, deletePricingRule
 } from "@/services/firestore";
-import type { Company, Agency, Sector, Activity, Schedule, Term, VatRate, Typology, RevisionFormula, PaymentTerm } from "@/lib/types";
+import type { Company, Agency, Sector, Activity, Schedule, Term, VatRate, Typology, RevisionFormula, PaymentTerm, PricingRule } from "@/lib/types";
 
 
 const fileToDataUrl = (file: File): Promise<string> => {
@@ -712,6 +714,173 @@ const ActivitiesSection = () => {
     );
 };
 
+// Section Règles de prix
+const PricingRulesSection = () => {
+    const [rules, setRules] = useState<PricingRule[]>([]);
+    const [activities, setActivities] = useState<Activity[]>([]);
+    const [isLoading, setIsLoading] = useState(true);
+    const { toast } = useToast();
+    const [isSubmitting, setIsSubmitting] = useState(false);
+    const [dialogOpen, setDialogOpen] = useState(false);
+    const [editingRule, setEditingRule] = useState<PricingRule | null>(null);
+    const [ruleToDelete, setRuleToDelete] = useState<PricingRule | null>(null);
+
+    const [activityId, setActivityId] = useState('');
+    const [rule, setRule] = useState('');
+    const [description, setDescription] = useState('');
+
+    const loadData = useCallback(async () => {
+        setIsLoading(true);
+        try {
+            const [fetchedRules, fetchedActivities] = await Promise.all([getPricingRules(), getActivities()]);
+            setRules(fetchedRules);
+            setActivities(fetchedActivities);
+        } catch (error) {
+            toast({ title: "Erreur", description: "Impossible de charger les données.", variant: "destructive" });
+        } finally {
+            setIsLoading(false);
+        }
+    }, [toast]);
+
+    useEffect(() => { loadData(); }, [loadData]);
+    
+    const resetForm = () => { setActivityId(''); setRule(''); setDescription(''); setEditingRule(null); };
+
+    const handleOpenDialog = (rule: PricingRule | null = null) => {
+        setEditingRule(rule);
+        if (rule) {
+            setActivityId(rule.activityId);
+            setRule(rule.rule);
+            setDescription(rule.description);
+        } else {
+            resetForm();
+        }
+        setDialogOpen(true);
+    };
+
+    const handleSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!activityId || !rule.trim()) return;
+        setIsSubmitting(true);
+        try {
+            const data = { activityId, rule, description };
+            if (editingRule) {
+                await updatePricingRule(editingRule.id, data);
+                toast({ title: "Succès", description: "Règle de prix mise à jour." });
+            } else {
+                await createPricingRule(data);
+                toast({ title: "Succès", description: "Règle de prix créée." });
+            }
+            await loadData();
+            setDialogOpen(false);
+            resetForm();
+        } catch (error) {
+            toast({ title: "Erreur", description: "L'opération a échoué.", variant: "destructive" });
+        } finally {
+            setIsSubmitting(false);
+        }
+    };
+
+    const handleDelete = async () => {
+        if (!ruleToDelete) return;
+        try {
+            await deletePricingRule(ruleToDelete.id);
+            toast({ title: "Succès", description: "Règle de prix supprimée." });
+            await loadData();
+            setRuleToDelete(null);
+        } catch (error) {
+            toast({ title: "Erreur", description: "Impossible de supprimer la règle.", variant: "destructive" });
+        }
+    };
+
+    return (
+        <Card>
+            <CardHeader>
+                <div className="flex justify-between items-center">
+                    <div>
+                        <CardTitle>Règles de Prix</CardTitle>
+                        <CardDescription>Gérez les règles de tarification associées à chaque activité.</CardDescription>
+                    </div>
+                     <Button size="sm" className="gap-1" onClick={() => handleOpenDialog()}>
+                        <PlusCircle className="h-4 w-4" /> Créer
+                    </Button>
+                </div>
+            </CardHeader>
+            <CardContent>
+                <div className="border rounded-md">
+                    <Table>
+                        <TableHeader>
+                            <TableRow>
+                                <TableHead>Activité</TableHead>
+                                <TableHead>Règle</TableHead>
+                                <TableHead>Description</TableHead>
+                                <TableHead className="w-[100px] text-right">Actions</TableHead>
+                            </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                            {isLoading ? ( <TableRow><TableCell colSpan={4} className="text-center">Chargement...</TableCell></TableRow>
+                            ) : rules.length === 0 ? ( <TableRow><TableCell colSpan={4} className="text-center">Aucune règle de prix.</TableCell></TableRow>
+                            ) : (
+                                rules.map(item => (
+                                    <TableRow key={item.id}>
+                                        <TableCell className="font-medium">{item.activityCode} - {item.activityLabel}</TableCell>
+                                        <TableCell>{item.rule}</TableCell>
+                                        <TableCell>{item.description}</TableCell>
+                                        <TableCell className="text-right">
+                                            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleOpenDialog(item)}><Edit className="h-4 w-4" /></Button>
+                                            <Dialog open={!!ruleToDelete && ruleToDelete.id === item.id} onOpenChange={(isOpen) => !isOpen && setRuleToDelete(null)}>
+                                                <DialogTrigger asChild>
+                                                    <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive" onClick={() => setRuleToDelete(item)}><Trash2 className="h-4 w-4" /></Button>
+                                                </DialogTrigger>
+                                                <DialogContent>
+                                                    <DialogHeader><DialogTitle>Supprimer la règle ?</DialogTitle><DialogDescription>Cette action est irréversible.</DialogDescription></DialogHeader>
+                                                    <DialogFooter>
+                                                        <Button variant="outline" onClick={() => setRuleToDelete(null)}>Annuler</Button>
+                                                        <Button variant="destructive" onClick={handleDelete}>Confirmer</Button>
+                                                    </DialogFooter>
+                                                </DialogContent>
+                                            </Dialog>
+                                        </TableCell>
+                                    </TableRow>
+                                ))
+                            )}
+                        </TableBody>
+                    </Table>
+                </div>
+                <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+                    <DialogContent>
+                        <DialogHeader><DialogTitle>{editingRule ? "Modifier la règle" : "Nouvelle règle de prix"}</DialogTitle></DialogHeader>
+                        <form onSubmit={handleSubmit} className="space-y-4">
+                            <div className="space-y-2">
+                                <Label htmlFor="activity">Activité</Label>
+                                <Select onValueChange={setActivityId} value={activityId}>
+                                    <SelectTrigger><SelectValue placeholder="Sélectionner une activité" /></SelectTrigger>
+                                    <SelectContent>
+                                        {activities.map(a => <SelectItem key={a.id} value={a.id}>{a.code} - {a.label}</SelectItem>)}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                            <div className="space-y-2">
+                                <Label htmlFor="rule">Règle</Label>
+                                <Input id="rule" value={rule} onChange={e => setRule(e.target.value)} required />
+                            </div>
+                            <div className="space-y-2">
+                                <Label htmlFor="description">Description</Label>
+                                <Textarea id="description" value={description} onChange={e => setDescription(e.target.value)} />
+                            </div>
+                            <DialogFooter>
+                                <DialogClose asChild><Button variant="outline">Annuler</Button></DialogClose>
+                                <Button type="submit" disabled={isSubmitting}>{isSubmitting ? "Enregistrement..." : "Enregistrer"}</Button>
+                            </DialogFooter>
+                        </form>
+                    </DialogContent>
+                </Dialog>
+            </CardContent>
+        </Card>
+    );
+};
+
+
 // Section Taux de TVA
 const VatRatesSection = () => {
     const [vatRates, setVatRates] = useState<VatRate[]>([]);
@@ -1225,6 +1394,7 @@ export default function SettingsPage() {
           <TabsTrigger value="agencies">Agences</TabsTrigger>
           <TabsTrigger value="sectors">Secteurs</TabsTrigger>
           <TabsTrigger value="activities">Activités</TabsTrigger>
+          <TabsTrigger value="pricing_rules">Règles de prix</TabsTrigger>
           <TabsTrigger value="typologies">Typologies</TabsTrigger>
           <TabsTrigger value="schedules">Échéanciers</TabsTrigger>
           <TabsTrigger value="terms">Termes</TabsTrigger>
@@ -1243,6 +1413,9 @@ export default function SettingsPage() {
         </TabsContent>
         <TabsContent value="activities">
           <ActivitiesSection />
+        </TabsContent>
+        <TabsContent value="pricing_rules">
+          <PricingRulesSection />
         </TabsContent>
         <TabsContent value="typologies">
             <SimpleCrudSection 

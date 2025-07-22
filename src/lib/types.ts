@@ -1,4 +1,5 @@
 
+
 export type Client = {
   id: string;
   name: string;
@@ -122,6 +123,15 @@ export type PaymentTerm = {
     id: string;
     code: string;
     deadline: string;
+}
+
+export type PricingRule = {
+    id: string;
+    activityId: string;
+    rule: string;
+    description: string;
+    activityCode?: string; // For display purposes
+    activityLabel?: string; // For display purposes
 }
 
 
