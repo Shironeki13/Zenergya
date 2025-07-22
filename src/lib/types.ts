@@ -52,6 +52,16 @@ export type Contract = {
   revisionFormulaId?: string;
   revisionDate?: string;
   monthlyBilling?: MonthlyBilling[];
+  // Conditional fields
+  heatingDays?: number; // Jours de chauffe (MF)
+  baseDJU?: number; // DJU de base (MT)
+  consumptionBase?: number; // Base de consommation (Intéressement)
+  shareRateClient?: number; // Taux partage client (Intéressement)
+  shareRateOperator?: number; // Taux partage exploitant (Intéressement)
+  flatRateAmount?: number; // Montant forfaitaire (CP, PF)
+  managementFees?: number; // Frais de gestion (CP, PF)
+  unitPriceUsefulMWh?: number; // Prix €/MWh utile (MC)
+  unitPricePrimaryMWh?: number; // Prix €/MWh primaire (CP)
 };
 
 export type MeterReading = {

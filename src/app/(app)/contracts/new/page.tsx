@@ -43,6 +43,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { createContract, getActivities, getSchedules, getTerms, getClients, getSitesByClient, getMarkets, getRevisionFormulas } from "@/services/firestore"
 import type { Activity, Schedule, Term, Client, Site, Market, RevisionFormula } from "@/lib/types"
 import { Separator } from "@/components/ui/separator"
+import { Slider } from "@/components/ui/slider"
 
 
 const monthlyBillingSchema = z.object({
@@ -68,6 +69,15 @@ const contractFormSchema = z.object({
   revisionFormulaId: z.string().optional(),
   revisionDate: z.date().optional(),
   monthlyBilling: z.array(monthlyBillingSchema).optional(),
+  // Conditional fields
+  heatingDays: z.number().optional(),
+  baseDJU: z.number().optional(),
+  consumptionBase: z.number().optional(),
+  shareRate: z.array(z.number()).optional(),
+  flatRateAmount: z.number().optional(),
+  managementFees: z.number().optional(),
+  unitPriceUsefulMWh: z.number().optional(),
+  unitPricePrimaryMWh: z.number().optional(),
 }).superRefine((data, ctx) => {
     if (data.billingSchedule === 'Variable') {
         const totalPercentage = data.monthlyBilling?.reduce((acc, month) => acc + month.percentage, 0) ?? 0;
@@ -90,6 +100,7 @@ const defaultValues: Partial<ContractFormValues> = {
   siteIds: [],
   hasInterest: false,
   monthlyBilling: months.map(m => ({ month: m, date: 1, percentage: 0 })),
+  shareRate: [50, 50],
 }
 
 export default function NewContractPage() {
@@ -116,6 +127,11 @@ export default function NewContractPage() {
 
   const selectedClientId = form.watch("clientId");
   const watchBillingSchedule = form.watch("billingSchedule");
+  const watchMarketId = form.watch("marketId");
+  const watchActivityIds = form.watch("activityIds");
+  const watchHasInterest = form.watch("hasInterest");
+
+  const [p1ActivityId, setP1ActivityId] = useState<string | null>(null);
 
   useEffect(() => {
     async function fetchInitialData() {
@@ -141,6 +157,12 @@ export default function NewContractPage() {
         setTerms(fetchedTerms);
         setMarkets(fetchedMarkets);
         setRevisionFormulas(fetchedRevisionFormulas);
+        
+        const p1 = fetchedActivities.find(a => a.code === 'P1');
+        if (p1) {
+            setP1ActivityId(p1.id);
+        }
+
       } catch (error) {
         toast({
           title: "Erreur",
@@ -158,7 +180,7 @@ export default function NewContractPage() {
         try {
             const fetchedSites = await getSitesByClient(selectedClientId);
             setSites(fetchedSites);
-            form.setValue('siteIds', []); // Reset site selection when client changes
+            form.setValue('siteIds', []);
         } catch (error) {
             toast({ title: "Erreur", description: "Impossible de charger les sites du client.", variant: "destructive" });
         }
@@ -169,11 +191,21 @@ export default function NewContractPage() {
     fetchSites();
   }, [selectedClientId, toast, form]);
 
+  const selectedMarket = markets.find(m => m.id === watchMarketId);
+  const p1IsSelected = p1ActivityId ? watchActivityIds.includes(p1ActivityId) : false;
+
+  const showHeatingDays = selectedMarket?.code === 'MF' && p1IsSelected;
+  const showBaseDJU = selectedMarket?.code === 'MT' && p1IsSelected;
+  const showFlatRate = (selectedMarket?.code === 'CP' || selectedMarket?.code === 'PF') && p1IsSelected;
+  const showUsefulMWhPrice = selectedMarket?.code === 'MC' && p1IsSelected;
+  const showPrimaryMWhPrice = selectedMarket?.code === 'CP' && p1IsSelected;
 
   async function onSubmit(data: ContractFormValues) {
     try {
         const selectedClient = clients.find(c => c.id === data.clientId);
         if (!selectedClient) throw new Error("Client non trouvé");
+        
+        const shareRates = data.shareRate ? { shareRateClient: data.shareRate[0], shareRateOperator: data.shareRate[1] } : {};
 
         const contractData = {
             ...data,
@@ -181,7 +213,10 @@ export default function NewContractPage() {
             endDate: format(data.endDate, "yyyy-MM-dd"),
             revisionDate: data.revisionDate ? format(data.revisionDate, "yyyy-MM-dd") : undefined,
             clientName: selectedClient.name,
+            ...shareRates,
         }
+        delete (contractData as any).shareRate;
+
       await createContract(contractData);
       toast({
         title: "Contrat Créé",
@@ -477,6 +512,59 @@ export default function NewContractPage() {
           )}
 
           <Separator />
+          
+          <FormField
+            control={form.control}
+            name="activityIds"
+            render={() => (
+              <FormItem>
+                <div className="mb-4">
+                  <FormLabel className="text-base">Prestations</FormLabel>
+                  <FormDescription>
+                    Sélectionnez les prestations incluses dans ce contrat.
+                  </FormDescription>
+                </div>
+                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {activities.map((item) => (
+                    <FormField
+                        key={item.id}
+                        control={form.control}
+                        name="activityIds"
+                        render={({ field }) => {
+                        return (
+                            <FormItem
+                            key={item.id}
+                            className="flex flex-row items-start space-x-3 space-y-0 rounded-md border p-4"
+                            >
+                            <FormControl>
+                                <Checkbox
+                                checked={field.value?.includes(item.id)}
+                                onCheckedChange={(checked) => {
+                                    return checked
+                                    ? field.onChange([...(field.value || []), item.id])
+                                    : field.onChange(
+                                        field.value?.filter(
+                                            (value) => value !== item.id
+                                        )
+                                        )
+                                }}
+                                />
+                            </FormControl>
+                            <FormLabel className="font-normal">
+                                {item.label} ({item.code})
+                            </FormLabel>
+                            </FormItem>
+                        )
+                        }}
+                    />
+                    ))}
+                </div>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+
+          <Separator />
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-start">
               <FormField
@@ -563,59 +651,91 @@ export default function NewContractPage() {
                   )}
                 />
           </div>
-
-          <Separator/>
           
-          <FormField
-            control={form.control}
-            name="activityIds"
-            render={() => (
-              <FormItem>
-                <div className="mb-4">
-                  <FormLabel className="text-base">Prestations</FormLabel>
-                  <FormDescription>
-                    Sélectionnez les prestations incluses dans ce contrat.
-                  </FormDescription>
-                </div>
-                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {activities.map((item) => (
-                    <FormField
-                        key={item.id}
-                        control={form.control}
-                        name="activityIds"
-                        render={({ field }) => {
-                        return (
-                            <FormItem
-                            key={item.id}
-                            className="flex flex-row items-start space-x-3 space-y-0 rounded-md border p-4"
-                            >
-                            <FormControl>
-                                <Checkbox
-                                checked={field.value?.includes(item.id)}
-                                onCheckedChange={(checked) => {
-                                    return checked
-                                    ? field.onChange([...(field.value || []), item.id])
-                                    : field.onChange(
-                                        field.value?.filter(
-                                            (value) => value !== item.id
-                                        )
-                                        )
-                                }}
-                                />
-                            </FormControl>
-                            <FormLabel className="font-normal">
-                                {item.label} ({item.code})
-                            </FormLabel>
-                            </FormItem>
-                        )
-                        }}
-                    />
-                    ))}
-                </div>
-                <FormMessage />
-              </FormItem>
+          {(showHeatingDays || showBaseDJU || watchHasInterest || showFlatRate || showUsefulMWhPrice || showPrimaryMWhPrice) && <Separator />}
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-start">
+            {showHeatingDays && (
+              <FormField control={form.control} name="heatingDays" render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Nombre de jours de chauffe contractuels</FormLabel>
+                  <FormControl><Input type="number" placeholder="ex: 232" {...field} onChange={e => field.onChange(parseInt(e.target.value, 10))} /></FormControl>
+                  <FormMessage />
+                </FormItem>
+              )} />
             )}
-          />
+            {showBaseDJU && (
+              <FormField control={form.control} name="baseDJU" render={({ field }) => (
+                <FormItem>
+                  <FormLabel>DJU de base</FormLabel>
+                  <FormControl><Input type="number" placeholder="ex: 2350" {...field} onChange={e => field.onChange(parseInt(e.target.value, 10))} /></FormControl>
+                  <FormMessage />
+                </FormItem>
+              )} />
+            )}
+            {showFlatRate && (<>
+              <FormField control={form.control} name="flatRateAmount" render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Montant forfaitaire</FormLabel>
+                  <FormControl><Input type="number" placeholder="ex: 5000" {...field} onChange={e => field.onChange(parseFloat(e.target.value))} /></FormControl>
+                  <FormMessage />
+                </FormItem>
+              )} />
+              <FormField control={form.control} name="managementFees" render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Frais de gestion</FormLabel>
+                  <FormControl><Input type="number" placeholder="ex: 250" {...field} onChange={e => field.onChange(parseFloat(e.target.value))} /></FormControl>
+                  <FormMessage />
+                </FormItem>
+              )} />
+            </>)}
+            {showUsefulMWhPrice && (
+              <FormField control={form.control} name="unitPriceUsefulMWh" render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Prix unitaire (€/MWh utile)</FormLabel>
+                  <FormControl><Input type="number" placeholder="ex: 120" {...field} onChange={e => field.onChange(parseFloat(e.target.value))} /></FormControl>
+                  <FormMessage />
+                </FormItem>
+              )} />
+            )}
+            {showPrimaryMWhPrice && (
+              <FormField control={form.control} name="unitPricePrimaryMWh" render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Prix unitaire (€/MWh primaire)</FormLabel>
+                  <FormControl><Input type="number" placeholder="ex: 90" {...field} onChange={e => field.onChange(parseFloat(e.target.value))} /></FormControl>
+                  <FormMessage />
+                </FormItem>
+              )} />
+            )}
+
+            {watchHasInterest && (<>
+              <FormField control={form.control} name="consumptionBase" render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Base de consommation théorique NB</FormLabel>
+                  <FormControl><Input type="number" placeholder="ex: 10000" {...field} onChange={e => field.onChange(parseInt(e.target.value, 10))} /></FormControl>
+                  <FormMessage />
+                </FormItem>
+              )} />
+              <FormField control={form.control} name="shareRate" render={({ field: { value, onChange } }) => (
+                <FormItem>
+                   <FormLabel>Taux de partage (%) Client / Exploitant</FormLabel>
+                    <div className="flex items-center gap-4 pt-2">
+                        <span className="text-sm text-muted-foreground">Client: {value?.[0]}%</span>
+                        <Slider
+                            defaultValue={[50, 50]}
+                            value={value}
+                            onValueChange={onChange}
+                            max={100}
+                            step={1}
+                        />
+                         <span className="text-sm text-muted-foreground">Exploitant: {value?.[1]}%</span>
+                    </div>
+                   <FormDescription>Faites glisser pour ajuster le partage.</FormDescription>
+                  <FormMessage />
+                </FormItem>
+              )} />
+            </>)}
+          </div>
 
           <Button type="submit">Créer le Contrat</Button>
         </form>
