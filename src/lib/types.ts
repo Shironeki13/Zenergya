@@ -20,6 +20,7 @@ export type Client = {
   chorusServiceCode?: string;
   chorusLegalCommitmentNumber?: string;
   chorusMarketNumber?: string;
+  contactEmail?: string;
 };
 
 export type Site = {
@@ -55,6 +56,7 @@ export type Contract = {
   // Conditional fields
   heatingDays?: number; // Jours de chauffe (MF)
   baseDJU?: number; // DJU de base (MT)
+  weatherStationCode?: string; // Station météo (MT)
   consumptionBase?: number; // Base de consommation (Intéressement)
   shareRateClient?: number; // Taux partage client (Intéressement)
   shareRateOperator?: number; // Taux partage exploitant (Intéressement)

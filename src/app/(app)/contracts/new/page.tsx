@@ -72,6 +72,7 @@ const contractFormSchema = z.object({
   // Conditional fields
   heatingDays: z.number().optional(),
   baseDJU: z.number().optional(),
+  weatherStationCode: z.string().optional(),
   consumptionBase: z.number().optional(),
   shareRate: z.array(z.number()).optional(),
   flatRateAmount: z.number().optional(),
@@ -195,6 +196,7 @@ export default function NewContractPage() {
   const p1IsSelected = p1ActivityId ? watchActivityIds.includes(p1ActivityId) : false;
 
   const showHeatingDays = selectedMarket?.code === 'MF' && p1IsSelected;
+  const showMeteoStation = selectedMarket?.code === 'MT' && p1IsSelected;
   const showBaseDJU = selectedMarket?.code === 'MT' && p1IsSelected;
   const showFlatRate = (selectedMarket?.code === 'CP' || selectedMarket?.code === 'PF') && p1IsSelected;
   const showUsefulMWhPrice = selectedMarket?.code === 'MC' && p1IsSelected;
@@ -664,7 +666,7 @@ export default function NewContractPage() {
                 </FormItem>
               )} />
             )}
-            {showBaseDJU && (
+            {showBaseDJU && (<>
               <FormField control={form.control} name="baseDJU" render={({ field }) => (
                 <FormItem>
                   <FormLabel>DJU de base</FormLabel>
@@ -672,7 +674,14 @@ export default function NewContractPage() {
                   <FormMessage />
                 </FormItem>
               )} />
-            )}
+              <FormField control={form.control} name="weatherStationCode" render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Station météo / Code INSEE</FormLabel>
+                  <FormControl><Input placeholder="ex: 75114001" {...field} /></FormControl>
+                  <FormMessage />
+                </FormItem>
+              )} />
+             </>)}
             {showFlatRate && (<>
               <FormField control={form.control} name="flatRateAmount" render={({ field }) => (
                 <FormItem>
@@ -722,7 +731,6 @@ export default function NewContractPage() {
                     <div className="flex items-center gap-4 pt-2">
                         <span className="text-sm text-muted-foreground w-24">Client: {value?.[0]}%</span>
                         <Slider
-                            defaultValue={[50]}
                             value={[value?.[0] || 50]}
                             onValueChange={(newVal) => {
                                 const clientShare = newVal[0];
@@ -747,5 +755,3 @@ export default function NewContractPage() {
     </Card>
   )
 }
-
-    

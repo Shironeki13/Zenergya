@@ -23,11 +23,15 @@ export async function getClient(id: string): Promise<Client | null> {
     return null;
 }
 
-export async function createClient(data: Omit<Client, 'id'>) {
+export async function createClient(data: Omit<Client, 'id' | 'typologyName'>) {
+    const typologies = await getTypologies();
+    const typologyName = typologies.find(t => t.id === data.typologyId)?.name || 'N/A';
+    const clientData = { ...data, typologyName };
     const clientsCollection = collection(db, 'clients');
-    const docRef = await addDoc(clientsCollection, data);
-    return { id: docRef.id, ...data };
+    const docRef = await addDoc(clientsCollection, clientData);
+    return { id: docRef.id, ...clientData };
 }
+
 
 export async function updateClient(id: string, data: Partial<Omit<Client, 'id'>>) {
     const clientDoc = doc(db, 'clients', id);
