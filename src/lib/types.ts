@@ -2,9 +2,24 @@
 
 export type Client = {
   id: string;
-  name: string;
-  billingAddress?: string;
-  contactEmail?: string;
+  name: string; // Raison Sociale
+  address?: string;
+  postalCode?: string;
+  city?: string;
+  clientType: 'private' | 'public';
+  typologyId: string;
+  representedBy?: string; // Si typologyId correspond à 'Copropriété'
+  isBe: boolean; // Bureau d'études
+  beName?: string;
+  beEmail?: string;
+  bePhone?: string;
+  useChorus: boolean; // Dépôt Chorus
+  siret?: string;
+  chorusServiceCode?: string;
+  chorusLegalCommitmentNumber?: string;
+  chorusMarketNumber?: string;
+  externalCode?: string;
+  typologyName?: string; // denormalized for display
 };
 
 export type Site = {

@@ -1,6 +1,7 @@
 
 import Link from 'next/link';
-import { PlusCircle, MoreHorizontal, Building } from 'lucide-react';
+import { PlusCircle, MoreHorizontal } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
   Card,
@@ -24,11 +25,21 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { getClients } from '@/services/firestore';
-import type { Client } from '@/lib/types';
+import { getClients, getTypologies } from '@/services/firestore';
+import type { Client, Typology } from '@/lib/types';
 
 export default async function ClientsPage() {
-  const clients: Client[] = await getClients();
+  const [clients, typologies] = await Promise.all([
+    getClients(),
+    getTypologies(),
+  ]);
+
+  const typologyMap = new Map(typologies.map((t: Typology) => [t.id, t.name]));
+
+  const clientsWithTypology = clients.map(client => ({
+      ...client,
+      typologyName: typologyMap.get(client.typologyId) || 'N/A'
+  }))
   
   return (
     <Card>
@@ -52,18 +63,24 @@ export default async function ClientsPage() {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Nom du Client</TableHead>
-              <TableHead>Email de Contact</TableHead>
+              <TableHead>Raison Sociale</TableHead>
+              <TableHead>Type</TableHead>
+              <TableHead>Typologie</TableHead>
               <TableHead>
                 <span className="sr-only">Actions</span>
               </TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
-            {clients.map((client) => (
+            {clientsWithTypology.map((client) => (
               <TableRow key={client.id}>
                 <TableCell className="font-medium">{client.name}</TableCell>
-                <TableCell>{client.contactEmail || 'N/A'}</TableCell>
+                <TableCell>
+                    <Badge variant={client.clientType === 'public' ? 'secondary' : 'outline'}>
+                        {client.clientType === 'public' ? 'Public' : 'Privé'}
+                    </Badge>
+                </TableCell>
+                <TableCell>{client.typologyName}</TableCell>
                 <TableCell>
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>

@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { useForm } from "react-hook-form"
 import * as z from "zod"
+import React from "react"
 import { ChevronLeft } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
@@ -22,36 +23,86 @@ import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { useToast } from "@/hooks/use-toast"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { createClient } from "@/services/firestore"
+import { createClient, getTypologies } from "@/services/firestore"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
+import { Switch } from "@/components/ui/switch"
+import type { Typology } from "@/lib/types"
 
 const clientFormSchema = z.object({
-  name: z.string().min(2, {
-    message: "Le nom du client doit comporter au moins 2 caractères.",
-  }),
-  contactEmail: z.string().email({
-    message: "Veuillez saisir une adresse email valide.",
-  }).optional().or(z.literal('')),
-  billingAddress: z.string().optional(),
-})
+  name: z.string().min(2, "La raison sociale est requise."),
+  address: z.string().optional(),
+  postalCode: z.string().optional(),
+  city: z.string().optional(),
+  clientType: z.enum(["private", "public"], { required_error: "Le type de client est requis." }),
+  typologyId: z.string({ required_error: "La typologie est requise." }),
+  representedBy: z.string().optional(),
+  externalCode: z.string().optional(),
+  isBe: z.boolean().default(false),
+  beName: z.string().optional(),
+  beEmail: z.string().email({ message: "Email BE invalide." }).optional().or(z.literal('')),
+  bePhone: z.string().optional(),
+  useChorus: z.boolean().default(false),
+  siret: z.string().optional(),
+  chorusServiceCode: z.string().optional(),
+  chorusLegalCommitmentNumber: z.string().optional(),
+  chorusMarketNumber: z.string().optional(),
+}).superRefine((data, ctx) => {
+    if (data.useChorus && (!data.siret || data.siret.length === 0)) {
+        ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: "Le SIRET est obligatoire si le dépôt Chorus est activé.",
+            path: ["siret"],
+        });
+    }
+});
 
 type ClientFormValues = z.infer<typeof clientFormSchema>
 
 export default function NewClientPage() {
   const router = useRouter();
   const { toast } = useToast()
+  const [typologies, setTypologies] = React.useState<Typology[]>([]);
+  const [isLoading, setIsLoading] = React.useState(true);
 
   const form = useForm<ClientFormValues>({
     resolver: zodResolver(clientFormSchema),
     defaultValues: {
       name: "",
-      contactEmail: "",
-      billingAddress: "",
+      clientType: "private",
+      isBe: false,
+      useChorus: false,
     },
   })
 
+  const watchTypologyId = form.watch("typologyId");
+  const watchIsBe = form.watch("isBe");
+  const watchUseChorus = form.watch("useChorus");
+  
+  const selectedTypology = React.useMemo(() => 
+    typologies.find(t => t.id === watchTypologyId),
+    [typologies, watchTypologyId]
+  );
+  const showRepresentedBy = selectedTypology?.name === 'Copropriété';
+
+  React.useEffect(() => {
+    async function fetchData() {
+      try {
+        const typologiesData = await getTypologies();
+        setTypologies(typologiesData);
+      } catch (error) {
+        toast({ title: "Erreur", description: "Impossible de charger les typologies.", variant: "destructive" });
+      } finally {
+        setIsLoading(false);
+      }
+    }
+    fetchData();
+  }, [toast]);
+
   async function onSubmit(data: ClientFormValues) {
     try {
-      await createClient(data);
+      const typologyName = typologies.find(t => t.id === data.typologyId)?.name;
+      await createClient({ ...data, typologyName });
       toast({
         title: "Client Créé",
         description: "Le nouveau client a été créé avec succès.",
@@ -71,59 +122,135 @@ export default function NewClientPage() {
     <Card>
       <CardHeader>
         <div className="flex items-center gap-4">
-            <Link href="/clients">
-                <Button variant="outline" size="icon">
-                    <ChevronLeft className="h-4 w-4" />
-                </Button>
-            </Link>
-            <div>
-              <CardTitle>Nouveau Client</CardTitle>
-              <CardDescription>Remplissez le formulaire pour créer une nouvelle fiche client.</CardDescription>
-            </div>
+          <Link href="/clients">
+            <Button variant="outline" size="icon">
+              <ChevronLeft className="h-4 w-4" />
+            </Button>
+          </Link>
+          <div>
+            <CardTitle>Nouveau Client</CardTitle>
+            <CardDescription>Remplissez le formulaire pour créer une nouvelle fiche client.</CardDescription>
+          </div>
         </div>
       </CardHeader>
       <CardContent>
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-8">
-            <FormField
-              control={form.control}
-              name="name"
-              render={({ field }) => (
+            <div className="grid md:grid-cols-2 gap-8">
+              <FormField control={form.control} name="name" render={({ field }) => (
                 <FormItem>
                   <FormLabel>Raison Sociale</FormLabel>
-                  <FormControl>
-                    <Input placeholder="Wayne Enterprises" {...field} />
-                  </FormControl>
+                  <FormControl><Input placeholder="Wayne Enterprises" {...field} /></FormControl>
                   <FormMessage />
                 </FormItem>
-              )}
-            />
-            <FormField
-              control={form.control}
-              name="contactEmail"
-              render={({ field }) => (
+              )} />
+              <FormField control={form.control} name="address" render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Email de Contact</FormLabel>
-                  <FormControl>
-                    <Input type="email" placeholder="contact@wayne.com" {...field} />
-                  </FormControl>
+                  <FormLabel>Adresse</FormLabel>
+                  <FormControl><Input placeholder="1007 Mountain Drive" {...field} /></FormControl>
                   <FormMessage />
                 </FormItem>
-              )}
-            />
-             <FormField
-              control={form.control}
-              name="billingAddress"
-              render={({ field }) => (
+              )} />
+              <div className="grid grid-cols-2 gap-4">
+                <FormField control={form.control} name="postalCode" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Code postal</FormLabel>
+                    <FormControl><Input placeholder="75000" {...field} /></FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )} />
+                <FormField control={form.control} name="city" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Ville</FormLabel>
+                    <FormControl><Input placeholder="Gotham" {...field} /></FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )} />
+              </div>
+              <FormField control={form.control} name="clientType" render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Adresse de Facturation</FormLabel>
+                  <FormLabel>Privé / Public</FormLabel>
                   <FormControl>
-                    <Textarea placeholder="1007 Mountain Drive, Gotham" {...field} />
+                    <RadioGroup onValueChange={field.onChange} defaultValue={field.value} className="flex gap-4 pt-2">
+                      <FormItem className="flex items-center space-x-2"><FormControl><RadioGroupItem value="private" id="private" /></FormControl><FormLabel htmlFor="private" className="font-normal">Privé</FormLabel></FormItem>
+                      <FormItem className="flex items-center space-x-2"><FormControl><RadioGroupItem value="public" id="public" /></FormControl><FormLabel htmlFor="public" className="font-normal">Public</FormLabel></FormItem>
+                    </RadioGroup>
                   </FormControl>
                   <FormMessage />
                 </FormItem>
+              )} />
+               <FormField control={form.control} name="typologyId" render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Typologie client</FormLabel>
+                  <Select onValueChange={field.onChange} defaultValue={field.value} disabled={isLoading}>
+                    <FormControl><SelectTrigger><SelectValue placeholder="Sélectionnez une typologie" /></SelectTrigger></FormControl>
+                    <SelectContent>
+                      {typologies.map(t => <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                  <FormMessage />
+                </FormItem>
+              )} />
+              {showRepresentedBy && <FormField control={form.control} name="representedBy" render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Représenté par</FormLabel>
+                  <FormControl><Input placeholder="Syndic de copropriété" {...field} /></FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}/>}
+               <FormField control={form.control} name="externalCode" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Code externe</FormLabel>
+                    <FormControl><Input placeholder="Code informatif" {...field} /></FormControl>
+                    <FormDescription>Champ informatif non obligatoire.</FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )} />
+            </div>
+
+            <Separator />
+            
+            <div className="grid md:grid-cols-2 gap-8 items-start">
+               <FormField control={form.control} name="isBe" render={({ field }) => (
+                <FormItem className="flex flex-row items-center justify-between rounded-lg border p-4">
+                    <div className="space-y-0.5"><FormLabel>Bureau d'études (BE)</FormLabel><FormDescription>Le client est-il un bureau d'études ?</FormDescription></div>
+                    <FormControl><Switch checked={field.value} onCheckedChange={field.onChange} /></FormControl>
+                </FormItem>
+              )} />
+              {watchIsBe && (
+                <div className="space-y-4 p-4 border rounded-lg">
+                    <FormField control={form.control} name="beName" render={({ field }) => (<FormItem><FormLabel>Nom BE</FormLabel><FormControl><Input placeholder="Nom du bureau d'étude" {...field} /></FormControl><FormMessage /></FormItem>)} />
+                    <FormField control={form.control} name="beEmail" render={({ field }) => (<FormItem><FormLabel>Mail BE</FormLabel><FormControl><Input placeholder="contact@be.com" {...field} /></FormControl><FormMessage /></FormItem>)} />
+                    <FormField control={form.control} name="bePhone" render={({ field }) => (<FormItem><FormLabel>Tél BE (Optionnel)</FormLabel><FormControl><Input placeholder="0123456789" {...field} /></FormControl><FormMessage /></FormItem>)} />
+                </div>
               )}
-            />
+            </div>
+
+            <Separator />
+
+            <div className="grid md:grid-cols-2 gap-8 items-start">
+                 <FormField control={form.control} name="useChorus" render={({ field }) => (
+                    <FormItem className="flex flex-row items-center justify-between rounded-lg border p-4">
+                        <div className="space-y-0.5"><FormLabel>Dépôt Chorus</FormLabel><FormDescription>Activer le dépôt des factures sur Chorus Pro ?</FormDescription></div>
+                        <FormControl><Switch checked={field.value} onCheckedChange={field.onChange} /></FormControl>
+                    </FormItem>
+                 )} />
+                 <div className="space-y-4 p-4 border rounded-lg">
+                    <FormField control={form.control} name="siret" render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>SIRET</FormLabel>
+                          <FormControl><Input placeholder="12345678901234" {...field} /></FormControl>
+                          <FormMessage />
+                        </FormItem>
+                    )} />
+                    {watchUseChorus && (<>
+                      <FormField control={form.control} name="chorusServiceCode" render={({ field }) => (<FormItem><FormLabel>Code service</FormLabel><FormControl><Input placeholder="Code service Chorus" {...field} /></FormControl><FormMessage /></FormItem>)} />
+                      <FormField control={form.control} name="chorusLegalCommitmentNumber" render={({ field }) => (<FormItem><FormLabel>Numéro engagement juridique</FormLabel><FormControl><Input placeholder="Numéro EJ" {...field} /></FormControl><FormMessage /></FormItem>)} />
+                      <FormField control={form.control} name="chorusMarketNumber" render={({ field }) => (<FormItem><FormLabel>Numéro de marché</FormLabel><FormControl><Input placeholder="Numéro de marché" {...field} /></FormControl><FormMessage /></FormItem>)} />
+                    </>)}
+                </div>
+            </div>
+
             <Button type="submit">Créer le Client</Button>
           </form>
         </Form>
