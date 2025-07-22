@@ -102,6 +102,12 @@ export type Typology = {
     name: string;
 }
 
+export type VatRate = {
+    id: string;
+    name: string;
+    rate: number;
+}
+
 // User Management Types
 export type Role = {
     id: string;

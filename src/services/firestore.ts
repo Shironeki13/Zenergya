@@ -1,7 +1,7 @@
 
 'use server';
 import { db } from '@/lib/firebase';
-import type { Client, Site, Contract, Invoice, MeterReading, Company, Agency, Sector, Activity, User, Role, Schedule, Term, Typology } from '@/lib/types';
+import type { Client, Site, Contract, Invoice, MeterReading, Company, Agency, Sector, Activity, User, Role, Schedule, Term, Typology, VatRate } from '@/lib/types';
 import { collection, getDocs, doc, getDoc, addDoc, updateDoc, deleteDoc, query, where, DocumentData, writeBatch } from 'firebase/firestore';
 
 // --- Fonctions de Service (Firestore) ---
@@ -276,6 +276,20 @@ export async function updateTypology(id: string, name: string) {
 }
 export async function deleteTypology(id: string) {
     return deleteSettingItem('typologies', id);
+}
+
+// Taux TVA
+export async function createVatRate(name: string, rate: number) {
+    return createSettingItem('vatRates', { name, rate });
+}
+export async function getVatRates(): Promise<VatRate[]> {
+    return getSettingItems<VatRate>('vatRates');
+}
+export async function updateVatRate(id: string, data: { name: string, rate: number }) {
+    return updateSettingItem('vatRates', id, data);
+}
+export async function deleteVatRate(id: string) {
+    return deleteSettingItem('vatRates', id);
 }
 
 

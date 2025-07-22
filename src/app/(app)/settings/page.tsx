@@ -20,9 +20,10 @@ import {
   createActivity, getActivities, updateActivity, deleteActivity,
   createSchedule, getSchedules, updateSchedule, deleteSchedule,
   createTerm, getTerms, updateTerm, deleteTerm,
-  createTypology, getTypologies, updateTypology, deleteTypology
+  createTypology, getTypologies, updateTypology, deleteTypology,
+  createVatRate, getVatRates, updateVatRate, deleteVatRate
 } from "@/services/firestore";
-import type { Company, Agency, Sector, Activity, Schedule, Term } from "@/lib/types";
+import type { Company, Agency, Sector, Activity, Schedule, Term, VatRate } from "@/lib/types";
 
 
 const fileToDataUrl = (file: File): Promise<string> => {
@@ -669,6 +670,148 @@ const ActivitiesSection = () => {
     );
 };
 
+// Section Taux de TVA
+const VatRatesSection = () => {
+    const [vatRates, setVatRates] = useState<VatRate[]>([]);
+    const [isLoading, setIsLoading] = useState(true);
+    const { toast } = useToast();
+    const [isSubmitting, setIsSubmitting] = useState(false);
+    const [dialogOpen, setDialogOpen] = useState(false);
+    const [editingVatRate, setEditingVatRate] = useState<VatRate | null>(null);
+    const [vatRateToDelete, setVatRateToDelete] = useState<VatRate | null>(null);
+    const [name, setName] = useState('');
+    const [rate, setRate] = useState<number | string>('');
+
+    const loadVatRates = useCallback(async () => {
+        setIsLoading(true);
+        try {
+            setVatRates(await getVatRates());
+        } catch (error) { toast({ title: "Erreur", description: "Impossible de charger les taux de TVA.", variant: "destructive" }); } 
+        finally { setIsLoading(false); }
+    }, [toast]);
+
+    useEffect(() => { loadVatRates(); }, [loadVatRates]);
+    
+    const resetForm = () => { setName(''); setRate(''); setEditingVatRate(null); };
+
+    const handleOpenDialog = (vatRate: VatRate | null = null) => {
+        setEditingVatRate(vatRate);
+        setName(vatRate ? vatRate.name : '');
+        setRate(vatRate ? vatRate.rate : '');
+        setDialogOpen(true);
+    };
+
+    const handleSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+        const numericRate = parseFloat(rate as string);
+        if (!name.trim() || isNaN(numericRate)) return;
+        setIsSubmitting(true);
+        try {
+            if (editingVatRate) {
+                await updateVatRate(editingVatRate.id, { name, rate: numericRate });
+                toast({ title: "Succès", description: "Taux de TVA mis à jour." });
+            } else {
+                await createVatRate(name, numericRate);
+                toast({ title: "Succès", description: "Taux de TVA créé." });
+            }
+            await loadVatRates();
+            setDialogOpen(false);
+            resetForm();
+        } catch (error) {
+            toast({ title: "Erreur", description: "L'opération a échoué.", variant: "destructive" });
+        } finally {
+            setIsSubmitting(false);
+        }
+    };
+    
+    const handleDelete = async () => {
+        if (!vatRateToDelete) return;
+        try {
+            await deleteVatRate(vatRateToDelete.id);
+            toast({ title: "Succès", description: "Taux de TVA supprimé." });
+            await loadVatRates();
+            setVatRateToDelete(null);
+        } catch (error) {
+            toast({ title: "Erreur", description: "Impossible de supprimer le taux de TVA.", variant: "destructive" });
+        }
+    };
+
+    return (
+        <Card>
+             <CardHeader>
+                <div className="flex justify-between items-center">
+                    <div>
+                        <CardTitle>Taux de TVA</CardTitle>
+                        <CardDescription>Gérez les différents taux de TVA applicables.</CardDescription>
+                    </div>
+                     <Button size="sm" className="gap-1" onClick={() => handleOpenDialog()}>
+                        <PlusCircle className="h-4 w-4" /> Créer
+                    </Button>
+                </div>
+            </CardHeader>
+            <CardContent>
+                <div className="border rounded-md">
+                    <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Nom du Taux</TableHead>
+                            <TableHead>Taux (%)</TableHead>
+                            <TableHead className="w-[100px] text-right">Actions</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                            {isLoading ? ( <TableRow><TableCell colSpan={3} className="text-center">Chargement...</TableCell></TableRow>
+                            ) : vatRates.length === 0 ? ( <TableRow><TableCell colSpan={3} className="text-center">Aucun taux de TVA.</TableCell></TableRow>
+                            ) : (
+                                vatRates.map(item => (
+                                    <TableRow key={item.id}>
+                                        <TableCell className="font-medium">{item.name}</TableCell>
+                                        <TableCell>{item.rate}%</TableCell>
+                                        <TableCell className="text-right">
+                                            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleOpenDialog(item)}><Edit className="h-4 w-4" /></Button>
+                                            <Dialog open={!!vatRateToDelete && vatRateToDelete.id === item.id} onOpenChange={(isOpen) => !isOpen && setVatRateToDelete(null)}>
+                                                <DialogTrigger asChild>
+                                                    <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive" onClick={() => setVatRateToDelete(item)}><Trash2 className="h-4 w-4" /></Button>
+                                                </DialogTrigger>
+                                                <DialogContent>
+                                                    <DialogHeader><DialogTitle>Supprimer {vatRateToDelete?.name}</DialogTitle><DialogDescription>Cette action est irréversible.</DialogDescription></DialogHeader>
+                                                    <DialogFooter>
+                                                        <Button variant="outline" onClick={() => setVatRateToDelete(null)}>Annuler</Button>
+                                                        <Button variant="destructive" onClick={handleDelete}>Confirmer</Button>
+                                                    </DialogFooter>
+                                                </DialogContent>
+                                            </Dialog>
+                                        </TableCell>
+                                    </TableRow>
+                                ))
+                            )}
+                        </TableBody>
+                    </Table>
+                </div>
+                <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+                    <DialogContent>
+                        <DialogHeader><DialogTitle>{editingVatRate ? "Modifier le taux de TVA" : "Nouveau taux de TVA"}</DialogTitle></DialogHeader>
+                        <form onSubmit={handleSubmit} className="space-y-4">
+                            <div className="space-y-2">
+                                <Label htmlFor="vatName">Nom du taux</Label>
+                                <Input id="vatName" value={name} onChange={e => setName(e.target.value)} required />
+                            </div>
+                            <div className="space-y-2">
+                                <Label htmlFor="vatRate">Taux (%)</Label>
+                                <Input id="vatRate" type="number" value={rate} onChange={e => setRate(e.target.value)} required />
+                            </div>
+                            <DialogFooter>
+                                <DialogClose asChild><Button variant="outline">Annuler</Button></DialogClose>
+                                <Button type="submit" disabled={isSubmitting}>{isSubmitting ? "Enregistrement..." : "Enregistrer"}</Button>
+                            </DialogFooter>
+                        </form>
+                    </DialogContent>
+                </Dialog>
+            </CardContent>
+        </Card>
+    );
+};
+
 // Generic CRUD Section for simple name-based entities
 const SimpleCrudSection = ({
   title,
@@ -829,6 +972,7 @@ export default function SettingsPage() {
           <TabsTrigger value="typologies">Typologies</TabsTrigger>
           <TabsTrigger value="schedules">Échéanciers</TabsTrigger>
           <TabsTrigger value="terms">Termes</TabsTrigger>
+          <TabsTrigger value="vat_rates">Taux TVA</TabsTrigger>
         </TabsList>
         <TabsContent value="companies">
           <CompaniesSection />
@@ -874,6 +1018,9 @@ export default function SettingsPage() {
                 updateItem={updateTerm}
                 deleteItem={deleteTerm}
             />
+        </TabsContent>
+        <TabsContent value="vat_rates">
+            <VatRatesSection />
         </TabsContent>
       </Tabs>
     </div>
