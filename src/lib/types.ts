@@ -23,7 +23,7 @@ export type Contract = {
   endDate: string;
   billingSchedule: string;
   term: string;
-  activities: string[];
+  activityIds: string[];
   status: "active" | "expired" | "pending";
 };
 
@@ -84,7 +84,8 @@ export type Sector = {
 
 export type Activity = {
     id: string;
-    name: string;
+    code: string;
+    label: string;
 }
 
 export type Schedule = {

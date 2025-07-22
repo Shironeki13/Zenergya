@@ -60,7 +60,7 @@ const contractFormSchema = z.object({
   term: z.string({
     required_error: "Un terme de facturation est requis.",
   }),
-  activities: z.array(z.string()).refine((value) => value.some((item) => item), {
+  activityIds: z.array(z.string()).refine((value) => value.some((item) => item), {
     message: "Vous devez sélectionner au moins une prestation.",
   }),
 })
@@ -68,7 +68,7 @@ const contractFormSchema = z.object({
 type ContractFormValues = z.infer<typeof contractFormSchema>
 
 const defaultValues: Partial<ContractFormValues> = {
-  activities: [],
+  activityIds: [],
   siteIds: [],
 }
 
@@ -392,7 +392,7 @@ export default function NewContractPage() {
 
           <FormField
             control={form.control}
-            name="activities"
+            name="activityIds"
             render={() => (
               <FormItem>
                 <div className="mb-4">
@@ -405,7 +405,7 @@ export default function NewContractPage() {
                   <FormField
                     key={item.id}
                     control={form.control}
-                    name="activities"
+                    name="activityIds"
                     render={({ field }) => {
                       return (
                         <FormItem
@@ -414,20 +414,20 @@ export default function NewContractPage() {
                         >
                           <FormControl>
                             <Checkbox
-                              checked={field.value?.includes(item.name)}
+                              checked={field.value?.includes(item.id)}
                               onCheckedChange={(checked) => {
                                 return checked
-                                  ? field.onChange([...(field.value || []), item.name])
+                                  ? field.onChange([...(field.value || []), item.id])
                                   : field.onChange(
                                       field.value?.filter(
-                                        (value) => value !== item.name
+                                        (value) => value !== item.id
                                       )
                                     )
                               }}
                             />
                           </FormControl>
                           <FormLabel className="font-normal">
-                            {item.name}
+                            {item.label} ({item.code})
                           </FormLabel>
                         </FormItem>
                       )

@@ -32,7 +32,8 @@ import {
   ClipboardList,
   MapPin,
 } from "lucide-react";
-import { getContract, getMeterReadingsByContract, getInvoicesByContract } from "@/services/firestore";
+import { getContract, getMeterReadingsByContract, getInvoicesByContract, getActivities } from "@/services/firestore";
+import type { Activity } from "@/lib/types";
 
 export default async function ContractDetailPage({
   params,
@@ -44,10 +45,14 @@ export default async function ContractDetailPage({
     notFound();
   }
 
-  const [contractMeterReadings, contractInvoices] = await Promise.all([
+  const [contractMeterReadings, contractInvoices, activities] = await Promise.all([
     getMeterReadingsByContract(contract.id),
     getInvoicesByContract(contract.id),
+    getActivities(),
   ]);
+  
+  const activityMap = new Map(activities.map((a: Activity) => [a.id, a.label]));
+  const contractActivities = contract.activityIds.map(id => activityMap.get(id) || 'Activité inconnue');
 
   const serviceLabels: Record<string, string> = {
     hot_water: "Eau Chaude",
@@ -114,7 +119,7 @@ export default async function ContractDetailPage({
                 <div>
                   <span className="font-medium">Prestations :</span>
                   <ul className="list-disc pl-5">
-                    {contract.activities.map((activity) => (
+                    {contractActivities.map((activity) => (
                       <li key={activity}>{activity}</li>
                     ))}
                   </ul>

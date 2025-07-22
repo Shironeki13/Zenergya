@@ -223,14 +223,14 @@ export async function deleteSector(id: string) {
 
 
 // Activités
-export async function createActivity(name: string) {
-    return createSettingItem('activities', { name });
+export async function createActivity(data: Omit<Activity, 'id'>) {
+    return createSettingItem('activities', data);
 }
 export async function getActivities(): Promise<Activity[]> {
     return getSettingItems<Activity>('activities');
 }
-export async function updateActivity(id: string, name: string) {
-    return updateSettingItem('activities', id, { name });
+export async function updateActivity(id: string, data: Partial<Omit<Activity, 'id'>>) {
+    return updateSettingItem('activities', id, data);
 }
 export async function deleteActivity(id: string) {
     return deleteSettingItem('activities', id);

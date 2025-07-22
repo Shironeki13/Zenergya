@@ -557,7 +557,8 @@ const ActivitiesSection = () => {
     const [dialogOpen, setDialogOpen] = useState(false);
     const [editingActivity, setEditingActivity] = useState<Activity | null>(null);
     const [activityToDelete, setActivityToDelete] = useState<Activity | null>(null);
-    const [name, setName] = useState('');
+    const [code, setCode] = useState('');
+    const [label, setLabel] = useState('');
 
     const loadActivities = useCallback(async () => {
         setIsLoading(true);
@@ -569,24 +570,25 @@ const ActivitiesSection = () => {
 
     useEffect(() => { loadActivities(); }, [loadActivities]);
     
-    const resetForm = () => { setName(''); setEditingActivity(null); };
+    const resetForm = () => { setCode(''); setLabel(''); setEditingActivity(null); };
 
     const handleOpenDialog = (activity: Activity | null = null) => {
         setEditingActivity(activity);
-        setName(activity ? activity.name : '');
+        setCode(activity ? activity.code : '');
+        setLabel(activity ? activity.label : '');
         setDialogOpen(true);
     };
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!name.trim()) return;
+        if (!code.trim() || !label.trim()) return;
         setIsSubmitting(true);
         try {
             if (editingActivity) {
-                await updateActivity(editingActivity.id, name);
+                await updateActivity(editingActivity.id, { code, label });
                 toast({ title: "Succès", description: "Activité mise à jour." });
             } else {
-                await createActivity(name);
+                await createActivity({ code, label });
                 toast({ title: "Succès", description: "Activité créée." });
             }
             await loadActivities();
@@ -617,7 +619,7 @@ const ActivitiesSection = () => {
                 <div className="flex justify-between items-center">
                     <div>
                         <CardTitle>Activités</CardTitle>
-                        <CardDescription>Gérez vos activités.</CardDescription>
+                        <CardDescription>Gérez les activités ou prestations facturables.</CardDescription>
                     </div>
                      <Button size="sm" className="gap-1" onClick={() => handleOpenDialog()}>
                         <PlusCircle className="h-4 w-4" /> Créer
@@ -627,14 +629,15 @@ const ActivitiesSection = () => {
             <CardContent>
                 <div className="border rounded-md">
                     <Table>
-                        <TableHeader><TableRow><TableHead>Nom</TableHead><TableHead className="w-[100px] text-right">Actions</TableHead></TableRow></TableHeader>
+                        <TableHeader><TableRow><TableHead className="w-[150px]">Code</TableHead><TableHead>Libellé</TableHead><TableHead className="w-[100px] text-right">Actions</TableHead></TableRow></TableHeader>
                         <TableBody>
-                            {isLoading ? ( <TableRow><TableCell colSpan={2} className="text-center">Chargement...</TableCell></TableRow>
-                            ) : activities.length === 0 ? ( <TableRow><TableCell colSpan={2} className="text-center">Aucune activité.</TableCell></TableRow>
+                            {isLoading ? ( <TableRow><TableCell colSpan={3} className="text-center">Chargement...</TableCell></TableRow>
+                            ) : activities.length === 0 ? ( <TableRow><TableCell colSpan={3} className="text-center">Aucune activité.</TableCell></TableRow>
                             ) : (
                                 activities.map(activity => (
                                     <TableRow key={activity.id}>
-                                        <TableCell className="font-medium">{activity.name}</TableCell>
+                                        <TableCell className="font-medium">{activity.code}</TableCell>
+                                        <TableCell>{activity.label}</TableCell>
                                         <TableCell className="text-right">
                                             <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleOpenDialog(activity)}><Edit className="h-4 w-4" /></Button>
                                             <Dialog open={!!activityToDelete && activityToDelete.id === activity.id} onOpenChange={(isOpen) => !isOpen && setActivityToDelete(null)}>
@@ -642,7 +645,7 @@ const ActivitiesSection = () => {
                                                     <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive" onClick={() => setActivityToDelete(activity)}><Trash2 className="h-4 w-4" /></Button>
                                                 </DialogTrigger>
                                                 <DialogContent>
-                                                    <DialogHeader><DialogTitle>Supprimer {activityToDelete?.name}</DialogTitle><DialogDescription>Cette action est irréversible.</DialogDescription></DialogHeader>
+                                                    <DialogHeader><DialogTitle>Supprimer {activityToDelete?.code}</DialogTitle><DialogDescription>Cette action est irréversible.</DialogDescription></DialogHeader>
                                                     <DialogFooter>
                                                         <Button variant="outline" onClick={() => setActivityToDelete(null)}>Annuler</Button>
                                                         <Button variant="destructive" onClick={handleDelete}>Confirmer</Button>
@@ -660,7 +663,14 @@ const ActivitiesSection = () => {
                     <DialogContent>
                         <DialogHeader><DialogTitle>{editingActivity ? "Modifier l'activité" : "Nouvelle activité"}</DialogTitle></DialogHeader>
                         <form onSubmit={handleSubmit} className="space-y-4">
-                            <div className="space-y-2"><Label htmlFor="activityName">Nom de l'activité</Label><Input id="activityName" value={name} onChange={e => setName(e.target.value)} required /></div>
+                            <div className="space-y-2">
+                                <Label htmlFor="activityCode">Code</Label>
+                                <Input id="activityCode" value={code} onChange={e => setCode(e.target.value)} required />
+                            </div>
+                            <div className="space-y-2">
+                                <Label htmlFor="activityLabel">Libellé</Label>
+                                <Input id="activityLabel" value={label} onChange={e => setLabel(e.target.value)} required />
+                            </div>
                             <DialogFooter>
                                 <DialogClose asChild><Button variant="outline">Annuler</Button></DialogClose>
                                 <Button type="submit" disabled={isSubmitting}>{isSubmitting ? "Enregistrement..." : "Enregistrer"}</Button>
