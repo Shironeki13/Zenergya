@@ -1,7 +1,7 @@
 
 'use server';
 import { db } from '@/lib/firebase';
-import type { Client, Site, Contract, Invoice, MeterReading, Company, Agency, Sector, Activity, User, Role, Schedule, Term } from '@/lib/types';
+import type { Client, Site, Contract, Invoice, MeterReading, Company, Agency, Sector, Activity, User, Role, Schedule, Term, Typology } from '@/lib/types';
 import { collection, getDocs, doc, getDoc, addDoc, updateDoc, deleteDoc, query, where, DocumentData, writeBatch } from 'firebase/firestore';
 
 // --- Fonctions de Service (Firestore) ---
@@ -262,6 +262,20 @@ export async function updateTerm(id: string, name: string) {
 }
 export async function deleteTerm(id: string) {
     return deleteSettingItem('terms', id);
+}
+
+// Typologies
+export async function createTypology(name: string) {
+    return createSettingItem('typologies', { name });
+}
+export async function getTypologies(): Promise<Typology[]> {
+    return getSettingItems<Typology>('typologies');
+}
+export async function updateTypology(id: string, name: string) {
+    return updateSettingItem('typologies', id, { name });
+}
+export async function deleteTypology(id: string) {
+    return deleteSettingItem('typologies', id);
 }
 
 

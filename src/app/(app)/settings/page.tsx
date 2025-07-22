@@ -1,3 +1,4 @@
+
 'use client';
 import React, { useState, useEffect, useCallback } from 'react';
 import Image from 'next/image';
@@ -18,7 +19,8 @@ import {
   createSector, getSectors, updateSector, deleteSector,
   createActivity, getActivities, updateActivity, deleteActivity,
   createSchedule, getSchedules, updateSchedule, deleteSchedule,
-  createTerm, getTerms, updateTerm, deleteTerm
+  createTerm, getTerms, updateTerm, deleteTerm,
+  createTypology, getTypologies, updateTypology, deleteTypology
 } from "@/services/firestore";
 import type { Company, Agency, Sector, Activity, Schedule, Term } from "@/lib/types";
 
@@ -679,7 +681,7 @@ const SimpleCrudSection = ({
 }: {
   title: string;
   description: string;
-  dataType: "schedule" | "term";
+  dataType: "schedule" | "term" | "typology";
   getItems: () => Promise<{ id: string; name: string }[]>;
   createItem: (name: string) => Promise<any>;
   updateItem: (id: string, name: string) => Promise<void>;
@@ -824,6 +826,7 @@ export default function SettingsPage() {
           <TabsTrigger value="agencies">Agences</TabsTrigger>
           <TabsTrigger value="sectors">Secteurs</TabsTrigger>
           <TabsTrigger value="activities">Activités</TabsTrigger>
+          <TabsTrigger value="typologies">Typologies</TabsTrigger>
           <TabsTrigger value="schedules">Échéanciers</TabsTrigger>
           <TabsTrigger value="terms">Termes</TabsTrigger>
         </TabsList>
@@ -838,6 +841,17 @@ export default function SettingsPage() {
         </TabsContent>
         <TabsContent value="activities">
           <ActivitiesSection />
+        </TabsContent>
+        <TabsContent value="typologies">
+            <SimpleCrudSection 
+                title="Typologies"
+                description="Gérez les typologies de clients."
+                dataType="typology"
+                getItems={getTypologies}
+                createItem={createTypology}
+                updateItem={updateTypology}
+                deleteItem={deleteTypology}
+            />
         </TabsContent>
         <TabsContent value="schedules">
             <SimpleCrudSection 

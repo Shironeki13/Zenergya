@@ -97,6 +97,11 @@ export type Term = {
     name: string;
 }
 
+export type Typology = {
+    id: string;
+    name: string;
+}
+
 // User Management Types
 export type Role = {
     id: string;
