@@ -9,10 +9,10 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger, DialogClose } from "@/components/ui/dialog";
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Checkbox } from '@/components/ui/checkbox';
 import { ChevronLeft, PlusCircle, Edit, Trash2 } from 'lucide-react';
-import { getClient, getSitesByClient, createSite, updateSite, deleteSite, getContractsByClient, getActivities } from '@/services/firestore';
-import type { Client, Site, Contract, Activity } from '@/lib/types';
+import { getClient, getSitesByClient, createSite, updateSite, deleteSite, getActivities } from '@/services/firestore';
+import type { Client, Site, Activity } from '@/lib/types';
 import { useToast } from '@/hooks/use-toast';
 
 export default function ClientDetailPage() {
@@ -22,7 +22,6 @@ export default function ClientDetailPage() {
   
   const [client, setClient] = useState<Client | null>(null);
   const [sites, setSites] = useState<Site[]>([]);
-  const [contracts, setContracts] = useState<Contract[]>([]);
   const [activities, setActivities] = useState<Activity[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   
@@ -36,7 +35,7 @@ export default function ClientDetailPage() {
   const [siteAddress, setSiteAddress] = useState('');
   const [sitePostalCode, setSitePostalCode] = useState('');
   const [siteCity, setSiteCity] = useState('');
-  const [siteContractId, setSiteContractId] = useState<string | undefined>('');
+  const [siteActivityIds, setSiteActivityIds] = useState<string[]>([]);
   const [siteAmounts, setSiteAmounts] = useState<Record<string, number>>({});
 
   const loadClientData = useCallback(async () => {
@@ -47,13 +46,11 @@ export default function ClientDetailPage() {
         notFound();
       }
       setClient(clientData);
-      const [sitesData, contractsData, activitiesData] = await Promise.all([
+      const [sitesData, activitiesData] = await Promise.all([
         getSitesByClient(id),
-        getContractsByClient(id),
         getActivities()
       ]);
       setSites(sitesData);
-      setContracts(contractsData);
       setActivities(activitiesData);
     } catch (error) {
       toast({ title: "Erreur", description: "Impossible de charger les données du client.", variant: "destructive" });
@@ -66,27 +63,19 @@ export default function ClientDetailPage() {
     loadClientData();
   }, [loadClientData]);
 
-  const selectedContract = useMemo(() => {
-    return contracts.find(c => c.id === siteContractId);
-  }, [contracts, siteContractId]);
-
-  const contractActivities = useMemo(() => {
-    if (!selectedContract) return [];
-    return activities.filter(a => selectedContract.activityIds.includes(a.id));
-  }, [selectedContract, activities]);
-
   const resetForm = () => {
     setSiteName('');
     setSiteNumber('');
     setSiteAddress('');
     setSitePostalCode('');
     setSiteCity('');
-    setSiteContractId(undefined);
+    setSiteActivityIds([]);
     setSiteAmounts({});
     setEditingSite(null);
   };
 
   const handleOpenDialog = (site: Site | null = null) => {
+    resetForm();
     if (site) {
       setEditingSite(site);
       setSiteName(site.name);
@@ -94,11 +83,9 @@ export default function ClientDetailPage() {
       setSiteAddress(site.address);
       setSitePostalCode(site.postalCode || '');
       setSiteCity(site.city || '');
-      setSiteContractId(site.contractId);
+      setSiteActivityIds(site.activityIds || []);
       const amounts = site.amounts?.reduce((acc, curr) => ({ ...acc, [curr.activityId]: curr.amount }), {}) || {};
       setSiteAmounts(amounts);
-    } else {
-      resetForm();
     }
     setDialogOpen(true);
   };
@@ -113,8 +100,10 @@ export default function ClientDetailPage() {
         address: siteAddress,
         postalCode: sitePostalCode,
         city: siteCity,
-        contractId: siteContractId,
-        amounts: Object.entries(siteAmounts).map(([activityId, amount]) => ({ activityId, amount: Number(amount) || 0 })),
+        activityIds: siteActivityIds,
+        amounts: Object.entries(siteAmounts)
+            .filter(([activityId]) => siteActivityIds.includes(activityId))
+            .map(([activityId, amount]) => ({ activityId, amount: Number(amount) || 0 })),
     };
 
     try {
@@ -144,6 +133,12 @@ export default function ClientDetailPage() {
     } catch (error) {
         toast({ title: "Erreur", description: "Impossible de supprimer le site.", variant: "destructive" });
     }
+  };
+  
+  const handleActivityChange = (activityId: string, checked: boolean) => {
+      setSiteActivityIds(prev => 
+          checked ? [...prev, activityId] : prev.filter(id => id !== activityId)
+      );
   };
 
   if (isLoading) {
@@ -191,7 +186,6 @@ export default function ClientDetailPage() {
                 <TableHead>N° Site</TableHead>
                 <TableHead>Nom du Site</TableHead>
                 <TableHead>Adresse</TableHead>
-                <TableHead>Contrat</TableHead>
                 <TableHead className="text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
@@ -202,7 +196,6 @@ export default function ClientDetailPage() {
                     <TableCell>{site.siteNumber || 'N/A'}</TableCell>
                     <TableCell className="font-medium">{site.name}</TableCell>
                     <TableCell>{`${site.address}, ${site.postalCode} ${site.city}`}</TableCell>
-                    <TableCell>{site.contractId ? site.contractId.substring(0, 8) + '...' : 'Aucun'}</TableCell>
                     <TableCell className="text-right">
                         <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleOpenDialog(site)}>
                             <Edit className="h-4 w-4" />
@@ -229,7 +222,7 @@ export default function ClientDetailPage() {
                 ))
               ) : (
                 <TableRow>
-                  <TableCell colSpan={5} className="text-center">
+                  <TableCell colSpan={4} className="text-center">
                     Aucun site n'a encore été créé for ce client.
                   </TableCell>
                 </TableRow>
@@ -269,44 +262,49 @@ export default function ClientDetailPage() {
                         <Input id="siteCity" value={siteCity} onChange={(e) => setSiteCity(e.target.value)} />
                     </div>
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="siteContractId">Contrat rattaché</Label>
-                  <Select onValueChange={(value) => setSiteContractId(value)} value={siteContractId}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Sélectionnez un contrat" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {contracts.map(contract => (
-                        <SelectItem key={contract.id} value={contract.id}>
-                          {`Contrat du ${new Date(contract.startDate).toLocaleDateString()} au ${new Date(contract.endDate).toLocaleDateString()}`}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                {selectedContract && contractActivities.length > 0 && (
-                    <Card>
-                        <CardHeader>
-                            <CardTitle>Montants à facturer</CardTitle>
-                            <CardDescription>Saisissez les montants pour chaque prestation du contrat.</CardDescription>
-                        </CardHeader>
-                        <CardContent className="space-y-4">
-                          {contractActivities.map(activity => (
-                              <div key={activity.id} className="space-y-2">
-                                <Label htmlFor={`amount-${activity.id}`}>{activity.label} ({activity.code})</Label>
-                                <Input 
-                                  id={`amount-${activity.id}`} 
-                                  type="number" 
-                                  placeholder="Montant en €"
-                                  value={siteAmounts[activity.id] || ''} 
-                                  onChange={(e) => setSiteAmounts(prev => ({...prev, [activity.id]: parseFloat(e.target.value) }))} 
-                                />
-                              </div>
-                          ))}
-                        </CardContent>
-                    </Card>
-                )}
+                
+                <Card>
+                    <CardHeader>
+                        <CardTitle>Activités et Montants</CardTitle>
+                        <CardDescription>Sélectionnez les activités et saisissez les montants annuels HT.</CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                      <div className="space-y-2">
+                        <Label>Activités</Label>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                            {activities.map(activity => (
+                                <div key={activity.id} className="flex items-center space-x-2">
+                                    <Checkbox
+                                        id={`activity-${activity.id}`}
+                                        checked={siteActivityIds.includes(activity.id)}
+                                        onCheckedChange={(checked) => handleActivityChange(activity.id, !!checked)}
+                                    />
+                                    <label htmlFor={`activity-${activity.id}`} className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
+                                        {activity.label} ({activity.code})
+                                    </label>
+                                </div>
+                            ))}
+                        </div>
+                      </div>
+                      
+                      {siteActivityIds.length > 0 && (
+                          <div className="space-y-4 pt-4 border-t">
+                              {activities.filter(a => siteActivityIds.includes(a.id)).map(activity => (
+                                  <div key={activity.id} className="space-y-2">
+                                    <Label htmlFor={`amount-${activity.id}`}>Montant Annuel HT pour {activity.label}</Label>
+                                    <Input 
+                                      id={`amount-${activity.id}`} 
+                                      type="number" 
+                                      placeholder="Montant en €"
+                                      value={siteAmounts[activity.id] || ''} 
+                                      onChange={(e) => setSiteAmounts(prev => ({...prev, [activity.id]: parseFloat(e.target.value) || 0 }))} 
+                                    />
+                                  </div>
+                              ))}
+                          </div>
+                      )}
+                    </CardContent>
+                </Card>
                 
                 <DialogFooter className="pt-4">
                     <DialogClose asChild><Button type="button" variant="outline">Annuler</Button></DialogClose>
