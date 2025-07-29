@@ -117,6 +117,8 @@ export type Company = {
     postalCode?: string;
     city?: string;
     siret?: string;
+    siren?: string;
+    vatNumber?: string;
 }
 
 export type Agency = {

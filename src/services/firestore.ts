@@ -1,5 +1,4 @@
 
-
 'use server';
 import { db } from '@/lib/firebase';
 import type { Client, Site, Contract, Invoice, MeterReading, Company, Agency, Sector, Activity, User, Role, Schedule, Term, Typology, VatRate, RevisionFormula, PaymentTerm, PricingRule, Market } from '@/lib/types';
@@ -154,13 +153,22 @@ async function deleteSettingItem(collectionName: string, id: string): Promise<vo
 
 // Sociétés
 export async function createCompany(data: Omit<Company, 'id'>) {
-    return createSettingItem('companies', { ...data, logoUrl: data.logoUrl || null });
+    const companyData = {
+        ...data,
+        logoUrl: data.logoUrl || null,
+        siren: data.siret ? data.siret.substring(0, 9) : ''
+    };
+    return createSettingItem('companies', companyData);
 }
 export async function getCompanies(): Promise<Company[]> {
     return getSettingItems<Company>('companies');
 }
 export async function updateCompany(id: string, data: Partial<Omit<Company, 'id'>>) {
-    return updateSettingItem('companies', id, data);
+     const companyData = {
+        ...data,
+        siren: data.siret ? data.siret.substring(0, 9) : ''
+    };
+    return updateSettingItem('companies', id, companyData);
 }
 export async function deleteCompany(id: string) {
     const batch = writeBatch(db);
