@@ -52,6 +52,11 @@ const monthlyBillingSchema = z.object({
   percentage: z.number().min(0).max(100),
 });
 
+const revisionSchema = z.object({
+  formulaId: z.string().optional(),
+  date: z.date().optional(),
+}).optional();
+
 const contractFormSchema = z.object({
   clientId: z.string({ required_error: "Un client est requis." }),
   siteIds: z.array(z.string()).refine((value) => value.length > 0, {
@@ -66,8 +71,9 @@ const contractFormSchema = z.object({
   }),
   marketId: z.string().optional(),
   hasInterest: z.boolean().default(false),
-  revisionFormulaId: z.string().optional(),
-  revisionDate: z.date().optional(),
+  revisionP1: revisionSchema,
+  revisionP2: revisionSchema,
+  revisionP3: revisionSchema,
   monthlyBilling: z.array(monthlyBillingSchema).optional(),
   // Conditional fields
   heatingDays: z.number().optional(),
@@ -115,6 +121,8 @@ export default function NewContractPage() {
   const [terms, setTerms] = useState<Term[]>([]);
   const [markets, setMarkets] = useState<Market[]>([]);
   const [revisionFormulas, setRevisionFormulas] = useState<RevisionFormula[]>([]);
+  
+  const [activityMap, setActivityMap] = useState<Map<string, string>>(new Map());
 
   const form = useForm<ContractFormValues>({
     resolver: zodResolver(contractFormSchema),
@@ -131,8 +139,6 @@ export default function NewContractPage() {
   const watchMarketId = form.watch("marketId");
   const watchActivityIds = form.watch("activityIds");
   const watchHasInterest = form.watch("hasInterest");
-
-  const [p1ActivityId, setP1ActivityId] = useState<string | null>(null);
 
   useEffect(() => {
     async function fetchInitialData() {
@@ -159,10 +165,8 @@ export default function NewContractPage() {
         setMarkets(fetchedMarkets);
         setRevisionFormulas(fetchedRevisionFormulas);
         
-        const p1 = fetchedActivities.find(a => a.code === 'P1');
-        if (p1) {
-            setP1ActivityId(p1.id);
-        }
+        const newActivityMap = new Map(fetchedActivities.map(a => [a.code, a.id]));
+        setActivityMap(newActivityMap);
 
       } catch (error) {
         toast({
@@ -193,7 +197,15 @@ export default function NewContractPage() {
   }, [selectedClientId, toast, form]);
 
   const selectedMarket = markets.find(m => m.id === watchMarketId);
-  const p1IsSelected = p1ActivityId ? watchActivityIds.includes(p1ActivityId) : false;
+
+  const isActivitySelected = (code: string) => {
+    const activityId = activityMap.get(code);
+    return activityId ? watchActivityIds.includes(activityId) : false;
+  }
+
+  const p1IsSelected = isActivitySelected('P1');
+  const p2IsSelected = isActivitySelected('P2');
+  const p3IsSelected = isActivitySelected('P3');
 
   const showHeatingDays = selectedMarket?.code === 'MF' && p1IsSelected;
   const showMeteoStation = selectedMarket?.code === 'MT' && p1IsSelected;
@@ -213,7 +225,9 @@ export default function NewContractPage() {
             ...data,
             startDate: format(data.startDate, "yyyy-MM-dd"),
             endDate: format(data.endDate, "yyyy-MM-dd"),
-            revisionDate: data.revisionDate ? format(data.revisionDate, "yyyy-MM-dd") : undefined,
+            revisionP1: data.revisionP1?.date ? { ...data.revisionP1, date: format(data.revisionP1.date, "yyyy-MM-dd") } : undefined,
+            revisionP2: data.revisionP2?.date ? { ...data.revisionP2, date: format(data.revisionP2.date, "yyyy-MM-dd") } : undefined,
+            revisionP3: data.revisionP3?.date ? { ...data.revisionP3, date: format(data.revisionP3.date, "yyyy-MM-dd") } : undefined,
             clientName: selectedClient.name,
             ...shareRates,
         }
@@ -234,6 +248,61 @@ export default function NewContractPage() {
       });
     }
   }
+  
+  const renderRevisionFields = (code: 'P1' | 'P2' | 'P3') => (
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-8 p-4 border rounded-lg mt-4">
+      <FormField
+        control={form.control}
+        name={`revision${code}.formulaId`}
+        render={({ field }) => (
+          <FormItem>
+            <FormLabel>Formule de révision {code}</FormLabel>
+            <Select onValueChange={field.onChange} defaultValue={field.value}>
+              <FormControl>
+                <SelectTrigger>
+                  <SelectValue placeholder="Sélectionnez une formule" />
+                </SelectTrigger>
+              </FormControl>
+              <SelectContent>
+                {revisionFormulas.map((formula) => (
+                  <SelectItem key={formula.id} value={formula.id}>
+                    {formula.code}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <FormMessage />
+          </FormItem>
+        )}
+      />
+       <FormField
+          control={form.control}
+          name={`revision${code}.date`}
+          render={({ field }) => (
+            <FormItem className="flex flex-col">
+              <FormLabel>Date de Révision {code}</FormLabel>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <FormControl>
+                    <Button
+                      variant={"outline"}
+                      className={cn("w-full pl-3 text-left font-normal", !field.value && "text-muted-foreground")}
+                    >
+                      {field.value ? (format(field.value, "PPP", { locale: fr })) : (<span>Choisir une date</span>)}
+                      <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
+                    </Button>
+                  </FormControl>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="start">
+                  <Calendar mode="single" selected={field.value} onSelect={field.onChange} initialFocus locale={fr}/>
+                </PopoverContent>
+              </Popover>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+    </div>
+  );
 
   return (
     <Card>
@@ -566,6 +635,10 @@ export default function NewContractPage() {
             )}
           />
 
+          {p1IsSelected && renderRevisionFields('P1')}
+          {p2IsSelected && renderRevisionFields('P2')}
+          {p3IsSelected && renderRevisionFields('P3')}
+
           <Separator />
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-start">
@@ -599,59 +672,6 @@ export default function NewContractPage() {
                     <FormControl><Switch checked={field.value} onCheckedChange={field.onChange} /></FormControl>
                 </FormItem>
               )} />
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-              <FormField
-                control={form.control}
-                name="revisionFormulaId"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Formule de révision</FormLabel>
-                    <Select onValueChange={field.onChange} defaultValue={field.value}>
-                      <FormControl>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Sélectionnez une formule" />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        {revisionFormulas.map((formula) => (
-                          <SelectItem key={formula.id} value={formula.id}>
-                            {formula.code}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-               <FormField
-                  control={form.control}
-                  name="revisionDate"
-                  render={({ field }) => (
-                    <FormItem className="flex flex-col">
-                      <FormLabel>Date de Révision</FormLabel>
-                      <Popover>
-                        <PopoverTrigger asChild>
-                          <FormControl>
-                            <Button
-                              variant={"outline"}
-                              className={cn("w-full pl-3 text-left font-normal", !field.value && "text-muted-foreground")}
-                            >
-                              {field.value ? (format(field.value, "PPP", { locale: fr })) : (<span>Choisir une date</span>)}
-                              <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
-                            </Button>
-                          </FormControl>
-                        </PopoverTrigger>
-                        <PopoverContent className="w-auto p-0" align="start">
-                          <Calendar mode="single" selected={field.value} onSelect={field.onChange} initialFocus locale={fr}/>
-                        </PopoverContent>
-                      </Popover>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
           </div>
           
           {(showHeatingDays || showBaseDJU || watchHasInterest || showFlatRate || showUsefulMWhPrice || showPrimaryMWhPrice) && <Separator />}

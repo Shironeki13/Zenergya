@@ -37,6 +37,11 @@ export type MonthlyBilling = {
   percentage: number;
 }
 
+export type RevisionInfo = {
+  formulaId?: string;
+  date?: Date;
+}
+
 export type Contract = {
   id: string;
   clientId: string;
@@ -50,8 +55,11 @@ export type Contract = {
   status: "active" | "expired" | "pending";
   marketId?: string;
   hasInterest?: boolean;
-  revisionFormulaId?: string;
-  revisionDate?: string;
+  
+  revisionP1?: { formulaId?: string; date?: string; };
+  revisionP2?: { formulaId?: string; date?: string; };
+  revisionP3?: { formulaId?: string; date?: string; };
+
   monthlyBilling?: MonthlyBilling[];
   // Conditional fields
   heatingDays?: number; // Jours de chauffe (MF)
