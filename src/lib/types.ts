@@ -1,5 +1,7 @@
 
 
+import { z } from 'zod';
+
 export type Client = {
   id: string;
   name: string; // Raison Sociale
@@ -212,3 +214,16 @@ export type User = {
     roleId: string;
     roleName?: string; // Optional for display
 }
+
+// Genkit Flow Schemas
+export const GenerateInvoiceInputSchema = z.object({
+  contractId: z.string().describe('The ID of the contract to generate an invoice for.'),
+});
+export type GenerateInvoiceInput = z.infer<typeof GenerateInvoiceInputSchema>;
+
+export const GenerateInvoiceOutputSchema = z.object({
+    success: z.boolean(),
+    invoiceId: z.string().optional(),
+    error: z.string().optional(),
+});
+export type GenerateInvoiceOutput = z.infer<typeof GenerateInvoiceOutputSchema>;

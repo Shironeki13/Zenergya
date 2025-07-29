@@ -16,19 +16,9 @@ import {
   getActivities,
   createInvoice 
 } from '@/services/firestore';
-import type { InvoiceLineItem, Schedule } from '@/lib/types';
+import type { InvoiceLineItem } from '@/lib/types';
+import { GenerateInvoiceInputSchema, GenerateInvoiceOutputSchema, type GenerateInvoiceInput, type GenerateInvoiceOutput } from '@/lib/types';
 
-export const GenerateInvoiceInputSchema = z.object({
-  contractId: z.string().describe('The ID of the contract to generate an invoice for.'),
-});
-export type GenerateInvoiceInput = z.infer<typeof GenerateInvoiceInputSchema>;
-
-export const GenerateInvoiceOutputSchema = z.object({
-    success: z.boolean(),
-    invoiceId: z.string().optional(),
-    error: z.string().optional(),
-});
-export type GenerateInvoiceOutput = z.infer<typeof GenerateInvoiceOutputSchema>;
 
 // This is the exported function that the UI will call.
 export async function generateInvoice(input: GenerateInvoiceInput): Promise<GenerateInvoiceOutput> {
