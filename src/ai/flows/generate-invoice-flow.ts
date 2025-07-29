@@ -14,7 +14,7 @@ import {
   getContract, 
   getSitesByClient, 
   getActivities,
-  createSettingItem 
+  createInvoice 
 } from '@/services/firestore';
 import type { InvoiceLineItem, Schedule } from '@/lib/types';
 
@@ -70,7 +70,7 @@ const generateInvoiceFlow = ai.defineFlow(
 
         for (const amountInfo of site.amounts) {
           const activity = activityMap.get(amountInfo.activityId);
-          if (activity) {
+          if (activity && contract.activityIds.includes(activity.id)) {
             const lineTotal = amountInfo.amount * billingFactor;
             lineItems.push({
               description: `Prestation: ${activity.label} (${activity.code}) - Site: ${site.name}`,
@@ -109,7 +109,7 @@ const generateInvoiceFlow = ai.defineFlow(
         total,
       };
 
-      const savedInvoice = await createSettingItem('invoices', newInvoice);
+      const savedInvoice = await createInvoice(newInvoice);
 
       return {
         success: true,

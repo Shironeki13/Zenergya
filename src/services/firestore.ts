@@ -147,6 +147,12 @@ export async function getInvoicesByContract(contractId: string): Promise<Invoice
     return invoiceSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Invoice));
 }
 
+export async function createInvoice(data: Omit<Invoice, 'id'>) {
+    const invoicesCollection = collection(db, 'invoices');
+    const docRef = await addDoc(invoicesCollection, data);
+    return { id: docRef.id, ...data };
+}
+
 // Relevés de compteur
 export async function getMeterReadingsByContract(contractId: string): Promise<MeterReading[]> {
     const readingsCollection = collection(db, 'meterReadings');
