@@ -161,7 +161,7 @@ const CompaniesSection = () => {
             toast({ title: "Succès", description: `${companyToDelete.name} a été supprimée.` });
             await loadCompanies();
             setCompanyToDelete(null);
-        } catch (error) => {
+        } catch (error) {
             toast({ title: "Erreur", description: "Impossible de supprimer la société.", variant: "destructive" });
         }
     };
