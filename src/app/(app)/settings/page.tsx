@@ -55,6 +55,7 @@ const CompaniesSection = () => {
     const [address, setAddress] = useState('');
     const [postalCode, setPostalCode] = useState('');
     const [city, setCity] = useState('');
+    const [siret, setSiret] = useState('');
     const [logoFile, setLogoFile] = useState<File | null>(null);
     const [logoPreview, setLogoPreview] = useState<string | null>(null);
 
@@ -79,6 +80,7 @@ const CompaniesSection = () => {
         setAddress('');
         setPostalCode('');
         setCity('');
+        setSiret('');
         setLogoFile(null);
         setLogoPreview(null);
         setEditingCompany(null);
@@ -91,6 +93,7 @@ const CompaniesSection = () => {
             setAddress(company.address || '');
             setPostalCode(company.postalCode || '');
             setCity(company.city || '');
+            setSiret(company.siret || '');
             setLogoPreview(company.logoUrl || null);
         } else {
             resetForm();
@@ -118,7 +121,7 @@ const CompaniesSection = () => {
                 logoUrl = await fileToDataUrl(logoFile);
             }
 
-            const companyData: Partial<Company> = { name, address, postalCode, city, logoUrl };
+            const companyData: Partial<Company> = { name, address, postalCode, city, siret, logoUrl };
             
             if (editingCompany) {
                 await updateCompany(editingCompany.id, companyData);
@@ -171,14 +174,15 @@ const CompaniesSection = () => {
                 <TableHead className="w-[80px]">Logo</TableHead>
                 <TableHead>Nom</TableHead>
                 <TableHead>Adresse</TableHead>
+                <TableHead>SIRET</TableHead>
                 <TableHead className="w-[100px] text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {isLoading ? (
-                <TableRow><TableCell colSpan={4} className="text-center">Chargement...</TableCell></TableRow>
+                <TableRow><TableCell colSpan={5} className="text-center">Chargement...</TableCell></TableRow>
               ) : companies.length === 0 ? (
-                <TableRow><TableCell colSpan={4} className="text-center">Aucune société trouvée.</TableCell></TableRow>
+                <TableRow><TableCell colSpan={5} className="text-center">Aucune société trouvée.</TableCell></TableRow>
               ) : (
                 companies.map((company) => (
                   <TableRow key={company.id}>
@@ -193,6 +197,7 @@ const CompaniesSection = () => {
                     <TableCell>
                         {company.address ? `${company.address}, ${company.postalCode} ${company.city}` : 'N/A'}
                     </TableCell>
+                    <TableCell>{company.siret || 'N/A'}</TableCell>
                     <TableCell className="text-right">
                        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleOpenDialog(company)}>
                           <Edit className="h-4 w-4" />
@@ -247,6 +252,10 @@ const CompaniesSection = () => {
                             <Label htmlFor="city">Ville</Label>
                             <Input id="city" value={city} onChange={(e) => setCity(e.target.value)} />
                         </div>
+                    </div>
+                     <div className="space-y-2">
+                        <Label htmlFor="siret">SIRET</Label>
+                        <Input id="siret" value={siret} onChange={(e) => setSiret(e.target.value)} />
                     </div>
                     <div className="space-y-2">
                         <Label>Logo</Label>

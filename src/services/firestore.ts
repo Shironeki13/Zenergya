@@ -153,7 +153,7 @@ async function deleteSettingItem(collectionName: string, id: string): Promise<vo
 }
 
 // Sociétés
-export async function createCompany(data: Omit<Company, 'id' | 'logoUrl'> & { logoUrl?: string }) {
+export async function createCompany(data: Omit<Company, 'id'>) {
     return createSettingItem('companies', { ...data, logoUrl: data.logoUrl || null });
 }
 export async function getCompanies(): Promise<Company[]> {

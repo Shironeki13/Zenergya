@@ -116,6 +116,7 @@ export type Company = {
     address?: string;
     postalCode?: string;
     city?: string;
+    siret?: string;
 }
 
 export type Agency = {
