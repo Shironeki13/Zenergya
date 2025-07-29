@@ -8,6 +8,7 @@ import {
   Menu,
   Users,
   Building,
+  MapPin,
 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
@@ -30,6 +31,7 @@ export default function AppLayout({
   const navItems = [
     { href: '/dashboard', icon: LayoutDashboard, label: 'Tableau de bord' },
     { href: '/clients', icon: Building, label: 'Clients' },
+    { href: '/sites', icon: MapPin, label: 'Sites' },
     { href: '/contracts', icon: FileSignature, label: 'Contrats' },
     { href: '/invoices', icon: FileText, label: 'Factures' },
     { href: '/users', icon: Users, label: 'Utilisateurs' },

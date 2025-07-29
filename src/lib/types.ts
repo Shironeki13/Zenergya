@@ -26,6 +26,7 @@ export type Client = {
 export type Site = {
     id: string;
     clientId: string;
+    clientName?: string; // Denormalized for display
     contractId?: string; // Le contrat auquel le site est rattaché
     name: string;
     siteNumber?: string;

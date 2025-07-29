@@ -46,6 +46,25 @@ export async function deleteClient(id: string) {
 
 
 // Sites
+export async function getSites(): Promise<Site[]> {
+    const sitesCollection = collection(db, 'sites');
+    const siteSnapshot = await getDocs(sitesCollection);
+    const sites = siteSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Site));
+    
+    // Pour enrichir avec le nom du client
+    if (sites.length > 0) {
+        const clientIds = [...new Set(sites.map(s => s.clientId))];
+        const clients = await getClients();
+        const clientMap = new Map(clients.map(c => [c.id, c.name]));
+        return sites.map(site => ({
+            ...site,
+            clientName: clientMap.get(site.clientId) || 'N/A'
+        }));
+    }
+    return [];
+}
+
+
 export async function getSitesByClient(clientId: string): Promise<Site[]> {
     const sitesCollection = collection(db, 'sites');
     const q = query(sitesCollection, where("clientId", "==", clientId));
