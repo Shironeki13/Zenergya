@@ -69,9 +69,21 @@ export default function NewClientPage() {
     resolver: zodResolver(clientFormSchema),
     defaultValues: {
       name: "",
+      address: "",
+      postalCode: "",
+      city: "",
       clientType: "private",
+      representedBy: "",
+      externalCode: "",
       isBe: false,
+      beName: "",
+      beEmail: "",
+      bePhone: "",
       useChorus: false,
+      siret: "",
+      chorusServiceCode: "",
+      chorusLegalCommitmentNumber: "",
+      chorusMarketNumber: "",
     },
   })
 
