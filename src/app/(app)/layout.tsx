@@ -9,6 +9,7 @@ import {
   Users,
   Building,
   MapPin,
+  CircleDollarSign
 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
@@ -34,6 +35,7 @@ export default function AppLayout({
     { href: '/sites', icon: MapPin, label: 'Sites' },
     { href: '/contracts', icon: FileSignature, label: 'Contrats' },
     { href: '/invoices', icon: FileText, label: 'Factures' },
+    { href: '/billing', icon: CircleDollarSign, label: 'Facturation' },
     { href: '/users', icon: Users, label: 'Utilisateurs' },
     { href: '/settings', icon: Settings, label: 'Paramétrage' },
   ];
