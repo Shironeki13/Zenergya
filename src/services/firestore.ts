@@ -77,6 +77,14 @@ export async function getContracts(): Promise<Contract[]> {
     return contractSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Contract));
 }
 
+export async function getContractsByClient(clientId: string): Promise<Contract[]> {
+    const contractsCollection = collection(db, 'contracts');
+    const q = query(contractsCollection, where("clientId", "==", clientId));
+    const contractSnapshot = await getDocs(q);
+    return contractSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Contract));
+}
+
+
 export async function getContract(id: string): Promise<Contract | null> {
     const contractDoc = doc(db, 'contracts', id);
     const contractSnapshot = await getDoc(contractDoc);

@@ -26,9 +26,13 @@ export type Client = {
 export type Site = {
     id: string;
     clientId: string;
+    contractId?: string; // Le contrat auquel le site est rattaché
     name: string;
+    siteNumber?: string;
     address: string;
-    meterReference?: string;
+    postalCode?: string;
+    city?: string;
+    amounts?: { activityId: string; amount: number }[]; // Montants à facturer par activité
 }
 
 export type MonthlyBilling = {
