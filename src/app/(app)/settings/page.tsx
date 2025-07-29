@@ -1170,6 +1170,7 @@ const VatRatesSection = () => {
 // Section Formules de révision
 const RevisionFormulasSection = () => {
     const [items, setItems] = useState<RevisionFormula[]>([]);
+    const [activities, setActivities] = useState<Activity[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const { toast } = useToast();
     const [isSubmitting, setIsSubmitting] = useState(false);
@@ -1178,31 +1179,40 @@ const RevisionFormulasSection = () => {
     const [itemToDelete, setItemToDelete] = useState<RevisionFormula | null>(null);
     const [code, setCode] = useState('');
     const [formula, setFormula] = useState('');
+    const [activityId, setActivityId] = useState('');
 
     const loadItems = useCallback(async () => {
         setIsLoading(true);
-        try { setItems(await getRevisionFormulas()); } 
-        catch (error) { toast({ title: "Erreur", description: "Impossible de charger les formules.", variant: "destructive" }); } 
+        try {
+            const [formulas, acts] = await Promise.all([
+                getRevisionFormulas(),
+                getActivities()
+            ]);
+            setItems(formulas);
+            setActivities(acts);
+        } 
+        catch (error) { toast({ title: "Erreur", description: "Impossible de charger les données.", variant: "destructive" }); } 
         finally { setIsLoading(false); }
     }, [toast]);
 
     useEffect(() => { loadItems(); }, [loadItems]);
 
-    const resetForm = () => { setCode(''); setFormula(''); setEditingItem(null); };
+    const resetForm = () => { setCode(''); setFormula(''); setActivityId(''); setEditingItem(null); };
 
     const handleOpenDialog = (item: RevisionFormula | null = null) => {
         setEditingItem(item);
         setCode(item ? item.code : '');
         setFormula(item ? item.formula : '');
+        setActivityId(item ? item.activityId : '');
         setDialogOpen(true);
     };
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!code.trim() || !formula.trim()) return;
+        if (!code.trim() || !formula.trim() || !activityId) return;
         setIsSubmitting(true);
         try {
-            const data = { code, formula };
+            const data = { code, formula, activityId };
             if (editingItem) {
                 await updateRevisionFormula(editingItem.id, data);
                 toast({ title: "Succès", description: "Formule mise à jour." });
@@ -1235,13 +1245,14 @@ const RevisionFormulasSection = () => {
             <CardContent>
                 <div className="border rounded-md">
                     <Table>
-                        <TableHeader><TableRow><TableHead>Code</TableHead><TableHead>Formule</TableHead><TableHead className="w-[100px] text-right">Actions</TableHead></TableRow></TableHeader>
+                        <TableHeader><TableRow><TableHead>Code</TableHead><TableHead>Activité</TableHead><TableHead>Formule</TableHead><TableHead className="w-[100px] text-right">Actions</TableHead></TableRow></TableHeader>
                         <TableBody>
-                            {isLoading ? (<TableRow><TableCell colSpan={3} className="text-center">Chargement...</TableCell></TableRow>) 
-                            : items.length === 0 ? (<TableRow><TableCell colSpan={3} className="text-center">Aucune formule.</TableCell></TableRow>) 
+                            {isLoading ? (<TableRow><TableCell colSpan={4} className="text-center">Chargement...</TableCell></TableRow>) 
+                            : items.length === 0 ? (<TableRow><TableCell colSpan={4} className="text-center">Aucune formule.</TableCell></TableRow>) 
                             : (items.map(item => (
                                 <TableRow key={item.id}>
                                     <TableCell className="font-medium">{item.code}</TableCell>
+                                    <TableCell>{item.activityCode} - {item.activityLabel}</TableCell>
                                     <TableCell className="font-mono text-xs">{item.formula}</TableCell>
                                     <TableCell className="text-right">
                                         <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleOpenDialog(item)}><Edit className="h-4 w-4" /></Button>
@@ -1262,6 +1273,15 @@ const RevisionFormulasSection = () => {
                     <DialogContent>
                         <DialogHeader><DialogTitle>{editingItem ? "Modifier la formule" : "Nouvelle formule"}</DialogTitle></DialogHeader>
                         <form onSubmit={handleSubmit} className="space-y-4">
+                             <div className="space-y-2">
+                                <Label htmlFor="activity">Activité</Label>
+                                <Select onValueChange={setActivityId} value={activityId}>
+                                    <SelectTrigger><SelectValue placeholder="Sélectionner une activité" /></SelectTrigger>
+                                    <SelectContent>
+                                        {activities.map(a => <SelectItem key={a.id} value={a.id}>{a.code} - {a.label}</SelectItem>)}
+                                    </SelectContent>
+                                </Select>
+                            </div>
                             <div className="space-y-2"><Label htmlFor="revCode">Code Formule</Label><Input id="revCode" value={code} onChange={e => setCode(e.target.value)} required /></div>
                             <div className="space-y-2"><Label htmlFor="revFormula">Formule</Label><Textarea id="revFormula" value={formula} onChange={e => setFormula(e.target.value)} required rows={4} className="font-mono"/></div>
                             <DialogFooter><DialogClose asChild><Button variant="outline">Annuler</Button></DialogClose><Button type="submit" disabled={isSubmitting}>{isSubmitting ? "Enregistrement..." : "Enregistrer"}</Button></DialogFooter>

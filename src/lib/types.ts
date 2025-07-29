@@ -163,6 +163,9 @@ export type RevisionFormula = {
     id: string;
     code: string;
     formula: string;
+    activityId: string;
+    activityCode?: string; // For display
+    activityLabel?: string; // For display
 }
 
 export type PaymentTerm = {

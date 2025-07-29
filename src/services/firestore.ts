@@ -300,7 +300,14 @@ export async function createRevisionFormula(data: Omit<RevisionFormula, 'id'>) {
     return createSettingItem('revisionFormulas', data);
 }
 export async function getRevisionFormulas(): Promise<RevisionFormula[]> {
-    return getSettingItems<RevisionFormula>('revisionFormulas');
+    const formulas = await getSettingItems<RevisionFormula>('revisionFormulas');
+    const activities = await getActivities();
+    const activityMap = new Map(activities.map(a => [a.id, { code: a.code, label: a.label }]));
+    return formulas.map(formula => ({
+        ...formula,
+        activityCode: activityMap.get(formula.activityId)?.code || 'N/A',
+        activityLabel: activityMap.get(formula.activityId)?.label || 'N/A',
+    }));
 }
 export async function updateRevisionFormula(id: string, data: Partial<Omit<RevisionFormula, 'id'>>) {
     return updateSettingItem('revisionFormulas', id, data);
