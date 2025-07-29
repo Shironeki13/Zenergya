@@ -9,7 +9,7 @@ import * as z from "zod"
 import { CalendarIcon, ChevronLeft } from "lucide-react"
 import { format } from "date-fns"
 import { fr } from "date-fns/locale"
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
@@ -249,60 +249,72 @@ export default function NewContractPage() {
     }
   }
   
-  const renderRevisionFields = (code: 'P1' | 'P2' | 'P3') => (
-    <div className="grid grid-cols-1 md:grid-cols-2 gap-8 p-4 border rounded-lg mt-4">
-      <FormField
-        control={form.control}
-        name={`revision${code}.formulaId`}
-        render={({ field }) => (
-          <FormItem>
-            <FormLabel>Formule de révision {code}</FormLabel>
-            <Select onValueChange={field.onChange} defaultValue={field.value}>
-              <FormControl>
-                <SelectTrigger>
-                  <SelectValue placeholder="Sélectionnez une formule" />
-                </SelectTrigger>
-              </FormControl>
-              <SelectContent>
-                {revisionFormulas.map((formula) => (
-                  <SelectItem key={formula.id} value={formula.id}>
-                    {formula.code}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <FormMessage />
-          </FormItem>
-        )}
-      />
-       <FormField
+  const p1RevisionFormulas = useMemo(() => revisionFormulas.filter(f => f.activityCode === 'P1'), [revisionFormulas]);
+  const p2RevisionFormulas = useMemo(() => revisionFormulas.filter(f => f.activityCode === 'P2'), [revisionFormulas]);
+  const p3RevisionFormulas = useMemo(() => revisionFormulas.filter(f => f.activityCode === 'P3'), [revisionFormulas]);
+
+
+  const renderRevisionFields = (code: 'P1' | 'P2' | 'P3') => {
+    let formulas: RevisionFormula[] = [];
+    if (code === 'P1') formulas = p1RevisionFormulas;
+    else if (code === 'P2') formulas = p2RevisionFormulas;
+    else if (code === 'P3') formulas = p3RevisionFormulas;
+
+    return (
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-8 p-4 border rounded-lg mt-4">
+        <FormField
           control={form.control}
-          name={`revision${code}.date`}
+          name={`revision${code}.formulaId`}
           render={({ field }) => (
-            <FormItem className="flex flex-col">
-              <FormLabel>Date de Révision {code}</FormLabel>
-              <Popover>
-                <PopoverTrigger asChild>
-                  <FormControl>
-                    <Button
-                      variant={"outline"}
-                      className={cn("w-full pl-3 text-left font-normal", !field.value && "text-muted-foreground")}
-                    >
-                      {field.value ? (format(field.value, "PPP", { locale: fr })) : (<span>Choisir une date</span>)}
-                      <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
-                    </Button>
-                  </FormControl>
-                </PopoverTrigger>
-                <PopoverContent className="w-auto p-0" align="start">
-                  <Calendar mode="single" selected={field.value} onSelect={field.onChange} initialFocus locale={fr}/>
-                </PopoverContent>
-              </Popover>
+            <FormItem>
+              <FormLabel>Formule de révision {code}</FormLabel>
+              <Select onValueChange={field.onChange} defaultValue={field.value}>
+                <FormControl>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Sélectionnez une formule" />
+                  </SelectTrigger>
+                </FormControl>
+                <SelectContent>
+                  {formulas.map((formula) => (
+                    <SelectItem key={formula.id} value={formula.id}>
+                      {formula.code} - {formula.formula}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
               <FormMessage />
             </FormItem>
           )}
         />
-    </div>
-  );
+        <FormField
+            control={form.control}
+            name={`revision${code}.date`}
+            render={({ field }) => (
+              <FormItem className="flex flex-col">
+                <FormLabel>Date de Révision {code}</FormLabel>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <FormControl>
+                      <Button
+                        variant={"outline"}
+                        className={cn("w-full pl-3 text-left font-normal", !field.value && "text-muted-foreground")}
+                      >
+                        {field.value ? (format(field.value, "PPP", { locale: fr })) : (<span>Choisir une date</span>)}
+                        <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
+                      </Button>
+                    </FormControl>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0" align="start">
+                    <Calendar mode="single" selected={field.value} onSelect={field.onChange} initialFocus locale={fr}/>
+                  </PopoverContent>
+                </Popover>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+      </div>
+    );
+  }
 
   return (
     <Card>
