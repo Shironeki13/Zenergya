@@ -5,7 +5,6 @@ import React from 'react';
 import { renderToBuffer } from '@react-pdf/renderer';
 import { InvoicePDF } from '@/components/invoice-pdf';
 import type { Invoice, Client, Company } from '@/lib/types';
-import { headers } from 'next/headers'
 
 export async function generateInvoicePdf(invoice: Invoice, client: Client, company: Company) {
     try {

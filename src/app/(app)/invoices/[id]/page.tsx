@@ -14,7 +14,7 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { ChevronLeft, Printer, Mail } from 'lucide-react';
 import { Logo } from '@/components/logo';
-import { generateInvoicePdf } from '@/services/pdf';
+import { generateInvoicePdf } from '@/services/pdf.tsx';
 
 
 export default async function InvoiceDetailPage({ params }: { params: { id: string } }) {
