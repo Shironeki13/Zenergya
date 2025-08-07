@@ -1,7 +1,11 @@
 
+'use client';
+
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
+import { useEffect, useState } from 'react';
 import { getInvoice, getCompany, getClient } from '@/services/firestore';
+import type { Invoice, Client, Company } from '@/lib/types';
 import { Button } from '@/components/ui/button';
 import {
   Table,
@@ -15,28 +19,73 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { ChevronLeft, Mail, Printer } from 'lucide-react';
 import { Logo } from '@/components/logo';
-import { generatePdfAction } from './actions';
 
+export default function InvoiceDetailPage({ params }: { params: { id: string } }) {
+  const [invoice, setInvoice] = useState<Invoice | null>(null);
+  const [client, setClient] = useState<Client | null>(null);
+  const [company, setCompany] = useState<Company | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
 
-export default async function InvoiceDetailPage({ params }: { params: { id: string } }) {
-  const invoice = await getInvoice(params.id);
+  useEffect(() => {
+    async function fetchData() {
+      try {
+        const invoiceData = await getInvoice(params.id);
+        if (!invoiceData) {
+          notFound();
+          return;
+        }
+        setInvoice(invoiceData);
+
+        const [clientData, companiesData] = await Promise.all([
+          getClient(invoiceData.clientId),
+          getCompany(),
+        ]);
+
+        if (!clientData) {
+          // Handle case where client is not found
+          console.error("Client not found for this invoice.");
+          setClient(null);
+        } else {
+          setClient(clientData);
+        }
+        
+        // In a real app, you'd have a way to select the company. Here, we'll just take the first one.
+        if (companiesData && companiesData.length > 0) {
+            setCompany(companiesData[0]);
+        } else {
+            console.error("No company configured.");
+        }
+
+      } catch (error) {
+        console.error("Failed to fetch invoice data:", error);
+      } finally {
+        setIsLoading(false);
+      }
+    }
+    fetchData();
+  }, [params.id]);
+
+  const handleDownloadPdf = () => {
+    if (!invoice || !client || !company) return;
+    const url = `/api/generate-pdf?invoiceId=${invoice.id}&clientId=${client.id}&companyId=${company.id}`;
+    window.open(url, '_blank');
+  };
+
+  if (isLoading) {
+    return <div>Chargement de la facture...</div>;
+  }
 
   if (!invoice) {
-    notFound();
+    return <div>Facture non trouvée.</div>;
   }
   
-  const companies = await getCompany();
-  // In a real app, you'd have a way to select the company. Here, we'll just take the first one.
-  const company = companies[0]; 
   if (!company) {
     return <div>Erreur: Aucune société configurée.</div>;
   }
   
-  const client = await getClient(invoice.clientId);
   if (!client) {
     return <div>Erreur: Client non trouvé pour cette facture.</div>;
   }
-
 
   const getBadgeVariant = (status: typeof invoice.status) => {
     switch (status) {
@@ -66,15 +115,10 @@ export default async function InvoiceDetailPage({ params }: { params: { id: stri
             <Mail className="h-4 w-4 mr-2" />
             Envoyer par email
           </Button>
-          <form action={generatePdfAction}>
-             <input type="hidden" name="invoiceId" value={invoice.id} />
-             <input type="hidden" name="clientId" value={client.id} />
-             <input type="hidden" name="companyId" value={company.id} />
-             <Button size="sm" type="submit">
-                <Printer className="h-4 w-4 mr-2" />
-                Télécharger en PDF
-             </Button>
-          </form>
+          <Button size="sm" onClick={handleDownloadPdf}>
+            <Printer className="h-4 w-4 mr-2" />
+            Télécharger en PDF
+          </Button>
         </div>
       </div>
       <div className="p-8 rounded-lg border bg-card text-card-foreground shadow-sm max-w-4xl mx-auto">
