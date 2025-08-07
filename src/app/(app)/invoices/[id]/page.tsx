@@ -69,10 +69,10 @@ export default function InvoiceDetailPage() {
     }
     fetchData();
   }, [invoiceId]);
-
-  const handleDownloadPdf = () => {
+  
+  const handlePrint = () => {
     if (!invoice || !client || !company) return;
-    const url = `/api/generate-pdf?invoiceId=${invoice.id}&clientId=${client.id}&companyId=${company.id}`;
+    const url = `/invoice/print?invoiceId=${invoice.id}&clientId=${client.id}&companyId=${company.id}`;
     window.open(url, '_blank');
   };
 
@@ -120,9 +120,9 @@ export default function InvoiceDetailPage() {
             <Mail className="h-4 w-4 mr-2" />
             Envoyer par email
           </Button>
-          <Button size="sm" onClick={handleDownloadPdf}>
+          <Button size="sm" onClick={handlePrint}>
             <Printer className="h-4 w-4 mr-2" />
-            Télécharger en PDF
+            Imprimer / PDF
           </Button>
         </div>
       </div>
