@@ -1,3 +1,4 @@
+
 import Link from 'next/link';
 import {
   ArrowUpRight,
@@ -25,7 +26,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { getContracts, getInvoices } from '@/services/firestore';
-import type { Invoice, Contract } from '@/lib/types';
+import type { Invoice, Contract, InvoiceStatus } from '@/lib/types';
 
 
 export default async function Dashboard() {
@@ -34,6 +35,19 @@ export default async function Dashboard() {
   const activeContracts = contracts.filter((c: Contract) => c.status === 'active').length;
   const overdueInvoices = invoices.filter((i: Invoice) => i.status === 'overdue').length;
   const recentInvoices = invoices.sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime()).slice(0, 5);
+
+  const translateStatus = (status: InvoiceStatus) => {
+    switch (status) {
+      case 'paid':
+        return 'Payée';
+      case 'due':
+        return 'Due';
+      case 'overdue':
+        return 'En retard';
+      default:
+        return status;
+    }
+  };
 
   return (
     <>
@@ -129,7 +143,7 @@ export default async function Dashboard() {
                   </TableCell>
                   <TableCell className="hidden md:table-cell">
                     <Badge variant={invoice.status === 'paid' ? 'secondary' : invoice.status === 'due' ? 'outline' : 'destructive'}>
-                      {invoice.status.charAt(0).toUpperCase() + invoice.status.slice(1)}
+                      {translateStatus(invoice.status)}
                     </Badge>
                   </TableCell>
                   <TableCell className="hidden md:table-cell">

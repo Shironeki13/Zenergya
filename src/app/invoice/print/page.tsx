@@ -3,7 +3,7 @@
 
 import { useSearchParams } from 'next/navigation';
 import { useEffect, useState, Suspense } from 'react';
-import type { Invoice, Client, Company } from '@/lib/types';
+import type { Invoice, Client, Company, InvoiceStatus } from '@/lib/types';
 import { Logo } from '@/components/logo';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableFooter, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -70,12 +70,25 @@ function PrintContent() {
 
   const { invoice, client, company } = data;
 
-  const getBadgeVariant = (status: typeof invoice.status) => {
+  const getBadgeVariant = (status: InvoiceStatus) => {
     switch (status) {
       case 'paid': return 'secondary';
       case 'due': return 'outline';
       case 'overdue': return 'destructive';
       default: return 'default';
+    }
+  };
+  
+  const translateStatus = (status: InvoiceStatus) => {
+    switch (status) {
+      case 'paid':
+        return 'Payée';
+      case 'due':
+        return 'Due';
+      case 'overdue':
+        return 'En retard';
+      default:
+        return status;
     }
   };
 
@@ -95,7 +108,7 @@ function PrintContent() {
             <h1 className="text-3xl font-bold text-primary">FACTURE</h1>
             <p className="text-gray-500">{invoice.invoiceNumber}</p>
             <Badge variant={getBadgeVariant(invoice.status)} className="mt-2 text-xs">
-              {invoice.status.toUpperCase()}
+              {translateStatus(invoice.status).toUpperCase()}
             </Badge>
           </div>
         </header>

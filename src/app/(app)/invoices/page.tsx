@@ -1,3 +1,4 @@
+
 import Link from 'next/link';
 import { MoreHorizontal } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
@@ -42,6 +43,19 @@ export default async function InvoicesPage() {
         return 'default';
     }
   };
+  
+  const translateStatus = (status: InvoiceStatus) => {
+    switch (status) {
+      case 'paid':
+        return 'Payée';
+      case 'due':
+        return 'Due';
+      case 'overdue':
+        return 'En retard';
+      default:
+        return status;
+    }
+  };
 
   return (
     <Card>
@@ -77,7 +91,7 @@ export default async function InvoicesPage() {
                 <TableCell>{invoice.clientName}</TableCell>
                 <TableCell>
                   <Badge variant={getBadgeVariant(invoice.status)}>
-                    {invoice.status.charAt(0).toUpperCase() + invoice.status.slice(1)}
+                    {translateStatus(invoice.status)}
                   </Badge>
                 </TableCell>
                 <TableCell className="hidden md:table-cell">

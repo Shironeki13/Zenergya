@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { notFound, useParams } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { getInvoice, getCompanies, getClient } from '@/services/firestore';
-import type { Invoice, Client, Company } from '@/lib/types';
+import type { Invoice, Client, Company, InvoiceStatus } from '@/lib/types';
 import { Button } from '@/components/ui/button';
 import {
   Table,
@@ -93,7 +93,7 @@ export default function InvoiceDetailPage() {
     return <div>Erreur: Client non trouvé pour cette facture.</div>;
   }
 
-  const getBadgeVariant = (status: typeof invoice.status) => {
+  const getBadgeVariant = (status: InvoiceStatus) => {
     switch (status) {
       case 'paid':
         return 'secondary';
@@ -103,6 +103,19 @@ export default function InvoiceDetailPage() {
         return 'destructive';
       default:
         return 'default';
+    }
+  };
+  
+  const translateStatus = (status: InvoiceStatus) => {
+    switch (status) {
+      case 'paid':
+        return 'Payée';
+      case 'due':
+        return 'Due';
+      case 'overdue':
+        return 'En retard';
+      default:
+        return status;
     }
   };
 
@@ -141,7 +154,7 @@ export default function InvoiceDetailPage() {
             <h1 className="text-3xl font-bold text-primary">FACTURE</h1>
             <p className="text-muted-foreground">{invoice.invoiceNumber}</p>
             <Badge variant={getBadgeVariant(invoice.status)} className="mt-2 text-xs">
-              {invoice.status.toUpperCase()}
+              {translateStatus(invoice.status).toUpperCase()}
             </Badge>
           </div>
         </header>
