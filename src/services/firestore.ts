@@ -14,7 +14,7 @@ function processFirestoreDoc<T>(docData: DocumentData): T {
         if (Array.isArray(data)) {
             return data.map(convert);
         }
-        if (data !== null && typeof data === 'object') {
+        if (data !== null && typeof data === 'object' && Object.getPrototypeOf(data) === Object.prototype) {
             const newObj: { [key: string]: any } = {};
             for (const key in data) {
                 newObj[key] = convert(data[key]);
