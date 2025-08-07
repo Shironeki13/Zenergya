@@ -3,6 +3,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getInvoice, getClient, getCompanies } from '@/services/firestore';
 import { generateInvoicePdf as generatePdf } from '@/services/pdf';
 
+export const runtime = 'nodejs';
+
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const invoiceId = searchParams.get('invoiceId');
