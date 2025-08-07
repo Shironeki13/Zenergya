@@ -1,6 +1,6 @@
 
 import { NextRequest, NextResponse } from 'next/server';
-import { getInvoice, getClient, getCompany } from '@/services/firestore';
+import { getInvoice, getClient, getCompanies } from '@/services/firestore';
 import { generateInvoicePdf as generatePdf } from '@/services/pdf';
 
 export async function GET(request: NextRequest) {
@@ -24,7 +24,7 @@ export async function GET(request: NextRequest) {
       return new NextResponse("Client non trouvé.", { status: 404 });
     }
 
-    const companies = await getCompany();
+    const companies = await getCompanies();
     const company = companies.find(c => c.id === companyId);
     if (!company) {
       return new NextResponse("Société non trouvée.", { status: 404 });

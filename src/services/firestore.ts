@@ -236,7 +236,7 @@ export async function createCompany(data: Omit<Company, 'id'>) {
     };
     return createSettingItem('companies', companyData);
 }
-export async function getCompany(): Promise<Company[]> {
+export async function getCompanies(): Promise<Company[]> {
     return getSettingItems<Company>('companies');
 }
 export async function updateCompany(id: string, data: Partial<Omit<Company, 'id'>>) {
@@ -268,7 +268,7 @@ export async function createAgency(name: string, companyId: string) {
 }
 export async function getAgencies(): Promise<Agency[]> {
     const agencies = await getSettingItems<Agency>('agencies');
-    const companies = await getCompany();
+    const companies = await getCompanies();
     const companyMap = new Map(companies.map(c => [c.id, c.name]));
     return agencies.map(agency => ({
         ...agency,
@@ -485,5 +485,3 @@ export async function updateUser(id: string, data: Partial<Omit<User, 'id'>>) {
 export async function deleteUser(id: string) {
     return deleteSettingItem('users', id);
 }
-
-    

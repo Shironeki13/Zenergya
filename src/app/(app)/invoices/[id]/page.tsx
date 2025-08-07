@@ -4,7 +4,7 @@
 import Link from 'next/link';
 import { notFound, useParams } from 'next/navigation';
 import { useEffect, useState } from 'react';
-import { getInvoice, getCompany, getClient } from '@/services/firestore';
+import { getInvoice, getCompanies, getClient } from '@/services/firestore';
 import type { Invoice, Client, Company } from '@/lib/types';
 import { Button } from '@/components/ui/button';
 import {
@@ -42,7 +42,7 @@ export default function InvoiceDetailPage() {
 
         const [clientData, companiesData] = await Promise.all([
           getClient(invoiceData.clientId),
-          getCompany(),
+          getCompanies(),
         ]);
 
         if (!clientData) {
