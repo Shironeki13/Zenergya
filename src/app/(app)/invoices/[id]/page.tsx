@@ -13,9 +13,9 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { ChevronLeft, Mail } from 'lucide-react';
+import { ChevronLeft, Mail, Printer } from 'lucide-react';
 import { Logo } from '@/components/logo';
-import { DownloadPdfButton } from '@/components/download-pdf-button';
+import { generatePdfAction } from './actions';
 
 
 export default async function InvoiceDetailPage({ params }: { params: { id: string } }) {
@@ -26,6 +26,7 @@ export default async function InvoiceDetailPage({ params }: { params: { id: stri
   }
   
   const companies = await getCompany();
+  // In a real app, you'd have a way to select the company. Here, we'll just take the first one.
   const company = companies[0]; 
   if (!company) {
     return <div>Erreur: Aucune société configurée.</div>;
@@ -65,11 +66,15 @@ export default async function InvoiceDetailPage({ params }: { params: { id: stri
             <Mail className="h-4 w-4 mr-2" />
             Envoyer par email
           </Button>
-          <DownloadPdfButton 
-            invoiceId={invoice.id} 
-            clientId={client.id} 
-            companyId={company.id}
-          />
+          <form action={generatePdfAction}>
+             <input type="hidden" name="invoiceId" value={invoice.id} />
+             <input type="hidden" name="clientId" value={client.id} />
+             <input type="hidden" name="companyId" value={company.id} />
+             <Button size="sm" type="submit">
+                <Printer className="h-4 w-4 mr-2" />
+                Télécharger en PDF
+             </Button>
+          </form>
         </div>
       </div>
       <div className="p-8 rounded-lg border bg-card text-card-foreground shadow-sm max-w-4xl mx-auto">

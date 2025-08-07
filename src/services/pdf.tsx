@@ -15,11 +15,12 @@ export async function generateInvoicePdf(invoice: Invoice, client: Client, compa
         responseHeaders.set('Content-Disposition', `attachment; filename="facture-${invoice.invoiceNumber || invoice.id}.pdf"`);
 
         return new Response(buffer, {
-            status: 200,
             headers: responseHeaders,
+            status: 200,
         });
+
     } catch (error) {
-        console.error("Error generating PDF:", error);
+        console.error("Erreur lors de la génération du PDF:", error);
         return new Response("Erreur lors de la génération du PDF.", { status: 500 });
     }
 }
