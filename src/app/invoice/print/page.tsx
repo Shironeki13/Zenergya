@@ -84,17 +84,17 @@ function PrintContent() {
       <div className="p-4 sm:p-8 A4-container bg-white text-black shadow-lg print:shadow-none">
         <header className="flex justify-between items-start pb-8">
           <div>
-            {company?.logoUrl ? <img src={company.logoUrl} alt={company.name} className="h-16 w-auto object-contain" /> : <Logo />}
-            <p className="text-gray-600 text-sm mt-2">
+            {company?.logoUrl ? <img src={company.logoUrl} alt={company.name} className="h-12 w-auto object-contain" /> : <Logo />}
+            <p className="text-gray-500 text-sm mt-4">
               {company?.name}<br />
               {company?.address}<br />
               {company?.postalCode} {company?.city}
             </p>
           </div>
           <div className="text-right">
-            <h1 className="text-3xl font-bold text-blue-500">FACTURE</h1>
-            <p className="text-gray-600">{invoice.invoiceNumber}</p>
-            <Badge variant={getBadgeVariant(invoice.status)} className="mt-2">
+            <h1 className="text-3xl font-bold text-primary">FACTURE</h1>
+            <p className="text-gray-500">{invoice.invoiceNumber}</p>
+            <Badge variant={getBadgeVariant(invoice.status)} className="mt-2 text-xs">
               {invoice.status.toUpperCase()}
             </Badge>
           </div>
@@ -102,62 +102,63 @@ function PrintContent() {
 
         <section className="grid grid-cols-2 gap-4 py-8">
           <div>
-            <h2 className="font-bold text-sm mb-1 text-gray-500">FACTURÉ À</h2>
-            <p className="font-bold">{client?.name}</p>
+            <h2 className="font-semibold text-xs mb-1 text-gray-500 tracking-wider">FACTURÉ À</h2>
+            <p className="font-bold text-base">{client?.name}</p>
             <p className="text-gray-600 text-sm">
               {client?.address}<br />
               {client?.postalCode} {client?.city}
             </p>
           </div>
-          <div className="text-right">
-            <p><span className="font-bold text-sm">Date de facturation :</span> {new Date(invoice.date).toLocaleDateString()}</p>
-            <p><span className="font-bold text-sm">Date d'échéance :</span> {new Date(invoice.dueDate).toLocaleDateString()}</p>
+          <div className="text-right space-y-1">
+            <p><span className="font-semibold text-sm">Date de facturation :</span> <span className="text-gray-600 text-sm">{new Date(invoice.date).toLocaleDateString()}</span></p>
+            <p><span className="font-semibold text-sm">Date d'échéance :</span> <span className="text-gray-600 text-sm">{new Date(invoice.dueDate).toLocaleDateString()}</span></p>
           </div>
         </section>
 
         <section>
           <Table>
             <TableHeader>
-              <TableRow className="bg-gray-100">
+              <TableRow className="bg-gray-50 print:bg-gray-50">
                 <TableHead className="w-[60%]">Description</TableHead>
-                <TableHead>Quantité</TableHead>
-                <TableHead>Prix Unitaire</TableHead>
+                <TableHead>Qté</TableHead>
+                <TableHead>P.U.</TableHead>
                 <TableHead className="text-right">Total</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {invoice.lineItems.map((item, index) => (
                 <TableRow key={index} className="border-b">
-                  <TableCell className="font-medium py-2">{item.description}</TableCell>
-                  <TableCell className="py-2">{item.quantity}</TableCell>
-                  <TableCell className="py-2">{item.unitPrice.toFixed(2)} €</TableCell>
-                  <TableCell className="text-right py-2">{item.total.toFixed(2)} €</TableCell>
+                  <TableCell className="font-medium py-3">{item.description}</TableCell>
+                  <TableCell className="py-3">{item.quantity}</TableCell>
+                  <TableCell className="py-3">{item.unitPrice.toFixed(2)} €</TableCell>
+                  <TableCell className="text-right py-3">{item.total.toFixed(2)} €</TableCell>
                 </TableRow>
               ))}
             </TableBody>
             <TableFooter>
               <TableRow>
                 <TableCell colSpan={3} className="text-right font-semibold py-2">Sous-total</TableCell>
-                <TableCell className="text-right py-2">{invoice.subtotal.toFixed(2)} €</TableCell>
+                <TableCell className="text-right font-medium py-2">{invoice.subtotal.toFixed(2)} €</TableCell>
               </TableRow>
               <TableRow>
                 <TableCell colSpan={3} className="text-right font-semibold py-2">TVA (10%)</TableCell>
-                <TableCell className="text-right py-2">{invoice.tax.toFixed(2)} €</TableCell>
+                <TableCell className="text-right font-medium py-2">{invoice.tax.toFixed(2)} €</TableCell>
               </TableRow>
               <TableRow className="text-lg font-bold border-t-2 border-black">
-                <TableCell colSpan={3} className="text-right py-3">Total</TableCell>
-                <TableCell className="text-right text-blue-500 py-3">{invoice.total.toFixed(2)} €</TableCell>
+                <TableCell colSpan={3} className="text-right py-3 text-base">Total</TableCell>
+                <TableCell className="text-right text-primary text-xl py-3">{invoice.total.toFixed(2)} €</TableCell>
               </TableRow>
             </TableFooter>
           </Table>
         </section>
 
-        <footer className="mt-8 pt-8 border-t">
-          <h3 className="font-semibold text-sm mb-2">Conditions de paiement</h3>
-          <p className="text-gray-600 text-sm">
-            Paiement sous 30 jours à compter de la date de facturation. Les retards de paiement sont soumis à des frais mensuels de 1,5%.
-            <br />Merci de votre confiance !
-          </p>
+        <footer className="mt-8 pt-8 border-t text-center">
+            <p className="text-gray-500 text-xs">
+              Merci de votre confiance !
+            </p>
+            <p className="text-gray-500 text-xs mt-1">
+              Paiement sous 30 jours. Les retards sont soumis à des frais de 1,5%/mois.
+            </p>
         </footer>
       </div>
       <div className="fixed top-4 right-4 print:hidden">
@@ -167,6 +168,19 @@ function PrintContent() {
           </Button>
       </div>
       <style jsx global>{`
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+        
+        body {
+          -webkit-font-smoothing: antialiased;
+          -moz-osx-font-smoothing: grayscale;
+          font-family: 'Inter', sans-serif;
+          background-color: #e5e7eb;
+        }
+
+        .text-primary {
+          color: hsl(var(--primary));
+        }
+        
         @media print {
           body {
             background-color: #fff;
@@ -184,9 +198,6 @@ function PrintContent() {
           size: A4;
           margin: 0;
         }
-        body {
-          background-color: #e5e7eb;
-        }
         .A4-container {
           width: 210mm;
           min-height: 297mm;
@@ -199,7 +210,7 @@ function PrintContent() {
 
 export default function PrintPage() {
     return (
-        <Suspense fallback={<div>Chargement...</div>}>
+        <Suspense fallback={<div className="flex h-screen items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-muted-foreground" /></div>}>
             <PrintContent />
         </Suspense>
     )

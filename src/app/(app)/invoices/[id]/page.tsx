@@ -17,7 +17,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { ChevronLeft, Mail, Printer } from 'lucide-react';
+import { ChevronLeft, Mail, Printer, Loader2 } from 'lucide-react';
 import { Logo } from '@/components/logo';
 
 export default function InvoiceDetailPage() {
@@ -53,9 +53,6 @@ export default function InvoiceDetailPage() {
         }
         
         if (companiesData && companiesData.length > 0) {
-            // Find the correct company. Assuming there's a relation, but for now we'll find it.
-            // This assumes a single company context, or you'd need a way to determine which company issued the invoice.
-            // For this app, we'll assume the first company is the one. A real app might have companyId on the invoice.
             setCompany(companiesData[0]);
         } else {
             console.error("No company configured.");
@@ -77,7 +74,11 @@ export default function InvoiceDetailPage() {
   };
 
   if (isLoading) {
-    return <div>Chargement de la facture...</div>;
+    return (
+      <div className="flex items-center justify-center h-full">
+        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      </div>
+    );
   }
 
   if (!invoice) {
@@ -129,79 +130,80 @@ export default function InvoiceDetailPage() {
       <div className="p-8 rounded-lg border bg-card text-card-foreground shadow-sm max-w-4xl mx-auto">
         <header className="flex justify-between items-start pb-8">
           <div>
-            {company?.logoUrl ? <img src={company.logoUrl} alt={company.name} className="h-16 w-auto object-contain" /> : <Logo />}
-            <p className="text-muted-foreground text-sm mt-2">
+            {company?.logoUrl ? <img src={company.logoUrl} alt={company.name} className="h-12 w-auto object-contain" /> : <Logo />}
+            <p className="text-muted-foreground text-sm mt-4">
               {company?.name}<br />
               {company?.address}<br/>
               {company?.postalCode} {company?.city}
             </p>
           </div>
           <div className="text-right">
-            <h1 className="text-2xl font-bold text-primary">FACTURE</h1>
+            <h1 className="text-3xl font-bold text-primary">FACTURE</h1>
             <p className="text-muted-foreground">{invoice.invoiceNumber}</p>
-            <Badge variant={getBadgeVariant(invoice.status)} className="mt-2">
+            <Badge variant={getBadgeVariant(invoice.status)} className="mt-2 text-xs">
               {invoice.status.toUpperCase()}
             </Badge>
           </div>
         </header>
 
-        <section className="grid grid-cols-2 gap-4 pb-8">
+        <section className="grid grid-cols-2 gap-4 py-8">
           <div>
-            <h2 className="font-semibold text-sm mb-1">FACTURÉ À</h2>
-            <p className="font-bold">{client?.name}</p>
+            <h2 className="font-semibold text-xs mb-1 text-muted-foreground tracking-wider">FACTURÉ À</h2>
+            <p className="font-bold text-base">{client?.name}</p>
             <p className="text-muted-foreground text-sm">
                 {client?.address}<br/>
                 {client?.postalCode} {client?.city}
             </p>
           </div>
-          <div className="text-right">
-            <p><span className="font-semibold text-sm">Date de facturation :</span> {new Date(invoice.date).toLocaleDateString()}</p>
-            <p><span className="font-semibold text-sm">Date d'échéance :</span> {new Date(invoice.dueDate).toLocaleDateString()}</p>
+          <div className="text-right space-y-1">
+            <p><span className="font-semibold text-sm">Date de facturation :</span> <span className="text-muted-foreground text-sm">{new Date(invoice.date).toLocaleDateString()}</span></p>
+            <p><span className="font-semibold text-sm">Date d'échéance :</span> <span className="text-muted-foreground text-sm">{new Date(invoice.dueDate).toLocaleDateString()}</span></p>
           </div>
         </section>
 
         <section>
           <Table>
             <TableHeader>
-              <TableRow>
+              <TableRow className="bg-muted/50">
                 <TableHead className="w-[60%]">Description</TableHead>
-                <TableHead>Quantité</TableHead>
-                <TableHead>Prix Unitaire</TableHead>
+                <TableHead>Qté</TableHead>
+                <TableHead>P.U.</TableHead>
                 <TableHead className="text-right">Total</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {invoice.lineItems.map((item, index) => (
                 <TableRow key={index}>
-                  <TableCell className="font-medium">{item.description}</TableCell>
-                  <TableCell>{item.quantity}</TableCell>
-                  <TableCell>{item.unitPrice.toFixed(2)} €</TableCell>
-                  <TableCell className="text-right">{item.total.toFixed(2)} €</TableCell>
+                  <TableCell className="font-medium py-3">{item.description}</TableCell>
+                  <TableCell className="py-3">{item.quantity}</TableCell>
+                  <TableCell className="py-3">{item.unitPrice.toFixed(2)} €</TableCell>
+                  <TableCell className="text-right py-3">{item.total.toFixed(2)} €</TableCell>
                 </TableRow>
               ))}
             </TableBody>
             <TableFooter>
               <TableRow>
-                <TableCell colSpan={3} className="text-right font-semibold">Sous-total</TableCell>
-                <TableCell className="text-right">{invoice.subtotal.toFixed(2)} €</TableCell>
+                <TableCell colSpan={3} className="text-right font-semibold py-2">Sous-total</TableCell>
+                <TableCell className="text-right font-medium py-2">{invoice.subtotal.toFixed(2)} €</TableCell>
               </TableRow>
               <TableRow>
-                <TableCell colSpan={3} className="text-right font-semibold">TVA (10%)</TableCell>
-                <TableCell className="text-right">{invoice.tax.toFixed(2)} €</TableCell>
+                <TableCell colSpan={3} className="text-right font-semibold py-2">TVA (10%)</TableCell>
+                <TableCell className="text-right font-medium py-2">{invoice.tax.toFixed(2)} €</TableCell>
               </TableRow>
               <TableRow className="text-lg font-bold">
-                <TableCell colSpan={3} className="text-right">Total</TableCell>
-                <TableCell className="text-right text-primary">{invoice.total.toFixed(2)} €</TableCell>
+                <TableCell colSpan={3} className="text-right py-3 text-base">Total</TableCell>
+                <TableCell className="text-right text-primary text-xl py-3">{invoice.total.toFixed(2)} €</TableCell>
               </TableRow>
             </TableFooter>
           </Table>
         </section>
 
-        <footer className="mt-8 pt-8 border-t">
-            <h3 className="font-semibold text-sm mb-2">Conditions de paiement</h3>
-            <p className="text-muted-foreground text-sm">
-              Paiement sous 30 jours à compter de la date de facturation. Les retards de paiement sont soumis à des frais mensuels de 1,5%.
-              <br/>Merci de votre confiance !
+        <footer className="mt-8 pt-8 border-t text-center">
+            <p className="text-muted-foreground text-xs">
+              Merci de votre confiance !
+            </p>
+            <p className="text-muted-foreground text-xs mt-1">
+              Paiement sous 30 jours. Les retards sont soumis à des frais de 1,5%/mois.
             </p>
         </footer>
       </div>
