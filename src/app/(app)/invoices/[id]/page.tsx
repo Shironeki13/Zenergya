@@ -2,7 +2,7 @@
 'use client';
 
 import Link from 'next/link';
-import { notFound } from 'next/navigation';
+import { notFound, useParams } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { getInvoice, getCompany, getClient } from '@/services/firestore';
 import type { Invoice, Client, Company } from '@/lib/types';
@@ -20,7 +20,10 @@ import { Badge } from '@/components/ui/badge';
 import { ChevronLeft, Mail, Printer } from 'lucide-react';
 import { Logo } from '@/components/logo';
 
-export default function InvoiceDetailPage({ params }: { params: { id: string } }) {
+export default function InvoiceDetailPage() {
+  const params = useParams();
+  const invoiceId = params.id as string;
+
   const [invoice, setInvoice] = useState<Invoice | null>(null);
   const [client, setClient] = useState<Client | null>(null);
   const [company, setCompany] = useState<Company | null>(null);
@@ -29,7 +32,8 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
   useEffect(() => {
     async function fetchData() {
       try {
-        const invoiceData = await getInvoice(params.id);
+        if (!invoiceId) return;
+        const invoiceData = await getInvoice(invoiceId);
         if (!invoiceData) {
           notFound();
           return;
@@ -42,14 +46,12 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
         ]);
 
         if (!clientData) {
-          // Handle case where client is not found
           console.error("Client not found for this invoice.");
           setClient(null);
         } else {
           setClient(clientData);
         }
         
-        // In a real app, you'd have a way to select the company. Here, we'll just take the first one.
         if (companiesData && companiesData.length > 0) {
             setCompany(companiesData[0]);
         } else {
@@ -63,7 +65,7 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
       }
     }
     fetchData();
-  }, [params.id]);
+  }, [invoiceId]);
 
   const handleDownloadPdf = () => {
     if (!invoice || !client || !company) return;
