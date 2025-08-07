@@ -13,9 +13,9 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { ChevronLeft, Printer, Mail } from 'lucide-react';
+import { ChevronLeft, Mail } from 'lucide-react';
 import { Logo } from '@/components/logo';
-import { generatePdfAction } from './actions';
+import { DownloadPdfButton } from '@/components/download-pdf-button';
 
 
 export default async function InvoiceDetailPage({ params }: { params: { id: string } }) {
@@ -65,15 +65,7 @@ export default async function InvoiceDetailPage({ params }: { params: { id: stri
             <Mail className="h-4 w-4 mr-2" />
             Envoyer par email
           </Button>
-          <form action={generatePdfAction}>
-             <input type="hidden" name="invoiceId" value={invoice.id} />
-             <input type="hidden" name="clientId" value={client.id} />
-             <input type="hidden" name="companyId" value={company.id} />
-             <Button size="sm" type="submit">
-                <Printer className="h-4 w-4 mr-2" />
-                Télécharger en PDF
-            </Button>
-          </form>
+          <DownloadPdfButton invoiceId={invoice.id} clientId={client.id} companyId={company.id} />
         </div>
       </div>
       <div className="p-8 rounded-lg border bg-card text-card-foreground shadow-sm max-w-4xl mx-auto">
