@@ -12,7 +12,7 @@ export async function generateInvoicePdf(invoice: Invoice, client: Client, compa
         
         const responseHeaders = new Headers();
         responseHeaders.set('Content-Type', 'application/pdf');
-        responseHeaders.set('Content-Disposition', `attachment; filename="facture-${invoice.invoiceNumber}.pdf"`);
+        responseHeaders.set('Content-Disposition', `attachment; filename="facture-${invoice.invoiceNumber || invoice.id}.pdf"`);
 
         return new Response(buffer, {
             status: 200,

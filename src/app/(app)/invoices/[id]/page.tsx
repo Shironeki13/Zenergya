@@ -1,3 +1,4 @@
+
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { getInvoice, getCompany, getClient } from '@/services/firestore';
@@ -14,7 +15,7 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { ChevronLeft, Printer, Mail } from 'lucide-react';
 import { Logo } from '@/components/logo';
-import { generateInvoicePdf } from '@/services/pdf.tsx';
+import { generatePdfAction } from './actions';
 
 
 export default async function InvoiceDetailPage({ params }: { params: { id: string } }) {
@@ -24,10 +25,16 @@ export default async function InvoiceDetailPage({ params }: { params: { id: stri
     notFound();
   }
   
-  // For simplicity, we assume one company. A real app might need a way to determine the company.
   const companies = await getCompany();
   const company = companies[0]; 
+  if (!company) {
+    return <div>Erreur: Aucune société configurée.</div>;
+  }
+  
   const client = await getClient(invoice.clientId);
+  if (!client) {
+    return <div>Erreur: Client non trouvé pour cette facture.</div>;
+  }
 
 
   const getBadgeVariant = (status: typeof invoice.status) => {
@@ -43,11 +50,8 @@ export default async function InvoiceDetailPage({ params }: { params: { id: stri
     }
   };
 
-  const generatePdfAction = async () => {
-    'use server';
-    if (!invoice || !client || !company) return;
-    return generateInvoicePdf(invoice, client, company);
-  }
+  // Bind the IDs to the server action
+  const generatePdfWithIds = generatePdfAction.bind(null, invoice.id, client.id, company.id);
 
   return (
     <div className="space-y-6">
@@ -64,7 +68,7 @@ export default async function InvoiceDetailPage({ params }: { params: { id: stri
             <Mail className="h-4 w-4 mr-2" />
             Envoyer par email
           </Button>
-          <form action={generatePdfAction}>
+          <form action={generatePdfWithIds}>
              <Button size="sm" type="submit">
                 <Printer className="h-4 w-4 mr-2" />
                 Télécharger en PDF
