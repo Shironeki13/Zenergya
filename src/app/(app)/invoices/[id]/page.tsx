@@ -16,6 +16,7 @@ import { Badge } from '@/components/ui/badge';
 import { ChevronLeft, Mail } from 'lucide-react';
 import { Logo } from '@/components/logo';
 import { DownloadPdfButton } from '@/components/download-pdf-button';
+import { generatePdfAction } from './actions';
 
 
 export default async function InvoiceDetailPage({ params }: { params: { id: string } }) {
@@ -65,7 +66,12 @@ export default async function InvoiceDetailPage({ params }: { params: { id: stri
             <Mail className="h-4 w-4 mr-2" />
             Envoyer par email
           </Button>
-          <DownloadPdfButton invoiceId={invoice.id} clientId={client.id} companyId={company.id} />
+          <DownloadPdfButton 
+            invoiceId={invoice.id} 
+            clientId={client.id} 
+            companyId={company.id}
+            generatePdfAction={generatePdfAction}
+          />
         </div>
       </div>
       <div className="p-8 rounded-lg border bg-card text-card-foreground shadow-sm max-w-4xl mx-auto">
