@@ -50,9 +50,6 @@ export default async function InvoiceDetailPage({ params }: { params: { id: stri
     }
   };
 
-  // Bind the IDs to the server action
-  const generatePdfWithIds = generatePdfAction.bind(null, invoice.id, client.id, company.id);
-
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-4">
@@ -68,7 +65,10 @@ export default async function InvoiceDetailPage({ params }: { params: { id: stri
             <Mail className="h-4 w-4 mr-2" />
             Envoyer par email
           </Button>
-          <form action={generatePdfWithIds}>
+          <form action={generatePdfAction}>
+             <input type="hidden" name="invoiceId" value={invoice.id} />
+             <input type="hidden" name="clientId" value={client.id} />
+             <input type="hidden" name="companyId" value={company.id} />
              <Button size="sm" type="submit">
                 <Printer className="h-4 w-4 mr-2" />
                 Télécharger en PDF
