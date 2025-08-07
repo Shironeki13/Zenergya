@@ -2,7 +2,28 @@
 'use server';
 import { db } from '@/lib/firebase';
 import type { Client, Site, Contract, Invoice, MeterReading, Company, Agency, Sector, Activity, User, Role, Schedule, Term, Typology, VatRate, RevisionFormula, PaymentTerm, PricingRule, Market } from '@/lib/types';
-import { collection, getDocs, doc, getDoc, addDoc, updateDoc, deleteDoc, query, where, DocumentData, writeBatch, runTransaction, increment } from 'firebase/firestore';
+import { collection, getDocs, doc, getDoc, addDoc, updateDoc, deleteDoc, query, where, DocumentData, writeBatch, runTransaction, Timestamp } from 'firebase/firestore';
+
+// --- Helper function to convert Firestore Timestamps ---
+function convertTimestamps<T extends DocumentData>(data: T): T {
+    const newData = { ...data };
+    for (const key in newData) {
+        if (newData[key] instanceof Timestamp) {
+            newData[key] = newData[key].toDate().toISOString();
+        } else if (typeof newData[key] === 'object' && newData[key] !== null && !Array.isArray(newData[key])) {
+            newData[key] = convertTimestamps(newData[key]);
+        } else if (Array.isArray(newData[key])) {
+             newData[key] = newData[key].map(item => {
+                if (typeof item === 'object' && item !== null) {
+                    return convertTimestamps(item);
+                }
+                return item;
+             });
+        }
+    }
+    return newData;
+}
+
 
 // --- Fonctions de Service (Firestore) ---
 
@@ -10,14 +31,14 @@ import { collection, getDocs, doc, getDoc, addDoc, updateDoc, deleteDoc, query, 
 export async function getClients(): Promise<Client[]> {
     const clientsCollection = collection(db, 'clients');
     const clientSnapshot = await getDocs(clientsCollection);
-    return clientSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Client));
+    return clientSnapshot.docs.map(doc => convertTimestamps({ id: doc.id, ...doc.data() } as Client));
 }
 
 export async function getClient(id: string): Promise<Client | null> {
     const clientDoc = doc(db, 'clients', id);
     const clientSnapshot = await getDoc(clientDoc);
     if (clientSnapshot.exists()) {
-        return { id: clientSnapshot.id, ...clientSnapshot.data() } as Client;
+        return convertTimestamps({ id: clientSnapshot.id, ...clientSnapshot.data() } as Client);
     }
     return null;
 }
@@ -49,7 +70,7 @@ export async function deleteClient(id: string) {
 export async function getSites(): Promise<Site[]> {
     const sitesCollection = collection(db, 'sites');
     const siteSnapshot = await getDocs(sitesCollection);
-    const sites = siteSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Site));
+    const sites = siteSnapshot.docs.map(doc => convertTimestamps({ id: doc.id, ...doc.data() } as Site));
     
     // Pour enrichir avec le nom du client
     if (sites.length > 0) {
@@ -69,7 +90,7 @@ export async function getSitesByClient(clientId: string): Promise<Site[]> {
     const sitesCollection = collection(db, 'sites');
     const q = query(sitesCollection, where("clientId", "==", clientId));
     const siteSnapshot = await getDocs(q);
-    return siteSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Site));
+    return siteSnapshot.docs.map(doc => convertTimestamps({ id: doc.id, ...doc.data() } as Site));
 }
 
 export async function createSite(data: Omit<Site, 'id'>) {
@@ -93,14 +114,14 @@ export async function deleteSite(id: string) {
 export async function getContracts(): Promise<Contract[]> {
     const contractsCollection = collection(db, 'contracts');
     const contractSnapshot = await getDocs(contractsCollection);
-    return contractSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Contract));
+    return contractSnapshot.docs.map(doc => convertTimestamps({ id: doc.id, ...doc.data() } as Contract));
 }
 
 export async function getContractsByClient(clientId: string): Promise<Contract[]> {
     const contractsCollection = collection(db, 'contracts');
     const q = query(contractsCollection, where("clientId", "==", clientId));
     const contractSnapshot = await getDocs(q);
-    return contractSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Contract));
+    return contractSnapshot.docs.map(doc => convertTimestamps({ id: doc.id, ...doc.data() } as Contract));
 }
 
 
@@ -108,7 +129,7 @@ export async function getContract(id: string): Promise<Contract | null> {
     const contractDoc = doc(db, 'contracts', id);
     const contractSnapshot = await getDoc(contractDoc);
     if (contractSnapshot.exists()) {
-        return { id: contractSnapshot.id, ...contractSnapshot.data() } as Contract;
+        return convertTimestamps({ id: contractSnapshot.id, ...contractSnapshot.data() } as Contract);
     }
     return null;
 }
@@ -117,9 +138,14 @@ export async function createContract(data: Omit<Contract, 'id' | 'status'>) {
     const newContractData = {
         ...data,
         status: 'pending',
+        startDate: new Date(data.startDate),
+        endDate: new Date(data.endDate),
+        revisionP1: data.revisionP1?.date ? { ...data.revisionP1, date: new Date(data.revisionP1.date) } : undefined,
+        revisionP2: data.revisionP2?.date ? { ...data.revisionP2, date: new Date(data.revisionP2.date) } : undefined,
+        revisionP3: data.revisionP3?.date ? { ...data.revisionP3, date: new Date(data.revisionP3.date) } : undefined,
     };
     const contractsCollection = collection(db, 'contracts');
-    const docRef = await addDoc(contractsCollection, newContractData);
+    const docRef = await addDoc(contractsCollection, newContractData as any);
     return { id: docRef.id, ...newContractData };
 }
 
@@ -128,14 +154,14 @@ export async function createContract(data: Omit<Contract, 'id' | 'status'>) {
 export async function getInvoices(): Promise<Invoice[]> {
     const invoicesCollection = collection(db, 'invoices');
     const invoiceSnapshot = await getDocs(invoicesCollection);
-    return invoiceSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Invoice));
+    return invoiceSnapshot.docs.map(doc => convertTimestamps({ id: doc.id, ...doc.data() } as Invoice));
 }
 
 export async function getInvoice(id: string): Promise<Invoice | null> {
     const invoiceDoc = doc(db, 'invoices', id);
     const invoiceSnapshot = await getDoc(invoiceDoc);
     if (invoiceSnapshot.exists()) {
-        return { id: invoiceSnapshot.id, ...invoiceSnapshot.data() } as Invoice;
+        return convertTimestamps({ id: invoiceSnapshot.id, ...invoiceSnapshot.data() } as Invoice);
     }
     return null;
 }
@@ -144,13 +170,18 @@ export async function getInvoicesByContract(contractId: string): Promise<Invoice
     const invoicesCollection = collection(db, 'invoices');
     const q = query(invoicesCollection, where("contractId", "==", contractId));
     const invoiceSnapshot = await getDocs(q);
-    return invoiceSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Invoice));
+    return invoiceSnapshot.docs.map(doc => convertTimestamps({ id: doc.id, ...doc.data() } as Invoice));
 }
 
 export async function createInvoice(data: Omit<Invoice, 'id'>) {
+    const invoiceData = {
+        ...data,
+        date: new Date(data.date),
+        dueDate: new Date(data.dueDate),
+    };
     const invoicesCollection = collection(db, 'invoices');
-    const docRef = await addDoc(invoicesCollection, data);
-    return { id: docRef.id, ...data };
+    const docRef = await addDoc(invoicesCollection, invoiceData as any);
+    return { id: docRef.id, ...invoiceData };
 }
 
 export async function getNextInvoiceNumber(): Promise<string> {
@@ -181,7 +212,7 @@ export async function getMeterReadingsByContract(contractId: string): Promise<Me
     const readingsCollection = collection(db, 'meterReadings');
      const q = query(readingsCollection, where("contractId", "==", contractId));
     const readingSnapshot = await getDocs(q);
-    return readingSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as MeterReading));
+    return readingSnapshot.docs.map(doc => convertTimestamps({ id: doc.id, ...doc.data() } as MeterReading));
 }
 
 // --- Fonctions de Paramétrage (Firestore) ---
@@ -194,7 +225,7 @@ async function createSettingItem(collectionName: string, data: DocumentData): Pr
 async function getSettingItems<T extends {id: string}>(collectionName: string): Promise<T[]> {
     const collectionRef = collection(db, collectionName);
     const snapshot = await getDocs(collectionRef);
-    return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as T));
+    return snapshot.docs.map(doc => convertTimestamps({ id: doc.id, ...doc.data() } as T));
 }
 
 async function updateSettingItem(collectionName: string, id: string, data: DocumentData): Promise<void> {
@@ -360,7 +391,7 @@ export async function deleteVatRate(id: string) {
 }
 
 // Formules de Révision
-export async function createRevisionFormula(data: Omit<RevisionFormula, 'id'>) {
+export async function createRevisionFormula(data: Omit<RevisionFormula, 'id' | 'activityCode' | 'activityLabel'>) {
     return createSettingItem('revisionFormulas', data);
 }
 export async function getRevisionFormulas(): Promise<RevisionFormula[]> {
@@ -373,7 +404,7 @@ export async function getRevisionFormulas(): Promise<RevisionFormula[]> {
         activityLabel: activityMap.get(formula.activityId)?.label || 'N/A',
     }));
 }
-export async function updateRevisionFormula(id: string, data: Partial<Omit<RevisionFormula, 'id'>>) {
+export async function updateRevisionFormula(id: string, data: Partial<Omit<RevisionFormula, 'id' | 'activityCode' | 'activityLabel'>>) {
     return updateSettingItem('revisionFormulas', id, data);
 }
 export async function deleteRevisionFormula(id: string) {
@@ -395,7 +426,7 @@ export async function deletePaymentTerm(id: string) {
 }
 
 // Règles de prix
-export async function createPricingRule(data: Omit<PricingRule, 'id'>) {
+export async function createPricingRule(data: Omit<PricingRule, 'id' | 'activityCode' | 'activityLabel'>) {
     return createSettingItem('pricingRules', data);
 }
 export async function getPricingRules(): Promise<PricingRule[]> {
@@ -408,7 +439,7 @@ export async function getPricingRules(): Promise<PricingRule[]> {
         activityLabel: activityMap.get(rule.activityId)?.label || 'N/A',
     }));
 }
-export async function updatePricingRule(id: string, data: Partial<Omit<PricingRule, 'id'>>) {
+export async function updatePricingRule(id: string, data: Partial<Omit<PricingRule, 'id' | 'activityCode' | 'activityLabel'>>) {
     return updateSettingItem('pricingRules', id, data);
 }
 export async function deletePricingRule(id: string) {

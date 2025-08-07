@@ -96,6 +96,13 @@ const contractFormSchema = z.object({
             });
         }
     }
+    if (data.endDate < data.startDate) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "La date de fin ne peut pas être antérieure à la date de début.",
+        path: ["endDate"],
+      });
+    }
 });
 
 type ContractFormValues = z.infer<typeof contractFormSchema>
@@ -223,17 +230,17 @@ export default function NewContractPage() {
 
         const contractData = {
             ...data,
-            startDate: format(data.startDate, "yyyy-MM-dd"),
-            endDate: format(data.endDate, "yyyy-MM-dd"),
-            revisionP1: data.revisionP1?.date ? { ...data.revisionP1, date: format(data.revisionP1.date, "yyyy-MM-dd") } : undefined,
-            revisionP2: data.revisionP2?.date ? { ...data.revisionP2, date: format(data.revisionP2.date, "yyyy-MM-dd") } : undefined,
-            revisionP3: data.revisionP3?.date ? { ...data.revisionP3, date: format(data.revisionP3.date, "yyyy-MM-dd") } : undefined,
+            startDate: data.startDate.toISOString(),
+            endDate: data.endDate.toISOString(),
+            revisionP1: data.revisionP1?.date ? { ...data.revisionP1, date: data.revisionP1.date.toISOString() } : undefined,
+            revisionP2: data.revisionP2?.date ? { ...data.revisionP2, date: data.revisionP2.date.toISOString() } : undefined,
+            revisionP3: data.revisionP3?.date ? { ...data.revisionP3, date: data.revisionP3.date.toISOString() } : undefined,
             clientName: selectedClient.name,
             ...shareRates,
         }
         delete (contractData as any).shareRate;
 
-      await createContract(contractData);
+      await createContract(contractData as any);
       toast({
         title: "Contrat Créé",
         description: "Le nouveau contrat a été créé avec succès.",

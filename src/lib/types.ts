@@ -46,7 +46,7 @@ export type MonthlyBilling = {
 
 export type RevisionInfo = {
   formulaId?: string;
-  date?: Date;
+  date?: string; // ISO String date
 }
 
 export type Contract = {
@@ -54,8 +54,8 @@ export type Contract = {
   clientId: string;
   clientName: string; // Denormalized for easy display
   siteIds: string[];
-  startDate: string;
-  endDate: string;
+  startDate: string; // ISO String date
+  endDate: string; // ISO String date
   billingSchedule: string;
   term: string;
   activityIds: string[];
@@ -63,9 +63,9 @@ export type Contract = {
   marketId?: string;
   hasInterest?: boolean;
   
-  revisionP1?: { formulaId?: string; date?: string; };
-  revisionP2?: { formulaId?: string; date?: string; };
-  revisionP3?: { formulaId?: string; date?: string; };
+  revisionP1?: RevisionInfo;
+  revisionP2?: RevisionInfo;
+  revisionP3?: RevisionInfo;
 
   monthlyBilling?: MonthlyBilling[];
   // Conditional fields
@@ -85,7 +85,7 @@ export type MeterReading = {
   id: string;
   siteId: string;
   contractId: string; // To know which contract the reading applies to for billing
-  date: string;
+  date: string; // ISO String date
   reading: number;
   unit: "kWh";
   service: "hot_water" | "heating";
@@ -107,8 +107,8 @@ export type Invoice = {
   contractId: string;
   clientId: string;
   clientName: string; // Denormalized
-  date: string;
-  dueDate: string;
+  date: string; // ISO String date
+  dueDate: string; // ISO String date
   status: InvoiceStatus;
   lineItems: InvoiceLineItem[];
   subtotal: number;
