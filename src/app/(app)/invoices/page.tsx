@@ -59,7 +59,7 @@ export default async function InvoicesPage() {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>ID Facture</TableHead>
+              <TableHead>N° Facture</TableHead>
               <TableHead>Client</TableHead>
               <TableHead>Statut</TableHead>
               <TableHead className="hidden md:table-cell">Date</TableHead>
@@ -73,7 +73,7 @@ export default async function InvoicesPage() {
           <TableBody>
             {invoices.map((invoice: Invoice) => (
               <TableRow key={invoice.id}>
-                <TableCell className="font-medium">{invoice.id}</TableCell>
+                <TableCell className="font-medium">{invoice.invoiceNumber || invoice.id}</TableCell>
                 <TableCell>{invoice.clientName}</TableCell>
                 <TableCell>
                   <Badge variant={getBadgeVariant(invoice.status)}>

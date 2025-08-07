@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { getInvoice } from '@/services/firestore';
+import { getInvoice, getCompany, getClient } from '@/services/firestore';
 import { Button } from '@/components/ui/button';
 import {
   Table,
@@ -12,9 +12,10 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { Separator } from '@/components/ui/separator';
 import { ChevronLeft, Printer, Mail } from 'lucide-react';
 import { Logo } from '@/components/logo';
+import { generateInvoicePdf } from '@/services/pdf';
+
 
 export default async function InvoiceDetailPage({ params }: { params: { id: string } }) {
   const invoice = await getInvoice(params.id);
@@ -22,6 +23,12 @@ export default async function InvoiceDetailPage({ params }: { params: { id: stri
   if (!invoice) {
     notFound();
   }
+  
+  // For simplicity, we assume one company. A real app might need a way to determine the company.
+  const companies = await getCompany();
+  const company = companies[0]; 
+  const client = await getClient(invoice.clientId);
+
 
   const getBadgeVariant = (status: typeof invoice.status) => {
     switch (status) {
@@ -36,6 +43,12 @@ export default async function InvoiceDetailPage({ params }: { params: { id: stri
     }
   };
 
+  const generatePdfAction = async () => {
+    'use server';
+    if (!invoice || !client || !company) return;
+    return generateInvoicePdf(invoice, client, company);
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-4">
@@ -45,30 +58,33 @@ export default async function InvoiceDetailPage({ params }: { params: { id: stri
             <span className="sr-only">Retour</span>
           </Link>
         </Button>
-        <h1 className="text-lg font-semibold md:text-2xl">Facture {invoice.id}</h1>
+        <h1 className="text-lg font-semibold md:text-2xl">Facture {invoice.invoiceNumber}</h1>
         <div className="ml-auto flex items-center gap-2">
           <Button variant="outline" size="sm">
             <Mail className="h-4 w-4 mr-2" />
             Envoyer par email
           </Button>
-          <Button size="sm">
-            <Printer className="h-4 w-4 mr-2" />
-            Télécharger en PDF
-          </Button>
+          <form action={generatePdfAction}>
+             <Button size="sm" type="submit">
+                <Printer className="h-4 w-4 mr-2" />
+                Télécharger en PDF
+            </Button>
+          </form>
         </div>
       </div>
       <div className="p-8 rounded-lg border bg-card text-card-foreground shadow-sm max-w-4xl mx-auto">
         <header className="flex justify-between items-start pb-8">
           <div>
-            <Logo />
+            {company?.logoUrl ? <img src={company.logoUrl} alt={company.name} className="h-16 w-auto object-contain" /> : <Logo />}
             <p className="text-muted-foreground text-sm mt-2">
-              123 Avenue de l'Énergie<br/>
-              Villelumière, 75000
+              {company?.name}<br />
+              {company?.address}<br/>
+              {company?.postalCode} {company?.city}
             </p>
           </div>
           <div className="text-right">
             <h1 className="text-2xl font-bold text-primary">FACTURE</h1>
-            <p className="text-muted-foreground">{invoice.id}</p>
+            <p className="text-muted-foreground">{invoice.invoiceNumber}</p>
             <Badge variant={getBadgeVariant(invoice.status)} className="mt-2">
               {invoice.status.toUpperCase()}
             </Badge>
@@ -78,8 +94,11 @@ export default async function InvoiceDetailPage({ params }: { params: { id: stri
         <section className="grid grid-cols-2 gap-4 pb-8">
           <div>
             <h2 className="font-semibold text-sm mb-1">FACTURÉ À</h2>
-            <p className="font-bold">{invoice.clientName}</p>
-            {/* Ajoutez plus de détails sur le client ici si disponibles */}
+            <p className="font-bold">{client?.name}</p>
+            <p className="text-muted-foreground text-sm">
+                {client?.address}<br/>
+                {client?.postalCode} {client?.city}
+            </p>
           </div>
           <div className="text-right">
             <p><span className="font-semibold text-sm">Date de facturation :</span> {new Date(invoice.date).toLocaleDateString()}</p>

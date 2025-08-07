@@ -124,7 +124,7 @@ export default async function Dashboard() {
                   <TableCell>
                     <div className="font-medium">{invoice.clientName}</div>
                     <div className="hidden text-sm text-muted-foreground md:inline">
-                      {invoice.id}
+                      {invoice.invoiceNumber || invoice.id}
                     </div>
                   </TableCell>
                   <TableCell className="hidden md:table-cell">

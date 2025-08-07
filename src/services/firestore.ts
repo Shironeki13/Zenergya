@@ -2,7 +2,7 @@
 'use server';
 import { db } from '@/lib/firebase';
 import type { Client, Site, Contract, Invoice, MeterReading, Company, Agency, Sector, Activity, User, Role, Schedule, Term, Typology, VatRate, RevisionFormula, PaymentTerm, PricingRule, Market } from '@/lib/types';
-import { collection, getDocs, doc, getDoc, addDoc, updateDoc, deleteDoc, query, where, DocumentData, writeBatch } from 'firebase/firestore';
+import { collection, getDocs, doc, getDoc, addDoc, updateDoc, deleteDoc, query, where, DocumentData, writeBatch, runTransaction, increment } from 'firebase/firestore';
 
 // --- Fonctions de Service (Firestore) ---
 
@@ -153,6 +153,29 @@ export async function createInvoice(data: Omit<Invoice, 'id'>) {
     return { id: docRef.id, ...data };
 }
 
+export async function getNextInvoiceNumber(): Promise<string> {
+    const counterRef = doc(db, 'counters', 'invoiceCounter');
+
+    return runTransaction(db, async (transaction) => {
+        const counterDoc = await transaction.get(counterRef);
+        
+        let newCount = 1;
+        if (counterDoc.exists()) {
+            newCount = counterDoc.data().current + 1;
+        }
+        
+        transaction.set(counterRef, { current: newCount }, { merge: true });
+        
+        const now = new Date();
+        const year = now.getFullYear();
+        const month = String(now.getMonth() + 1).padStart(2, '0');
+        const countPadded = String(newCount).padStart(4, '0');
+        
+        return `${year}${month}-${countPadded}`;
+    });
+}
+
+
 // Relevés de compteur
 export async function getMeterReadingsByContract(contractId: string): Promise<MeterReading[]> {
     const readingsCollection = collection(db, 'meterReadings');
@@ -193,7 +216,7 @@ export async function createCompany(data: Omit<Company, 'id'>) {
     };
     return createSettingItem('companies', companyData);
 }
-export async function getCompanies(): Promise<Company[]> {
+export async function getCompany(): Promise<Company[]> {
     return getSettingItems<Company>('companies');
 }
 export async function updateCompany(id: string, data: Partial<Omit<Company, 'id'>>) {
@@ -225,7 +248,7 @@ export async function createAgency(name: string, companyId: string) {
 }
 export async function getAgencies(): Promise<Agency[]> {
     const agencies = await getSettingItems<Agency>('agencies');
-    const companies = await getCompanies();
+    const companies = await getCompany();
     const companyMap = new Map(companies.map(c => [c.id, c.name]));
     return agencies.map(agency => ({
         ...agency,

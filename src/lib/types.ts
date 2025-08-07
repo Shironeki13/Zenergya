@@ -103,6 +103,7 @@ export type InvoiceLineItem = {
 
 export type Invoice = {
   id: string;
+  invoiceNumber?: string; // Chronological invoice number
   contractId: string;
   clientId: string;
   clientName: string; // Denormalized

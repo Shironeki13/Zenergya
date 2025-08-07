@@ -14,7 +14,8 @@ import {
   getContract, 
   getSitesByClient, 
   getActivities,
-  createInvoice 
+  createInvoice,
+  getNextInvoiceNumber
 } from '@/services/firestore';
 import type { InvoiceLineItem } from '@/lib/types';
 import { GenerateInvoiceInputSchema, GenerateInvoiceOutputSchema, type GenerateInvoiceInput, type GenerateInvoiceOutput } from '@/lib/types';
@@ -85,8 +86,11 @@ const generateInvoiceFlow = ai.defineFlow(
       const today = new Date();
       const dueDate = new Date();
       dueDate.setDate(today.getDate() + 30); // 30 days to pay
+      
+      const invoiceNumber = await getNextInvoiceNumber();
 
       const newInvoice = {
+        invoiceNumber,
         contractId: contract.id,
         clientId: contract.clientId,
         clientName: contract.clientName,
