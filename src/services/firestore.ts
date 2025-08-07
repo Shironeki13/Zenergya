@@ -5,23 +5,44 @@ import type { Client, Site, Contract, Invoice, MeterReading, Company, Agency, Se
 import { collection, getDocs, doc, getDoc, addDoc, updateDoc, deleteDoc, query, where, DocumentData, writeBatch, runTransaction, Timestamp } from 'firebase/firestore';
 
 // --- Helper function to convert Firestore Timestamps ---
-function convertTimestamps<T extends DocumentData>(data: T): T {
-    const newData = { ...data };
-    for (const key in newData) {
-        if (newData[key] instanceof Timestamp) {
-            newData[key] = newData[key].toDate().toISOString();
-        } else if (typeof newData[key] === 'object' && newData[key] !== null && !Array.isArray(newData[key])) {
-            newData[key] = convertTimestamps(newData[key]);
-        } else if (Array.isArray(newData[key])) {
-             newData[key] = newData[key].map(item => {
-                if (typeof item === 'object' && item !== null) {
-                    return convertTimestamps(item);
-                }
-                return item;
-             });
+function processFirestoreDoc<T>(docData: DocumentData): T {
+    // Step 1: Recursively convert Timestamps to ISO strings
+    function convert(data: any): any {
+        if (data instanceof Timestamp) {
+            return data.toDate().toISOString();
         }
+        if (Array.isArray(data)) {
+            return data.map(convert);
+        }
+        if (data !== null && typeof data === 'object') {
+            const newObj: { [key: string]: any } = {};
+            for (const key in data) {
+                newObj[key] = convert(data[key]);
+            }
+            return newObj;
+        }
+        return data;
     }
-    return newData;
+
+    const convertedData = convert(docData);
+
+    // Step 2: Ensure the object is a plain JavaScript object by serializing and deserializing
+    // This removes any class instances or complex prototypes.
+    return JSON.parse(JSON.stringify(convertedData));
+}
+
+async function getDocument<T>(ref: any): Promise<T | null> {
+    const docSnap = await getDoc(ref);
+    if (!docSnap.exists()) {
+        return null;
+    }
+    const data = { id: docSnap.id, ...docSnap.data() };
+    return processFirestoreDoc<T>(data);
+}
+
+async function getCollection<T>(q: any): Promise<T[]> {
+    const querySnapshot = await getDocs(q);
+    return querySnapshot.docs.map(doc => processFirestoreDoc<T>({ id: doc.id, ...doc.data() }));
 }
 
 
@@ -29,18 +50,11 @@ function convertTimestamps<T extends DocumentData>(data: T): T {
 
 // Clients
 export async function getClients(): Promise<Client[]> {
-    const clientsCollection = collection(db, 'clients');
-    const clientSnapshot = await getDocs(clientsCollection);
-    return clientSnapshot.docs.map(doc => convertTimestamps({ id: doc.id, ...doc.data() } as Client));
+    return getCollection<Client>(collection(db, 'clients'));
 }
 
 export async function getClient(id: string): Promise<Client | null> {
-    const clientDoc = doc(db, 'clients', id);
-    const clientSnapshot = await getDoc(clientDoc);
-    if (clientSnapshot.exists()) {
-        return convertTimestamps({ id: clientSnapshot.id, ...clientSnapshot.data() } as Client);
-    }
-    return null;
+    return getDocument<Client>(doc(db, 'clients', id));
 }
 
 export async function createClient(data: Omit<Client, 'id' | 'typologyName'>) {
@@ -68,9 +82,7 @@ export async function deleteClient(id: string) {
 
 // Sites
 export async function getSites(): Promise<Site[]> {
-    const sitesCollection = collection(db, 'sites');
-    const siteSnapshot = await getDocs(sitesCollection);
-    const sites = siteSnapshot.docs.map(doc => convertTimestamps({ id: doc.id, ...doc.data() } as Site));
+    const sites = await getCollection<Site>(collection(db, 'sites'));
     
     // Pour enrichir avec le nom du client
     if (sites.length > 0) {
@@ -87,10 +99,8 @@ export async function getSites(): Promise<Site[]> {
 
 
 export async function getSitesByClient(clientId: string): Promise<Site[]> {
-    const sitesCollection = collection(db, 'sites');
-    const q = query(sitesCollection, where("clientId", "==", clientId));
-    const siteSnapshot = await getDocs(q);
-    return siteSnapshot.docs.map(doc => convertTimestamps({ id: doc.id, ...doc.data() } as Site));
+    const q = query(collection(db, 'sites'), where("clientId", "==", clientId));
+    return getCollection<Site>(q);
 }
 
 export async function createSite(data: Omit<Site, 'id'>) {
@@ -112,26 +122,17 @@ export async function deleteSite(id: string) {
 
 // Contrats
 export async function getContracts(): Promise<Contract[]> {
-    const contractsCollection = collection(db, 'contracts');
-    const contractSnapshot = await getDocs(contractsCollection);
-    return contractSnapshot.docs.map(doc => convertTimestamps({ id: doc.id, ...doc.data() } as Contract));
+    return getCollection<Contract>(collection(db, 'contracts'));
 }
 
 export async function getContractsByClient(clientId: string): Promise<Contract[]> {
-    const contractsCollection = collection(db, 'contracts');
-    const q = query(contractsCollection, where("clientId", "==", clientId));
-    const contractSnapshot = await getDocs(q);
-    return contractSnapshot.docs.map(doc => convertTimestamps({ id: doc.id, ...doc.data() } as Contract));
+    const q = query(collection(db, 'contracts'), where("clientId", "==", clientId));
+    return getCollection<Contract>(q);
 }
 
 
 export async function getContract(id: string): Promise<Contract | null> {
-    const contractDoc = doc(db, 'contracts', id);
-    const contractSnapshot = await getDoc(contractDoc);
-    if (contractSnapshot.exists()) {
-        return convertTimestamps({ id: contractSnapshot.id, ...contractSnapshot.data() } as Contract);
-    }
-    return null;
+    return getDocument<Contract>(doc(db, 'contracts', id));
 }
 
 export async function createContract(data: Omit<Contract, 'id' | 'status'>) {
@@ -152,25 +153,16 @@ export async function createContract(data: Omit<Contract, 'id' | 'status'>) {
 
 // Factures
 export async function getInvoices(): Promise<Invoice[]> {
-    const invoicesCollection = collection(db, 'invoices');
-    const invoiceSnapshot = await getDocs(invoicesCollection);
-    return invoiceSnapshot.docs.map(doc => convertTimestamps({ id: doc.id, ...doc.data() } as Invoice));
+    return getCollection<Invoice>(collection(db, 'invoices'));
 }
 
 export async function getInvoice(id: string): Promise<Invoice | null> {
-    const invoiceDoc = doc(db, 'invoices', id);
-    const invoiceSnapshot = await getDoc(invoiceDoc);
-    if (invoiceSnapshot.exists()) {
-        return convertTimestamps({ id: invoiceSnapshot.id, ...invoiceSnapshot.data() } as Invoice);
-    }
-    return null;
+    return getDocument<Invoice>(doc(db, 'invoices', id));
 }
 
 export async function getInvoicesByContract(contractId: string): Promise<Invoice[]> {
-    const invoicesCollection = collection(db, 'invoices');
-    const q = query(invoicesCollection, where("contractId", "==", contractId));
-    const invoiceSnapshot = await getDocs(q);
-    return invoiceSnapshot.docs.map(doc => convertTimestamps({ id: doc.id, ...doc.data() } as Invoice));
+    const q = query(collection(db, 'invoices'), where("contractId", "==", contractId));
+    return getCollection<Invoice>(q);
 }
 
 export async function createInvoice(data: Omit<Invoice, 'id'>) {
@@ -209,10 +201,8 @@ export async function getNextInvoiceNumber(): Promise<string> {
 
 // Relevés de compteur
 export async function getMeterReadingsByContract(contractId: string): Promise<MeterReading[]> {
-    const readingsCollection = collection(db, 'meterReadings');
-     const q = query(readingsCollection, where("contractId", "==", contractId));
-    const readingSnapshot = await getDocs(q);
-    return readingSnapshot.docs.map(doc => convertTimestamps({ id: doc.id, ...doc.data() } as MeterReading));
+    const q = query(collection(db, 'meterReadings'), where("contractId", "==", contractId));
+    return getCollection<MeterReading>(q);
 }
 
 // --- Fonctions de Paramétrage (Firestore) ---
@@ -223,9 +213,8 @@ async function createSettingItem(collectionName: string, data: DocumentData): Pr
 }
 
 async function getSettingItems<T extends {id: string}>(collectionName: string): Promise<T[]> {
-    const collectionRef = collection(db, collectionName);
-    const snapshot = await getDocs(collectionRef);
-    return snapshot.docs.map(doc => convertTimestamps({ id: doc.id, ...doc.data() } as T));
+    const q = collection(db, collectionName);
+    return getCollection<T>(q);
 }
 
 async function updateSettingItem(collectionName: string, id: string, data: DocumentData): Promise<void> {
@@ -496,3 +485,5 @@ export async function updateUser(id: string, data: Partial<Omit<User, 'id'>>) {
 export async function deleteUser(id: string) {
     return deleteSettingItem('users', id);
 }
+
+    
