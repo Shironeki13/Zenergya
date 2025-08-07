@@ -53,6 +53,9 @@ export default function InvoiceDetailPage() {
         }
         
         if (companiesData && companiesData.length > 0) {
+            // Find the correct company. Assuming there's a relation, but for now we'll find it.
+            // This assumes a single company context, or you'd need a way to determine which company issued the invoice.
+            // For this app, we'll assume the first company is the one. A real app might have companyId on the invoice.
             setCompany(companiesData[0]);
         } else {
             console.error("No company configured.");
