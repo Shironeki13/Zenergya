@@ -18,25 +18,26 @@ export async function GET(request: NextRequest) {
   try {
     const invoice = await getInvoice(invoiceId);
     if (!invoice) {
-      return new NextResponse("Facture non trouvée.", { status: 404 });
+      return new NextResponse(`Facture non trouvée avec ID: ${invoiceId}`, { status: 404 });
     }
 
     const client = await getClient(clientId);
     if (!client) {
-      return new NextResponse("Client non trouvé.", { status: 404 });
+      return new NextResponse(`Client non trouvé avec ID: ${clientId}`, { status: 404 });
     }
 
     const companies = await getCompanies();
     const company = companies.find(c => c.id === companyId);
     if (!company) {
-      return new NextResponse("Société non trouvée.", { status: 404 });
+      return new NextResponse(`Société non trouvée avec ID: ${companyId}`, { status: 404 });
     }
     
     // La fonction generatePdf retourne déjà une Response complète avec headers et buffer
     return generatePdf(invoice, client, company);
 
   } catch (error) {
-    console.error("Erreur API lors de la génération du PDF:", error);
-    return new NextResponse("Erreur interne du serveur lors de la génération du PDF.", { status: 500 });
+    const errorMessage = error instanceof Error ? error.message : "Une erreur inconnue est survenue.";
+    console.error("Erreur API lors de la génération du PDF:", errorMessage, error);
+    return new NextResponse(`Erreur serveur: ${errorMessage}`, { status: 500 });
   }
 }
