@@ -16,7 +16,6 @@ import { Badge } from '@/components/ui/badge';
 import { ChevronLeft, Mail } from 'lucide-react';
 import { Logo } from '@/components/logo';
 import { DownloadPdfButton } from '@/components/download-pdf-button';
-import { generatePdfAction } from './actions';
 
 
 export default async function InvoiceDetailPage({ params }: { params: { id: string } }) {
@@ -70,7 +69,6 @@ export default async function InvoiceDetailPage({ params }: { params: { id: stri
             invoiceId={invoice.id} 
             clientId={client.id} 
             companyId={company.id}
-            generatePdfAction={generatePdfAction}
           />
         </div>
       </div>
