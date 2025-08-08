@@ -92,7 +92,7 @@ export default async function ClientsPage() {
                     <DropdownMenuContent align="end">
                       <DropdownMenuLabel>Actions</DropdownMenuLabel>
                       <DropdownMenuItem asChild><Link href={`/clients/${client.id}`}>Gérer les sites</Link></DropdownMenuItem>
-                      <DropdownMenuItem>Modifier</DropdownMenuItem>
+                      <DropdownMenuItem asChild><Link href={`/clients/${client.id}/edit`}>Modifier</Link></DropdownMenuItem>
                       <DropdownMenuItem className="text-destructive">
                         Supprimer
                       </DropdownMenuItem>

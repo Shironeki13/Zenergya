@@ -69,7 +69,15 @@ export async function createClient(data: Omit<Client, 'id' | 'typologyName'>) {
 
 export async function updateClient(id: string, data: Partial<Omit<Client, 'id'>>) {
     const clientDoc = doc(db, 'clients', id);
-    await updateDoc(clientDoc, data);
+    const updateData = { ...data };
+    
+    // Ensure typologyName is updated if typologyId changes
+    if (data.typologyId) {
+        const typologies = await getTypologies();
+        updateData.typologyName = typologies.find(t => t.id === data.typologyId)?.name || 'N/A';
+    }
+
+    await updateDoc(clientDoc, updateData);
 }
 
 export async function deleteClient(id: string) {
