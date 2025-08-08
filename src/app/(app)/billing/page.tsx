@@ -6,16 +6,23 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
+import { Calendar } from '@/components/ui/calendar';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { CalendarIcon } from 'lucide-react';
+import { format } from 'date-fns';
+import { fr } from 'date-fns/locale';
 import { useToast } from '@/hooks/use-toast';
 import { getClients, getContractsByClient } from '@/services/firestore';
 import { generateInvoice } from '@/ai/flows/generate-invoice-flow';
 import type { Client, Contract } from '@/lib/types';
+import { cn } from '@/lib/utils';
 
 export default function BillingPage() {
   const [clients, setClients] = useState<Client[]>([]);
   const [contracts, setContracts] = useState<Contract[]>([]);
   const [selectedClientId, setSelectedClientId] = useState<string | null>(null);
   const [selectedContractId, setSelectedContractId] = useState<string | null>(null);
+  const [invoiceDate, setInvoiceDate] = useState<Date>(new Date());
   const [isGenerating, setIsGenerating] = useState(false);
   const { toast } = useToast();
 
@@ -54,9 +61,16 @@ export default function BillingPage() {
       toast({ title: 'Erreur', description: 'Veuillez sélectionner un contrat.', variant: 'destructive' });
       return;
     }
+    if (!invoiceDate) {
+        toast({ title: 'Erreur', description: 'Veuillez sélectionner une date de facture.', variant: 'destructive' });
+        return;
+    }
     setIsGenerating(true);
     try {
-      const result = await generateInvoice({ contractId: selectedContractId });
+      const result = await generateInvoice({ 
+          contractId: selectedContractId,
+          invoiceDate: invoiceDate.toISOString(),
+      });
       if (result.success) {
         toast({
           title: 'Facture Générée',
@@ -89,7 +103,7 @@ export default function BillingPage() {
         <CardHeader>
           <CardTitle>Sélection du Contrat</CardTitle>
           <CardDescription>
-            Choisissez un client puis un contrat pour générer la facture correspondante.
+            Choisissez un client, un contrat, et une date pour générer la facture.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -130,6 +144,34 @@ export default function BillingPage() {
               </Select>
             </div>
           )}
+
+          <div className="space-y-2">
+            <Label>Date de la facture</Label>
+             <Popover>
+                <PopoverTrigger asChild>
+                    <Button
+                    variant={"outline"}
+                    className={cn(
+                        "w-full justify-start text-left font-normal",
+                        !invoiceDate && "text-muted-foreground"
+                    )}
+                    >
+                    <CalendarIcon className="mr-2 h-4 w-4" />
+                    {invoiceDate ? format(invoiceDate, "PPP", { locale: fr }) : <span>Choisir une date</span>}
+                    </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0">
+                    <Calendar
+                    mode="single"
+                    selected={invoiceDate}
+                    onSelect={(date) => setInvoiceDate(date || new Date())}
+                    disabled={(date) => date < new Date(new Date().setHours(0,0,0,0))}
+                    initialFocus
+                    locale={fr}
+                    />
+                </PopoverContent>
+            </Popover>
+          </div>
 
           <Button onClick={handleGenerateInvoice} disabled={!selectedContractId || isGenerating}>
             {isGenerating ? 'Génération en cours...' : 'Générer la Facture'}

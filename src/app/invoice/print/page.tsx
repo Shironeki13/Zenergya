@@ -1,5 +1,4 @@
 
-
 'use client';
 
 import { useSearchParams } from 'next/navigation';
@@ -140,6 +139,9 @@ function PrintContent() {
           <div className="text-right space-y-1">
             <p><span className="font-semibold text-sm">Date de facturation :</span> <span className="text-gray-600 text-sm">{new Date(invoice.date).toLocaleDateString()}</span></p>
             <p><span className="font-semibold text-sm">Date d'échéance :</span> <span className="text-gray-600 text-sm">{new Date(invoice.dueDate).toLocaleDateString()}</span></p>
+             {invoice.periodStartDate && invoice.periodEndDate && (
+               <p><span className="font-semibold text-sm">Période de service :</span> <span className="text-gray-600 text-sm">{new Date(invoice.periodStartDate).toLocaleDateString()} - {new Date(invoice.periodEndDate).toLocaleDateString()}</span></p>
+            )}
           </div>
         </section>
 

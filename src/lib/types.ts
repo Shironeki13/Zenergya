@@ -116,6 +116,8 @@ export type Invoice = {
   subtotal: number;
   tax: number;
   total: number;
+  periodStartDate?: string; // ISO String date
+  periodEndDate?: string; // ISO String date
 };
 
 // Settings Types
@@ -222,6 +224,7 @@ export type User = {
 // Genkit Flow Schemas
 export const GenerateInvoiceInputSchema = z.object({
   contractId: z.string().describe('The ID of the contract to generate an invoice for.'),
+  invoiceDate: z.string().describe('The date for the invoice in ISO format.'),
 });
 export type GenerateInvoiceInput = z.infer<typeof GenerateInvoiceInputSchema>;
 
