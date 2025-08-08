@@ -90,7 +90,7 @@ export default async function ContractsPage() {
                     <DropdownMenuContent align="end">
                       <DropdownMenuLabel>Actions</DropdownMenuLabel>
                       <DropdownMenuItem asChild><Link href={`/contracts/${contract.id}`}>Voir les détails</Link></DropdownMenuItem>
-                      <DropdownMenuItem>Modifier</DropdownMenuItem>
+                      <DropdownMenuItem asChild><Link href={`/contracts/${contract.id}/edit`}>Modifier</Link></DropdownMenuItem>
                       <DropdownMenuItem className="text-destructive">
                         Supprimer
                       </DropdownMenuItem>

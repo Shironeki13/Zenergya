@@ -158,6 +158,19 @@ export async function createContract(data: Omit<Contract, 'id' | 'status'>) {
     return { id: docRef.id, ...newContractData };
 }
 
+export async function updateContract(id: string, data: Partial<Omit<Contract, 'id' | 'clientName' | 'status'>>) {
+    const contractDoc = doc(db, 'contracts', id);
+    const updateData = {
+        ...data,
+        startDate: new Date(data.startDate as Date),
+        endDate: new Date(data.endDate as Date),
+        revisionP1: data.revisionP1?.date ? { ...data.revisionP1, date: new Date(data.revisionP1.date) } : undefined,
+        revisionP2: data.revisionP2?.date ? { ...data.revisionP2, date: new Date(data.revisionP2.date) } : undefined,
+        revisionP3: data.revisionP3?.date ? { ...data.revisionP3, date: new Date(data.revisionP3.date) } : undefined,
+    };
+    await updateDoc(contractDoc, updateData as any);
+}
+
 
 // Factures
 export async function getInvoices(): Promise<Invoice[]> {
