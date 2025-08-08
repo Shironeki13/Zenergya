@@ -3,9 +3,9 @@
 
 import Link from 'next/link';
 import { notFound, useParams } from 'next/navigation';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { getInvoice, getCompanies, getClient } from '@/services/firestore';
-import type { Invoice, Client, Company, InvoiceStatus } from '@/lib/types';
+import type { Invoice, Client, Company, InvoiceStatus, InvoiceLineItem } from '@/lib/types';
 import { Button } from '@/components/ui/button';
 import {
   Table,
@@ -19,6 +19,7 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { ChevronLeft, Mail, Printer, Loader2 } from 'lucide-react';
 import { Logo } from '@/components/logo';
+import { Separator } from '@/components/ui/separator';
 
 export default function InvoiceDetailPage() {
   const params = useParams();
@@ -72,6 +73,18 @@ export default function InvoiceDetailPage() {
     const url = `/invoice/print?invoiceId=${invoice.id}&clientId=${client.id}&companyId=${company.id}`;
     window.open(url, '_blank');
   };
+
+  const groupedLineItems = useMemo(() => {
+    if (!invoice) return {};
+    return invoice.lineItems.reduce((acc, item) => {
+        const key = item.activityCode || 'divers';
+        if (!acc[key]) {
+            acc[key] = [];
+        }
+        acc[key].push(item);
+        return acc;
+    }, {} as Record<string, InvoiceLineItem[]>);
+  }, [invoice]);
 
   if (isLoading) {
     return (
@@ -185,16 +198,28 @@ export default function InvoiceDetailPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {invoice.lineItems.map((item, index) => (
-                <TableRow key={index}>
-                  <TableCell className="font-medium py-3">{item.description}</TableCell>
-                  <TableCell className="py-3">{item.quantity}</TableCell>
-                  <TableCell className="py-3">{item.unitPrice.toFixed(2)} €</TableCell>
-                  <TableCell className="text-right py-3">{item.total.toFixed(2)} €</TableCell>
-                </TableRow>
+              {Object.entries(groupedLineItems).map(([activityCode, items]) => (
+                <React.Fragment key={activityCode}>
+                  <TableRow>
+                    <TableCell colSpan={4} className="p-2 bg-muted/30">
+                      <h3 className="font-semibold text-sm">Prestations {activityCode}</h3>
+                    </TableCell>
+                  </TableRow>
+                  {items.map((item, index) => (
+                    <TableRow key={index}>
+                      <TableCell className="font-medium py-3 pl-4">{item.description}</TableCell>
+                      <TableCell className="py-3">{item.quantity}</TableCell>
+                      <TableCell className="py-3">{item.unitPrice.toFixed(2)} €</TableCell>
+                      <TableCell className="text-right py-3">{item.total.toFixed(2)} €</TableCell>
+                    </TableRow>
+                  ))}
+                </React.Fragment>
               ))}
             </TableBody>
             <TableFooter>
+                <TableRow>
+                    <TableCell colSpan={4}><Separator className="my-2" /></TableCell>
+                </TableRow>
               <TableRow>
                 <TableCell colSpan={3} className="text-right font-semibold py-2">Sous-total</TableCell>
                 <TableCell className="text-right font-medium py-2">{invoice.subtotal.toFixed(2)} €</TableCell>

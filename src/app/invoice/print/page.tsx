@@ -1,14 +1,16 @@
 
+
 'use client';
 
 import { useSearchParams } from 'next/navigation';
-import { useEffect, useState, Suspense } from 'react';
-import type { Invoice, Client, Company, InvoiceStatus } from '@/lib/types';
+import React, { useEffect, useState, Suspense, useMemo } from 'react';
+import type { Invoice, Client, Company, InvoiceStatus, InvoiceLineItem } from '@/lib/types';
 import { Logo } from '@/components/logo';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableFooter, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
 import { Printer, Loader2 } from 'lucide-react';
+import { Separator } from '@/components/ui/separator';
 
 function PrintContent() {
   const searchParams = useSearchParams();
@@ -48,6 +50,19 @@ function PrintContent() {
 
     fetchData();
   }, [invoiceId, clientId, companyId]);
+  
+  const groupedLineItems = useMemo(() => {
+    if (!data) return {};
+    return data.invoice.lineItems.reduce((acc, item) => {
+        const key = item.activityCode || 'divers';
+        if (!acc[key]) {
+            acc[key] = [];
+        }
+        acc[key].push(item);
+        return acc;
+    }, {} as Record<string, InvoiceLineItem[]>);
+  }, [data]);
+
 
   if (isLoading) {
     return (
@@ -139,16 +154,28 @@ function PrintContent() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {invoice.lineItems.map((item, index) => (
-                <TableRow key={index} className="border-b">
-                  <TableCell className="font-medium py-3">{item.description}</TableCell>
-                  <TableCell className="py-3">{item.quantity}</TableCell>
-                  <TableCell className="py-3">{item.unitPrice.toFixed(2)} €</TableCell>
-                  <TableCell className="text-right py-3">{item.total.toFixed(2)} €</TableCell>
-                </TableRow>
+               {Object.entries(groupedLineItems).map(([activityCode, items]) => (
+                <React.Fragment key={activityCode}>
+                  <TableRow className="border-b-0">
+                    <TableCell colSpan={4} className="p-2 bg-gray-100 print:bg-gray-100">
+                      <h3 className="font-semibold text-sm">Prestations {activityCode}</h3>
+                    </TableCell>
+                  </TableRow>
+                  {items.map((item, index) => (
+                    <TableRow key={index} className="border-b">
+                      <TableCell className="font-medium py-3 pl-4">{item.description}</TableCell>
+                      <TableCell className="py-3">{item.quantity}</TableCell>
+                      <TableCell className="py-3">{item.unitPrice.toFixed(2)} €</TableCell>
+                      <TableCell className="text-right py-3">{item.total.toFixed(2)} €</TableCell>
+                    </TableRow>
+                  ))}
+                </React.Fragment>
               ))}
             </TableBody>
             <TableFooter>
+                <TableRow>
+                    <TableCell colSpan={4}><Separator className="my-2 bg-gray-300" /></TableCell>
+                </TableRow>
               <TableRow>
                 <TableCell colSpan={3} className="text-right font-semibold py-2">Sous-total</TableCell>
                 <TableCell className="text-right font-medium py-2">{invoice.subtotal.toFixed(2)} €</TableCell>

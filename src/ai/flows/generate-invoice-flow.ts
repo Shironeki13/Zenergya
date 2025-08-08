@@ -74,11 +74,12 @@ const generateInvoiceFlow = ai.defineFlow(
               if (activity && contract.activityIds.includes(activity.id)) {
                 const lineTotal = amountInfo.amount * billingFactor;
                 lineItems.push({
-                  description: `Prestation: ${activity.label} (${activity.code}) - Site: ${site.name}`,
+                  description: `Prestation: ${activity.label} - Site: ${site.name}`,
                   quantity: 1, // Annual flat rate
                   unitPrice: lineTotal,
                   total: lineTotal,
                   siteId: site.id,
+                  activityCode: activity.code,
                 });
               }
             }
@@ -103,10 +104,11 @@ const generateInvoiceFlow = ai.defineFlow(
           for (const key in aggregatedAmounts) {
               const { activity, total } = aggregatedAmounts[key];
               lineItems.push({
-                  description: `Prestation: ${activity.label} (${activity.code})`,
+                  description: `Prestation: ${activity.label}`,
                   quantity: 1,
                   unitPrice: total,
                   total: total,
+                  activityCode: activity.code,
               });
           }
       }

@@ -46,7 +46,7 @@ export type MonthlyBilling = {
 }
 
 export type RevisionInfo = {
-  formulaId?: string;
+  formulaId?: string | null;
   date?: string; // ISO String date
 }
 
@@ -100,6 +100,7 @@ export type InvoiceLineItem = {
   unitPrice: number;
   total: number;
   siteId?: string; // Optional: for detailed billing per site
+  activityCode: string; // To group items by P1, P2, etc.
 };
 
 export type Invoice = {
