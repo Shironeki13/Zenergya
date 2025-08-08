@@ -17,6 +17,7 @@ import {
   createInvoice,
   getNextInvoiceNumber,
   getClient,
+  getCompanies,
 } from '@/services/firestore';
 import type { InvoiceLineItem } from '@/lib/types';
 import { GenerateInvoiceInputSchema, GenerateInvoiceOutputSchema, type GenerateInvoiceInput, type GenerateInvoiceOutput } from '@/lib/types';
@@ -48,6 +49,13 @@ const generateInvoiceFlow = ai.defineFlow(
       }
       
       const invoicingType = client.invoicingType || 'multi-site';
+      
+      // For now, let's assume one company for the whole system
+      const companies = await getCompanies();
+      if (companies.length === 0) {
+          throw new Error("Aucune société n'est configurée dans les paramètres.");
+      }
+      const company = companies[0];
 
 
       // For simplicity, we assume we bill for the whole year at once.
@@ -127,7 +135,7 @@ const generateInvoiceFlow = ai.defineFlow(
       const dueDate = new Date();
       dueDate.setDate(today.getDate() + 30); // 30 days to pay
       
-      const invoiceNumber = await getNextInvoiceNumber();
+      const invoiceNumber = await getNextInvoiceNumber(company.code);
 
       const newInvoice = {
         invoiceNumber,

@@ -23,11 +23,11 @@ function processFirestoreDoc<T>(docData: DocumentData): T {
         }
         return data;
     }
-    const convertedData = convert(docData);
+    const converted = convert(docData);
 
     // Step 2: Ensure the object is a plain JavaScript object by serializing and deserializing
     // This removes any class instances or complex prototypes.
-    return JSON.parse(JSON.stringify(convertedData));
+    return JSON.parse(JSON.stringify(converted));
 }
 
 async function getDocument<T>(ref: any): Promise<T | null> {
@@ -215,8 +215,13 @@ export async function createInvoice(data: Omit<Invoice, 'id'>) {
     return { id: docRef.id, ...invoiceData };
 }
 
-export async function getNextInvoiceNumber(): Promise<string> {
-    const counterRef = doc(db, 'counters', 'invoiceCounter');
+export async function getNextInvoiceNumber(companyCode: string): Promise<string> {
+    const now = new Date();
+    const year = now.getFullYear().toString().slice(-2);
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const period = `${year}${month}`;
+
+    const counterRef = doc(db, 'counters', `invoiceCounter_${period}`);
 
     return runTransaction(db, async (transaction) => {
         const counterDoc = await transaction.get(counterRef);
@@ -228,12 +233,9 @@ export async function getNextInvoiceNumber(): Promise<string> {
         
         transaction.set(counterRef, { current: newCount }, { merge: true });
         
-        const now = new Date();
-        const year = now.getFullYear();
-        const month = String(now.getMonth() + 1).padStart(2, '0');
         const countPadded = String(newCount).padStart(4, '0');
         
-        return `${year}${month}-${countPadded}`;
+        return `${companyCode}-${period}-${countPadded}`;
     });
 }
 
