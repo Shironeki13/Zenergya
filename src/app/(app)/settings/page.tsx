@@ -51,6 +51,7 @@ const CompaniesSection = () => {
     const [companyToDelete, setCompanyToDelete] = useState<Company | null>(null);
 
     const [name, setName] = useState('');
+    const [code, setCode] = useState('');
     const [address, setAddress] = useState('');
     const [postalCode, setPostalCode] = useState('');
     const [city, setCity] = useState('');
@@ -86,6 +87,7 @@ const CompaniesSection = () => {
 
     const resetForm = () => {
         setName('');
+        setCode('');
         setAddress('');
         setPostalCode('');
         setCity('');
@@ -101,6 +103,7 @@ const CompaniesSection = () => {
         setEditingCompany(company);
         if (company) {
             setName(company.name);
+            setCode(company.code || '');
             setAddress(company.address || '');
             setPostalCode(company.postalCode || '');
             setCity(company.city || '');
@@ -125,7 +128,7 @@ const CompaniesSection = () => {
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!name.trim()) return;
+        if (!name.trim() || !code.trim()) return;
         setIsSubmitting(true);
 
         try {
@@ -134,7 +137,7 @@ const CompaniesSection = () => {
                 logoUrl = await fileToDataUrl(logoFile);
             }
 
-            const companyData = { name, address, postalCode, city, siret, siren, vatNumber, logoUrl };
+            const companyData = { name, code, address, postalCode, city, siret, siren, vatNumber, logoUrl };
             
             if (editingCompany) {
                 await updateCompany(editingCompany.id, companyData);
@@ -185,9 +188,9 @@ const CompaniesSection = () => {
             <TableHeader>
               <TableRow>
                 <TableHead className="w-[80px]">Logo</TableHead>
+                <TableHead className="w-[100px]">Code</TableHead>
                 <TableHead>Nom</TableHead>
                 <TableHead>SIRET</TableHead>
-                <TableHead>SIREN</TableHead>
                 <TableHead>TVA Intra.</TableHead>
                 <TableHead className="w-[100px] text-right">Actions</TableHead>
               </TableRow>
@@ -207,9 +210,9 @@ const CompaniesSection = () => {
                         <div className="h-10 w-10 bg-muted rounded-md flex items-center justify-center text-muted-foreground">?</div>
                       )}
                     </TableCell>
+                    <TableCell className="font-medium">{company.code}</TableCell>
                     <TableCell className="font-medium">{company.name}</TableCell>
                     <TableCell>{company.siret || 'N/A'}</TableCell>
-                    <TableCell>{company.siren || 'N/A'}</TableCell>
                     <TableCell>{company.vatNumber || 'N/A'}</TableCell>
                     <TableCell className="text-right">
                        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleOpenDialog(company)}>
@@ -248,9 +251,22 @@ const CompaniesSection = () => {
                     <DialogTitle>{editingCompany ? 'Modifier la société' : 'Nouvelle société'}</DialogTitle>
                 </DialogHeader>
                 <form onSubmit={handleSubmit} className="space-y-4">
-                    <div className="space-y-2">
-                        <Label htmlFor="name">Nom</Label>
-                        <Input id="name" value={name} onChange={(e) => setName(e.target.value)} required />
+                    <div className="grid grid-cols-3 gap-4">
+                      <div className="space-y-2 col-span-2">
+                          <Label htmlFor="name">Nom</Label>
+                          <Input id="name" value={name} onChange={(e) => setName(e.target.value)} required />
+                      </div>
+                       <div className="space-y-2">
+                          <Label htmlFor="code">Code Société</Label>
+                          <Input 
+                            id="code" 
+                            value={code} 
+                            onChange={(e) => setCode(e.target.value.toUpperCase().replace(/[^A-Z]/g, ''))}
+                            maxLength={3}
+                            placeholder="EX: ABC"
+                            required 
+                          />
+                      </div>
                     </div>
                      <div className="space-y-2">
                         <Label htmlFor="address">Adresse</Label>

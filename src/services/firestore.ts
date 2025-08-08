@@ -23,7 +23,6 @@ function processFirestoreDoc<T>(docData: DocumentData): T {
         }
         return data;
     }
-
     const convertedData = convert(docData);
 
     // Step 2: Ensure the object is a plain JavaScript object by serializing and deserializing
@@ -149,9 +148,9 @@ export async function createContract(data: Omit<Contract, 'id' | 'status'>) {
         status: 'pending',
         startDate: new Date(data.startDate),
         endDate: new Date(data.endDate),
-        revisionP1: data.revisionP1?.date ? { ...data.revisionP1, date: new Date(data.revisionP1.date) } : undefined,
-        revisionP2: data.revisionP2?.date ? { ...data.revisionP2, date: new Date(data.revisionP2.date) } : undefined,
-        revisionP3: data.revisionP3?.date ? { ...data.revisionP3, date: new Date(data.revisionP3.date) } : undefined,
+        revisionP1: data.revisionP1?.date ? { ...data.revisionP1, date: new Date(data.revisionP1.date) } : data.revisionP1,
+        revisionP2: data.revisionP2?.date ? { ...data.revisionP2, date: new Date(data.revisionP2.date) } : data.revisionP2,
+        revisionP3: data.revisionP3?.date ? { ...data.revisionP3, date: new Date(data.revisionP3.date) } : data.revisionP3,
     };
     const contractsCollection = collection(db, 'contracts');
     const docRef = await addDoc(contractsCollection, newContractData as any);
@@ -171,27 +170,22 @@ export async function updateContract(id: string, data: Partial<Omit<Contract, 'i
     // Handle revision fields to avoid sending `undefined` to Firestore
     const revisionFields: ('revisionP1' | 'revisionP2' | 'revisionP3')[] = ['revisionP1', 'revisionP2', 'revisionP3'];
     for (const field of revisionFields) {
-        if (data[field]) {
+        if (field in data) {
             const revisionData = data[field];
-            // Only include the date if it's a valid date object
-            const date = revisionData.date instanceof Date ? new Date(revisionData.date) : undefined;
-            const formulaId = revisionData.formulaId;
-
-            // If both are missing/falsy, remove the field from Firestore
-            if (!date && !formulaId) {
-                updateData[field] = deleteField();
-            } else {
+            if (revisionData) {
                  updateData[field] = {
-                    ...(formulaId && { formulaId }), // only add if it exists
-                    ...(date && { date }), // only add if it exists
+                    ...(revisionData.formulaId && { formulaId: revisionData.formulaId }),
+                    ...(revisionData.date && { date: new Date(revisionData.date) }),
                  };
+                 // If the object becomes empty, remove it
+                 if (Object.keys(updateData[field]).length === 0) {
+                    updateData[field] = deleteField();
+                 }
+            } else {
+                updateData[field] = deleteField();
             }
-        } else {
-            // If the whole revision object is missing, remove it from Firestore
-            updateData[field] = deleteField();
         }
     }
-
     await updateDoc(contractDoc, updateData);
 }
 

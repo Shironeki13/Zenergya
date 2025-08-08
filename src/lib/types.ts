@@ -121,6 +121,7 @@ export type Invoice = {
 // Settings Types
 export type Company = {
     id: string;
+    code: string;
     name: string;
     logoUrl?: string;
     address?: string;
