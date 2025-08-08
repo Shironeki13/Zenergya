@@ -3,7 +3,7 @@
 
 import Link from 'next/link';
 import { notFound, useParams } from 'next/navigation';
-import { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { getInvoice, getCompanies, getClient } from '@/services/firestore';
 import type { Invoice, Client, Company, InvoiceStatus, InvoiceLineItem } from '@/lib/types';
 import { Button } from '@/components/ui/button';
