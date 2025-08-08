@@ -58,9 +58,29 @@ const generateInvoiceFlow = ai.defineFlow(
       const company = companies[0];
 
 
-      // For simplicity, we assume we bill for the whole year at once.
-      // A real implementation would check the billingSchedule and calculate the period.
-      const billingFactor = 1; // 1 for annual, 1/12 for monthly, etc.
+      // Determine billing factor based on contract schedule
+      let billingFactor = 1;
+      let scheduleLabel = "Annuel";
+      switch (contract.billingSchedule) {
+        case 'Mensuel':
+            billingFactor = 1 / 12;
+            scheduleLabel = "Mensuel";
+            break;
+        case 'Trimestriel':
+            billingFactor = 1 / 4;
+            scheduleLabel = "Trimestriel";
+            break;
+        case 'Semestriel':
+            billingFactor = 1 / 2;
+            scheduleLabel = "Semestriel";
+            break;
+        case 'Annuel':
+            billingFactor = 1;
+            scheduleLabel = "Annuel";
+            break;
+        // The default of 1 covers 'Annuel' and any other cases.
+      }
+
 
       const sites = await getSitesByClient(contract.clientId);
       const contractSites = sites.filter(site => contract.siteIds.includes(site.id));
@@ -82,8 +102,8 @@ const generateInvoiceFlow = ai.defineFlow(
               if (activity && contract.activityIds.includes(activity.id)) {
                 const lineTotal = amountInfo.amount * billingFactor;
                 lineItems.push({
-                  description: `Prestation: ${activity.label} - Site: ${site.name}`,
-                  quantity: 1, // Annual flat rate
+                  description: `Prestation: ${activity.label} (${scheduleLabel}) - Site: ${site.name}`,
+                  quantity: 1, 
                   unitPrice: lineTotal,
                   total: lineTotal,
                   siteId: site.id,
@@ -112,7 +132,7 @@ const generateInvoiceFlow = ai.defineFlow(
           for (const key in aggregatedAmounts) {
               const { activity, total } = aggregatedAmounts[key];
               lineItems.push({
-                  description: `Prestation: ${activity.label}`,
+                  description: `Prestation: ${activity.label} (${scheduleLabel})`,
                   quantity: 1,
                   unitPrice: total,
                   total: total,
