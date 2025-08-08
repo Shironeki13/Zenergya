@@ -314,14 +314,14 @@ export default function EditContractPage() {
             render={({ field }) => (
                 <FormItem>
                 <FormLabel>Formule de révision {code}</FormLabel>
-                <Select onValueChange={field.onChange} value={field.value ?? ''}>
+                <Select onValueChange={field.onChange} value={field.value ?? undefined}>
                     <FormControl>
                     <SelectTrigger>
                         <SelectValue placeholder="Sélectionnez une formule" />
                     </SelectTrigger>
                     </FormControl>
                     <SelectContent>
-                    <SelectItem value="">Aucune</SelectItem>
+                    <SelectItem value="none">Aucune</SelectItem>
                     {formulas.map((formula) => (
                         <SelectItem key={formula.id} value={formula.id}>
                         {formula.code} - {formula.formula}
