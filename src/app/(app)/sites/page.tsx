@@ -4,7 +4,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { MoreHorizontal, PlusCircle } from 'lucide-react';
+import { MoreHorizontal, PlusCircle, Edit } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   Card,
@@ -28,28 +28,50 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogClose, DialogDescription } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
-import { getSites, getClients } from '@/services/firestore';
-import type { Site, Client } from '@/lib/types';
+import { Input } from '@/components/ui/input';
+import { Checkbox } from '@/components/ui/checkbox';
+import { getSites, getClients, getActivities, updateSite } from '@/services/firestore';
+import type { Site, Client, Activity } from '@/lib/types';
 import { useToast } from '@/hooks/use-toast';
 
 export default function SitesPage() {
   const [sites, setSites] = useState<Site[]>([]);
   const [clients, setClients] = useState<Client[]>([]);
+  const [activities, setActivities] = useState<Activity[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [dialogOpen, setDialogOpen] = useState(false);
+  
+  const [addSiteDialogOpen, setAddSiteDialogOpen] = useState(false);
+  const [editSiteDialogOpen, setEditSiteDialogOpen] = useState(false);
+  
   const [selectedClientId, setSelectedClientId] = useState<string | null>(null);
+  const [editingSite, setEditingSite] = useState<Site | null>(null);
+  
   const router = useRouter();
   const { toast } = useToast();
+
+  // Form state for editing
+  const [siteName, setSiteName] = useState('');
+  const [siteNumber, setSiteNumber] = useState('');
+  const [siteAddress, setSiteAddress] = useState('');
+  const [sitePostalCode, setSitePostalCode] = useState('');
+  const [siteCity, setSiteCity] = useState('');
+  const [siteActivityIds, setSiteActivityIds] = useState<string[]>([]);
+  const [siteAmounts, setSiteAmounts] = useState<Record<string, number>>({});
 
   const loadData = useCallback(async () => {
     setIsLoading(true);
     try {
-      const [sitesData, clientsData] = await Promise.all([getSites(), getClients()]);
+      const [sitesData, clientsData, activitiesData] = await Promise.all([
+        getSites(), 
+        getClients(),
+        getActivities()
+      ]);
       setSites(sitesData);
       setClients(clientsData);
+      setActivities(activitiesData);
     } catch (error) {
       toast({ title: 'Erreur', description: 'Impossible de charger les données.', variant: 'destructive' });
     } finally {
@@ -63,14 +85,75 @@ export default function SitesPage() {
 
   const handleGoToCreateSite = () => {
     if (selectedClientId) {
-      // Redirect to the client page, the logic there will handle opening a dialog
-      // if we passed a query param, but for simplicity we just navigate.
-      // The user will then click "Add Site" on the client's page.
       router.push(`/clients/${selectedClientId}`);
     } else {
         toast({ title: 'Aucun client sélectionné', description: 'Veuillez sélectionner un client pour continuer.', variant: 'destructive' });
     }
   };
+  
+  const resetForm = () => {
+    setSiteName('');
+    setSiteNumber('');
+    setSiteAddress('');
+    setSitePostalCode('');
+    setSiteCity('');
+    setSiteActivityIds([]);
+    setSiteAmounts({});
+    setEditingSite(null);
+  };
+  
+  const handleOpenEditDialog = (site: Site) => {
+    resetForm();
+    setEditingSite(site);
+    setSiteName(site.name);
+    setSiteNumber(site.siteNumber || '');
+    setSiteAddress(site.address);
+    setSitePostalCode(site.postalCode || '');
+    setSiteCity(site.city || '');
+    setSiteActivityIds(site.activityIds || []);
+    const amounts = site.amounts?.reduce((acc, curr) => ({ ...acc, [curr.activityId]: curr.amount }), {}) || {};
+    setSiteAmounts(amounts);
+    setEditSiteDialogOpen(true);
+  };
+  
+  const handleActivityChange = (activityId: string, checked: boolean) => {
+      setSiteActivityIds(prev => 
+          checked ? [...prev, activityId] : prev.filter(id => id !== activityId)
+      );
+  };
+
+  const handleSubmitSite = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingSite || !siteName.trim() || !siteAddress.trim()) return;
+
+    const siteData: Partial<Site> = {
+        name: siteName,
+        siteNumber,
+        address: siteAddress,
+        postalCode: sitePostalCode,
+        city: siteCity,
+        activityIds: siteActivityIds,
+        amounts: Object.entries(siteAmounts)
+            .filter(([activityId]) => siteActivityIds.includes(activityId))
+            .map(([activityId, amount]) => ({ activityId, amount: Number(amount) || 0 })),
+    };
+
+    try {
+      await updateSite(editingSite.id, siteData);
+      toast({ title: "Site mis à jour", description: "Le site a été mis à jour avec succès." });
+      await loadData();
+      setEditSiteDialogOpen(false);
+      resetForm();
+    } catch (error) {
+      console.error(error);
+      toast({ title: "Erreur", description: "La mise à jour a échoué.", variant: "destructive" });
+    }
+  };
+  
+  const getFullAddress = (site: Site) => {
+    const parts = [site.address, site.postalCode, site.city];
+    return parts.filter(Boolean).join(', ');
+  }
 
   return (
     <Card>
@@ -82,7 +165,7 @@ export default function SitesPage() {
               Liste de tous les sites d'intervention, tous clients confondus.
             </CardDescription>
           </div>
-           <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+           <Dialog open={addSiteDialogOpen} onOpenChange={setAddSiteDialogOpen}>
               <DialogTrigger asChild>
                 <Button size="sm" className="gap-1">
                   <PlusCircle className="h-4 w-4" />
@@ -109,7 +192,7 @@ export default function SitesPage() {
                     </Select>
                 </div>
                 <DialogFooter>
-                    <Button variant="outline" onClick={() => setDialogOpen(false)}>Annuler</Button>
+                    <Button variant="outline" onClick={() => setAddSiteDialogOpen(false)}>Annuler</Button>
                     <Button onClick={handleGoToCreateSite} disabled={!selectedClientId}>
                         Continuer
                     </Button>
@@ -141,7 +224,7 @@ export default function SitesPage() {
                   <TableCell className="font-medium">{site.name}</TableCell>
                   <TableCell>{site.clientName}</TableCell>
                   <TableCell>
-                      {site.address}, {site.postalCode} {site.city}
+                      {getFullAddress(site)}
                   </TableCell>
                   <TableCell>
                     <DropdownMenu>
@@ -153,6 +236,9 @@ export default function SitesPage() {
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
                         <DropdownMenuLabel>Actions</DropdownMenuLabel>
+                        <DropdownMenuItem onSelect={() => handleOpenEditDialog(site)}>
+                           Modifier
+                        </DropdownMenuItem>
                         <DropdownMenuItem asChild>
                           <Link href={`/clients/${site.clientId}`}>Voir le client</Link>
                         </DropdownMenuItem>
@@ -169,6 +255,89 @@ export default function SitesPage() {
           </TableBody>
         </Table>
       </CardContent>
+
+      <Dialog open={editSiteDialogOpen} onOpenChange={setEditSiteDialogOpen}>
+        <DialogContent className="sm:max-w-2xl">
+            <DialogHeader>
+                <DialogTitle>Modifier le site: {editingSite?.name}</DialogTitle>
+                <DialogDescription>Client: {editingSite?.clientName}</DialogDescription>
+            </DialogHeader>
+            <form onSubmit={handleSubmitSite} className="space-y-4 max-h-[70vh] overflow-y-auto pr-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                      <Label htmlFor="siteName">Nom du site</Label>
+                      <Input id="siteName" value={siteName} onChange={(e) => setSiteName(e.target.value)} required />
+                  </div>
+                  <div className="space-y-2">
+                      <Label htmlFor="siteNumber">N° de site</Label>
+                      <Input id="siteNumber" value={siteNumber} onChange={(e) => setSiteNumber(e.target.value)} />
+                  </div>
+                </div>
+                 <div className="space-y-2">
+                    <Label htmlFor="siteAddress">Adresse</Label>
+                    <Input id="siteAddress" value={siteAddress} onChange={(e) => setSiteAddress(e.target.value)} required />
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                        <Label htmlFor="sitePostalCode">Code Postal</Label>
+                        <Input id="sitePostalCode" value={sitePostalCode} onChange={(e) => setSitePostalCode(e.target.value)} />
+                    </div>
+                    <div className="space-y-2">
+                        <Label htmlFor="siteCity">Ville</Label>
+                        <Input id="siteCity" value={siteCity} onChange={(e) => setSiteCity(e.target.value)} />
+                    </div>
+                </div>
+                
+                <Card>
+                    <CardHeader>
+                        <CardTitle>Activités et Montants</CardTitle>
+                        <CardDescription>Sélectionnez les activités et saisissez les montants annuels HT.</CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                      <div className="space-y-2">
+                        <Label>Activités</Label>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                            {activities.map(activity => (
+                                <div key={activity.id} className="flex items-center space-x-2">
+                                    <Checkbox
+                                        id={`activity-${activity.id}-edit`}
+                                        checked={siteActivityIds.includes(activity.id)}
+                                        onCheckedChange={(checked) => handleActivityChange(activity.id, !!checked)}
+                                    />
+                                    <label htmlFor={`activity-${activity.id}-edit`} className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
+                                        {activity.label} ({activity.code})
+                                    </label>
+                                </div>
+                            ))}
+                        </div>
+                      </div>
+                      
+                      {siteActivityIds.length > 0 && (
+                          <div className="space-y-4 pt-4 border-t">
+                              {activities.filter(a => siteActivityIds.includes(a.id)).map(activity => (
+                                  <div key={activity.id} className="space-y-2">
+                                    <Label htmlFor={`amount-${activity.id}-edit`}>Montant Annuel HT pour {activity.label}</Label>
+                                    <Input 
+                                      id={`amount-${activity.id}-edit`}
+                                      type="number" 
+                                      placeholder="Montant en €"
+                                      value={siteAmounts[activity.id] || ''} 
+                                      onChange={(e) => setSiteAmounts(prev => ({...prev, [activity.id]: parseFloat(e.target.value) || 0 }))} 
+                                    />
+                                  </div>
+                              ))}
+                          </div>
+                      )}
+                    </CardContent>
+                </Card>
+                
+                <DialogFooter className="pt-4">
+                    <DialogClose asChild><Button type="button" variant="outline" onClick={() => setEditSiteDialogOpen(false)}>Annuler</Button></DialogClose>
+                    <Button type="submit">Enregistrer</Button>
+                </DialogFooter>
+            </form>
+        </DialogContent>
+      </Dialog>
     </Card>
   );
 }

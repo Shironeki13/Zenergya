@@ -148,6 +148,12 @@ export default function ClientDetailPage() {
   if (!client) {
     return notFound();
   }
+  
+  const getFullAddress = (site: Site) => {
+    const parts = [site.address, site.postalCode, site.city];
+    return parts.filter(Boolean).join(', ');
+  }
+
 
   return (
     <div className="grid gap-4 md:gap-8">
@@ -195,7 +201,7 @@ export default function ClientDetailPage() {
                   <TableRow key={site.id}>
                     <TableCell>{site.siteNumber || 'N/A'}</TableCell>
                     <TableCell className="font-medium">{site.name}</TableCell>
-                    <TableCell>{`${site.address}, ${site.postalCode} ${site.city}`}</TableCell>
+                    <TableCell>{getFullAddress(site)}</TableCell>
                     <TableCell className="text-right">
                         <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleOpenDialog(site)}>
                             <Edit className="h-4 w-4" />
