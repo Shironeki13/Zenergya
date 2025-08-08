@@ -15,7 +15,8 @@ import {
   getSitesByClient, 
   getActivities,
   createInvoice,
-  getNextInvoiceNumber
+  getNextInvoiceNumber,
+  getClient,
 } from '@/services/firestore';
 import type { InvoiceLineItem } from '@/lib/types';
 import { GenerateInvoiceInputSchema, GenerateInvoiceOutputSchema, type GenerateInvoiceInput, type GenerateInvoiceOutput } from '@/lib/types';
@@ -41,6 +42,14 @@ const generateInvoiceFlow = ai.defineFlow(
         throw new Error('Contrat non trouvé.');
       }
 
+      const client = await getClient(contract.clientId);
+      if (!client) {
+          throw new Error('Client non trouvé.');
+      }
+      
+      const invoicingType = client.invoicingType || 'multi-site';
+
+
       // For simplicity, we assume we bill for the whole year at once.
       // A real implementation would check the billingSchedule and calculate the period.
       const billingFactor = 1; // 1 for annual, 1/12 for monthly, etc.
@@ -55,24 +64,53 @@ const generateInvoiceFlow = ai.defineFlow(
       const activityMap = new Map(activities.map(a => [a.id, a]));
 
       let lineItems: InvoiceLineItem[] = [];
+      
+      if (invoicingType === 'multi-site') {
+          for (const site of contractSites) {
+            if (!site.amounts || site.amounts.length === 0) continue;
 
-      for (const site of contractSites) {
-        if (!site.amounts || site.amounts.length === 0) continue;
-
-        for (const amountInfo of site.amounts) {
-          const activity = activityMap.get(amountInfo.activityId);
-          if (activity && contract.activityIds.includes(activity.id)) {
-            const lineTotal = amountInfo.amount * billingFactor;
-            lineItems.push({
-              description: `Prestation: ${activity.label} (${activity.code}) - Site: ${site.name}`,
-              quantity: 1, // Annual flat rate
-              unitPrice: lineTotal,
-              total: lineTotal,
-              siteId: site.id,
-            });
+            for (const amountInfo of site.amounts) {
+              const activity = activityMap.get(amountInfo.activityId);
+              if (activity && contract.activityIds.includes(activity.id)) {
+                const lineTotal = amountInfo.amount * billingFactor;
+                lineItems.push({
+                  description: `Prestation: ${activity.label} (${activity.code}) - Site: ${site.name}`,
+                  quantity: 1, // Annual flat rate
+                  unitPrice: lineTotal,
+                  total: lineTotal,
+                  siteId: site.id,
+                });
+              }
+            }
           }
-        }
+      } else { // 'global' invoicing
+          const aggregatedAmounts: Record<string, { activity: any; total: number }> = {};
+
+          for (const site of contractSites) {
+              if (!site.amounts || site.amounts.length === 0) continue;
+              
+              for (const amountInfo of site.amounts) {
+                  const activity = activityMap.get(amountInfo.activityId);
+                  if (activity && contract.activityIds.includes(activity.id)) {
+                      if (!aggregatedAmounts[activity.id]) {
+                          aggregatedAmounts[activity.id] = { activity, total: 0 };
+                      }
+                      aggregatedAmounts[activity.id].total += amountInfo.amount * billingFactor;
+                  }
+              }
+          }
+
+          for (const key in aggregatedAmounts) {
+              const { activity, total } = aggregatedAmounts[key];
+              lineItems.push({
+                  description: `Prestation: ${activity.label} (${activity.code})`,
+                  quantity: 1,
+                  unitPrice: total,
+                  total: total,
+              });
+          }
       }
+
 
       if (lineItems.length === 0) {
           throw new Error("Aucune prestation facturable trouvée pour les sites de ce contrat.");

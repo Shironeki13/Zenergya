@@ -47,6 +47,7 @@ const clientFormSchema = z.object({
   chorusServiceCode: z.string().optional(),
   chorusLegalCommitmentNumber: z.string().optional(),
   chorusMarketNumber: z.string().optional(),
+  invoicingType: z.enum(['multi-site', 'global'], { required_error: "Le type de facturation est requis."}),
 }).superRefine((data, ctx) => {
     if (data.useChorus && (!data.siret || data.siret.length === 0)) {
         ctx.addIssue({
@@ -84,6 +85,7 @@ export default function NewClientPage() {
       chorusServiceCode: "",
       chorusLegalCommitmentNumber: "",
       chorusMarketNumber: "",
+      invoicingType: "multi-site",
     },
   })
 
@@ -217,6 +219,18 @@ export default function NewClientPage() {
                     <FormDescription>Champ informatif non obligatoire.</FormDescription>
                     <FormMessage />
                   </FormItem>
+                )} />
+                 <FormField control={form.control} name="invoicingType" render={({ field }) => (
+                    <FormItem>
+                        <FormLabel>Type de facturation</FormLabel>
+                         <FormControl>
+                            <RadioGroup onValueChange={field.onChange} defaultValue={field.value} className="flex gap-4 pt-2">
+                                <FormItem className="flex items-center space-x-2"><FormControl><RadioGroupItem value="multi-site" id="multi-site" /></FormControl><FormLabel htmlFor="multi-site" className="font-normal">Détaillée par site</FormLabel></FormItem>
+                                <FormItem className="flex items-center space-x-2"><FormControl><RadioGroupItem value="global" id="global" /></FormControl><FormLabel htmlFor="global" className="font-normal">Globale</FormLabel></FormItem>
+                            </RadioGroup>
+                        </FormControl>
+                        <FormMessage />
+                    </FormItem>
                 )} />
             </div>
 

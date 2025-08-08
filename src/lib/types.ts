@@ -23,6 +23,7 @@ export type Client = {
   chorusLegalCommitmentNumber?: string;
   chorusMarketNumber?: string;
   contactEmail?: string;
+  invoicingType: 'multi-site' | 'global';
 };
 
 export type Site = {
