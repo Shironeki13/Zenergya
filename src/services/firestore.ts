@@ -2,7 +2,7 @@
 'use server';
 import { db } from '@/lib/firebase';
 import type { Client, Site, Contract, Invoice, MeterReading, Company, Agency, Sector, Activity, User, Role, Schedule, Term, Typology, VatRate, RevisionFormula, PaymentTerm, PricingRule, Market } from '@/lib/types';
-import { collection, getDocs, doc, getDoc, addDoc, updateDoc, deleteDoc, query, where, DocumentData, writeBatch, runTransaction, Timestamp } from 'firebase/firestore';
+import { collection, getDocs, doc, getDoc, addDoc, updateDoc, deleteDoc, query, where, DocumentData, writeBatch, runTransaction, Timestamp, deleteField } from 'firebase/firestore';
 
 // --- Helper function to convert Firestore Timestamps ---
 function processFirestoreDoc<T>(docData: DocumentData): T {
@@ -160,15 +160,39 @@ export async function createContract(data: Omit<Contract, 'id' | 'status'>) {
 
 export async function updateContract(id: string, data: Partial<Omit<Contract, 'id' | 'clientName' | 'status'>>) {
     const contractDoc = doc(db, 'contracts', id);
-    const updateData = {
+    
+    // Create a copy to mutate
+    const updateData: DocumentData = {
         ...data,
         startDate: new Date(data.startDate as Date),
         endDate: new Date(data.endDate as Date),
-        revisionP1: data.revisionP1?.date ? { ...data.revisionP1, date: new Date(data.revisionP1.date) } : undefined,
-        revisionP2: data.revisionP2?.date ? { ...data.revisionP2, date: new Date(data.revisionP2.date) } : undefined,
-        revisionP3: data.revisionP3?.date ? { ...data.revisionP3, date: new Date(data.revisionP3.date) } : undefined,
     };
-    await updateDoc(contractDoc, updateData as any);
+
+    // Handle revision fields to avoid sending `undefined` to Firestore
+    const revisionFields: ('revisionP1' | 'revisionP2' | 'revisionP3')[] = ['revisionP1', 'revisionP2', 'revisionP3'];
+    for (const field of revisionFields) {
+        if (data[field]) {
+            const revisionData = data[field];
+            // Only include the date if it's a valid date object
+            const date = revisionData.date instanceof Date ? new Date(revisionData.date) : undefined;
+            const formulaId = revisionData.formulaId;
+
+            // If both are missing/falsy, remove the field from Firestore
+            if (!date && !formulaId) {
+                updateData[field] = deleteField();
+            } else {
+                 updateData[field] = {
+                    ...(formulaId && { formulaId }), // only add if it exists
+                    ...(date && { date }), // only add if it exists
+                 };
+            }
+        } else {
+            // If the whole revision object is missing, remove it from Firestore
+            updateData[field] = deleteField();
+        }
+    }
+
+    await updateDoc(contractDoc, updateData);
 }
 
 

@@ -53,7 +53,7 @@ const monthlyBillingSchema = z.object({
 });
 
 const revisionSchema = z.object({
-  formulaId: z.string().optional(),
+  formulaId: z.string().optional().or(z.literal("")).or(z.literal(null)),
   date: z.date().optional(),
 }).optional();
 
@@ -280,7 +280,7 @@ export default function EditContractPage() {
             const contractData = { ...data, ...shareRates };
             delete (contractData as any).shareRate;
 
-            await updateContract(id, contractData as any);
+            await updateContract(id, contractData);
             toast({
                 title: "Contrat Mis à Jour",
                 description: "Le contrat a été mis à jour avec succès.",
@@ -314,13 +314,14 @@ export default function EditContractPage() {
             render={({ field }) => (
                 <FormItem>
                 <FormLabel>Formule de révision {code}</FormLabel>
-                <Select onValueChange={field.onChange} value={field.value}>
+                <Select onValueChange={field.onChange} value={field.value ?? ''}>
                     <FormControl>
                     <SelectTrigger>
                         <SelectValue placeholder="Sélectionnez une formule" />
                     </SelectTrigger>
                     </FormControl>
                     <SelectContent>
+                    <SelectItem value="">Aucune</SelectItem>
                     {formulas.map((formula) => (
                         <SelectItem key={formula.id} value={formula.id}>
                         {formula.code} - {formula.formula}
