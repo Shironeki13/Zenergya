@@ -1,4 +1,5 @@
 
+
 import Link from 'next/link';
 import { MoreHorizontal } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
@@ -39,6 +40,8 @@ export default async function InvoicesPage() {
         return 'outline';
       case 'overdue':
         return 'destructive';
+      case 'proforma':
+          return 'default';
       default:
         return 'default';
     }
@@ -52,6 +55,8 @@ export default async function InvoicesPage() {
         return 'Due';
       case 'overdue':
         return 'En retard';
+      case 'proforma':
+        return 'Proforma';
       default:
         return status;
     }
@@ -62,9 +67,9 @@ export default async function InvoicesPage() {
       <CardHeader>
         <div className="flex items-center justify-between">
           <div>
-            <CardTitle>Factures</CardTitle>
+            <CardTitle>Factures & Proformas</CardTitle>
             <CardDescription>
-              Liste de toutes les factures pour tous les clients.
+              Liste de tous les documents de facturation.
             </CardDescription>
           </div>
         </div>
@@ -73,7 +78,7 @@ export default async function InvoicesPage() {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>N° Facture</TableHead>
+              <TableHead>N° Document</TableHead>
               <TableHead>Client</TableHead>
               <TableHead>Statut</TableHead>
               <TableHead className="hidden md:table-cell">Date</TableHead>
@@ -98,7 +103,7 @@ export default async function InvoicesPage() {
                   {new Date(invoice.date).toLocaleDateString()}
                 </TableCell>
                 <TableCell className="hidden md:table-cell">
-                  {new Date(invoice.dueDate).toLocaleDateString()}
+                  {invoice.status !== 'proforma' ? new Date(invoice.dueDate).toLocaleDateString() : 'N/A'}
                 </TableCell>
                 <TableCell className="text-right">
                   {invoice.total.toFixed(2)} €
@@ -116,8 +121,9 @@ export default async function InvoicesPage() {
                       <DropdownMenuItem asChild>
                         <Link href={`/invoices/${invoice.id}`}>Voir les détails</Link>
                       </DropdownMenuItem>
-                      <DropdownMenuItem>Marquer comme payée</DropdownMenuItem>
-                      <DropdownMenuItem>Envoyer un rappel</DropdownMenuItem>
+                      {invoice.status !== 'proforma' && <DropdownMenuItem>Marquer comme payée</DropdownMenuItem>}
+                      {invoice.status !== 'proforma' && <DropdownMenuItem>Envoyer un rappel</DropdownMenuItem>}
+                      {invoice.status === 'proforma' && <DropdownMenuItem>Convertir en facture</DropdownMenuItem>}
                     </DropdownMenuContent>
                   </DropdownMenu>
                 </TableCell>

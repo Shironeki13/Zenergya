@@ -68,7 +68,7 @@ function PrintContent() {
       <div className="flex h-screen items-center justify-center">
         <div className="flex flex-col items-center gap-4">
           <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-          <p className="text-muted-foreground">Chargement de la facture...</p>
+          <p className="text-muted-foreground">Chargement du document...</p>
         </div>
       </div>
     );
@@ -89,6 +89,7 @@ function PrintContent() {
       case 'paid': return 'secondary';
       case 'due': return 'outline';
       case 'overdue': return 'destructive';
+      case 'proforma': return 'default';
       default: return 'default';
     }
   };
@@ -101,10 +102,14 @@ function PrintContent() {
         return 'Due';
       case 'overdue':
         return 'En retard';
+      case 'proforma':
+        return 'Proforma';
       default:
         return status;
     }
   };
+
+  const documentTitle = invoice.status === 'proforma' ? 'PROFORMA' : 'FACTURE';
 
   return (
     <>
@@ -119,8 +124,8 @@ function PrintContent() {
             </p>
           </div>
           <div className="text-right">
-            <h1 className="text-3xl font-bold text-primary">FACTURE</h1>
-            <p className="text-gray-500">{invoice.invoiceNumber}</p>
+            <h1 className="text-3xl font-bold text-primary">{documentTitle}</h1>
+            <p className="text-gray-500">{invoice.invoiceNumber || invoice.id}</p>
             <Badge variant={getBadgeVariant(invoice.status)} className="mt-2 text-xs">
               {translateStatus(invoice.status).toUpperCase()}
             </Badge>
@@ -137,8 +142,8 @@ function PrintContent() {
             </p>
           </div>
           <div className="text-right space-y-1">
-            <p><span className="font-semibold text-sm">Date de facturation :</span> <span className="text-gray-600 text-sm">{new Date(invoice.date).toLocaleDateString()}</span></p>
-            <p><span className="font-semibold text-sm">Date d'échéance :</span> <span className="text-gray-600 text-sm">{new Date(invoice.dueDate).toLocaleDateString()}</span></p>
+            <p><span className="font-semibold text-sm">Date du document :</span> <span className="text-gray-600 text-sm">{new Date(invoice.date).toLocaleDateString()}</span></p>
+            {invoice.status !== 'proforma' && <p><span className="font-semibold text-sm">Date d'échéance :</span> <span className="text-gray-600 text-sm">{new Date(invoice.dueDate).toLocaleDateString()}</span></p>}
              {invoice.periodStartDate && invoice.periodEndDate && (
                <p><span className="font-semibold text-sm">Période de service :</span> <span className="text-gray-600 text-sm">{new Date(invoice.periodStartDate).toLocaleDateString()} - {new Date(invoice.periodEndDate).toLocaleDateString()}</span></p>
             )}
@@ -198,15 +203,17 @@ function PrintContent() {
             <p className="text-gray-500 text-xs">
               Merci de votre confiance !
             </p>
-            <p className="text-gray-500 text-xs mt-1">
-              Paiement sous 30 jours. Les retards sont soumis à des frais de 1,5%/mois.
-            </p>
+            {invoice.status !== 'proforma' && 
+              <p className="text-gray-500 text-xs mt-1">
+                Paiement sous 30 jours. Les retards sont soumis à des frais de 1,5%/mois.
+              </p>
+            }
         </footer>
       </div>
       <div className="fixed top-4 right-4 print:hidden">
           <Button onClick={() => window.print()}>
             <Printer className="mr-2 h-4 w-4" />
-            Imprimer la facture
+            Imprimer le document
           </Button>
       </div>
       <style jsx global>{`

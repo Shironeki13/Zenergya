@@ -114,6 +114,8 @@ export default function InvoiceDetailPage() {
         return 'outline';
       case 'overdue':
         return 'destructive';
+      case 'proforma':
+        return 'default'
       default:
         return 'default';
     }
@@ -127,10 +129,16 @@ export default function InvoiceDetailPage() {
         return 'Due';
       case 'overdue':
         return 'En retard';
+      case 'proforma':
+        return 'Proforma';
       default:
         return status;
     }
   };
+
+  const documentTitle = invoice.status === 'proforma' ? 'PROFORMA' : 'FACTURE';
+  const documentIdentifier = invoice.status === 'proforma' ? `Proforma ${invoice.id}` : `Facture ${invoice.invoiceNumber}`;
+
 
   return (
     <div className="space-y-6">
@@ -141,7 +149,7 @@ export default function InvoiceDetailPage() {
             <span className="sr-only">Retour</span>
           </Link>
         </Button>
-        <h1 className="text-lg font-semibold md:text-2xl">Facture {invoice.invoiceNumber}</h1>
+        <h1 className="text-lg font-semibold md:text-2xl">{documentIdentifier}</h1>
         <div className="ml-auto flex items-center gap-2">
           <Button variant="outline" size="sm">
             <Mail className="h-4 w-4 mr-2" />
@@ -164,8 +172,8 @@ export default function InvoiceDetailPage() {
             </p>
           </div>
           <div className="text-right">
-            <h1 className="text-3xl font-bold text-primary">FACTURE</h1>
-            <p className="text-muted-foreground">{invoice.invoiceNumber}</p>
+            <h1 className="text-3xl font-bold text-primary">{documentTitle}</h1>
+            <p className="text-muted-foreground">{invoice.invoiceNumber || invoice.id}</p>
             <Badge variant={getBadgeVariant(invoice.status)} className="mt-2 text-xs">
               {translateStatus(invoice.status).toUpperCase()}
             </Badge>
@@ -182,8 +190,8 @@ export default function InvoiceDetailPage() {
             </p>
           </div>
           <div className="text-right space-y-1">
-            <p><span className="font-semibold text-sm">Date de facturation :</span> <span className="text-muted-foreground text-sm">{new Date(invoice.date).toLocaleDateString()}</span></p>
-            <p><span className="font-semibold text-sm">Date d'échéance :</span> <span className="text-muted-foreground text-sm">{new Date(invoice.dueDate).toLocaleDateString()}</span></p>
+            <p><span className="font-semibold text-sm">Date du document :</span> <span className="text-muted-foreground text-sm">{new Date(invoice.date).toLocaleDateString()}</span></p>
+            {invoice.status !== 'proforma' && <p><span className="font-semibold text-sm">Date d'échéance :</span> <span className="text-muted-foreground text-sm">{new Date(invoice.dueDate).toLocaleDateString()}</span></p>}
              {invoice.periodStartDate && invoice.periodEndDate && (
                <p><span className="font-semibold text-sm">Période de service :</span> <span className="text-muted-foreground text-sm">{new Date(invoice.periodStartDate).toLocaleDateString()} - {new Date(invoice.periodEndDate).toLocaleDateString()}</span></p>
             )}
@@ -243,9 +251,11 @@ export default function InvoiceDetailPage() {
             <p className="text-muted-foreground text-xs">
               Merci de votre confiance !
             </p>
-            <p className="text-muted-foreground text-xs mt-1">
-              Paiement sous 30 jours. Les retards sont soumis à des frais de 1,5%/mois.
-            </p>
+            {invoice.status !== 'proforma' &&
+              <p className="text-muted-foreground text-xs mt-1">
+                Paiement sous 30 jours. Les retards sont soumis à des frais de 1,5%/mois.
+              </p>
+            }
         </footer>
       </div>
     </div>

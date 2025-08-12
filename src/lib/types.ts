@@ -92,7 +92,7 @@ export type MeterReading = {
   service: "hot_water" | "heating";
 };
 
-export type InvoiceStatus = "paid" | "due" | "overdue";
+export type InvoiceStatus = "paid" | "due" | "overdue" | "proforma";
 
 export type InvoiceLineItem = {
   description: string;
@@ -105,7 +105,7 @@ export type InvoiceLineItem = {
 
 export type Invoice = {
   id: string;
-  invoiceNumber?: string; // Chronological invoice number
+  invoiceNumber?: string; // Chronological invoice number, optional for proforma
   contractId: string;
   clientId: string;
   clientName: string; // Denormalized
@@ -225,6 +225,7 @@ export type User = {
 export const GenerateInvoiceInputSchema = z.object({
   contractId: z.string().describe('The ID of the contract to generate an invoice for.'),
   invoiceDate: z.string().describe('The date for the invoice in ISO format.'),
+  isProforma: z.boolean().describe('Whether to generate a proforma invoice instead of a final one.'),
 });
 export type GenerateInvoiceInput = z.infer<typeof GenerateInvoiceInputSchema>;
 

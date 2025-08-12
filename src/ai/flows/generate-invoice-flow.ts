@@ -38,7 +38,7 @@ const generateInvoiceFlow = ai.defineFlow(
   },
   async (input) => {
     try {
-      const { contractId, invoiceDate } = input;
+      const { contractId, invoiceDate, isProforma } = input;
       const contract = await getContract(contractId);
       if (!contract) {
         throw new Error('Contrat non trouvé.');
@@ -61,7 +61,7 @@ const generateInvoiceFlow = ai.defineFlow(
       const existingInvoices = await getInvoicesByContract(contractId);
       existingInvoices.sort((a, b) => new Date(b.periodEndDate || 0).getTime() - new Date(a.periodEndDate || 0).getTime());
       
-      const lastInvoice = existingInvoices[0];
+      const lastInvoice = existingInvoices.find(inv => inv.status !== 'proforma');
       const contractStartDate = new Date(contract.startDate);
       
       let periodStartDate = lastInvoice ? new Date(lastInvoice.periodEndDate!) : contractStartDate;
@@ -184,10 +184,10 @@ const generateInvoiceFlow = ai.defineFlow(
       const dueDate = new Date(invoiceDateObj);
       dueDate.setDate(dueDate.getDate() + 30); // 30 days to pay
       
-      const invoiceNumber = await getNextInvoiceNumber(company.code);
+      const invoiceNumber = isProforma ? undefined : await getNextInvoiceNumber(company.code);
 
       const newInvoice = {
-        invoiceNumber,
+        ...(invoiceNumber && { invoiceNumber }),
         contractId: contract.id,
         clientId: contract.clientId,
         clientName: contract.clientName,
@@ -195,7 +195,7 @@ const generateInvoiceFlow = ai.defineFlow(
         dueDate: dueDate.toISOString().split('T')[0],
         periodStartDate: periodStartDate.toISOString().split('T')[0],
         periodEndDate: periodEndDate.toISOString().split('T')[0],
-        status: 'due' as const,
+        status: isProforma ? 'proforma' as const : 'due' as const,
         lineItems,
         subtotal,
         tax,

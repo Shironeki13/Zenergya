@@ -56,7 +56,7 @@ export default function BillingPage() {
     }
   }, [selectedClientId, toast]);
 
-  const handleGenerateInvoice = async () => {
+  const handleGenerate = async (isProforma: boolean) => {
     if (!selectedContractId) {
       toast({ title: 'Erreur', description: 'Veuillez sélectionner un contrat.', variant: 'destructive' });
       return;
@@ -70,11 +70,12 @@ export default function BillingPage() {
       const result = await generateInvoice({ 
           contractId: selectedContractId,
           invoiceDate: invoiceDate.toISOString(),
+          isProforma,
       });
       if (result.success) {
         toast({
-          title: 'Facture Générée',
-          description: `La facture ${result.invoiceId} a été créée avec succès.`,
+          title: isProforma ? 'Proforma Généré' : 'Facture Générée',
+          description: `Le document ${result.invoiceId} a été créé avec succès.`,
         });
       } else {
         throw new Error(result.error);
@@ -96,14 +97,14 @@ export default function BillingPage() {
        <div>
         <h1 className="text-lg font-medium">Facturation Manuelle</h1>
         <p className="text-sm text-muted-foreground">
-          Générez une facture pour un contrat spécifique.
+          Générez une facture ou un proforma pour un contrat spécifique.
         </p>
       </div>
       <Card className="max-w-2xl">
         <CardHeader>
           <CardTitle>Sélection du Contrat</CardTitle>
           <CardDescription>
-            Choisissez un client, un contrat, et une date pour générer la facture.
+            Choisissez un client, un contrat, et une date pour générer le document.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -146,7 +147,7 @@ export default function BillingPage() {
           )}
 
           <div className="space-y-2">
-            <Label>Date de la facture</Label>
+            <Label>Date du document</Label>
              <Popover>
                 <PopoverTrigger asChild>
                     <Button
@@ -172,10 +173,15 @@ export default function BillingPage() {
                 </PopoverContent>
             </Popover>
           </div>
-
-          <Button onClick={handleGenerateInvoice} disabled={!selectedContractId || isGenerating}>
-            {isGenerating ? 'Génération en cours...' : 'Générer la Facture'}
-          </Button>
+          
+          <div className="flex items-center gap-4 pt-2">
+            <Button onClick={() => handleGenerate(true)} disabled={!selectedContractId || isGenerating} variant="outline">
+              {isGenerating ? 'Génération...' : 'Générer un Proforma'}
+            </Button>
+            <Button onClick={() => handleGenerate(false)} disabled={!selectedContractId || isGenerating}>
+              {isGenerating ? 'Génération...' : 'Générer la Facture'}
+            </Button>
+          </div>
         </CardContent>
       </Card>
     </div>
