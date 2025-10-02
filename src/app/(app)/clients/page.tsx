@@ -1,4 +1,7 @@
 
+'use client';
+
+import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { PlusCircle, MoreHorizontal } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
@@ -27,19 +30,36 @@ import {
 } from '@/components/ui/table';
 import { getClients, getTypologies } from '@/services/firestore';
 import type { Client, Typology } from '@/lib/types';
+import { useToast } from '@/hooks/use-toast';
 
-export default async function ClientsPage() {
-  const [clients, typologies] = await Promise.all([
-    getClients(),
-    getTypologies(),
-  ]);
+export default function ClientsPage() {
+  const [clients, setClients] = useState<Client[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const { toast } = useToast();
 
-  const typologyMap = new Map(typologies.map((t: Typology) => [t.id, t.name]));
+  const loadClients = useCallback(async () => {
+    setIsLoading(true);
+    try {
+      const [clientsData, typologiesData] = await Promise.all([
+        getClients(),
+        getTypologies(),
+      ]);
+      const typologyMap = new Map(typologiesData.map((t: Typology) => [t.id, t.name]));
+      const clientsWithTypology = clientsData.map(client => ({
+          ...client,
+          typologyName: typologyMap.get(client.typologyId) || 'N/A'
+      }));
+      setClients(clientsWithTypology);
+    } catch (error) {
+      toast({ title: 'Erreur', description: 'Impossible de charger les clients.', variant: 'destructive' });
+    } finally {
+      setIsLoading(false);
+    }
+  }, [toast]);
 
-  const clientsWithTypology = clients.map(client => ({
-      ...client,
-      typologyName: typologyMap.get(client.typologyId) || 'N/A'
-  }))
+  useEffect(() => {
+    loadClients();
+  }, [loadClients]);
   
   return (
     <Card>
@@ -72,35 +92,45 @@ export default async function ClientsPage() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {clientsWithTypology.map((client) => (
-              <TableRow key={client.id}>
-                <TableCell className="font-medium">{client.name}</TableCell>
-                <TableCell>
-                    <Badge variant={client.clientType === 'public' ? 'secondary' : 'outline'}>
-                        {client.clientType === 'public' ? 'Public' : 'Privé'}
-                    </Badge>
-                </TableCell>
-                <TableCell>{client.typologyName}</TableCell>
-                <TableCell>
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button aria-haspopup="true" size="icon" variant="ghost">
-                        <MoreHorizontal className="h-4 w-4" />
-                        <span className="sr-only">Ouvrir le menu</span>
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                      <DropdownMenuLabel>Actions</DropdownMenuLabel>
-                      <DropdownMenuItem asChild><Link href={`/clients/${client.id}`}>Gérer les sites</Link></DropdownMenuItem>
-                      <DropdownMenuItem asChild><Link href={`/clients/${client.id}/edit`}>Modifier</Link></DropdownMenuItem>
-                      <DropdownMenuItem className="text-destructive">
-                        Supprimer
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </TableCell>
-              </TableRow>
-            ))}
+            {isLoading ? (
+                <TableRow>
+                    <TableCell colSpan={4} className="text-center h-24">Chargement...</TableCell>
+                </TableRow>
+            ) : clients.length > 0 ? (
+                clients.map((client) => (
+                <TableRow key={client.id}>
+                    <TableCell className="font-medium">{client.name}</TableCell>
+                    <TableCell>
+                        <Badge variant={client.clientType === 'public' ? 'secondary' : 'outline'}>
+                            {client.clientType === 'public' ? 'Public' : 'Privé'}
+                        </Badge>
+                    </TableCell>
+                    <TableCell>{client.typologyName}</TableCell>
+                    <TableCell>
+                    <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                        <Button aria-haspopup="true" size="icon" variant="ghost">
+                            <MoreHorizontal className="h-4 w-4" />
+                            <span className="sr-only">Ouvrir le menu</span>
+                        </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                        <DropdownMenuLabel>Actions</DropdownMenuLabel>
+                        <DropdownMenuItem asChild><Link href={`/clients/${client.id}`}>Gérer les sites</Link></DropdownMenuItem>
+                        <DropdownMenuItem asChild><Link href={`/clients/${client.id}/edit`}>Modifier</Link></DropdownMenuItem>
+                        <DropdownMenuItem className="text-destructive">
+                            Supprimer
+                        </DropdownMenuItem>
+                        </DropdownMenuContent>
+                    </DropdownMenu>
+                    </TableCell>
+                </TableRow>
+                ))
+            ) : (
+                <TableRow>
+                    <TableCell colSpan={4} className="text-center h-24">Aucun client trouvé.</TableCell>
+                </TableRow>
+            )}
           </TableBody>
         </Table>
       </CardContent>

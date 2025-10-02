@@ -1,4 +1,7 @@
 
+'use client';
+
+import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { PlusCircle, MoreHorizontal } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
@@ -27,9 +30,28 @@ import {
 } from '@/components/ui/table';
 import { getContracts } from '@/services/firestore';
 import type { Contract } from '@/lib/types';
+import { useToast } from '@/hooks/use-toast';
 
-export default async function ContractsPage() {
-  const contracts: Contract[] = await getContracts();
+export default function ContractsPage() {
+  const [contracts, setContracts] = useState<Contract[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const { toast } = useToast();
+
+  const loadContracts = useCallback(async () => {
+    setIsLoading(true);
+    try {
+      const contractsData = await getContracts();
+      setContracts(contractsData);
+    } catch (error) {
+      toast({ title: 'Erreur', description: 'Impossible de charger les contrats.', variant: 'destructive' });
+    } finally {
+      setIsLoading(false);
+    }
+  }, [toast]);
+
+  useEffect(() => {
+    loadContracts();
+  }, [loadContracts]);
   
   return (
     <Card>
@@ -65,40 +87,50 @@ export default async function ContractsPage() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {contracts.map((contract) => (
-              <TableRow key={contract.id}>
-                <TableCell className="font-medium">{contract.clientName}</TableCell>
-                <TableCell>
-                   <Badge variant="outline">{contract.siteIds.length}</Badge>
-                </TableCell>
-                <TableCell>
-                  <Badge variant={contract.status === 'active' ? 'secondary' : contract.status === 'pending' ? 'outline' : 'destructive'}>
-                    {contract.status.charAt(0).toUpperCase() + contract.status.slice(1)}
-                  </Badge>
-                </TableCell>
-                <TableCell className="hidden md:table-cell">
-                  {new Date(contract.startDate).toLocaleDateString()}
-                </TableCell>
-                <TableCell>
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button aria-haspopup="true" size="icon" variant="ghost">
-                        <MoreHorizontal className="h-4 w-4" />
-                        <span className="sr-only">Ouvrir le menu</span>
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                      <DropdownMenuLabel>Actions</DropdownMenuLabel>
-                      <DropdownMenuItem asChild><Link href={`/contracts/${contract.id}`}>Voir les détails</Link></DropdownMenuItem>
-                      <DropdownMenuItem asChild><Link href={`/contracts/${contract.id}/edit`}>Modifier</Link></DropdownMenuItem>
-                      <DropdownMenuItem className="text-destructive">
-                        Supprimer
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </TableCell>
-              </TableRow>
-            ))}
+            {isLoading ? (
+                <TableRow>
+                    <TableCell colSpan={5} className="text-center h-24">Chargement...</TableCell>
+                </TableRow>
+            ) : contracts.length > 0 ? (
+                contracts.map((contract) => (
+                <TableRow key={contract.id}>
+                    <TableCell className="font-medium">{contract.clientName}</TableCell>
+                    <TableCell>
+                    <Badge variant="outline">{contract.siteIds.length}</Badge>
+                    </TableCell>
+                    <TableCell>
+                    <Badge variant={contract.status === 'active' ? 'secondary' : contract.status === 'pending' ? 'outline' : 'destructive'}>
+                        {contract.status.charAt(0).toUpperCase() + contract.status.slice(1)}
+                    </Badge>
+                    </TableCell>
+                    <TableCell className="hidden md:table-cell">
+                    {new Date(contract.startDate).toLocaleDateString()}
+                    </TableCell>
+                    <TableCell>
+                    <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                        <Button aria-haspopup="true" size="icon" variant="ghost">
+                            <MoreHorizontal className="h-4 w-4" />
+                            <span className="sr-only">Ouvrir le menu</span>
+                        </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                        <DropdownMenuLabel>Actions</DropdownMenuLabel>
+                        <DropdownMenuItem asChild><Link href={`/contracts/${contract.id}`}>Voir les détails</Link></DropdownMenuItem>
+                        <DropdownMenuItem asChild><Link href={`/contracts/${contract.id}/edit`}>Modifier</Link></DropdownMenuItem>
+                        <DropdownMenuItem className="text-destructive">
+                            Supprimer
+                        </DropdownMenuItem>
+                        </DropdownMenuContent>
+                    </DropdownMenu>
+                    </TableCell>
+                </TableRow>
+                ))
+            ) : (
+                <TableRow>
+                    <TableCell colSpan={5} className="text-center h-24">Aucun contrat trouvé.</TableCell>
+                </TableRow>
+            )}
           </TableBody>
         </Table>
       </CardContent>

@@ -1,4 +1,7 @@
 
+'use client';
+
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import {
   ArrowUpRight,
@@ -29,8 +32,25 @@ import { getContracts, getInvoices } from '@/services/firestore';
 import type { Invoice, Contract, InvoiceStatus } from '@/lib/types';
 
 
-export default async function Dashboard() {
-  const [contracts, invoices] = await Promise.all([getContracts(), getInvoices()]);
+export default function Dashboard() {
+  const [contracts, setContracts] = useState<Contract[]>([]);
+  const [invoices, setInvoices] = useState<Invoice[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    async function fetchData() {
+      try {
+        const [contractsData, invoicesData] = await Promise.all([getContracts(), getInvoices()]);
+        setContracts(contractsData);
+        setInvoices(invoicesData);
+      } catch (error) {
+        console.error("Failed to fetch dashboard data:", error);
+      } finally {
+        setIsLoading(false);
+      }
+    }
+    fetchData();
+  }, []);
 
   const activeContracts = contracts.filter((c: Contract) => c.status === 'active').length;
   const overdueInvoices = invoices.filter((i: Invoice) => i.status === 'overdue').length;
@@ -48,6 +68,10 @@ export default async function Dashboard() {
         return status;
     }
   };
+
+  if (isLoading) {
+    return <div>Chargement...</div>
+  }
 
   return (
     <>
