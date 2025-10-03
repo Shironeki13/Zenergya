@@ -10,7 +10,6 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
-import { FormItem, FormControl } from "@/components/ui/form";
 import { PlusCircle, Edit, Trash2, BookOpen } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { getSites, getMeters, createMeter, updateMeter, deleteMeter, getMeterReadingsByMeter } from '@/services/firestore';
@@ -267,8 +266,8 @@ export default function MetersPage() {
               <div className="space-y-2">
                   <Label>Statut</Label>
                   <RadioGroup onValueChange={(v) => setStatus(v as 'on' | 'off')} value={status} className="flex gap-4 pt-2">
-                      <FormItem className="flex items-center space-x-2"><FormControl><RadioGroupItem value="on" id="on" /></FormControl><Label htmlFor="on" className="font-normal">Allumé</Label></FormItem>
-                      <FormItem className="flex items-center space-x-2"><FormControl><RadioGroupItem value="off" id="off" /></FormControl><Label htmlFor="off" className="font-normal">Éteint</Label></FormItem>
+                      <div className="flex items-center space-x-2"><RadioGroupItem value="on" id="on" /><Label htmlFor="on" className="font-normal">Allumé</Label></div>
+                      <div className="flex items-center space-x-2"><RadioGroupItem value="off" id="off" /><Label htmlFor="off" className="font-normal">Éteint</Label></div>
                   </RadioGroup>
               </div>
 
