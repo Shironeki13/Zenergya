@@ -1,7 +1,8 @@
 
+
 'use server';
 import { db } from '@/lib/firebase';
-import type { Client, Site, Contract, Invoice, MeterReading, Company, Agency, Sector, Activity, User, Role, Schedule, Term, Typology, VatRate, RevisionFormula, PaymentTerm, PricingRule, Market } from '@/lib/types';
+import type { Client, Site, Contract, Invoice, MeterReading, Company, Agency, Sector, Activity, User, Role, Schedule, Term, Typology, VatRate, RevisionFormula, PaymentTerm, PricingRule, Market, Meter } from '@/lib/types';
 import { collection, getDocs, doc, getDoc, addDoc, updateDoc, deleteDoc, query, where, DocumentData, writeBatch, runTransaction, Timestamp, deleteField } from 'firebase/firestore';
 
 // --- Helper function to convert Firestore Timestamps ---
@@ -178,7 +179,7 @@ export async function updateContract(id: string, data: Partial<Omit<Contract, 'i
                     ...(revisionData.date && { date: new Date(revisionData.date) }),
                  };
                  // If the object becomes empty, remove it
-                 if (Object.keys(updateData[field]).length === 0) {
+                 if (Object.keys(updateData[field]).length === 0 || !updateData[field].formulaId) {
                     updateData[field] = deleteField();
                  }
             } else {
@@ -240,11 +241,41 @@ export async function getNextInvoiceNumber(companyCode: string): Promise<string>
 }
 
 
+// Compteurs (Meters)
+export async function createMeter(data: Omit<Meter, 'id'>) {
+    return createSettingItem('meters', { ...data, lastModified: Timestamp.now() });
+}
+export async function getMeters(): Promise<Meter[]> {
+    const meters = await getSettingItems<Meter>('meters');
+    const sites = await getSites();
+    const siteMap = new Map(sites.map(s => [s.id, s.name]));
+    return meters.map(meter => ({
+        ...meter,
+        siteName: siteMap.get(meter.siteId) || 'N/A'
+    }));
+}
+export async function updateMeter(id: string, data: Partial<Omit<Meter, 'id'>>) {
+    return updateSettingItem('meters', id, { ...data, lastModified: Timestamp.now() });
+}
+export async function deleteMeter(id: string) {
+    return deleteSettingItem('meters', id);
+}
+
 // Relevés de compteur
 export async function getMeterReadingsByContract(contractId: string): Promise<MeterReading[]> {
     const q = query(collection(db, 'meterReadings'), where("contractId", "==", contractId));
     return getCollection<MeterReading>(q);
 }
+
+export async function createMeterReading(data: Omit<MeterReading, 'id'>) {
+    const readingData = {
+        ...data,
+        date: new Date(data.date),
+    };
+    return createSettingItem('meterReadings', readingData);
+}
+
+
 
 // --- Fonctions de Paramétrage (Firestore) ---
 async function createSettingItem(collectionName: string, data: DocumentData): Promise<any> {

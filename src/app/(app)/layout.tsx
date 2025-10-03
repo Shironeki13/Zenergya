@@ -1,4 +1,5 @@
 
+
 import Link from 'next/link';
 import {
   LayoutDashboard,
@@ -9,7 +10,8 @@ import {
   Users,
   Building,
   MapPin,
-  CircleDollarSign
+  CircleDollarSign,
+  Gauge,
 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
@@ -34,6 +36,7 @@ export default function AppLayout({
     { href: '/clients', icon: Building, label: 'Clients' },
     { href: '/sites', icon: MapPin, label: 'Sites' },
     { href: '/contracts', icon: FileSignature, label: 'Contrats' },
+    { href: '/meters', icon: Gauge, label: 'Compteurs' },
     { href: '/invoices', icon: FileText, label: 'Factures' },
     { href: '/billing', icon: CircleDollarSign, label: 'Facturation' },
     { href: '/users', icon: Users, label: 'Utilisateurs' },

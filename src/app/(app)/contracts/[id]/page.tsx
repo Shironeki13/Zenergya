@@ -1,7 +1,8 @@
 
+
 'use client';
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { notFound, useRouter, useParams } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
@@ -36,52 +37,99 @@ import {
   MapPin,
   Loader2,
 } from "lucide-react";
-import { getContract, getMeterReadingsByContract, getInvoicesByContract, getActivities, getSites } from "@/services/firestore";
-import type { Activity, Contract, Invoice, MeterReading, Site } from "@/lib/types";
+import { getContract, getMeterReadingsByContract, getInvoicesByContract, getActivities, getSites, getMeters } from "@/services/firestore";
+import type { Activity, Contract, Invoice, MeterReading, Site, Meter } from "@/lib/types";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { useToast } from "@/hooks/use-toast";
+import { createMeterReading } from "@/services/firestore";
+
 
 export default function ContractDetailPage() {
   const params = useParams();
   const id = params.id as string;
   const [contract, setContract] = useState<Contract | null>(null);
   const [sites, setSites] = useState<Site[]>([]);
+  const [meters, setMeters] = useState<Meter[]>([]);
   const [meterReadings, setMeterReadings] = useState<MeterReading[]>([]);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [activities, setActivities] = useState<Activity[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const router = useRouter();
+  const { toast } = useToast();
 
-  useEffect(() => {
-    async function fetchData() {
-      if (!id) return;
-      try {
-        const contractData = await getContract(id);
-        if (!contractData) {
-          notFound();
-          return;
-        }
-        setContract(contractData);
+  const [selectedMeterId, setSelectedMeterId] = useState<string | null>(null);
+  const [readingValue, setReadingValue] = useState('');
 
-        const [readingsData, invoicesData, activitiesData, allSites] = await Promise.all([
-          getMeterReadingsByContract(id),
-          getInvoicesByContract(id),
-          getActivities(),
-          getSites(),
-        ]);
-        
-        const contractSites = allSites.filter(site => contractData.siteIds.includes(site.id));
-        
-        setSites(contractSites);
-        setMeterReadings(readingsData);
-        setInvoices(invoicesData);
-        setActivities(activitiesData);
-      } catch (error) {
-        console.error("Failed to fetch contract details:", error);
-      } finally {
-        setIsLoading(false);
+  const loadContractData = useCallback(async () => {
+    if (!id) return;
+    setIsLoading(true);
+    try {
+      const contractData = await getContract(id);
+      if (!contractData) {
+        notFound();
+        return;
       }
+      setContract(contractData);
+
+      const [readingsData, invoicesData, activitiesData, allSites, allMeters] = await Promise.all([
+        getMeterReadingsByContract(id),
+        getInvoicesByContract(id),
+        getActivities(),
+        getSites(),
+        getMeters(),
+      ]);
+      
+      const contractSites = allSites.filter(site => contractData.siteIds.includes(site.id));
+      const siteIds = contractSites.map(s => s.id);
+      const contractMeters = allMeters.filter(meter => siteIds.includes(meter.siteId));
+      
+      setSites(contractSites);
+      setMeters(contractMeters);
+      setMeterReadings(readingsData);
+      setInvoices(invoicesData);
+      setActivities(activitiesData);
+    } catch (error) {
+      console.error("Failed to fetch contract details:", error);
+      toast({ title: "Erreur", description: "Impossible de charger les détails du contrat.", variant: "destructive" });
+    } finally {
+      setIsLoading(false);
     }
-    fetchData();
-  }, [id]);
+  }, [id, toast]);
+  
+  useEffect(() => {
+    loadContractData();
+  }, [loadContractData]);
+
+  const handleSaveReading = async (e: React.FormEvent) => {
+      e.preventDefault();
+      if (!selectedMeterId || !readingValue) {
+          toast({ title: "Erreur", description: "Veuillez sélectionner un compteur et saisir une valeur.", variant: "destructive"});
+          return;
+      }
+
+      const selectedMeter = meters.find(m => m.id === selectedMeterId);
+      if (!selectedMeter) return;
+      
+      const readingData = {
+          meterId: selectedMeterId,
+          contractId: id,
+          date: new Date().toISOString(),
+          reading: parseFloat(readingValue),
+          unit: selectedMeter.unit,
+      };
+
+      try {
+          await createMeterReading(readingData);
+          toast({ title: "Relevé enregistré", description: "Le relevé a été enregistré avec succès." });
+          setSelectedMeterId(null);
+          setReadingValue('');
+          // Re-fetch readings to update the list
+          const readingsData = await getMeterReadingsByContract(id);
+          setMeterReadings(readingsData);
+      } catch (error) {
+          toast({ title: "Erreur", description: "Impossible d'enregistrer le relevé.", variant: "destructive" });
+      }
+  }
   
   if (isLoading) {
     return (
@@ -97,6 +145,7 @@ export default function ContractDetailPage() {
 
   const activityMap = new Map(activities.map((a: Activity) => [a.id, a.label]));
   const contractActivities = contract.activityIds.map(id => activityMap.get(id) || 'Activité inconnue');
+  const meterMap = new Map(meters.map(m => [m.id, m.name]));
 
   return (
     <div className="grid gap-4 md:gap-8">
@@ -176,18 +225,31 @@ export default function ContractDetailPage() {
               <Gauge className="h-5 w-5" /> Relevés de Compteur
             </CardTitle>
             <CardDescription>
-              Saisissez et consultez les relevés de compteur historiques pour les sites de ce contrat.
+              Saisissez les relevés pour les compteurs des sites de ce contrat.
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <form className="flex items-end gap-2">
-              <div className="grid gap-2 flex-1">
-                <Label htmlFor="reading" className="sr-only">
-                  Relevé
-                </Label>
-                <Input id="reading" type="number" placeholder="Saisir le relevé..." />
+            <form onSubmit={handleSaveReading} className="flex flex-col gap-4">
+               <div className="grid gap-2">
+                 <Label htmlFor="meter-select">Compteur</Label>
+                 <Select onValueChange={setSelectedMeterId} value={selectedMeterId || ''}>
+                    <SelectTrigger id="meter-select">
+                      <SelectValue placeholder="Sélectionner un compteur..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {meters.map(m => (
+                        <SelectItem key={m.id} value={m.id}>{m.name} ({m.code}) - {sites.find(s => s.id === m.siteId)?.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+               </div>
+              <div className="flex items-end gap-2">
+                <div className="grid gap-2 flex-1">
+                  <Label htmlFor="reading" className="sr-only">Relevé</Label>
+                  <Input id="reading" type="number" placeholder="Saisir le relevé..." value={readingValue} onChange={e => setReadingValue(e.target.value)}/>
+                </div>
+                <Button type="submit">Enregistrer</Button>
               </div>
-              <Button type="submit">Enregistrer</Button>
             </form>
           </CardContent>
           <CardFooter className="flex flex-col items-start gap-2 text-sm">
@@ -195,7 +257,7 @@ export default function ContractDetailPage() {
              <ul className="w-full">
               {meterReadings.map(r => (
                 <li key={r.id} className="flex justify-between py-1 border-b last:border-0">
-                  <span>{new Date(r.date).toLocaleDateString()} - {sites.find(s => s.id === r.siteId)?.name || r.siteId}</span>
+                  <span>{new Date(r.date).toLocaleDateString()} - {meterMap.get(r.meterId) || r.meterId}</span>
                   <span>{r.reading} {r.unit}</span>
                 </li>
               ))}

@@ -39,6 +39,20 @@ export type Site = {
     amounts?: { activityId: string; amount: number }[]; // Montants à facturer par activité
 }
 
+export type Meter = {
+    id: string;
+    code: string; // unique code
+    name: string;
+    siteId: string;
+    siteName?: string; // denormalized
+    type: string; // e.g., 'Eau Chaude', 'Chauffage'
+    unit: string; // e.g., 'kWh', 'm3'
+    location?: string;
+    status: 'on' | 'off';
+    lastModified: string; // ISO date string
+    modifiedBy: string; // user name/id
+}
+
 export type MonthlyBilling = {
   month: string;
   date: number; // jour du mois
@@ -84,12 +98,11 @@ export type Contract = {
 
 export type MeterReading = {
   id: string;
-  siteId: string;
+  meterId: string;
   contractId: string; // To know which contract the reading applies to for billing
   date: string; // ISO String date
   reading: number;
-  unit: "kWh";
-  service: "hot_water" | "heating";
+  unit: string; // Copied from meter for convenience
 };
 
 export type InvoiceStatus = "paid" | "due" | "overdue" | "proforma";
