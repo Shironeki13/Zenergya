@@ -3,7 +3,7 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
-import { notFound, useRouter } from "next/navigation";
+import { notFound, useRouter, useParams } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -36,15 +36,14 @@ import {
   MapPin,
   Loader2,
 } from "lucide-react";
-import { getContract, getMeterReadingsByContract, getInvoicesByContract, getActivities } from "@/services/firestore";
-import type { Activity, Contract, Invoice, MeterReading } from "@/lib/types";
+import { getContract, getMeterReadingsByContract, getInvoicesByContract, getActivities, getSites } from "@/services/firestore";
+import type { Activity, Contract, Invoice, MeterReading, Site } from "@/lib/types";
 
-export default function ContractDetailPage({
-  params,
-}: {
-  params: { id: string };
-}) {
+export default function ContractDetailPage() {
+  const params = useParams();
+  const id = params.id as string;
   const [contract, setContract] = useState<Contract | null>(null);
+  const [sites, setSites] = useState<Site[]>([]);
   const [meterReadings, setMeterReadings] = useState<MeterReading[]>([]);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [activities, setActivities] = useState<Activity[]>([]);
@@ -53,18 +52,25 @@ export default function ContractDetailPage({
 
   useEffect(() => {
     async function fetchData() {
+      if (!id) return;
       try {
-        const contractData = await getContract(params.id);
+        const contractData = await getContract(id);
         if (!contractData) {
           notFound();
+          return;
         }
         setContract(contractData);
 
-        const [readingsData, invoicesData, activitiesData] = await Promise.all([
-          getMeterReadingsByContract(params.id),
-          getInvoicesByContract(params.id),
+        const [readingsData, invoicesData, activitiesData, allSites] = await Promise.all([
+          getMeterReadingsByContract(id),
+          getInvoicesByContract(id),
           getActivities(),
+          getSites(),
         ]);
+        
+        const contractSites = allSites.filter(site => contractData.siteIds.includes(site.id));
+        
+        setSites(contractSites);
         setMeterReadings(readingsData);
         setInvoices(invoicesData);
         setActivities(activitiesData);
@@ -75,7 +81,7 @@ export default function ContractDetailPage({
       }
     }
     fetchData();
-  }, [params.id]);
+  }, [id]);
   
   if (isLoading) {
     return (
@@ -92,11 +98,6 @@ export default function ContractDetailPage({
   const activityMap = new Map(activities.map((a: Activity) => [a.id, a.label]));
   const contractActivities = contract.activityIds.map(id => activityMap.get(id) || 'Activité inconnue');
 
-  const serviceLabels: Record<string, string> = {
-    hot_water: "Eau Chaude",
-    heating: "Chauffage",
-  };
-
   return (
     <div className="grid gap-4 md:gap-8">
       <div className="flex items-center gap-4">
@@ -112,6 +113,9 @@ export default function ContractDetailPage({
         <Badge variant="outline" className="ml-auto sm:ml-0">
           {contract.status.charAt(0).toUpperCase() + contract.status.slice(1)}
         </Badge>
+        <Button size="sm" asChild>
+          <Link href={`/contracts/${id}/edit`}>Modifier</Link>
+        </Button>
       </div>
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
         <Card>
@@ -143,11 +147,10 @@ export default function ContractDetailPage({
                <div className="flex items-start">
                 <MapPin className="mr-2 h-4 w-4 mt-1 text-muted-foreground" />
                 <div>
-                  <span className="font-medium">Sites ({contract.siteIds.length}) :</span>
-                  {/* Here you would ideally fetch site names from their IDs */}
+                  <span className="font-medium">Sites ({sites.length}) :</span>
                   <ul className="list-disc pl-5">
-                    {contract.siteIds.map((siteId) => (
-                      <li key={siteId} className="truncate">{siteId}</li>
+                    {sites.map((site) => (
+                      <li key={site.id} className="truncate">{site.name}</li>
                     ))}
                   </ul>
                 </div>
@@ -192,7 +195,7 @@ export default function ContractDetailPage({
              <ul className="w-full">
               {meterReadings.map(r => (
                 <li key={r.id} className="flex justify-between py-1 border-b last:border-0">
-                  <span>{new Date(r.date).toLocaleDateString()} - {r.siteId}</span>
+                  <span>{new Date(r.date).toLocaleDateString()} - {sites.find(s => s.id === r.siteId)?.name || r.siteId}</span>
                   <span>{r.reading} {r.unit}</span>
                 </li>
               ))}
@@ -244,5 +247,3 @@ export default function ContractDetailPage({
     </div>
   );
 }
-
-    
