@@ -242,8 +242,15 @@ export async function getNextInvoiceNumber(companyCode: string): Promise<string>
 
 
 // Compteurs (Meters)
-export async function createMeter(data: Omit<Meter, 'id'>) {
-    return createSettingItem('meters', { ...data, lastModified: Timestamp.now() });
+export async function createMeter(data: Omit<Meter, 'id' | 'code'>) {
+    const meterData = {
+        ...data,
+        lastModified: Timestamp.now(),
+    };
+    const docRef = await addDoc(collection(db, 'meters'), meterData);
+    // Use the document ID as the unique code
+    await updateDoc(docRef, { code: docRef.id });
+    return { id: docRef.id, code: docRef.id, ...meterData };
 }
 export async function getMeters(): Promise<Meter[]> {
     const meters = await getSettingItems<Meter>('meters');
@@ -255,7 +262,7 @@ export async function getMeters(): Promise<Meter[]> {
         clientName: siteMap.get(meter.siteId)?.clientName || 'N/A'
     }));
 }
-export async function updateMeter(id: string, data: Partial<Omit<Meter, 'id'>>) {
+export async function updateMeter(id: string, data: Partial<Omit<Meter, 'id' | 'code'>>) {
     return updateSettingItem('meters', id, { ...data, lastModified: Timestamp.now() });
 }
 export async function deleteMeter(id: string) {
@@ -563,3 +570,5 @@ export async function updateUser(id: string, data: Partial<Omit<User, 'id'>>) {
 export async function deleteUser(id: string) {
     return deleteSettingItem('users', id);
 }
+
+    

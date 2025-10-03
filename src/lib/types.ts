@@ -41,7 +41,7 @@ export type Site = {
 
 export type Meter = {
     id: string;
-    code: string; // unique code
+    code: string; // unique code, auto-generated from document ID
     name: string;
     siteId: string;
     siteName?: string; // denormalized
@@ -249,3 +249,5 @@ export const GenerateInvoiceOutputSchema = z.object({
     error: z.string().optional(),
 });
 export type GenerateInvoiceOutput = z.infer<typeof GenerateInvoiceOutputSchema>;
+
+    

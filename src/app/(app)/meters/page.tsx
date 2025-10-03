@@ -101,11 +101,10 @@ export default function MetersPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!code.trim() || !name.trim() || !siteId || !type.trim() || !unit.trim()) return;
+    if (!name.trim() || !siteId || !type.trim() || !unit.trim()) return;
 
     setIsSubmitting(true);
-    const meterData: Omit<Meter, 'id'> = {
-      code,
+    const meterData: Partial<Omit<Meter, 'id' | 'code'>> = {
       name,
       siteId,
       type,
@@ -121,7 +120,7 @@ export default function MetersPage() {
         await updateMeter(editingMeter.id, meterData);
         toast({ title: 'Compteur mis à jour', description: 'Le compteur a été mis à jour avec succès.' });
       } else {
-        await createMeter(meterData);
+        await createMeter(meterData as Omit<Meter, 'id' | 'code'>);
         toast({ title: 'Compteur créé', description: 'Le nouveau compteur a été ajouté avec succès.' });
       }
       await loadData();
@@ -230,15 +229,15 @@ export default function MetersPage() {
               <DialogTitle>{editingMeter ? 'Modifier le compteur' : 'Nouveau compteur'}</DialogTitle>
             </DialogHeader>
             <form onSubmit={handleSubmit} className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
+               {editingMeter && (
                 <div className="space-y-2">
                     <Label htmlFor="code">Code Compteur</Label>
-                    <Input id="code" value={code} onChange={(e) => setCode(e.target.value)} required />
+                    <Input id="code" value={code} required disabled />
                 </div>
-                <div className="space-y-2">
-                    <Label htmlFor="name">Nom</Label>
-                    <Input id="name" value={name} onChange={(e) => setName(e.target.value)} required />
-                </div>
+               )}
+              <div className="space-y-2">
+                  <Label htmlFor="name">Nom</Label>
+                  <Input id="name" value={name} onChange={(e) => setName(e.target.value)} required />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="siteId">Site</Label>
@@ -315,3 +314,5 @@ export default function MetersPage() {
     </Card>
   );
 }
+
+    
