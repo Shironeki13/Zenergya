@@ -11,10 +11,10 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { FormItem, FormControl } from "@/components/ui/form";
-import { PlusCircle, Edit, Trash2 } from 'lucide-react';
+import { PlusCircle, Edit, Trash2, BookOpen } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import { getSites, getMeters, createMeter, updateMeter, deleteMeter } from '@/services/firestore';
-import type { Site, Meter } from '@/lib/types';
+import { getSites, getMeters, createMeter, updateMeter, deleteMeter, getMeterReadingsByMeter } from '@/services/firestore';
+import type { Site, Meter, MeterReading } from '@/lib/types';
 import { Badge } from '@/components/ui/badge';
 
 export default function MetersPage() {
@@ -36,6 +36,12 @@ export default function MetersPage() {
   const [unit, setUnit] = useState('');
   const [location, setLocation] = useState('');
   const [status, setStatus] = useState<'on' | 'off'>('on');
+  
+  // Readings Dialog state
+  const [readingsDialogOpen, setReadingsDialogOpen] = useState(false);
+  const [selectedMeterForReadings, setSelectedMeterForReadings] = useState<Meter | null>(null);
+  const [meterReadings, setMeterReadings] = useState<MeterReading[]>([]);
+  const [isLoadingReadings, setIsLoadingReadings] = useState(false);
 
   const loadData = useCallback(async () => {
     setIsLoading(true);
@@ -78,6 +84,20 @@ export default function MetersPage() {
       setStatus(meter.status);
     }
     setDialogOpen(true);
+  };
+  
+  const handleOpenReadingsDialog = async (meter: Meter) => {
+    setSelectedMeterForReadings(meter);
+    setReadingsDialogOpen(true);
+    setIsLoadingReadings(true);
+    try {
+        const readings = await getMeterReadingsByMeter(meter.id);
+        setMeterReadings(readings);
+    } catch (error) {
+        toast({ title: 'Erreur', description: 'Impossible de charger les relevés.', variant: 'destructive' });
+    } finally {
+        setIsLoadingReadings(false);
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -148,6 +168,7 @@ export default function MetersPage() {
               <TableHead>Code</TableHead>
               <TableHead>Nom</TableHead>
               <TableHead>Site</TableHead>
+              <TableHead>Client</TableHead>
               <TableHead>Type</TableHead>
               <TableHead>Unité</TableHead>
               <TableHead>Statut</TableHead>
@@ -156,15 +177,16 @@ export default function MetersPage() {
           </TableHeader>
           <TableBody>
             {isLoading ? (
-              <TableRow><TableCell colSpan={7} className="h-24 text-center">Chargement...</TableCell></TableRow>
+              <TableRow><TableCell colSpan={8} className="h-24 text-center">Chargement...</TableCell></TableRow>
             ) : meters.length === 0 ? (
-              <TableRow><TableCell colSpan={7} className="h-24 text-center">Aucun compteur trouvé.</TableCell></TableRow>
+              <TableRow><TableCell colSpan={8} className="h-24 text-center">Aucun compteur trouvé.</TableCell></TableRow>
             ) : (
               meters.map((meter) => (
                 <TableRow key={meter.id}>
                   <TableCell className="font-medium">{meter.code}</TableCell>
                   <TableCell>{meter.name}</TableCell>
                   <TableCell>{meter.siteName}</TableCell>
+                  <TableCell>{meter.clientName}</TableCell>
                   <TableCell>{meter.type}</TableCell>
                   <TableCell>{meter.unit}</TableCell>
                   <TableCell>
@@ -173,6 +195,9 @@ export default function MetersPage() {
                     </Badge>
                   </TableCell>
                   <TableCell className="text-right">
+                    <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleOpenReadingsDialog(meter)} title="Voir les relevés">
+                      <BookOpen className="h-4 w-4" />
+                    </Button>
                     <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleOpenDialog(meter)}>
                       <Edit className="h-4 w-4" />
                     </Button>
@@ -253,6 +278,39 @@ export default function MetersPage() {
               </DialogFooter>
             </form>
           </DialogContent>
+        </Dialog>
+        
+        <Dialog open={readingsDialogOpen} onOpenChange={setReadingsDialogOpen}>
+            <DialogContent>
+                <DialogHeader>
+                    <DialogTitle>Relevés pour {selectedMeterForReadings?.name}</DialogTitle>
+                    <DialogDescription>Historique des relevés enregistrés pour ce compteur.</DialogDescription>
+                </DialogHeader>
+                <div className="max-h-96 overflow-y-auto">
+                    <Table>
+                        <TableHeader>
+                            <TableRow>
+                                <TableHead>Date</TableHead>
+                                <TableHead className="text-right">Relevé</TableHead>
+                            </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                            {isLoadingReadings ? (
+                                <TableRow><TableCell colSpan={2} className="h-24 text-center">Chargement des relevés...</TableCell></TableRow>
+                            ) : meterReadings.length === 0 ? (
+                                <TableRow><TableCell colSpan={2} className="h-24 text-center">Aucun relevé pour ce compteur.</TableCell></TableRow>
+                            ) : (
+                                meterReadings.map(reading => (
+                                    <TableRow key={reading.id}>
+                                        <TableCell>{new Date(reading.date).toLocaleDateString()}</TableCell>
+                                        <TableCell className="text-right">{reading.reading} {reading.unit}</TableCell>
+                                    </TableRow>
+                                ))
+                            )}
+                        </TableBody>
+                    </Table>
+                </div>
+            </DialogContent>
         </Dialog>
       </CardContent>
     </Card>

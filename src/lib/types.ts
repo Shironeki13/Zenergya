@@ -45,6 +45,7 @@ export type Meter = {
     name: string;
     siteId: string;
     siteName?: string; // denormalized
+    clientName?: string; // denormalized from site
     type: string; // e.g., 'Eau Chaude', 'Chauffage'
     unit: string; // e.g., 'kWh', 'm3'
     location?: string;

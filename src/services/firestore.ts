@@ -248,10 +248,11 @@ export async function createMeter(data: Omit<Meter, 'id'>) {
 export async function getMeters(): Promise<Meter[]> {
     const meters = await getSettingItems<Meter>('meters');
     const sites = await getSites();
-    const siteMap = new Map(sites.map(s => [s.id, s.name]));
+    const siteMap = new Map(sites.map(s => [s.id, {siteName: s.name, clientName: s.clientName}]));
     return meters.map(meter => ({
         ...meter,
-        siteName: siteMap.get(meter.siteId) || 'N/A'
+        siteName: siteMap.get(meter.siteId)?.siteName || 'N/A',
+        clientName: siteMap.get(meter.siteId)?.clientName || 'N/A'
     }));
 }
 export async function updateMeter(id: string, data: Partial<Omit<Meter, 'id'>>) {
@@ -264,6 +265,11 @@ export async function deleteMeter(id: string) {
 // Relevés de compteur
 export async function getMeterReadingsByContract(contractId: string): Promise<MeterReading[]> {
     const q = query(collection(db, 'meterReadings'), where("contractId", "==", contractId));
+    return getCollection<MeterReading>(q);
+}
+
+export async function getMeterReadingsByMeter(meterId: string): Promise<MeterReading[]> {
+    const q = query(collection(db, 'meterReadings'), where("meterId", "==", meterId));
     return getCollection<MeterReading>(q);
 }
 
