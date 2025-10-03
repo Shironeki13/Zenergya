@@ -1,6 +1,9 @@
 
+'use client';
+
+import { useState, useEffect } from "react";
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { notFound, useRouter } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -31,26 +34,61 @@ import {
   PlusCircle,
   ClipboardList,
   MapPin,
+  Loader2,
 } from "lucide-react";
 import { getContract, getMeterReadingsByContract, getInvoicesByContract, getActivities } from "@/services/firestore";
-import type { Activity } from "@/lib/types";
+import type { Activity, Contract, Invoice, MeterReading } from "@/lib/types";
 
-export default async function ContractDetailPage({
+export default function ContractDetailPage({
   params,
 }: {
   params: { id: string };
 }) {
-  const contract = await getContract(params.id);
-  if (!contract) {
-    notFound();
+  const [contract, setContract] = useState<Contract | null>(null);
+  const [meterReadings, setMeterReadings] = useState<MeterReading[]>([]);
+  const [invoices, setInvoices] = useState<Invoice[]>([]);
+  const [activities, setActivities] = useState<Activity[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const router = useRouter();
+
+  useEffect(() => {
+    async function fetchData() {
+      try {
+        const contractData = await getContract(params.id);
+        if (!contractData) {
+          notFound();
+        }
+        setContract(contractData);
+
+        const [readingsData, invoicesData, activitiesData] = await Promise.all([
+          getMeterReadingsByContract(params.id),
+          getInvoicesByContract(params.id),
+          getActivities(),
+        ]);
+        setMeterReadings(readingsData);
+        setInvoices(invoicesData);
+        setActivities(activitiesData);
+      } catch (error) {
+        console.error("Failed to fetch contract details:", error);
+      } finally {
+        setIsLoading(false);
+      }
+    }
+    fetchData();
+  }, [params.id]);
+  
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-full">
+        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      </div>
+    );
   }
 
-  const [contractMeterReadings, contractInvoices, activities] = await Promise.all([
-    getMeterReadingsByContract(contract.id),
-    getInvoicesByContract(contract.id),
-    getActivities(),
-  ]);
-  
+  if (!contract) {
+    return notFound();
+  }
+
   const activityMap = new Map(activities.map((a: Activity) => [a.id, a.label]));
   const contractActivities = contract.activityIds.map(id => activityMap.get(id) || 'Activité inconnue');
 
@@ -152,7 +190,7 @@ export default async function ContractDetailPage({
           <CardFooter className="flex flex-col items-start gap-2 text-sm">
              <div className="font-medium">Relevés précédents</div>
              <ul className="w-full">
-              {contractMeterReadings.map(r => (
+              {meterReadings.map(r => (
                 <li key={r.id} className="flex justify-between py-1 border-b last:border-0">
                   <span>{new Date(r.date).toLocaleDateString()} - {r.siteId}</span>
                   <span>{r.reading} {r.unit}</span>
@@ -181,9 +219,9 @@ export default async function ContractDetailPage({
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {contractInvoices.map((invoice) => (
+                {invoices.map((invoice) => (
                   <TableRow key={invoice.id}>
-                    <TableCell className="font-medium"><Link href={`/invoices/${invoice.id}`} className="hover:underline">{invoice.id}</Link></TableCell>
+                    <TableCell className="font-medium"><Link href={`/invoices/${invoice.id}`} className="hover:underline">{invoice.invoiceNumber || invoice.id}</Link></TableCell>
                     <TableCell>
                       <Badge variant="outline">{invoice.status}</Badge>
                     </TableCell>
@@ -196,7 +234,7 @@ export default async function ContractDetailPage({
             </Table>
           </CardContent>
           <CardFooter>
-            <Button size="sm" variant="outline" className="w-full gap-1">
+            <Button size="sm" variant="outline" className="w-full gap-1" onClick={() => router.push('/billing')}>
               <PlusCircle className="h-4 w-4" />
               Générer une Facture
             </Button>
@@ -206,3 +244,5 @@ export default async function ContractDetailPage({
     </div>
   );
 }
+
+    
