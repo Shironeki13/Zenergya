@@ -245,7 +245,7 @@ export async function getNextInvoiceNumber(companyCode: string): Promise<string>
 export async function createMeter(data: Omit<Meter, 'id' | 'code'>) {
     const meterData = {
         ...data,
-        lastModified: Timestamp.now(),
+        lastModified: new Date().toISOString(),
     };
     const docRef = await addDoc(collection(db, 'meters'), meterData);
     // Use the document ID as the unique code
@@ -263,7 +263,7 @@ export async function getMeters(): Promise<Meter[]> {
     }));
 }
 export async function updateMeter(id: string, data: Partial<Omit<Meter, 'id' | 'code'>>) {
-    return updateSettingItem('meters', id, { ...data, lastModified: Timestamp.now() });
+    return updateSettingItem('meters', id, { ...data, lastModified: new Date().toISOString() });
 }
 export async function deleteMeter(id: string) {
     return deleteSettingItem('meters', id);
