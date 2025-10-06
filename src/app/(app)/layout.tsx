@@ -22,7 +22,7 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card';
-import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
 import { UserNav } from '@/components/user-nav';
 import { Logo } from '@/components/logo';
 
@@ -97,6 +97,9 @@ export default function AppLayout({
               </Button>
             </SheetTrigger>
             <SheetContent side="left" className="flex flex-col">
+               <SheetHeader>
+                  <SheetTitle className="sr-only">Menu de navigation</SheetTitle>
+              </SheetHeader>
               <nav className="grid gap-2 text-lg font-medium">
                 <Link
                   href="#"
