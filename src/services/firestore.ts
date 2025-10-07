@@ -59,13 +59,8 @@ async function getCollection<T>(q: any): Promise<T[]> {
 
 // Clients
 export async function getClients(): Promise<Client[]> {
-    const clients = await getCollection<Client>(collection(db, 'clients'));
-    const typologies = await getCollection<Typology>(collection(db, 'typologies'));
-    const typologyMap = new Map(typologies.map(t => [t.id, t.name]));
-    return clients.map(client => ({
-      ...client,
-      typologyName: typologyMap.get(client.typologyId) || 'N/A',
-    }));
+    const clientsCollection = collection(db, 'clients');
+    return getCollection<Client>(clientsCollection);
 }
 
 export async function getClient(id: string): Promise<Client | null> {
@@ -105,13 +100,7 @@ export async function deleteClient(id: string) {
 
 // Sites
 export async function getSites(): Promise<Site[]> {
-     const sites = await getCollection<Site>(collection(db, 'sites'));
-     const clients = await getCollection<Client>(collection(db, 'clients'));
-     const clientMap = new Map(clients.map(c => [c.id, c.name]));
-     return sites.map(site => ({
-        ...site,
-        clientName: clientMap.get(site.clientId) || 'N/A',
-     }));
+     return getCollection<Site>(collection(db, 'sites'));
 }
 
 
