@@ -32,6 +32,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
             pricingRules: [], markets: [], roles: [], users: []
         };
         
+        // Load data sequentially to avoid overloading the server
         dataPayload.clients = await getClients();
         dataPayload.sites = await getSites();
         dataPayload.contracts = await getContracts();

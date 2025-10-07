@@ -1,6 +1,6 @@
 
 'use client';
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
@@ -11,17 +11,17 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Label } from "@/components/ui/label";
 import { PlusCircle, Trash2, Edit, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { useData } from '@/context/data-context';
+import type { User, Role } from "@/lib/types";
 import {
   createUser, updateUser, deleteUser,
   createRole, updateRole, deleteRole,
-  getUsers, getRoles
 } from "@/services/firestore";
-import type { User, Role } from "@/lib/types";
+
 
 // Section pour les Rôles
 const RolesSection = () => {
-    const [roles, setRoles] = useState<Role[]>([]);
-    const [isLoading, setIsLoading] = useState(true);
+    const { roles, reloadData, isLoading } = useData();
     const { toast } = useToast();
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [dialogOpen, setDialogOpen] = useState(false);
@@ -29,23 +29,6 @@ const RolesSection = () => {
     const [roleToDelete, setRoleToDelete] = useState<Role | null>(null);
     const [name, setName] = useState('');
     
-    const loadRoles = useCallback(async () => {
-        setIsLoading(true);
-        try {
-            const rolesData = await getRoles();
-            setRoles(rolesData);
-        } catch (error) {
-            toast({ title: "Erreur", description: "Impossible de charger les rôles.", variant: "destructive" });
-        } finally {
-            setIsLoading(false);
-        }
-    }, [toast]);
-
-    useEffect(() => {
-        loadRoles();
-    }, [loadRoles]);
-
-
     const resetForm = () => { setName(''); setEditingRole(null); };
 
     const handleOpenDialog = (role: Role | null = null) => {
@@ -66,7 +49,7 @@ const RolesSection = () => {
                 await createRole(name);
                 toast({ title: "Succès", description: "Rôle créé." });
             }
-            await loadRoles();
+            await reloadData();
             setDialogOpen(false);
             resetForm();
         } catch (error) {
@@ -81,7 +64,7 @@ const RolesSection = () => {
         try {
             await deleteRole(roleToDelete.id);
             toast({ title: "Succès", description: "Rôle supprimé." });
-            await loadRoles();
+            await reloadData();
             setRoleToDelete(null);
         } catch (error) {
             toast({ title: "Erreur", description: "Impossible de supprimer le rôle.", variant: "destructive" });
@@ -152,9 +135,7 @@ const RolesSection = () => {
 
 // Section pour les Utilisateurs
 const UsersSection = () => {
-    const [users, setUsers] = useState<User[]>([]);
-    const [roles, setRoles] = useState<Role[]>([]);
-    const [isLoading, setIsLoading] = useState(true);
+    const { users, roles, reloadData, isLoading } = useData();
     const { toast } = useToast();
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [dialogOpen, setDialogOpen] = useState(false);
@@ -164,23 +145,6 @@ const UsersSection = () => {
     const [name, setName] = useState('');
     const [email, setEmail] = useState('');
     const [roleId, setRoleId] = useState('');
-
-    const loadUsersAndRoles = useCallback(async () => {
-        setIsLoading(true);
-        try {
-            const [usersData, rolesData] = await Promise.all([getUsers(), getRoles()]);
-            setUsers(usersData);
-            setRoles(rolesData);
-        } catch (error) {
-            toast({ title: "Erreur", description: "Impossible de charger les utilisateurs et les rôles.", variant: "destructive" });
-        } finally {
-            setIsLoading(false);
-        }
-    }, [toast]);
-    
-    useEffect(() => {
-        loadUsersAndRoles();
-    }, [loadUsersAndRoles]);
 
     const resetForm = () => { setName(''); setEmail(''); setRoleId(''); setEditingUser(null); };
 
@@ -209,7 +173,7 @@ const UsersSection = () => {
                 await createUser(userData);
                 toast({ title: "Succès", description: "Utilisateur créé." });
             }
-            await loadUsersAndRoles();
+            await reloadData();
             setDialogOpen(false);
             resetForm();
         } catch (error) {
@@ -224,12 +188,20 @@ const UsersSection = () => {
         try {
             await deleteUser(userToDelete.id);
             toast({ title: "Succès", description: "L'utilisateur a été supprimé." });
-            await loadUsersAndRoles();
+            await reloadData();
             setUserToDelete(null);
         } catch (error) {
             toast({ title: "Erreur", description: "Impossible de supprimer l'utilisateur.", variant: "destructive" });
         }
     };
+    
+    const usersWithDetails = useMemo(() => {
+        const roleMap = new Map(roles.map(r => [r.id, r.name]));
+        return users.map(user => ({
+            ...user,
+            roleName: roleMap.get(user.roleId) || 'N/A'
+        }));
+    }, [users, roles]);
 
     return (
         <Card>
@@ -257,9 +229,9 @@ const UsersSection = () => {
                         </TableHeader>
                         <TableBody>
                             {isLoading ? ( <TableRow><TableCell colSpan={4} className="text-center h-24"><Loader2 className="mx-auto h-8 w-8 animate-spin text-muted-foreground" /></TableCell></TableRow>
-                            ) : users.length === 0 ? ( <TableRow><TableCell colSpan={4} className="text-center">Aucun utilisateur.</TableCell></TableRow>
+                            ) : usersWithDetails.length === 0 ? ( <TableRow><TableCell colSpan={4} className="text-center">Aucun utilisateur.</TableCell></TableRow>
                             ) : (
-                                users.map(user => (
+                                usersWithDetails.map(user => (
                                     <TableRow key={user.id}>
                                         <TableCell className="font-medium">{user.name}</TableCell>
                                         <TableCell>{user.email}</TableCell>

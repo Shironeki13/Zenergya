@@ -58,7 +58,13 @@ async function getCollection<T>(q: any): Promise<T[]> {
 
 // Clients
 export async function getClients(): Promise<Client[]> {
-    return getCollection<Client>(collection(db, 'clients'));
+    const clients = await getCollection<Client>(collection(db, 'clients'));
+    const typologies = await getCollection<Typology>(collection(db, 'typologies'));
+    const typologyMap = new Map(typologies.map(t => [t.id, t.name]));
+    return clients.map(client => ({
+        ...client,
+        typologyName: typologyMap.get(client.typologyId) || 'N/A'
+    }));
 }
 
 export async function getClient(id: string): Promise<Client | null> {
@@ -98,7 +104,13 @@ export async function deleteClient(id: string) {
 
 // Sites
 export async function getSites(): Promise<Site[]> {
-    return getCollection<Site>(collection(db, 'sites'));
+     const sites = await getCollection<Site>(collection(db, 'sites'));
+    const clients = await getCollection<Client>(collection(db, 'clients'));
+    const clientMap = new Map(clients.map(c => [c.id, c.name]));
+    return sites.map(site => ({
+        ...site,
+        clientName: clientMap.get(site.clientId) || 'N/A'
+    }));
 }
 
 
@@ -158,21 +170,23 @@ export async function createContract(data: Omit<Contract, 'id' | 'status'>) {
 
 export async function updateContract(id: string, data: Partial<Omit<Contract, 'id' | 'clientName' | 'status'>>) {
     const contractDoc = doc(db, 'contracts', id);
-    
-    // Create a copy to mutate for Firestore
-    const updateData: DocumentData = { ...data };
+    const updateData: { [key: string]: any } = { ...data };
 
-    // Convert string dates to Date objects for Firestore
-    if (data.startDate && typeof data.startDate === 'string') updateData.startDate = new Date(data.startDate);
-    if (data.endDate && typeof data.endDate === 'string') updateData.endDate = new Date(data.endDate);
-    
+    if (data.startDate && typeof data.startDate === 'string') {
+        updateData.startDate = new Date(data.startDate);
+    }
+    if (data.endDate && typeof data.endDate === 'string') {
+        updateData.endDate = new Date(data.endDate);
+    }
+
     const revisionFields: ('revisionP1' | 'revisionP2' | 'revisionP3')[] = ['revisionP1', 'revisionP2', 'revisionP3'];
     for (const field of revisionFields) {
         if (data[field] && data[field]?.date && typeof data[field]!.date === 'string') {
-            updateData[field]!.date = new Date(data[field]!.date as any);
+             if (!updateData[field]) updateData[field] = {};
+             updateData[field]!.date = new Date(data[field]!.date!);
         }
     }
-
+    
     await updateDoc(contractDoc, updateData);
 }
 
@@ -197,6 +211,8 @@ export async function createInvoice(data: Omit<Invoice, 'id'>) {
         ...data,
         date: new Date(data.date),
         dueDate: new Date(data.dueDate),
+        periodStartDate: data.periodStartDate ? new Date(data.periodStartDate) : undefined,
+        periodEndDate: data.periodEndDate ? new Date(data.periodEndDate) : undefined,
     };
     const invoicesCollection = collection(db, 'invoices');
     const docRef = await addDoc(invoicesCollection, invoiceData as any);
@@ -240,7 +256,7 @@ export async function createMeter(data: Omit<Meter, 'id' | 'code'>) {
     return { id: docRef.id, code: docRef.id, ...meterData };
 }
 export async function getMeters(): Promise<Meter[]> {
-    return getSettingItems<Meter>('meters');
+    return await getCollection<Meter>('meters');
 }
 export async function updateMeter(id: string, data: Partial<Omit<Meter, 'id' | 'code'>>) {
     return updateSettingItem('meters', id, { ...data, lastModified: new Date().toISOString() });
@@ -336,13 +352,7 @@ export async function createAgency(name: string, companyId: string) {
     return createSettingItem('agencies', { name, companyId });
 }
 export async function getAgencies(): Promise<Agency[]> {
-    const agencies = await getSettingItems<Agency>('agencies');
-    const companies = await getCompanies();
-    const companyMap = new Map(companies.map(c => [c.id, c.name]));
-    return agencies.map(agency => ({
-        ...agency,
-        companyName: companyMap.get(agency.companyId) || 'N/A'
-    }));
+    return getSettingItems<Agency>('agencies');
 }
 export async function updateAgency(id: string, name: string, companyId: string) {
     return updateSettingItem('agencies', id, { name, companyId });
@@ -362,13 +372,7 @@ export async function createSector(name: string, agencyId: string) {
     return createSettingItem('sectors', { name, agencyId });
 }
 export async function getSectors(): Promise<Sector[]> {
-    const sectors = await getSettingItems<Sector>('sectors');
-    const agencies = await getAgencies();
-    const agencyMap = new Map(agencies.map(a => [a.id, a.name]));
-     return sectors.map(sector => ({
-        ...sector,
-        agencyName: agencyMap.get(sector.agencyId) || 'N/A'
-    }));
+    return getSettingItems<Sector>('sectors');
 }
 export async function updateSector(id: string, name: string, agencyId: string) {
     return updateSettingItem('sectors', id, { name, agencyId });
@@ -453,14 +457,7 @@ export async function createRevisionFormula(data: Omit<RevisionFormula, 'id' | '
     return createSettingItem('revisionFormulas', data);
 }
 export async function getRevisionFormulas(): Promise<RevisionFormula[]> {
-    const formulas = await getSettingItems<RevisionFormula>('revisionFormulas');
-    const activities = await getActivities();
-    const activityMap = new Map(activities.map(a => [a.id, { code: a.code, label: a.label }]));
-    return formulas.map(formula => ({
-        ...formula,
-        activityCode: activityMap.get(formula.activityId)?.code || 'N/A',
-        activityLabel: activityMap.get(formula.activityId)?.label || 'N/A',
-    }));
+    return getSettingItems<RevisionFormula>('revisionFormulas');
 }
 export async function updateRevisionFormula(id: string, data: Partial<Omit<RevisionFormula, 'id' | 'activityCode' | 'activityLabel'>>) {
     return updateSettingItem('revisionFormulas', id, data);
@@ -488,14 +485,7 @@ export async function createPricingRule(data: Omit<PricingRule, 'id' | 'activity
     return createSettingItem('pricingRules', data);
 }
 export async function getPricingRules(): Promise<PricingRule[]> {
-    const rules = await getSettingItems<PricingRule>('pricingRules');
-    const activities = await getActivities();
-    const activityMap = new Map(activities.map(a => [a.id, {code: a.code, label: a.label}]));
-    return rules.map(rule => ({
-        ...rule,
-        activityCode: activityMap.get(rule.activityId)?.code || 'N/A',
-        activityLabel: activityMap.get(rule.activityId)?.label || 'N/A',
-    }));
+    return getSettingItems<PricingRule>('pricingRules');
 }
 export async function updatePricingRule(id: string, data: Partial<Omit<PricingRule, 'id' | 'activityCode' | 'activityLabel'>>) {
     return updateSettingItem('pricingRules', id, data);
@@ -540,13 +530,7 @@ export async function createUser(data: Omit<User, 'id'>) {
     return createSettingItem('users', data);
 }
 export async function getUsers(): Promise<User[]> {
-    const users = await getSettingItems<User>('users');
-    const roles = await getRoles();
-    const roleMap = new Map(roles.map(r => [r.id, r.name]));
-    return users.map(user => ({
-        ...user,
-        roleName: roleMap.get(user.roleId) || 'N/A'
-    }));
+    return getSettingItems<User>('users');
 }
 export async function updateUser(id: string, data: Partial<Omit<User, 'id'>>) {
     return updateSettingItem('users', id, data);
@@ -554,5 +538,3 @@ export async function updateUser(id: string, data: Partial<Omit<User, 'id'>>) {
 export async function deleteUser(id: string) {
     return deleteSettingItem('users', id);
 }
-
-    

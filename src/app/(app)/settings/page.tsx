@@ -1,6 +1,6 @@
 
 'use client';
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import Image from 'next/image';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -13,22 +13,22 @@ import { Label } from "@/components/ui/label";
 import { PlusCircle, Trash2, Edit, UploadCloud } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Textarea } from '@/components/ui/textarea';
-
-import { 
-  createCompany, getCompanies, updateCompany, deleteCompany,
-  createAgency, getAgencies, updateAgency, deleteAgency,
-  createSector, getSectors, updateSector, deleteSector,
-  createActivity, getActivities, updateActivity, deleteActivity,
-  createSchedule, getSchedules, updateSchedule, deleteSchedule,
-  createTerm, getTerms, updateTerm, deleteTerm,
-  createTypology, getTypologies, updateTypology, deleteTypology,
-  createVatRate, getVatRates, updateVatRate, deleteVatRate,
-  createRevisionFormula, getRevisionFormulas, updateRevisionFormula, deleteRevisionFormula,
-  createPaymentTerm, getPaymentTerms, updatePaymentTerm, deletePaymentTerm,
-  createPricingRule, getPricingRules, updatePricingRule, deletePricingRule,
-  createMarket, getMarkets, updateMarket, deleteMarket
-} from "@/services/firestore";
+import { useData } from '@/context/data-context';
 import type { Company, Agency, Sector, Activity, Schedule, Term, VatRate, Typology, RevisionFormula, PaymentTerm, PricingRule, Market } from "@/lib/types";
+import { 
+  createCompany, updateCompany, deleteCompany,
+  createAgency, updateAgency, deleteAgency,
+  createSector, updateSector, deleteSector,
+  createActivity, updateActivity, deleteActivity,
+  createSchedule, updateSchedule, deleteSchedule,
+  createTerm, updateTerm, deleteTerm,
+  createTypology, updateTypology, deleteTypology,
+  createVatRate, updateVatRate, deleteVatRate,
+  createRevisionFormula, updateRevisionFormula, deleteRevisionFormula,
+  createPaymentTerm, updatePaymentTerm, deletePaymentTerm,
+  createPricingRule, updatePricingRule, deletePricingRule,
+  createMarket, updateMarket, deleteMarket
+} from "@/services/firestore";
 
 
 const fileToDataUrl = (file: File): Promise<string> => {
@@ -42,8 +42,7 @@ const fileToDataUrl = (file: File): Promise<string> => {
 
 // Section pour les Sociétés
 const CompaniesSection = () => {
-    const [companies, setCompanies] = useState<Company[]>([]);
-    const [isLoading, setIsLoading] = useState(true);
+    const { companies, reloadData, isLoading } = useData();
     const { toast } = useToast();
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [dialogOpen, setDialogOpen] = useState(false);
@@ -68,22 +67,6 @@ const CompaniesSection = () => {
             setSiren('');
         }
     }, [siret]);
-
-    const loadCompanies = useCallback(async () => {
-        try {
-            setIsLoading(true);
-            const fetchedCompanies = await getCompanies();
-            setCompanies(fetchedCompanies);
-        } catch (error) {
-            toast({ title: "Erreur", description: "Impossible de charger les sociétés.", variant: "destructive" });
-        } finally {
-            setIsLoading(false);
-        }
-    }, [toast]);
-
-    useEffect(() => {
-        loadCompanies();
-    }, [loadCompanies]);
 
     const resetForm = () => {
         setName('');
@@ -147,7 +130,7 @@ const CompaniesSection = () => {
                 toast({ title: "Succès", description: "Société créée." });
             }
             
-            await loadCompanies();
+            await reloadData();
             setDialogOpen(false);
             resetForm();
         } catch (error) {
@@ -162,7 +145,7 @@ const CompaniesSection = () => {
         try {
             await deleteCompany(companyToDelete.id);
             toast({ title: "Succès", description: `${companyToDelete.name} a été supprimée.` });
-            await loadCompanies();
+            await reloadData();
             setCompanyToDelete(null);
         } catch (error) {
             toast({ title: "Erreur", description: "Impossible de supprimer la société.", variant: "destructive" });
@@ -320,9 +303,7 @@ const CompaniesSection = () => {
 
 // Section pour les Agences
 const AgenciesSection = () => {
-    const [agencies, setAgencies] = useState<Agency[]>([]);
-    const [companies, setCompanies] = useState<Company[]>([]);
-    const [isLoading, setIsLoading] = useState(true);
+    const { agencies, companies, reloadData, isLoading } = useData();
     const { toast } = useToast();
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [dialogOpen, setDialogOpen] = useState(false);
@@ -331,21 +312,6 @@ const AgenciesSection = () => {
 
     const [name, setName] = useState('');
     const [companyId, setCompanyId] = useState('');
-
-    const loadData = useCallback(async () => {
-        setIsLoading(true);
-        try {
-            const [fetchedAgencies, fetchedCompanies] = await Promise.all([getAgencies(), getCompanies()]);
-            setAgencies(fetchedAgencies);
-            setCompanies(fetchedCompanies);
-        } catch (error) {
-            toast({ title: "Erreur", description: "Impossible de charger les données.", variant: "destructive" });
-        } finally {
-            setIsLoading(false);
-        }
-    }, [toast]);
-
-    useEffect(() => { loadData(); }, [loadData]);
     
     const resetForm = () => { setName(''); setCompanyId(''); setEditingAgency(null); };
 
@@ -372,7 +338,7 @@ const AgenciesSection = () => {
                 await createAgency(name, companyId);
                 toast({ title: "Succès", description: "Agence créée." });
             }
-            await loadData();
+            await reloadData();
             setDialogOpen(false);
             resetForm();
         } catch (error) {
@@ -387,12 +353,20 @@ const AgenciesSection = () => {
         try {
             await deleteAgency(agencyToDelete.id);
             toast({ title: "Succès", description: "L'agence et ses secteurs ont été supprimés." });
-            await loadData();
+            await reloadData();
             setAgencyToDelete(null);
         } catch (error) {
             toast({ title: "Erreur", description: "Impossible de supprimer l'agence.", variant: "destructive" });
         }
     };
+
+    const agenciesWithDetails = useMemo(() => {
+        const companyMap = new Map(companies.map(c => [c.id, c.name]));
+        return agencies.map(agency => ({
+            ...agency,
+            companyName: companyMap.get(agency.companyId) || 'N/A',
+        }));
+    }, [agencies, companies]);
 
     return (
         <Card>
@@ -419,9 +393,9 @@ const AgenciesSection = () => {
                         </TableHeader>
                         <TableBody>
                             {isLoading ? ( <TableRow><TableCell colSpan={3} className="text-center">Chargement...</TableCell></TableRow>
-                            ) : agencies.length === 0 ? ( <TableRow><TableCell colSpan={3} className="text-center">Aucune agence.</TableCell></TableRow>
+                            ) : agenciesWithDetails.length === 0 ? ( <TableRow><TableCell colSpan={3} className="text-center">Aucune agence.</TableCell></TableRow>
                             ) : (
-                                agencies.map(agency => (
+                                agenciesWithDetails.map(agency => (
                                     <TableRow key={agency.id}>
                                         <TableCell className="font-medium">{agency.name}</TableCell>
                                         <TableCell>{agency.companyName}</TableCell>
@@ -481,9 +455,7 @@ const AgenciesSection = () => {
 
 // Section pour les Secteurs
 const SectorsSection = () => {
-    const [sectors, setSectors] = useState<Sector[]>([]);
-    const [agencies, setAgencies] = useState<Agency[]>([]);
-    const [isLoading, setIsLoading] = useState(true);
+    const { sectors, agencies, reloadData, isLoading } = useData();
     const { toast } = useToast();
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [dialogOpen, setDialogOpen] = useState(false);
@@ -492,18 +464,6 @@ const SectorsSection = () => {
 
     const [name, setName] = useState('');
     const [agencyId, setAgencyId] = useState('');
-
-    const loadData = useCallback(async () => {
-        setIsLoading(true);
-        try {
-            const [fetchedSectors, fetchedAgencies] = await Promise.all([getSectors(), getAgencies()]);
-            setSectors(fetchedSectors);
-            setAgencies(fetchedAgencies);
-        } catch (error) { toast({ title: "Erreur", description: "Impossible de charger les données.", variant: "destructive" }); } 
-        finally { setIsLoading(false); }
-    }, [toast]);
-
-    useEffect(() => { loadData(); }, [loadData]);
     
     const resetForm = () => { setName(''); setAgencyId(''); setEditingSector(null); };
 
@@ -530,7 +490,7 @@ const SectorsSection = () => {
                 await createSector(name, agencyId);
                 toast({ title: "Succès", description: "Secteur créé." });
             }
-            await loadData();
+            await reloadData();
             setDialogOpen(false);
             resetForm();
         } catch (error) {
@@ -545,12 +505,21 @@ const SectorsSection = () => {
         try {
             await deleteSector(sectorToDelete.id);
             toast({ title: "Succès", description: "Secteur supprimé." });
-            await loadData();
+            await reloadData();
             setSectorToDelete(null);
         } catch (error) {
             toast({ title: "Erreur", description: "Impossible de supprimer le secteur.", variant: "destructive" });
         }
     };
+
+    const sectorsWithDetails = useMemo(() => {
+        const agencyMap = new Map(agencies.map(a => [a.id, a.name]));
+        return sectors.map(sector => ({
+            ...sector,
+            agencyName: agencyMap.get(sector.agencyId) || 'N/A'
+        }));
+    }, [sectors, agencies]);
+
 
     return (
         <Card>
@@ -577,9 +546,9 @@ const SectorsSection = () => {
                         </TableHeader>
                         <TableBody>
                             {isLoading ? ( <TableRow><TableCell colSpan={3} className="text-center">Chargement...</TableCell></TableRow>
-                            ) : sectors.length === 0 ? ( <TableRow><TableCell colSpan={3} className="text-center">Aucun secteur.</TableCell></TableRow>
+                            ) : sectorsWithDetails.length === 0 ? ( <TableRow><TableCell colSpan={3} className="text-center">Aucun secteur.</TableCell></TableRow>
                             ) : (
-                                sectors.map(sector => (
+                                sectorsWithDetails.map(sector => (
                                     <TableRow key={sector.id}>
                                         <TableCell className="font-medium">{sector.name}</TableCell>
                                         <TableCell>{sector.agencyName}</TableCell>
@@ -612,7 +581,7 @@ const SectorsSection = () => {
                             <div className="space-y-2"><Label htmlFor="agency">Agence</Label>
                                 <Select onValueChange={setAgencyId} value={agencyId}>
                                     <SelectTrigger><SelectValue placeholder="Sélectionner une agence" /></SelectTrigger>
-                                    <SelectContent>{agencies.map(a => <SelectItem key={a.id} value={a.id}>{a.name} ({a.companyName})</SelectItem>)}</SelectContent>
+                                    <SelectContent>{agencies.map(a => <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>)}</SelectContent>
                                 </Select>
                             </div>
                             <DialogFooter>
@@ -630,8 +599,7 @@ const SectorsSection = () => {
 
 // Section pour les Activités
 const ActivitiesSection = () => {
-    const [activities, setActivities] = useState<Activity[]>([]);
-    const [isLoading, setIsLoading] = useState(true);
+    const { activities, reloadData, isLoading } = useData();
     const { toast } = useToast();
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [dialogOpen, setDialogOpen] = useState(false);
@@ -640,16 +608,6 @@ const ActivitiesSection = () => {
     const [code, setCode] = useState('');
     const [label, setLabel] = useState('');
 
-    const loadActivities = useCallback(async () => {
-        setIsLoading(true);
-        try {
-            setActivities(await getActivities());
-        } catch (error) { toast({ title: "Erreur", description: "Impossible de charger les activités.", variant: "destructive" }); } 
-        finally { setIsLoading(false); }
-    }, [toast]);
-
-    useEffect(() => { loadActivities(); }, [loadActivities]);
-    
     const resetForm = () => { setCode(''); setLabel(''); setEditingActivity(null); };
 
     const handleOpenDialog = (activity: Activity | null = null) => {
@@ -671,7 +629,7 @@ const ActivitiesSection = () => {
                 await createActivity({ code, label });
                 toast({ title: "Succès", description: "Activité créée." });
             }
-            await loadActivities();
+            await reloadData();
             setDialogOpen(false);
             resetForm();
         } catch (error) {
@@ -686,7 +644,7 @@ const ActivitiesSection = () => {
         try {
             await deleteActivity(activityToDelete.id);
             toast({ title: "Succès", description: "Activité supprimée." });
-            await loadActivities();
+            await reloadData();
             setActivityToDelete(null);
         } catch (error) {
             toast({ title: "Erreur", description: "Impossible de supprimer l'activité.", variant: "destructive" });
@@ -765,9 +723,7 @@ const ActivitiesSection = () => {
 
 // Section Règles de prix
 const PricingRulesSection = () => {
-    const [rules, setRules] = useState<PricingRule[]>([]);
-    const [activities, setActivities] = useState<Activity[]>([]);
-    const [isLoading, setIsLoading] = useState(true);
+    const { pricingRules, activities, reloadData, isLoading } = useData();
     const { toast } = useToast();
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [dialogOpen, setDialogOpen] = useState(false);
@@ -778,21 +734,6 @@ const PricingRulesSection = () => {
     const [rule, setRule] = useState('');
     const [description, setDescription] = useState('');
 
-    const loadData = useCallback(async () => {
-        setIsLoading(true);
-        try {
-            const [fetchedRules, fetchedActivities] = await Promise.all([getPricingRules(), getActivities()]);
-            setRules(fetchedRules);
-            setActivities(fetchedActivities);
-        } catch (error) {
-            toast({ title: "Erreur", description: "Impossible de charger les données.", variant: "destructive" });
-        } finally {
-            setIsLoading(false);
-        }
-    }, [toast]);
-
-    useEffect(() => { loadData(); }, [loadData]);
-    
     const resetForm = () => { setActivityId(''); setRule(''); setDescription(''); setEditingRule(null); };
 
     const handleOpenDialog = (rule: PricingRule | null = null) => {
@@ -820,7 +761,7 @@ const PricingRulesSection = () => {
                 await createPricingRule(data);
                 toast({ title: "Succès", description: "Règle de prix créée." });
             }
-            await loadData();
+            await reloadData();
             setDialogOpen(false);
             resetForm();
         } catch (error) {
@@ -835,12 +776,21 @@ const PricingRulesSection = () => {
         try {
             await deletePricingRule(ruleToDelete.id);
             toast({ title: "Succès", description: "Règle de prix supprimée." });
-            await loadData();
+            await reloadData();
             setRuleToDelete(null);
         } catch (error) {
             toast({ title: "Erreur", description: "Impossible de supprimer la règle.", variant: "destructive" });
         }
     };
+
+    const rulesWithDetails = useMemo(() => {
+        const activityMap = new Map(activities.map(a => [a.id, {code: a.code, label: a.label}]));
+        return pricingRules.map(rule => ({
+            ...rule,
+            activityCode: activityMap.get(rule.activityId)?.code || 'N/A',
+            activityLabel: activityMap.get(rule.activityId)?.label || 'N/A',
+        }));
+    }, [pricingRules, activities]);
 
     return (
         <Card>
@@ -868,9 +818,9 @@ const PricingRulesSection = () => {
                         </TableHeader>
                         <TableBody>
                             {isLoading ? ( <TableRow><TableCell colSpan={4} className="text-center">Chargement...</TableCell></TableRow>
-                            ) : rules.length === 0 ? ( <TableRow><TableCell colSpan={4} className="text-center">Aucune règle de prix.</TableCell></TableRow>
+                            ) : rulesWithDetails.length === 0 ? ( <TableRow><TableCell colSpan={4} className="text-center">Aucune règle de prix.</TableCell></TableRow>
                             ) : (
-                                rules.map(item => (
+                                rulesWithDetails.map(item => (
                                     <TableRow key={item.id}>
                                         <TableCell className="font-medium">{item.activityCode} - {item.activityLabel}</TableCell>
                                         <TableCell>{item.rule}</TableCell>
@@ -931,8 +881,7 @@ const PricingRulesSection = () => {
 
 // Section Marchés
 const MarketsSection = () => {
-    const [items, setItems] = useState<Market[]>([]);
-    const [isLoading, setIsLoading] = useState(true);
+    const { markets, reloadData, isLoading } = useData();
     const { toast } = useToast();
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [dialogOpen, setDialogOpen] = useState(false);
@@ -942,16 +891,6 @@ const MarketsSection = () => {
     const [label, setLabel] = useState('');
     const [description, setDescription] = useState('');
 
-    const loadItems = useCallback(async () => {
-        setIsLoading(true);
-        try {
-            setItems(await getMarkets());
-        } catch (error) { toast({ title: "Erreur", description: "Impossible de charger les marchés.", variant: "destructive" }); } 
-        finally { setIsLoading(false); }
-    }, [toast]);
-
-    useEffect(() => { loadItems(); }, [loadItems]);
-    
     const resetForm = () => { setCode(''); setLabel(''); setDescription(''); setEditingItem(null); };
 
     const handleOpenDialog = (item: Market | null = null) => {
@@ -975,7 +914,7 @@ const MarketsSection = () => {
                 await createMarket(data);
                 toast({ title: "Succès", description: "Marché créé." });
             }
-            await loadItems();
+            await reloadData();
             setDialogOpen(false);
             resetForm();
         } catch (error) {
@@ -990,7 +929,7 @@ const MarketsSection = () => {
         try {
             await deleteMarket(itemToDelete.id);
             toast({ title: "Succès", description: "Marché supprimé." });
-            await loadItems();
+            await reloadData();
             setItemToDelete(null);
         } catch (error) {
             toast({ title: "Erreur", description: "Impossible de supprimer le marché.", variant: "destructive" });
@@ -1016,9 +955,9 @@ const MarketsSection = () => {
                         <TableHeader><TableRow><TableHead className="w-[150px]">Code</TableHead><TableHead>Libellé</TableHead><TableHead>Description</TableHead><TableHead className="w-[100px] text-right">Actions</TableHead></TableRow></TableHeader>
                         <TableBody>
                             {isLoading ? ( <TableRow><TableCell colSpan={4} className="text-center">Chargement...</TableCell></TableRow>
-                            ) : items.length === 0 ? ( <TableRow><TableCell colSpan={4} className="text-center">Aucun marché.</TableCell></TableRow>
+                            ) : markets.length === 0 ? ( <TableRow><TableCell colSpan={4} className="text-center">Aucun marché.</TableCell></TableRow>
                             ) : (
-                                items.map(item => (
+                                markets.map(item => (
                                     <TableRow key={item.id}>
                                         <TableCell className="font-medium">{item.code}</TableCell>
                                         <TableCell>{item.label}</TableCell>
@@ -1075,8 +1014,7 @@ const MarketsSection = () => {
 
 // Section Taux de TVA
 const VatRatesSection = () => {
-    const [vatRates, setVatRates] = useState<VatRate[]>([]);
-    const [isLoading, setIsLoading] = useState(true);
+    const { vatRates, reloadData, isLoading } = useData();
     const { toast } = useToast();
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [dialogOpen, setDialogOpen] = useState(false);
@@ -1085,16 +1023,6 @@ const VatRatesSection = () => {
     const [code, setCode] = useState('');
     const [rate, setRate] = useState<number | string>('');
 
-    const loadVatRates = useCallback(async () => {
-        setIsLoading(true);
-        try {
-            setVatRates(await getVatRates());
-        } catch (error) { toast({ title: "Erreur", description: "Impossible de charger les taux de TVA.", variant: "destructive" }); } 
-        finally { setIsLoading(false); }
-    }, [toast]);
-
-    useEffect(() => { loadVatRates(); }, [loadVatRates]);
-    
     const resetForm = () => { setCode(''); setRate(''); setEditingVatRate(null); };
 
     const handleOpenDialog = (vatRate: VatRate | null = null) => {
@@ -1117,7 +1045,7 @@ const VatRatesSection = () => {
                 await createVatRate(code, numericRate);
                 toast({ title: "Succès", description: "Taux de TVA créé." });
             }
-            await loadVatRates();
+            await reloadData();
             setDialogOpen(false);
             resetForm();
         } catch (error) {
@@ -1132,7 +1060,7 @@ const VatRatesSection = () => {
         try {
             await deleteVatRate(vatRateToDelete.id);
             toast({ title: "Succès", description: "Taux de TVA supprimé." });
-            await loadVatRates();
+            await reloadData();
             setVatRateToDelete(null);
         } catch (error) {
             toast({ title: "Erreur", description: "Impossible de supprimer le taux de TVA.", variant: "destructive" });
@@ -1217,9 +1145,7 @@ const VatRatesSection = () => {
 
 // Section Formules de révision
 const RevisionFormulasSection = () => {
-    const [items, setItems] = useState<RevisionFormula[]>([]);
-    const [activities, setActivities] = useState<Activity[]>([]);
-    const [isLoading, setIsLoading] = useState(true);
+    const { revisionFormulas, activities, reloadData, isLoading } = useData();
     const { toast } = useToast();
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [dialogOpen, setDialogOpen] = useState(false);
@@ -1228,22 +1154,6 @@ const RevisionFormulasSection = () => {
     const [code, setCode] = useState('');
     const [formula, setFormula] = useState('');
     const [activityId, setActivityId] = useState('');
-
-    const loadItems = useCallback(async () => {
-        setIsLoading(true);
-        try {
-            const [formulas, acts] = await Promise.all([
-                getRevisionFormulas(),
-                getActivities()
-            ]);
-            setItems(formulas);
-            setActivities(acts);
-        } 
-        catch (error) { toast({ title: "Erreur", description: "Impossible de charger les données.", variant: "destructive" }); } 
-        finally { setIsLoading(false); }
-    }, [toast]);
-
-    useEffect(() => { loadItems(); }, [loadItems]);
 
     const resetForm = () => { setCode(''); setFormula(''); setActivityId(''); setEditingItem(null); };
 
@@ -1268,7 +1178,7 @@ const RevisionFormulasSection = () => {
                 await createRevisionFormula(data);
                 toast({ title: "Succès", description: "Formule créée." });
             }
-            await loadItems(); setDialogOpen(false); resetForm();
+            await reloadData(); setDialogOpen(false); resetForm();
         } catch (error) { toast({ title: "Erreur", description: "L'opération a échoué.", variant: "destructive" });
         } finally { setIsSubmitting(false); }
     };
@@ -1278,9 +1188,18 @@ const RevisionFormulasSection = () => {
         try {
             await deleteRevisionFormula(itemToDelete.id);
             toast({ title: "Succès", description: "Formule supprimée." });
-            await loadItems(); setItemToDelete(null);
+            await reloadData(); setItemToDelete(null);
         } catch (error) { toast({ title: "Erreur", description: "Impossible de supprimer la formule.", variant: "destructive" }); }
     };
+    
+    const formulasWithDetails = useMemo(() => {
+        const activityMap = new Map(activities.map(a => [a.id, { code: a.code, label: a.label }]));
+        return revisionFormulas.map(formula => ({
+            ...formula,
+            activityCode: activityMap.get(formula.activityId)?.code || 'N/A',
+            activityLabel: activityMap.get(formula.activityId)?.label || 'N/A',
+        }));
+    }, [revisionFormulas, activities]);
 
     return (
         <Card>
@@ -1296,8 +1215,8 @@ const RevisionFormulasSection = () => {
                         <TableHeader><TableRow><TableHead>Code</TableHead><TableHead>Activité</TableHead><TableHead>Formule</TableHead><TableHead className="w-[100px] text-right">Actions</TableHead></TableRow></TableHeader>
                         <TableBody>
                             {isLoading ? (<TableRow><TableCell colSpan={4} className="text-center">Chargement...</TableCell></TableRow>) 
-                            : items.length === 0 ? (<TableRow><TableCell colSpan={4} className="text-center">Aucune formule.</TableCell></TableRow>) 
-                            : (items.map(item => (
+                            : formulasWithDetails.length === 0 ? (<TableRow><TableCell colSpan={4} className="text-center">Aucune formule.</TableCell></TableRow>) 
+                            : (formulasWithDetails.map(item => (
                                 <TableRow key={item.id}>
                                     <TableCell className="font-medium">{item.code}</TableCell>
                                     <TableCell>{item.activityCode} - {item.activityLabel}</TableCell>
@@ -1344,8 +1263,7 @@ const RevisionFormulasSection = () => {
 
 // Section Règlements
 const PaymentTermsSection = () => {
-    const [items, setItems] = useState<PaymentTerm[]>([]);
-    const [isLoading, setIsLoading] = useState(true);
+    const { paymentTerms, reloadData, isLoading } = useData();
     const { toast } = useToast();
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [dialogOpen, setDialogOpen] = useState(false);
@@ -1353,15 +1271,6 @@ const PaymentTermsSection = () => {
     const [itemToDelete, setItemToDelete] = useState<PaymentTerm | null>(null);
     const [code, setCode] = useState('');
     const [deadline, setDeadline] = useState('');
-
-    const loadItems = useCallback(async () => {
-        setIsLoading(true);
-        try { setItems(await getPaymentTerms()); } 
-        catch (error) { toast({ title: "Erreur", description: "Impossible de charger les règlements.", variant: "destructive" }); } 
-        finally { setIsLoading(false); }
-    }, [toast]);
-
-    useEffect(() => { loadItems(); }, [loadItems]);
 
     const resetForm = () => { setCode(''); setDeadline(''); setEditingItem(null); };
 
@@ -1385,7 +1294,7 @@ const PaymentTermsSection = () => {
                 await createPaymentTerm(data);
                 toast({ title: "Succès", description: "Règlement créé." });
             }
-            await loadItems(); setDialogOpen(false); resetForm();
+            await reloadData(); setDialogOpen(false); resetForm();
         } catch (error) { toast({ title: "Erreur", description: "L'opération a échoué.", variant: "destructive" });
         } finally { setIsSubmitting(false); }
     };
@@ -1395,7 +1304,7 @@ const PaymentTermsSection = () => {
         try {
             await deletePaymentTerm(itemToDelete.id);
             toast({ title: "Succès", description: "Règlement supprimé." });
-            await loadItems(); setItemToDelete(null);
+            await reloadData(); setItemToDelete(null);
         } catch (error) { toast({ title: "Erreur", description: "Impossible de supprimer le règlement.", variant: "destructive" }); }
     };
 
@@ -1413,8 +1322,8 @@ const PaymentTermsSection = () => {
                         <TableHeader><TableRow><TableHead>Code</TableHead><TableHead>Échéance</TableHead><TableHead className="w-[100px] text-right">Actions</TableHead></TableRow></TableHeader>
                         <TableBody>
                             {isLoading ? (<TableRow><TableCell colSpan={3} className="text-center">Chargement...</TableCell></TableRow>) 
-                            : items.length === 0 ? (<TableRow><TableCell colSpan={3} className="text-center">Aucun règlement.</TableCell></TableRow>) 
-                            : (items.map(item => (
+                            : paymentTerms.length === 0 ? (<TableRow><TableCell colSpan={3} className="text-center">Aucun règlement.</TableCell></TableRow>) 
+                            : (paymentTerms.map(item => (
                                 <TableRow key={item.id}>
                                     <TableCell className="font-medium">{item.code}</TableCell>
                                     <TableCell>{item.deadline}</TableCell>
@@ -1454,21 +1363,23 @@ const SimpleCrudSection = ({
   title,
   description,
   dataType,
-  getItems,
+  items,
   createItem,
   updateItem,
   deleteItem,
+  isLoading,
+  reloadData
 }: {
   title: string;
   description: string;
   dataType: "schedule" | "term" | "typology";
-  getItems: () => Promise<{ id: string; name: string }[]>;
+  items: { id: string; name: string }[];
   createItem: (name: string) => Promise<any>;
   updateItem: (id: string, name: string) => Promise<void>;
   deleteItem: (id: string) => Promise<void>;
+  isLoading: boolean;
+  reloadData: () => Promise<void>;
 }) => {
-    const [items, setItems] = useState<{ id: string; name: string }[]>([]);
-    const [isLoading, setIsLoading] = useState(true);
     const { toast } = useToast();
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [dialogOpen, setDialogOpen] = useState(false);
@@ -1476,16 +1387,6 @@ const SimpleCrudSection = ({
     const [itemToDelete, setItemToDelete] = useState<{ id: string; name: string } | null>(null);
     const [name, setName] = useState('');
 
-    const loadItems = useCallback(async () => {
-        setIsLoading(true);
-        try {
-            setItems(await getItems());
-        } catch (error) { toast({ title: "Erreur", description: `Impossible de charger les ${title.toLowerCase()}.`, variant: "destructive" }); } 
-        finally { setIsLoading(false); }
-    }, [getItems, title, toast]);
-
-    useEffect(() => { loadItems(); }, [loadItems]);
-    
     const resetForm = () => { setName(''); setEditingItem(null); };
 
     const handleOpenDialog = (item: { id: string; name: string } | null = null) => {
@@ -1506,7 +1407,7 @@ const SimpleCrudSection = ({
                 await createItem(name);
                 toast({ title: "Succès", description: `${title} créé.` });
             }
-            await loadItems();
+            await reloadData();
             setDialogOpen(false);
             resetForm();
         } catch (error) {
@@ -1521,7 +1422,7 @@ const SimpleCrudSection = ({
         try {
             await deleteItem(itemToDelete.id);
             toast({ title: "Succès", description: `${title} supprimé.` });
-            await loadItems();
+            await reloadData();
             setItemToDelete(null);
         } catch (error) {
             toast({ title: "Erreur", description: `Impossible de supprimer: ${title}.`, variant: "destructive" });
@@ -1592,6 +1493,7 @@ const SimpleCrudSection = ({
 
 
 export default function SettingsPage() {
+  const { typologies, schedules, terms, isLoading, reloadData } = useData();
   return (
     <div className="space-y-6">
        <div>
@@ -1638,10 +1540,12 @@ export default function SettingsPage() {
                 title="Typologies"
                 description="Gérez les typologies de clients."
                 dataType="typology"
-                getItems={getTypologies}
+                items={typologies}
                 createItem={createTypology}
                 updateItem={updateTypology}
                 deleteItem={deleteTypology}
+                isLoading={isLoading}
+                reloadData={reloadData}
             />
         </TabsContent>
         <TabsContent value="schedules">
@@ -1649,10 +1553,12 @@ export default function SettingsPage() {
                 title="Échéanciers"
                 description="Gérez les échéanciers de facturation."
                 dataType="schedule"
-                getItems={getSchedules}
+                items={schedules}
                 createItem={createSchedule}
                 updateItem={updateSchedule}
                 deleteItem={deleteSchedule}
+                isLoading={isLoading}
+                reloadData={reloadData}
             />
         </TabsContent>
         <TabsContent value="terms">
@@ -1660,10 +1566,12 @@ export default function SettingsPage() {
                 title="Termes"
                 description="Gérez les termes de paiement."
                 dataType="term"
-                getItems={getTerms}
+                items={terms}
                 createItem={createTerm}
                 updateItem={updateTerm}
                 deleteItem={deleteTerm}
+                isLoading={isLoading}
+                reloadData={reloadData}
             />
         </TabsContent>
         <TabsContent value="vat_rates">
