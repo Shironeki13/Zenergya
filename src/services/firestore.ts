@@ -7,7 +7,7 @@ import { collection, getDocs, doc, getDoc, addDoc, updateDoc, deleteDoc, query, 
 
 // --- Helper function to convert Firestore Timestamps ---
 function processFirestoreDoc<T>(docData: DocumentData): T {
-    // Step 1: Recursively convert Timestamps to ISO strings
+    // Step 1: Recursively convert Timestamps and handle null/undefined
     function convert(data: any): any {
         if (data instanceof Timestamp) {
             return data.toDate().toISOString();
@@ -15,10 +15,14 @@ function processFirestoreDoc<T>(docData: DocumentData): T {
         if (Array.isArray(data)) {
             return data.map(convert);
         }
+        // Ensure it's a plain object before recursing
         if (data !== null && typeof data === 'object' && Object.getPrototypeOf(data) === Object.prototype) {
             const newObj: { [key: string]: any } = {};
             for (const key in data) {
-                newObj[key] = convert(data[key]);
+                 // Check if the key exists and the value is not null/undefined
+                if (Object.prototype.hasOwnProperty.call(data, key) && data[key] != null) {
+                    newObj[key] = convert(data[key]);
+                }
             }
             return newObj;
         }
@@ -27,9 +31,9 @@ function processFirestoreDoc<T>(docData: DocumentData): T {
     const converted = convert(docData);
 
     // Step 2: Ensure the object is a plain JavaScript object by serializing and deserializing
-    // This removes any class instances or complex prototypes.
     return JSON.parse(JSON.stringify(converted));
 }
+
 
 async function getDocument<T>(ref: any): Promise<T | null> {
     const docSnap = await getDoc(ref);
@@ -169,10 +173,16 @@ export async function updateContract(id: string, data: Partial<Omit<Contract, 'i
     // Convert string dates to Date objects for Firestore
     if (data.startDate && typeof data.startDate === 'string') {
         updateData.startDate = new Date(data.startDate);
+    } else if (data.startDate) {
+        updateData.startDate = data.startDate;
     }
+
     if (data.endDate && typeof data.endDate === 'string') {
         updateData.endDate = new Date(data.endDate);
+    } else if (data.endDate) {
+        updateData.endDate = data.endDate;
     }
+
 
     const revisionFields: ('revisionP1' | 'revisionP2' | 'revisionP3')[] = ['revisionP1', 'revisionP2', 'revisionP3'];
     for (const field of revisionFields) {
@@ -182,6 +192,8 @@ export async function updateContract(id: string, data: Partial<Omit<Contract, 'i
                  updateData[field] = { ...revisionData };
                  if (revisionData.date && typeof revisionData.date === 'string') {
                      updateData[field].date = new Date(revisionData.date);
+                 } else if (revisionData.date) {
+                    updateData[field].date = revisionData.date;
                  }
                  if (!revisionData.formulaId) {
                      delete updateData[field].formulaId;
