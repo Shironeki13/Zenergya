@@ -8,6 +8,9 @@ import { collection, getDocs, doc, getDoc, addDoc, updateDoc, deleteDoc, query, 
 function processFirestoreDoc<T>(docData: DocumentData): T {
     // Step 1: Recursively convert Timestamps and handle null/undefined
     function convert(data: any): any {
+        if (data === null || data === undefined) {
+            return data;
+        }
         if (data instanceof Timestamp) {
             return data.toDate().toISOString();
         }
@@ -15,12 +18,14 @@ function processFirestoreDoc<T>(docData: DocumentData): T {
             return data.map(convert);
         }
         // Ensure it's a plain object before recursing
-        if (data !== null && typeof data === 'object' && !Array.isArray(data) && Object.prototype.toString.call(data) === '[object Object]') {
+        if (typeof data === 'object' && Object.prototype.toString.call(data) === '[object Object]') {
             const newObj: { [key: string]: any } = {};
             for (const key in data) {
                  // Check if the key exists and the value is not null/undefined
                 if (Object.prototype.hasOwnProperty.call(data, key) && data[key] != null) {
                     newObj[key] = convert(data[key]);
+                } else if (Object.prototype.hasOwnProperty.call(data, key)) {
+                    newObj[key] = data[key];
                 }
             }
             return newObj;
@@ -53,13 +58,7 @@ async function getCollection<T>(q: any): Promise<T[]> {
 
 // Clients
 export async function getClients(): Promise<Client[]> {
-    const clients = await getCollection<Client>(collection(db, 'clients'));
-    const typologies = await getTypologies();
-    const typologyMap = new Map(typologies.map(t => [t.id, t.name]));
-    return clients.map(client => ({
-        ...client,
-        typologyName: typologyMap.get(client.typologyId) || 'N/A'
-    }));
+    return getCollection<Client>(collection(db, 'clients'));
 }
 
 export async function getClient(id: string): Promise<Client | null> {
@@ -99,9 +98,7 @@ export async function deleteClient(id: string) {
 
 // Sites
 export async function getSites(): Promise<Site[]> {
-    const sites = await getCollection<Site>(collection(db, 'sites'));
-    // Client name is denormalized in the DataProvider now
-    return sites;
+    return getCollection<Site>(collection(db, 'sites'));
 }
 
 
@@ -243,13 +240,7 @@ export async function createMeter(data: Omit<Meter, 'id' | 'code'>) {
     return { id: docRef.id, code: docRef.id, ...meterData };
 }
 export async function getMeters(): Promise<Meter[]> {
-    const meters = await getSettingItems<Meter>('meters');
-    const sites = await getSites();
-    const siteMap = new Map(sites.map(s => [s.id, s.name]));
-    return meters.map(meter => ({
-        ...meter,
-        siteName: siteMap.get(meter.siteId) || 'N/A'
-    }));
+    return getSettingItems<Meter>('meters');
 }
 export async function updateMeter(id: string, data: Partial<Omit<Meter, 'id' | 'code'>>) {
     return updateSettingItem('meters', id, { ...data, lastModified: new Date().toISOString() });

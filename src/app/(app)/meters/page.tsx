@@ -128,11 +128,12 @@ export default function MetersPage() {
     }
   };
   
-  const metersWithClientNames = useMemo(() => {
-    const siteMap = new Map(sites.map(s => [s.id, s.clientName]));
+  const metersWithDetails = useMemo(() => {
+    const siteMap = new Map(sites.map(s => [s.id, { name: s.name, clientName: s.clientName }]));
     return meters.map(meter => ({
       ...meter,
-      clientName: siteMap.get(meter.siteId) || 'N/A',
+      siteName: siteMap.get(meter.siteId)?.name || 'N/A',
+      clientName: siteMap.get(meter.siteId)?.clientName || 'N/A',
     }));
   }, [meters, sites]);
 
@@ -172,7 +173,7 @@ export default function MetersPage() {
             ) : meters.length === 0 ? (
               <TableRow><TableCell colSpan={8} className="h-24 text-center">Aucun compteur trouvé.</TableCell></TableRow>
             ) : (
-              metersWithClientNames.map((meter) => (
+              metersWithDetails.map((meter) => (
                 <TableRow key={meter.id}>
                   <TableCell className="font-medium">{meter.code}</TableCell>
                   <TableCell>{meter.name}</TableCell>
