@@ -1,4 +1,5 @@
 
+
 'use server';
 import { db } from '@/lib/firebase';
 import type { Client, Site, Contract, Invoice, MeterReading, Company, Agency, Sector, Activity, User, Role, Schedule, Term, Typology, VatRate, RevisionFormula, PaymentTerm, PricingRule, Market, Meter } from '@/lib/types';
@@ -104,13 +105,7 @@ export async function deleteClient(id: string) {
 
 // Sites
 export async function getSites(): Promise<Site[]> {
-     const sites = await getCollection<Site>(collection(db, 'sites'));
-    const clients = await getCollection<Client>(collection(db, 'clients'));
-    const clientMap = new Map(clients.map(c => [c.id, c.name]));
-    return sites.map(site => ({
-        ...site,
-        clientName: clientMap.get(site.clientId) || 'N/A'
-    }));
+     return await getCollection<Site>(collection(db, 'sites'));
 }
 
 
@@ -174,9 +169,14 @@ export async function updateContract(id: string, data: Partial<Omit<Contract, 'i
 
     if (data.startDate && typeof data.startDate === 'string') {
         updateData.startDate = new Date(data.startDate);
+    } else if (data.startDate) {
+        updateData.startDate = data.startDate;
     }
+    
     if (data.endDate && typeof data.endDate === 'string') {
         updateData.endDate = new Date(data.endDate);
+    } else if (data.endDate) {
+        updateData.endDate = data.endDate;
     }
 
     const revisionFields: ('revisionP1' | 'revisionP2' | 'revisionP3')[] = ['revisionP1', 'revisionP2', 'revisionP3'];
@@ -256,7 +256,7 @@ export async function createMeter(data: Omit<Meter, 'id' | 'code'>) {
     return { id: docRef.id, code: docRef.id, ...meterData };
 }
 export async function getMeters(): Promise<Meter[]> {
-    return await getCollection<Meter>('meters');
+    return await getCollection<Meter>(collection(db, 'meters'));
 }
 export async function updateMeter(id: string, data: Partial<Omit<Meter, 'id' | 'code'>>) {
     return updateSettingItem('meters', id, { ...data, lastModified: new Date().toISOString() });
