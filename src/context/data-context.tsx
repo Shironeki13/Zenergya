@@ -25,23 +25,29 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const loadAllData = useCallback(async () => {
     setIsLoading(true);
     try {
-      const [
-        clients, sites, contracts, invoices, meters, meterReadings,
-        companies, agencies, sectors, activities, schedules, terms,
-        typologies, vatRates, revisionFormulas, paymentTerms,
-        pricingRules, markets, roles, users
-      ] = await Promise.all([
-        getClients(), getSites(), getContracts(), getInvoices(), getMeters(), getMeterReadings(),
-        getCompanies(), getAgencies(), getSectors(), getActivities(), getSchedules(), getTerms(),
-        getTypologies(), getVatRates(), getRevisionFormulas(), getPaymentTerms(),
-        getPricingRules(), getMarkets(), getRoles(), getUsers()
-      ]);
-      setData({
-        clients, sites, contracts, invoices, meters, meterReadings,
-        companies, agencies, sectors, activities, schedules, terms,
-        typologies, vatRates, revisionFormulas, paymentTerms,
-        pricingRules, markets, roles, users
-      });
+        const dataPayload: Omit<DataContextType, 'isLoading' | 'reloadData'> = {
+            clients: await getClients(),
+            sites: await getSites(),
+            contracts: await getContracts(),
+            invoices: await getInvoices(),
+            meters: await getMeters(),
+            meterReadings: await getMeterReadings(),
+            companies: await getCompanies(),
+            agencies: await getAgencies(),
+            sectors: await getSectors(),
+            activities: await getActivities(),
+            schedules: await getSchedules(),
+            terms: await getTerms(),
+            typologies: await getTypologies(),
+            vatRates: await getVatRates(),
+            revisionFormulas: await getRevisionFormulas(),
+            paymentTerms: await getPaymentTerms(),
+            pricingRules: await getPricingRules(),
+            markets: await getMarkets(),
+            roles: await getRoles(),
+            users: await getUsers(),
+        };
+      setData(dataPayload);
     } catch (error) {
       console.error("Failed to load global data:", error);
       toast({
@@ -72,5 +78,3 @@ export const useData = () => {
   }
   return context;
 };
-
-    
