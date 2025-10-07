@@ -59,7 +59,13 @@ async function getCollection<T>(q: any): Promise<T[]> {
 
 // Clients
 export async function getClients(): Promise<Client[]> {
-    return getCollection<Client>(collection(db, 'clients'));
+    const clients = await getCollection<Client>(collection(db, 'clients'));
+    const typologies = await getCollection<Typology>(collection(db, 'typologies'));
+    const typologyMap = new Map(typologies.map(t => [t.id, t.name]));
+    return clients.map(client => ({
+      ...client,
+      typologyName: typologyMap.get(client.typologyId) || 'N/A',
+    }));
 }
 
 export async function getClient(id: string): Promise<Client | null> {
@@ -99,7 +105,13 @@ export async function deleteClient(id: string) {
 
 // Sites
 export async function getSites(): Promise<Site[]> {
-     return await getCollection<Site>(collection(db, 'sites'));
+     const sites = await getCollection<Site>(collection(db, 'sites'));
+     const clients = await getCollection<Client>(collection(db, 'clients'));
+     const clientMap = new Map(clients.map(c => [c.id, c.name]));
+     return sites.map(site => ({
+        ...site,
+        clientName: clientMap.get(site.clientId) || 'N/A',
+     }));
 }
 
 
@@ -110,8 +122,11 @@ export async function getSitesByClient(clientId: string): Promise<Site[]> {
 
 export async function createSite(data: Omit<Site, 'id'>) {
     const sitesCollection = collection(db, 'sites');
-    const docRef = await addDoc(sitesCollection, data);
-    return { id: docRef.id, ...data };
+    const clients = await getClients();
+    const clientName = clients.find(c => c.id === data.clientId)?.name || 'N/A';
+    const siteData = { ...data, clientName };
+    const docRef = await addDoc(sitesCollection, siteData);
+    return { id: docRef.id, ...siteData };
 }
 
 export async function updateSite(id: string, data: Partial<Omit<Site, 'id'>>) {

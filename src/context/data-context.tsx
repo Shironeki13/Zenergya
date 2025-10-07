@@ -25,47 +25,62 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const loadAllData = useCallback(async () => {
     setIsLoading(true);
     try {
-        const results = await Promise.allSettled([
-            getClients(), getSites(), getContracts(), getInvoices(), getMeters(), getMeterReadings(),
-            getCompanies(), getAgencies(), getSectors(), getActivities(), getSchedules(), getTerms(),
-            getTypologies(), getVatRates(), getRevisionFormulas(), getPaymentTerms(),
-            getPricingRules(), getMarkets(), getRoles(), getUsers()
-        ]);
-        
-        const [
-            clients, sites, contracts, invoices, meters, meterReadings,
-            companies, agencies, sectors, activities, schedules,
-            terms, typologies, vatRates, revisionFormulas, paymentTerms,
-            pricingRules, markets, roles, users
-        ] = results.map(result => (result.status === 'fulfilled' ? result.value : []));
+      const collectionsToLoad = {
+        clients: getClients,
+        sites: getSites,
+        contracts: getContracts,
+        invoices: getInvoices,
+        meters: getMeters,
+        meterReadings: getMeterReadings,
+        companies: getCompanies,
+        agencies: getAgencies,
+        sectors: getSectors,
+        activities: getActivities,
+        schedules: getSchedules,
+        terms: getTerms,
+        typologies: getTypologies,
+        vatRates: getVatRates,
+        revisionFormulas: getRevisionFormulas,
+        paymentTerms: getPaymentTerms,
+        pricingRules: getPricingRules,
+        markets: getMarkets,
+        roles: getRoles,
+        users: getUsers,
+      };
 
-        const dataPayload: Omit<DataContextType, 'isLoading' | 'reloadData'> = {
-            clients, sites, contracts, invoices, meters, meterReadings,
-            companies, agencies, sectors, activities, schedules,
-            terms, typologies, vatRates, revisionFormulas, paymentTerms,
-            pricingRules, markets, roles, users
-        } as Omit<DataContextType, 'isLoading' | 'reloadData'>;
+      const promises = Object.values(collectionsToLoad).map(fn => fn());
+      const results = await Promise.allSettled(promises);
+      
+      const dataPayload = { ...data }; // Start with existing data structure
 
-        results.forEach((result, index) => {
-            if (result.status === 'rejected') {
-                const collectionName = Object.keys(dataPayload)[index];
-                console.error(`Failed to load ${collectionName}:`, result.reason);
-            }
-        });
-
-        setData(dataPayload);
+      Object.keys(collectionsToLoad).forEach((key, index) => {
+        const result = results[index];
+        if (result.status === 'fulfilled') {
+          (dataPayload as any)[key] = result.value;
+        } else {
+          console.error(`Failed to load ${key}:`, result.reason);
+          (dataPayload as any)[key] = []; // Ensure it's an empty array on failure
+          toast({
+            title: `Erreur de chargement de la collection: ${key}`,
+            description: "Certaines données n'ont pas pu être chargées. L'application peut ne pas fonctionner comme prévu.",
+            variant: "destructive",
+          });
+        }
+      });
+      
+      setData(dataPayload);
 
     } catch (error) {
-      console.error("Failed to load global data:", error);
+      console.error("Critical error during data loading:", error);
       toast({
-        title: "Erreur de chargement",
-        description: "Impossible de charger toutes les données de l'application. Veuillez réessayer.",
+        title: "Erreur de chargement critique",
+        description: "Impossible de charger les données de l'application.",
         variant: "destructive",
       });
     } finally {
       setIsLoading(false);
     }
-  }, [toast]);
+  }, [toast]); // Removed data from dependency array to avoid re-renders
 
   useEffect(() => {
     loadAllData();

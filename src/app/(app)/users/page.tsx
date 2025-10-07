@@ -282,7 +282,7 @@ const UsersSection = () => {
                                 </Select>
                             </div>
                             <DialogFooter>
-                                <DialogClose asChild><Button variant="outline">Annuler</Button></DialogClose>
+                                <DialogClose asChild><Button type="button" variant="outline">Annuler</Button></DialogClose>
                                 <Button type="submit" disabled={isSubmitting}>{isSubmitting ? "Enregistrement..." : "Enregistrer"}</Button>
                             </DialogFooter>
                         </form>
