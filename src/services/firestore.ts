@@ -59,8 +59,7 @@ async function getCollection<T>(q: any): Promise<T[]> {
 
 // Clients
 export async function getClients(): Promise<Client[]> {
-    const clientsCollection = collection(db, 'clients');
-    return getCollection<Client>(clientsCollection);
+    return getCollection<Client>(collection(db, 'clients'));
 }
 
 export async function getClient(id: string): Promise<Client | null> {
@@ -254,7 +253,7 @@ export async function createMeter(data: Omit<Meter, 'id' | 'code'>) {
     return { id: docRef.id, code: docRef.id, ...meterData };
 }
 export async function getMeters(): Promise<Meter[]> {
-    return await getCollection<Meter>(collection(db, 'meters'));
+    return getCollection<Meter>(collection(db, 'meters'));
 }
 export async function updateMeter(id: string, data: Partial<Omit<Meter, 'id' | 'code'>>) {
     return updateSettingItem('meters', id, { ...data, lastModified: new Date().toISOString() });
@@ -385,7 +384,7 @@ export async function createActivity(data: Omit<Activity, 'id'>) {
     return createSettingItem('activities', data);
 }
 export async function getActivities(): Promise<Activity[]> {
-    return await getCollection<Activity>(collection(db, 'activities'));
+    return getSettingItems<Activity>('activities');
 }
 export async function updateActivity(id: string, data: Partial<Omit<Activity, 'id'>>) {
     return updateSettingItem('activities', id, data);
@@ -399,7 +398,7 @@ export async function createSchedule(name: string) {
     return createSettingItem('schedules', { name });
 }
 export async function getSchedules(): Promise<Schedule[]> {
-    return await getCollection<Schedule>(collection(db, 'schedules'));
+    return getSettingItems<Schedule>('schedules');
 }
 export async function updateSchedule(id: string, name: string) {
     return updateSettingItem('schedules', id, { name });
@@ -413,7 +412,7 @@ export async function createTerm(name: string) {
     return createSettingItem('terms', { name });
 }
 export async function getTerms(): Promise<Term[]> {
-    return await getCollection<Term>(collection(db, 'terms'));
+    return getSettingItems<Term>('terms');
 }
 export async function updateTerm(id: string, name: string) {
     return updateSettingItem('terms', id, { name });
@@ -427,7 +426,7 @@ export async function createTypology(name: string) {
     return createSettingItem('typologies', { name });
 }
 export async function getTypologies(): Promise<Typology[]> {
-    return await getCollection<Typology>(collection(db, 'typologies'));
+    return getSettingItems<Typology>('typologies');
 }
 export async function updateTypology(id: string, name: string) {
     return updateSettingItem('typologies', id, { name });
@@ -441,7 +440,7 @@ export async function createVatRate(code: string, rate: number) {
     return createSettingItem('vatRates', { code, rate });
 }
 export async function getVatRates(): Promise<VatRate[]> {
-    return await getCollection<VatRate>(collection(db, 'vatRates'));
+    return getSettingItems<VatRate>('vatRates');
 }
 export async function updateVatRate(id: string, data: { code: string, rate: number }) {
     return updateSettingItem('vatRates', id, data);
@@ -455,7 +454,7 @@ export async function createRevisionFormula(data: Omit<RevisionFormula, 'id' | '
     return createSettingItem('revisionFormulas', data);
 }
 export async function getRevisionFormulas(): Promise<RevisionFormula[]> {
-    return await getCollection<RevisionFormula>(collection(db, 'revisionFormulas'));
+    return getSettingItems<RevisionFormula>('revisionFormulas');
 }
 export async function updateRevisionFormula(id: string, data: Partial<Omit<RevisionFormula, 'id' | 'activityCode' | 'activityLabel'>>) {
     return updateSettingItem('revisionFormulas', id, data);
@@ -469,7 +468,7 @@ export async function createPaymentTerm(data: Omit<PaymentTerm, 'id'>) {
     return createSettingItem('paymentTerms', data);
 }
 export async function getPaymentTerms(): Promise<PaymentTerm[]> {
-    return await getCollection<PaymentTerm>(collection(db, 'paymentTerms'));
+    return getSettingItems<PaymentTerm>('paymentTerms');
 }
 export async function updatePaymentTerm(id: string, data: Partial<Omit<PaymentTerm, 'id'>>) {
     return updateSettingItem('paymentTerms', id, data);
@@ -483,7 +482,7 @@ export async function createPricingRule(data: Omit<PricingRule, 'id' | 'activity
     return createSettingItem('pricingRules', data);
 }
 export async function getPricingRules(): Promise<PricingRule[]> {
-    return await getCollection<PricingRule>(collection(db, 'pricingRules'));
+    return getSettingItems<PricingRule>('pricingRules');
 }
 export async function updatePricingRule(id: string, data: Partial<Omit<PricingRule, 'id' | 'activityCode' | 'activityLabel'>>) {
     return updateSettingItem('pricingRules', id, data);
@@ -497,7 +496,7 @@ export async function createMarket(data: Omit<Market, 'id'>) {
     return createSettingItem('markets', data);
 }
 export async function getMarkets(): Promise<Market[]> {
-    return await getCollection<Market>(collection(db, 'markets'));
+    return getSettingItems<Market>('markets');
 }
 export async function updateMarket(id: string, data: Partial<Omit<Market, 'id'>>) {
     return updateSettingItem('markets', id, data);
@@ -514,7 +513,7 @@ export async function createRole(name: string) {
     return createSettingItem('roles', { name });
 }
 export async function getRoles(): Promise<Role[]> {
-    return await getCollection<Role>(collection(db, 'roles'));
+    return getSettingItems<Role>('roles');
 }
 export async function updateRole(id: string, name: string) {
     return updateSettingItem('roles', id, { name });
@@ -528,7 +527,7 @@ export async function createUser(data: Omit<User, 'id'>) {
     return createSettingItem('users', data);
 }
 export async function getUsers(): Promise<User[]> {
-    return await getCollection<User>(collection(db, 'users'));
+    return getSettingItems<User>('users');
 }
 export async function updateUser(id: string, data: Partial<Omit<User, 'id'>>) {
     return updateSettingItem('users', id, data);
