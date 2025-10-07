@@ -1,8 +1,7 @@
 
-
 'use client';
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import Link from "next/link";
 import { notFound, useRouter, useParams } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
@@ -37,67 +36,55 @@ import {
   MapPin,
   Loader2,
 } from "lucide-react";
-import { getContract, getMeterReadingsByContract, getInvoicesByContract, getActivities, getSites, getMeters, createMeterReading } from "@/services/firestore";
+import { createMeterReading } from "@/services/firestore";
 import type { Activity, Contract, Invoice, MeterReading, Site, Meter } from "@/lib/types";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
+import { useData } from "@/context/data-context";
 
 
 export default function ContractDetailPage() {
   const params = useParams();
   const id = params.id as string;
+  const router = useRouter();
+  const { toast } = useToast();
+
+  const { contracts, sites: allSites, meters: allMeters, meterReadings: allReadings, invoices: allInvoices, activities, reloadData, isLoading } = useData();
+
   const [contract, setContract] = useState<Contract | null>(null);
   const [sites, setSites] = useState<Site[]>([]);
   const [meters, setMeters] = useState<Meter[]>([]);
   const [meterReadings, setMeterReadings] = useState<MeterReading[]>([]);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
-  const [activities, setActivities] = useState<Activity[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const router = useRouter();
-  const { toast } = useToast();
-
+  
   const [selectedMeterId, setSelectedMeterId] = useState<string | null>(null);
   const [readingValue, setReadingValue] = useState('');
 
-  const loadContractData = useCallback(async () => {
-    if (!id) return;
-    setIsLoading(true);
-    try {
-      const contractData = await getContract(id);
+  useEffect(() => {
+    if (!isLoading) {
+      const contractData = contracts.find(c => c.id === id);
       if (!contractData) {
         notFound();
         return;
       }
       setContract(contractData);
-
-      const [readingsData, invoicesData, activitiesData, allSites, allMeters] = await Promise.all([
-        getMeterReadingsByContract(id),
-        getInvoicesByContract(id),
-        getActivities(),
-        getSites(),
-        getMeters(),
-      ]);
       
       const contractSites = allSites.filter(site => contractData.siteIds.includes(site.id));
-      const siteIds = contractSites.map(s => s.id);
-      const contractMeters = allMeters.filter(meter => siteIds.includes(meter.siteId));
-      
       setSites(contractSites);
+
+      const contractSiteIds = contractSites.map(s => s.id);
+      const contractMeters = allMeters.filter(meter => contractSiteIds.includes(meter.siteId));
       setMeters(contractMeters);
-      setMeterReadings(readingsData);
-      setInvoices(invoicesData);
-      setActivities(activitiesData);
-    } catch (error) {
-      console.error("Failed to fetch contract details:", error);
-      toast({ title: "Erreur", description: "Impossible de charger les détails du contrat.", variant: "destructive" });
-    } finally {
-      setIsLoading(false);
+
+      const contractReadings = allReadings.filter(r => r.contractId === id);
+      setMeterReadings(contractReadings);
+
+      const contractInvoices = allInvoices.filter(i => i.contractId === id);
+      setInvoices(contractInvoices);
+
     }
-  }, [id, toast]);
-  
-  useEffect(() => {
-    loadContractData();
-  }, [loadContractData]);
+  }, [id, isLoading, contracts, allSites, allMeters, allReadings, allInvoices]);
+
 
   const handleSaveReading = async (e: React.FormEvent) => {
       e.preventDefault();
@@ -122,9 +109,7 @@ export default function ContractDetailPage() {
           toast({ title: "Relevé enregistré", description: "Le relevé a été enregistré avec succès." });
           setSelectedMeterId(null);
           setReadingValue('');
-          // Re-fetch readings to update the list
-          const readingsData = await getMeterReadingsByContract(id);
-          setMeterReadings(readingsData);
+          await reloadData();
       } catch (error) {
           toast({ title: "Erreur", description: "Impossible d'enregistrer le relevé.", variant: "destructive" });
       }
@@ -309,3 +294,5 @@ export default function ContractDetailPage() {
     </div>
   );
 }
+
+    

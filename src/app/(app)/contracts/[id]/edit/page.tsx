@@ -40,10 +40,11 @@ import {
 import { Switch } from "@/components/ui/switch"
 import { useToast } from "@/hooks/use-toast"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { updateContract, getContract, getClients, getSites, getActivities, getSchedules, getTerms, getMarkets, getRevisionFormulas } from "@/services/firestore"
+import { updateContract } from "@/services/firestore"
 import type { Contract, Activity, Schedule, Term, Client, Site, Market, RevisionFormula } from "@/lib/types"
 import { Separator } from "@/components/ui/separator"
 import { Slider } from "@/components/ui/slider"
+import { useData } from "@/context/data-context"
 
 
 const monthlyBillingSchema = z.object({
@@ -115,15 +116,18 @@ export default function EditContractPage() {
     const id = params.id as string;
     const { toast } = useToast()
     
-    const [isLoading, setIsLoading] = useState(true);
-    const [clients, setClients] = useState<Client[]>([]);
-    const [allSites, setAllSites] = useState<Site[]>([]);
-    const [activities, setActivities] = useState<Activity[]>([]);
-    const [schedules, setSchedules] = useState<Schedule[]>([]);
-    const [terms, setTerms] = useState<Term[]>([]);
-    const [markets, setMarkets] = useState<Market[]>([]);
-    const [revisionFormulas, setRevisionFormulas] = useState<RevisionFormula[]>([]);
-    
+    const { 
+        clients, 
+        sites: allSites, 
+        activities, 
+        schedules, 
+        terms, 
+        markets, 
+        revisionFormulas,
+        contracts,
+        isLoading,
+    } = useData();
+        
     const [contract, setContract] = useState<Contract | null>(null);
     const [sites, setSites] = useState<Site[]>([]);
     
@@ -149,84 +153,50 @@ export default function EditContractPage() {
     });
 
     useEffect(() => {
-        async function fetchInitialData() {
-            if (!id) return;
-            setIsLoading(true);
-            try {
-                const [
-                    contractData,
-                    clientsData,
-                    sitesData,
-                    activitiesData,
-                    schedulesData,
-                    termsData,
-                    marketsData,
-                    revisionFormulasData,
-                ] = await Promise.all([
-                    getContract(id),
-                    getClients(),
-                    getSites(),
-                    getActivities(),
-                    getSchedules(),
-                    getTerms(),
-                    getMarkets(),
-                    getRevisionFormulas(),
-                ]);
+        if (!id || isLoading) return;
+        
+        const contractData = contracts.find(c => c.id === id);
 
-                if (!contractData) {
-                    toast({ title: "Erreur", description: "Contrat non trouvé.", variant: "destructive" });
-                    router.push('/contracts');
-                    return;
-                }
-
-                setContract(contractData);
-                setClients(clientsData);
-                setAllSites(sitesData);
-                setActivities(activitiesData);
-                setSchedules(schedulesData);
-                setTerms(termsData);
-                setMarkets(marketsData);
-                setRevisionFormulas(revisionFormulasData);
-                
-                const newActivityMap = new Map(activitiesData.map(a => [a.code, a.id]));
-                setActivityMap(newActivityMap);
-                
-                form.reset({
-                    clientId: contractData.clientId,
-                    siteIds: contractData.siteIds,
-                    startDate: new Date(contractData.startDate),
-                    endDate: new Date(contractData.endDate),
-                    billingSchedule: contractData.billingSchedule,
-                    term: contractData.term,
-                    activityIds: contractData.activityIds,
-                    marketId: contractData.marketId || '',
-                    hasInterest: contractData.hasInterest,
-                    revisionP1: contractData.revisionP1 ? { ...contractData.revisionP1, formulaId: contractData.revisionP1.formulaId || "", date: contractData.revisionP1.date ? new Date(contractData.revisionP1.date) : undefined } : { formulaId: '', date: undefined },
-                    revisionP2: contractData.revisionP2 ? { ...contractData.revisionP2, formulaId: contractData.revisionP2.formulaId || "", date: contractData.revisionP2.date ? new Date(contractData.revisionP2.date) : undefined } : { formulaId: '', date: undefined },
-                    revisionP3: contractData.revisionP3 ? { ...contractData.revisionP3, formulaId: contractData.revisionP3.formulaId || "", date: contractData.revisionP3.date ? new Date(contractData.revisionP3.date) : undefined } : { formulaId: '', date: undefined },
-                    monthlyBilling: contractData.monthlyBilling && contractData.monthlyBilling.length > 0 ? contractData.monthlyBilling : months.map(m => ({ month: m, date: 1, percentage: 0 })),
-                    heatingDays: contractData.heatingDays,
-                    baseDJU: contractData.baseDJU,
-                    weatherStationCode: contractData.weatherStationCode,
-                    consumptionBase: contractData.consumptionBase,
-                    shareRate: [contractData.shareRateClient || 50, contractData.shareRateOperator || 50],
-                    flatRateAmount: contractData.flatRateAmount,
-                    managementFees: contractData.managementFees,
-                    unitPriceUsefulMWh: contractData.unitPriceUsefulMWh,
-                    unitPricePrimaryMWh: contractData.unitPricePrimaryMWh,
-                });
-
-                const fetchedSites = sitesData.filter(site => site.clientId === contractData.clientId);
-                setSites(fetchedSites);
-
-            } catch (error) {
-                toast({ title: "Erreur", description: "Impossible de charger les données du contrat.", variant: "destructive" });
-            } finally {
-                setIsLoading(false);
-            }
+        if (!contractData) {
+            toast({ title: "Erreur", description: "Contrat non trouvé.", variant: "destructive" });
+            router.push('/contracts');
+            return;
         }
-        fetchInitialData();
-    }, [id, toast, router, form]);
+
+        setContract(contractData);
+        
+        const newActivityMap = new Map(activities.map(a => [a.code, a.id]));
+        setActivityMap(newActivityMap);
+        
+        form.reset({
+            clientId: contractData.clientId,
+            siteIds: contractData.siteIds,
+            startDate: new Date(contractData.startDate),
+            endDate: new Date(contractData.endDate),
+            billingSchedule: contractData.billingSchedule,
+            term: contractData.term,
+            activityIds: contractData.activityIds,
+            marketId: contractData.marketId || '',
+            hasInterest: contractData.hasInterest,
+            revisionP1: contractData.revisionP1 ? { ...contractData.revisionP1, formulaId: contractData.revisionP1.formulaId || "", date: contractData.revisionP1.date ? new Date(contractData.revisionP1.date) : undefined } : { formulaId: '', date: undefined },
+            revisionP2: contractData.revisionP2 ? { ...contractData.revisionP2, formulaId: contractData.revisionP2.formulaId || "", date: contractData.revisionP2.date ? new Date(contractData.revisionP2.date) : undefined } : { formulaId: '', date: undefined },
+            revisionP3: contractData.revisionP3 ? { ...contractData.revisionP3, formulaId: contractData.revisionP3.formulaId || "", date: contractData.revisionP3.date ? new Date(contractData.revisionP3.date) : undefined } : { formulaId: '', date: undefined },
+            monthlyBilling: contractData.monthlyBilling && contractData.monthlyBilling.length > 0 ? contractData.monthlyBilling : months.map(m => ({ month: m, date: 1, percentage: 0 })),
+            heatingDays: contractData.heatingDays,
+            baseDJU: contractData.baseDJU,
+            weatherStationCode: contractData.weatherStationCode,
+            consumptionBase: contractData.consumptionBase,
+            shareRate: [contractData.shareRateClient || 50, contractData.shareRateOperator || 50],
+            flatRateAmount: contractData.flatRateAmount,
+            managementFees: contractData.managementFees,
+            unitPriceUsefulMWh: contractData.unitPriceUsefulMWh,
+            unitPricePrimaryMWh: contractData.unitPricePrimaryMWh,
+        });
+
+        const fetchedSites = allSites.filter(site => site.clientId === contractData.clientId);
+        setSites(fetchedSites);
+
+    }, [id, isLoading, contracts, activities, allSites, toast, router, form]);
 
 
     const selectedClientId = form.watch("clientId");
@@ -240,9 +210,10 @@ export default function EditContractPage() {
         if (selectedClientId) {
             const fetchedSites = allSites.filter(site => site.clientId === selectedClientId);
             setSites(fetchedSites);
-            if (contract?.clientId !== selectedClientId) {
-               form.setValue('siteIds', []);
-            }
+            // This logic prevents resetting sites if client hasn't changed.
+            // if (contract?.clientId !== selectedClientId) {
+            //    form.setValue('siteIds', []);
+            // }
         } else {
             setSites([]);
         }
@@ -267,6 +238,7 @@ export default function EditContractPage() {
     const showPrimaryMWhPrice = selectedMarket?.code === 'CP' && p1IsSelected;
 
     async function onSubmit(data: ContractFormValues) {
+        if (!id) return;
         try {
             const shareRates = data.shareRate ? { shareRateClient: data.shareRate[0], shareRateOperator: data.shareRate[1] } : {};
             
@@ -831,3 +803,5 @@ export default function EditContractPage() {
         </Card>
     )
 }
+
+    

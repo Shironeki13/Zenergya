@@ -10,20 +10,20 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
-import { ChevronLeft, PlusCircle, Edit, Trash2 } from 'lucide-react';
-import { getClient, getSitesByClient, createSite, updateSite, deleteSite, getActivities } from '@/services/firestore';
+import { ChevronLeft, PlusCircle, Edit, Trash2, Loader2 } from 'lucide-react';
+import { createSite, updateSite, deleteSite } from '@/services/firestore';
 import type { Client, Site, Activity } from '@/lib/types';
 import { useToast } from '@/hooks/use-toast';
+import { useData } from '@/context/data-context';
 
 export default function ClientDetailPage() {
   const params = useParams();
   const id = params.id as string;
   const { toast } = useToast();
-  
+  const { clients, sites: allSites, activities, reloadData, isLoading: isDataLoading } = useData();
+
   const [client, setClient] = useState<Client | null>(null);
   const [sites, setSites] = useState<Site[]>([]);
-  const [activities, setActivities] = useState<Activity[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
   
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingSite, setEditingSite] = useState<Site | null>(null);
@@ -38,30 +38,19 @@ export default function ClientDetailPage() {
   const [siteActivityIds, setSiteActivityIds] = useState<string[]>([]);
   const [siteAmounts, setSiteAmounts] = useState<Record<string, number>>({});
 
-  const loadClientData = useCallback(async () => {
-    try {
-      setIsLoading(true);
-      const clientData = await getClient(id);
-      if (!clientData) {
-        notFound();
-      }
-      setClient(clientData);
-      const [sitesData, activitiesData] = await Promise.all([
-        getSitesByClient(id),
-        getActivities()
-      ]);
-      setSites(sitesData);
-      setActivities(activitiesData);
-    } catch (error) {
-      toast({ title: "Erreur", description: "Impossible de charger les données du client.", variant: "destructive" });
-    } finally {
-      setIsLoading(false);
-    }
-  }, [id, toast]);
-
   useEffect(() => {
-    loadClientData();
-  }, [loadClientData]);
+    if (!isDataLoading) {
+      const currentClient = clients.find(c => c.id === id);
+      if (!currentClient) {
+        notFound();
+        return;
+      }
+      setClient(currentClient);
+      const clientSites = allSites.filter(s => s.clientId === id);
+      setSites(clientSites);
+    }
+  }, [id, clients, allSites, isDataLoading]);
+
 
   const resetForm = () => {
     setSiteName('');
@@ -114,7 +103,7 @@ export default function ClientDetailPage() {
         await createSite({ ...siteData, clientId: id } as Omit<Site, 'id'>);
         toast({ title: "Site créé", description: "Le nouveau site a été ajouté avec succès." });
       }
-      await loadClientData();
+      await reloadData();
       setDialogOpen(false);
       resetForm();
     } catch (error) {
@@ -128,7 +117,7 @@ export default function ClientDetailPage() {
     try {
         await deleteSite(siteToDelete.id);
         toast({ title: "Succès", description: "Le site a été supprimé." });
-        await loadClientData();
+        await reloadData();
         setSiteToDelete(null);
     } catch (error) {
         toast({ title: "Erreur", description: "Impossible de supprimer le site.", variant: "destructive" });
@@ -141,8 +130,8 @@ export default function ClientDetailPage() {
       );
   };
 
-  if (isLoading) {
-    return <div>Chargement...</div>;
+  if (isDataLoading) {
+    return <div className="flex items-center justify-center h-full"><Loader2 className="h-8 w-8 animate-spin" /></div>;
   }
 
   if (!client) {
@@ -322,3 +311,5 @@ export default function ClientDetailPage() {
     </div>
   );
 }
+
+    

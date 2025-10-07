@@ -1,9 +1,8 @@
 
-
 'use server';
 import { db } from '@/lib/firebase';
 import type { Client, Site, Contract, Invoice, MeterReading, Company, Agency, Sector, Activity, User, Role, Schedule, Term, Typology, VatRate, RevisionFormula, PaymentTerm, PricingRule, Market, Meter } from '@/lib/types';
-import { collection, getDocs, doc, getDoc, addDoc, updateDoc, deleteDoc, query, where, DocumentData, writeBatch, runTransaction, Timestamp, deleteField } from 'firebase/firestore';
+import { collection, getDocs, doc, getDoc, addDoc, updateDoc, deleteDoc, query, where, DocumentData, writeBatch, runTransaction, Timestamp } from 'firebase/firestore';
 
 // --- Helper function to convert Firestore Timestamps ---
 function processFirestoreDoc<T>(docData: DocumentData): T {
@@ -54,7 +53,13 @@ async function getCollection<T>(q: any): Promise<T[]> {
 
 // Clients
 export async function getClients(): Promise<Client[]> {
-    return getCollection<Client>(collection(db, 'clients'));
+    const clients = await getCollection<Client>(collection(db, 'clients'));
+    const typologies = await getTypologies();
+    const typologyMap = new Map(typologies.map(t => [t.id, t.name]));
+    return clients.map(client => ({
+        ...client,
+        typologyName: typologyMap.get(client.typologyId) || 'N/A'
+    }));
 }
 
 export async function getClient(id: string): Promise<Client | null> {
@@ -73,7 +78,7 @@ export async function createClient(data: Omit<Client, 'id' | 'typologyName'>) {
 
 export async function updateClient(id: string, data: Partial<Omit<Client, 'id'>>) {
     const clientDoc = doc(db, 'clients', id);
-    const updateData = { ...data };
+    const updateData: DocumentData = { ...data };
     
     // Ensure typologyName is updated if typologyId changes
     if (data.typologyId) {
@@ -95,18 +100,8 @@ export async function deleteClient(id: string) {
 // Sites
 export async function getSites(): Promise<Site[]> {
     const sites = await getCollection<Site>(collection(db, 'sites'));
-    
-    // Pour enrichir avec le nom du client
-    if (sites.length > 0) {
-        const clientIds = [...new Set(sites.map(s => s.clientId))];
-        const clients = await getClients();
-        const clientMap = new Map(clients.map(c => [c.id, c.name]));
-        return sites.map(site => ({
-            ...site,
-            clientName: clientMap.get(site.clientId) || 'N/A'
-        }));
-    }
-    return [];
+    // Client name is denormalized in the DataProvider now
+    return sites;
 }
 
 
@@ -171,17 +166,13 @@ export async function updateContract(id: string, data: Partial<Omit<Contract, 'i
     const updateData: DocumentData = { ...data };
 
     // Convert string dates to Date objects for Firestore
-    if (data.startDate) updateData.startDate = new Date(data.startDate as any);
-    if (data.endDate) updateData.endDate = new Date(data.endDate as any);
+    if (data.startDate && typeof data.startDate === 'string') updateData.startDate = new Date(data.startDate);
+    if (data.endDate && typeof data.endDate === 'string') updateData.endDate = new Date(data.endDate);
     
     const revisionFields: ('revisionP1' | 'revisionP2' | 'revisionP3')[] = ['revisionP1', 'revisionP2', 'revisionP3'];
     for (const field of revisionFields) {
-        if (data[field]) {
-            const revisionData = data[field];
-            if (revisionData?.date) {
-                revisionData.date = new Date(revisionData.date as any);
-            }
-            updateData[field] = { ...revisionData };
+        if (data[field] && data[field]?.date && typeof data[field]!.date === 'string') {
+            updateData[field]!.date = new Date(data[field]!.date as any);
         }
     }
 
@@ -254,11 +245,10 @@ export async function createMeter(data: Omit<Meter, 'id' | 'code'>) {
 export async function getMeters(): Promise<Meter[]> {
     const meters = await getSettingItems<Meter>('meters');
     const sites = await getSites();
-    const siteMap = new Map(sites.map(s => [s.id, {siteName: s.name, clientName: s.clientName}]));
+    const siteMap = new Map(sites.map(s => [s.id, s.name]));
     return meters.map(meter => ({
         ...meter,
-        siteName: siteMap.get(meter.siteId)?.siteName || 'N/A',
-        clientName: siteMap.get(meter.siteId)?.clientName || 'N/A'
+        siteName: siteMap.get(meter.siteId) || 'N/A'
     }));
 }
 export async function updateMeter(id: string, data: Partial<Omit<Meter, 'id' | 'code'>>) {
@@ -573,3 +563,5 @@ export async function updateUser(id: string, data: Partial<Omit<User, 'id'>>) {
 export async function deleteUser(id: string) {
     return deleteSettingItem('users', id);
 }
+
+    
