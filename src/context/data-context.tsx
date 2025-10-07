@@ -25,36 +25,36 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const loadAllData = useCallback(async () => {
     setIsLoading(true);
     try {
-        const dataPayload: Omit<DataContextType, 'isLoading' | 'reloadData'> = {
-            clients: [], sites: [], contracts: [], invoices: [], meters: [], meterReadings: [],
-            companies: [], agencies: [], sectors: [], activities: [], schedules: [],
-            terms: [], typologies: [], vatRates: [], revisionFormulas: [], paymentTerms: [],
-            pricingRules: [], markets: [], roles: [], users: []
-        };
+        const results = await Promise.allSettled([
+            getClients(), getSites(), getContracts(), getInvoices(), getMeters(), getMeterReadings(),
+            getCompanies(), getAgencies(), getSectors(), getActivities(), getSchedules(), getTerms(),
+            getTypologies(), getVatRates(), getRevisionFormulas(), getPaymentTerms(),
+            getPricingRules(), getMarkets(), getRoles(), getUsers()
+        ]);
         
-        // Load data sequentially to avoid overloading the server
-        dataPayload.clients = await getClients();
-        dataPayload.sites = await getSites();
-        dataPayload.contracts = await getContracts();
-        dataPayload.invoices = await getInvoices();
-        dataPayload.meters = await getMeters();
-        dataPayload.meterReadings = await getMeterReadings();
-        dataPayload.companies = await getCompanies();
-        dataPayload.agencies = await getAgencies();
-        dataPayload.sectors = await getSectors();
-        dataPayload.activities = await getActivities();
-        dataPayload.schedules = await getSchedules();
-        dataPayload.terms = await getTerms();
-        dataPayload.typologies = await getTypologies();
-        dataPayload.vatRates = await getVatRates();
-        dataPayload.revisionFormulas = await getRevisionFormulas();
-        dataPayload.paymentTerms = await getPaymentTerms();
-        dataPayload.pricingRules = await getPricingRules();
-        dataPayload.markets = await getMarkets();
-        dataPayload.roles = await getRoles();
-        dataPayload.users = await getUsers();
+        const [
+            clients, sites, contracts, invoices, meters, meterReadings,
+            companies, agencies, sectors, activities, schedules,
+            terms, typologies, vatRates, revisionFormulas, paymentTerms,
+            pricingRules, markets, roles, users
+        ] = results.map(result => (result.status === 'fulfilled' ? result.value : []));
+
+        const dataPayload: Omit<DataContextType, 'isLoading' | 'reloadData'> = {
+            clients, sites, contracts, invoices, meters, meterReadings,
+            companies, agencies, sectors, activities, schedules,
+            terms, typologies, vatRates, revisionFormulas, paymentTerms,
+            pricingRules, markets, roles, users
+        } as Omit<DataContextType, 'isLoading' | 'reloadData'>;
+
+        results.forEach((result, index) => {
+            if (result.status === 'rejected') {
+                const collectionName = Object.keys(dataPayload)[index];
+                console.error(`Failed to load ${collectionName}:`, result.reason);
+            }
+        });
 
         setData(dataPayload);
+
     } catch (error) {
       console.error("Failed to load global data:", error);
       toast({
