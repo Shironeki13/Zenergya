@@ -7,7 +7,7 @@ import { zodResolver } from "@hookform/resolvers/zod"
 import { useForm } from "react-hook-form"
 import * as z from "zod"
 import React from "react"
-import { ChevronLeft } from "lucide-react"
+import { ChevronLeft, Loader2 } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import {
@@ -27,7 +27,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { Switch } from "@/components/ui/switch"
 import { Separator } from "@/components/ui/separator"
+import type { Typology } from "@/lib/types"
 import { useData } from "@/context/data-context"
+
 
 const clientFormSchema = z.object({
   name: z.string().min(2, "La raison sociale est requise."),
@@ -63,7 +65,7 @@ type ClientFormValues = z.infer<typeof clientFormSchema>
 export default function NewClientPage() {
   const router = useRouter();
   const { toast } = useToast()
-  const { typologies, reloadData } = useData();
+  const { typologies, isLoading: isDataLoading, reloadData } = useData();
 
   const form = useForm<ClientFormValues>({
     resolver: zodResolver(clientFormSchema),
@@ -133,6 +135,11 @@ export default function NewClientPage() {
         </div>
       </CardHeader>
       <CardContent>
+        {isDataLoading ? (
+            <div className="flex items-center justify-center h-64">
+              <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+            </div>
+        ) : (
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-8">
             <div className="grid md:grid-cols-2 gap-8">
@@ -181,7 +188,7 @@ export default function NewClientPage() {
                <FormField control={form.control} name="typologyId" render={({ field }) => (
                 <FormItem>
                   <FormLabel>Typologie client</FormLabel>
-                  <Select onValueChange={field.onChange} defaultValue={field.value}>
+                  <Select onValueChange={field.onChange} defaultValue={field.value} disabled={isDataLoading}>
                     <FormControl><SelectTrigger><SelectValue placeholder="Sélectionnez une typologie" /></SelectTrigger></FormControl>
                     <SelectContent>
                       {typologies.map(t => <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>)}
@@ -265,7 +272,10 @@ export default function NewClientPage() {
             <Button type="submit">Créer le Client</Button>
           </form>
         </Form>
+        )}
       </CardContent>
     </Card>
   )
 }
+
+    

@@ -38,9 +38,10 @@ import type { Site } from '@/lib/types';
 import { useToast } from '@/hooks/use-toast';
 import { useData } from '@/context/data-context';
 
+
 export default function SitesPage() {
   const { sites, clients, activities, isLoading, reloadData } = useData();
-  
+
   const [addSiteDialogOpen, setAddSiteDialogOpen] = useState(false);
   const [editSiteDialogOpen, setEditSiteDialogOpen] = useState(false);
   
@@ -58,7 +59,7 @@ export default function SitesPage() {
   const [siteCity, setSiteCity] = useState('');
   const [siteActivityIds, setSiteActivityIds] = useState<string[]>([]);
   const [siteAmounts, setSiteAmounts] = useState<Record<string, number>>({});
-
+  
   const handleGoToCreateSite = () => {
     if (selectedClientId) {
       router.push(`/clients/${selectedClientId}`);
@@ -319,3 +320,5 @@ export default function SitesPage() {
     </Card>
   );
 }
+
+    

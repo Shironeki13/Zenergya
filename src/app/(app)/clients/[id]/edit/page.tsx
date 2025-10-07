@@ -22,12 +22,13 @@ import {
 import { Input } from "@/components/ui/input"
 import { useToast } from "@/hooks/use-toast"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { getClient, updateClient, getTypologies } from "@/services/firestore"
+import { updateClient } from "@/services/firestore"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { Switch } from "@/components/ui/switch"
 import type { Typology, Client } from "@/lib/types"
 import { Separator } from "@/components/ui/separator"
+import { useData } from "@/context/data-context"
 
 const clientFormSchema = z.object({
   name: z.string().min(2, "La raison sociale est requise."),
@@ -65,10 +66,9 @@ export default function EditClientPage() {
   const params = useParams();
   const id = params.id as string;
   const { toast } = useToast()
+  const { clients, typologies, reloadData, isLoading: isDataLoading } = useData();
   
-  const [typologies, setTypologies] = React.useState<Typology[]>([]);
   const [client, setClient] = React.useState<Client | null>(null);
-  const [isLoading, setIsLoading] = React.useState(true);
 
   const form = useForm<ClientFormValues>({
     resolver: zodResolver(clientFormSchema),
@@ -94,52 +94,39 @@ export default function EditClientPage() {
   })
 
   React.useEffect(() => {
-    async function fetchData() {
-      try {
-        const [clientData, typologiesData] = await Promise.all([
-            getClient(id),
-            getTypologies()
-        ]);
-        
-        if (!clientData) {
-            toast({ title: "Erreur", description: "Client non trouvé.", variant: "destructive" });
-            router.push('/clients');
-            return;
-        }
-        
-        setClient(clientData);
-        setTypologies(typologiesData);
-
-        // Populate form with client data
-        form.reset({
-            name: clientData.name,
-            address: clientData.address || "",
-            postalCode: clientData.postalCode || "",
-            city: clientData.city || "",
-            clientType: clientData.clientType,
-            typologyId: clientData.typologyId,
-            representedBy: clientData.representedBy || "",
-            externalCode: clientData.externalCode || "",
-            isBe: clientData.isBe,
-            beName: clientData.beName || "",
-            beEmail: clientData.beEmail || "",
-            bePhone: clientData.bePhone || "",
-            useChorus: clientData.useChorus,
-            siret: clientData.siret || "",
-            chorusServiceCode: clientData.chorusServiceCode || "",
-            chorusLegalCommitmentNumber: clientData.chorusLegalCommitmentNumber || "",
-            chorusMarketNumber: clientData.chorusMarketNumber || "",
-            invoicingType: clientData.invoicingType || "multi-site",
-        });
-
-      } catch (error) {
-        toast({ title: "Erreur", description: "Impossible de charger les données.", variant: "destructive" });
-      } finally {
-        setIsLoading(false);
+    if (!isDataLoading) {
+      const clientData = clients.find(c => c.id === id);
+      
+      if (!clientData) {
+          toast({ title: "Erreur", description: "Client non trouvé.", variant: "destructive" });
+          router.push('/clients');
+          return;
       }
+      
+      setClient(clientData);
+
+      form.reset({
+          name: clientData.name,
+          address: clientData.address || "",
+          postalCode: clientData.postalCode || "",
+          city: clientData.city || "",
+          clientType: clientData.clientType,
+          typologyId: clientData.typologyId,
+          representedBy: clientData.representedBy || "",
+          externalCode: clientData.externalCode || "",
+          isBe: clientData.isBe,
+          beName: clientData.beName || "",
+          beEmail: clientData.beEmail || "",
+          bePhone: clientData.bePhone || "",
+          useChorus: clientData.useChorus,
+          siret: clientData.siret || "",
+          chorusServiceCode: clientData.chorusServiceCode || "",
+          chorusLegalCommitmentNumber: clientData.chorusLegalCommitmentNumber || "",
+          chorusMarketNumber: clientData.chorusMarketNumber || "",
+          invoicingType: clientData.invoicingType || "multi-site",
+      });
     }
-    fetchData();
-  }, [id, router, toast, form]);
+  }, [id, router, toast, form, clients, isDataLoading]);
 
 
   const watchTypologyId = form.watch("typologyId");
@@ -155,12 +142,12 @@ export default function EditClientPage() {
 
   async function onSubmit(data: ClientFormValues) {
     try {
-      const typologyName = typologies.find(t => t.id === data.typologyId)?.name;
-      await updateClient(id, { ...data, typologyName });
+      await updateClient(id, data);
       toast({
         title: "Client Mis à Jour",
         description: "Le client a été mis à jour avec succès.",
       });
+      await reloadData();
       router.push('/clients');
     } catch (error) {
       console.error("Échec de la mise à jour du client:", error);
@@ -172,7 +159,7 @@ export default function EditClientPage() {
     }
   }
 
-  if (isLoading) {
+  if (isDataLoading || !client) {
     return <div className="flex justify-center items-center h-full">Chargement...</div>;
   }
   
@@ -240,7 +227,7 @@ export default function EditClientPage() {
                <FormField control={form.control} name="typologyId" render={({ field }) => (
                 <FormItem>
                   <FormLabel>Typologie client</FormLabel>
-                  <Select onValueChange={field.onChange} value={field.value} disabled={isLoading}>
+                  <Select onValueChange={field.onChange} value={field.value} disabled={isDataLoading}>
                     <FormControl><SelectTrigger><SelectValue placeholder="Sélectionnez une typologie" /></SelectTrigger></FormControl>
                     <SelectContent>
                       {typologies.map(t => <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>)}
@@ -328,3 +315,5 @@ export default function EditClientPage() {
     </Card>
   )
 }
+
+    

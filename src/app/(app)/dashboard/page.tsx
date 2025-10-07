@@ -1,7 +1,6 @@
 
 'use client';
 
-import { useData } from '@/context/data-context';
 import Link from 'next/link';
 import {
   ArrowUpRight,
@@ -30,7 +29,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import type { InvoiceStatus } from '@/lib/types';
-
+import { useData } from '@/context/data-context';
 
 export default function Dashboard() {
   const { contracts, invoices, isLoading } = useData();
@@ -172,3 +171,5 @@ export default function Dashboard() {
     </>
   );
 }
+
+    

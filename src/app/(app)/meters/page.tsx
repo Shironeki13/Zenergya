@@ -12,13 +12,14 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { PlusCircle, Edit, Trash2, BookOpen, Loader2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import { createMeter, updateMeter, deleteMeter, getMeterReadingsByMeter } from '@/services/firestore';
-import type { Meter, MeterReading } from '@/lib/types';
+import { createMeter, updateMeter, deleteMeter, getMeterReadingsByMeter, getMeters, getSites } from '@/services/firestore';
+import type { Meter, MeterReading, Site } from '@/lib/types';
 import { Badge } from '@/components/ui/badge';
-import { useData } from '@/context/data-context';
 
 export default function MetersPage() {
-  const { sites, meters, isLoading, reloadData } = useData();
+  const [sites, setSites] = useState<Site[]>([]);
+  const [meters, setMeters] = useState<Meter[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
   const { toast } = useToast();
 
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -40,6 +41,28 @@ export default function MetersPage() {
   const [selectedMeterForReadings, setSelectedMeterForReadings] = useState<Meter | null>(null);
   const [meterReadings, setMeterReadings] = useState<MeterReading[]>([]);
   const [isLoadingReadings, setIsLoadingReadings] = useState(false);
+
+
+  const loadData = useCallback(async () => {
+    setIsLoading(true);
+    try {
+        const [metersData, sitesData] = await Promise.all([
+            getMeters(),
+            getSites(),
+        ]);
+        setMeters(metersData);
+        setSites(sitesData);
+    } catch (error) {
+        toast({ title: 'Erreur', description: 'Impossible de charger les données.', variant: 'destructive' });
+    } finally {
+        setIsLoading(false);
+    }
+  }, [toast]);
+
+  useEffect(() => {
+      loadData();
+  }, [loadData]);
+
 
   const resetForm = () => {
     setCode('');
@@ -105,7 +128,7 @@ export default function MetersPage() {
         await createMeter(meterData as Omit<Meter, 'id' | 'code'>);
         toast({ title: 'Compteur créé', description: 'Le nouveau compteur a été ajouté avec succès.' });
       }
-      await reloadData();
+      await loadData();
       setDialogOpen(false);
       resetForm();
     } catch (error) {
@@ -120,7 +143,7 @@ export default function MetersPage() {
     try {
       await deleteMeter(meterToDelete.id);
       toast({ title: 'Compteur supprimé', description: 'Le compteur a été supprimé avec succès.' });
-      await reloadData();
+      await loadData();
       setMeterToDelete(null);
     } catch (error) {
       toast({ title: 'Erreur', description: 'Impossible de supprimer le compteur.', variant: 'destructive' });

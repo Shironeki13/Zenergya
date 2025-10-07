@@ -1,6 +1,5 @@
 
 'use client';
-
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import type { DataContextType } from '@/lib/types';
 import {
@@ -15,55 +14,40 @@ const DataContext = createContext<DataContextType | undefined>(undefined);
 
 export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [data, setData] = useState<Omit<DataContextType, 'isLoading' | 'reloadData'>>({
-    clients: [],
-    sites: [],
-    contracts: [],
-    invoices: [],
-    meters: [],
-    meterReadings: [],
-    companies: [],
-    agencies: [],
-    sectors: [],
-    activities: [],
-    schedules: [],
-    terms: [],
-    typologies: [],
-    vatRates: [],
-    revisionFormulas: [],
-    paymentTerms: [],
-    pricingRules: [],
-    markets: [],
-    roles: [],
-    users: [],
+    clients: [], sites: [], contracts: [], invoices: [], meters: [], meterReadings: [],
+    companies: [], agencies: [], sectors: [], activities: [], schedules: [],
+    terms: [], typologies: [], vatRates: [], revisionFormulas: [], paymentTerms: [],
+    pricingRules: [], markets: [], roles: [], users: []
   });
   const [isLoading, setIsLoading] = useState(true);
   const { toast } = useToast();
 
-  const loadData = useCallback(async () => {
+  const loadAllData = useCallback(async () => {
     setIsLoading(true);
     try {
       const [
-        clients, sites, contracts, invoices, meters, meterReadings, companies, agencies,
-        sectors, activities, schedules, terms, typologies, vatRates, revisionFormulas,
-        paymentTerms, pricingRules, markets, roles, users
+        clients, sites, contracts, invoices, meters, meterReadings,
+        companies, agencies, sectors, activities, schedules, terms,
+        typologies, vatRates, revisionFormulas, paymentTerms,
+        pricingRules, markets, roles, users
       ] = await Promise.all([
         getClients(), getSites(), getContracts(), getInvoices(), getMeters(), getMeterReadings(),
         getCompanies(), getAgencies(), getSectors(), getActivities(), getSchedules(), getTerms(),
         getTypologies(), getVatRates(), getRevisionFormulas(), getPaymentTerms(),
         getPricingRules(), getMarkets(), getRoles(), getUsers()
       ]);
-
       setData({
-        clients, sites, contracts, invoices, meters, meterReadings, companies, agencies,
-        sectors, activities, schedules, terms, typologies, vatRates, revisionFormulas,
-        paymentTerms, pricingRules, markets, roles, users
+        clients, sites, contracts, invoices, meters, meterReadings,
+        companies, agencies, sectors, activities, schedules, terms,
+        typologies, vatRates, revisionFormulas, paymentTerms,
+        pricingRules, markets, roles, users
       });
     } catch (error) {
       console.error("Failed to load global data:", error);
       toast({
-        title: 'Erreur de chargement',
-        description: 'Impossible de charger toutes les données de l\'application.',
-        variant: 'destructive',
+        title: "Erreur de chargement",
+        description: "Impossible de charger toutes les données de l'application. Veuillez réessayer.",
+        variant: "destructive",
       });
     } finally {
       setIsLoading(false);
@@ -71,21 +55,11 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, [toast]);
 
   useEffect(() => {
-    loadData();
-  }, [loadData]);
-
-  const reloadData = useCallback(async () => {
-    await loadData();
-  }, [loadData]);
-
-  const value = {
-    ...data,
-    isLoading,
-    reloadData,
-  };
+    loadAllData();
+  }, [loadAllData]);
 
   return (
-    <DataContext.Provider value={value}>
+    <DataContext.Provider value={{ ...data, isLoading, reloadData: loadAllData }}>
       {children}
     </DataContext.Provider>
   );
@@ -98,3 +72,5 @@ export const useData = () => {
   }
   return context;
 };
+
+    

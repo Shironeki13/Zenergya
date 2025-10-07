@@ -14,19 +14,37 @@ import { useToast } from "@/hooks/use-toast";
 import {
   createUser, updateUser, deleteUser,
   createRole, updateRole, deleteRole,
+  getUsers, getRoles
 } from "@/services/firestore";
 import type { User, Role } from "@/lib/types";
-import { useData } from '@/context/data-context';
 
 // Section pour les Rôles
 const RolesSection = () => {
-    const { roles, isLoading, reloadData } = useData();
+    const [roles, setRoles] = useState<Role[]>([]);
+    const [isLoading, setIsLoading] = useState(true);
     const { toast } = useToast();
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [dialogOpen, setDialogOpen] = useState(false);
     const [editingRole, setEditingRole] = useState<Role | null>(null);
     const [roleToDelete, setRoleToDelete] = useState<Role | null>(null);
     const [name, setName] = useState('');
+    
+    const loadRoles = useCallback(async () => {
+        setIsLoading(true);
+        try {
+            const rolesData = await getRoles();
+            setRoles(rolesData);
+        } catch (error) {
+            toast({ title: "Erreur", description: "Impossible de charger les rôles.", variant: "destructive" });
+        } finally {
+            setIsLoading(false);
+        }
+    }, [toast]);
+
+    useEffect(() => {
+        loadRoles();
+    }, [loadRoles]);
+
 
     const resetForm = () => { setName(''); setEditingRole(null); };
 
@@ -48,7 +66,7 @@ const RolesSection = () => {
                 await createRole(name);
                 toast({ title: "Succès", description: "Rôle créé." });
             }
-            await reloadData();
+            await loadRoles();
             setDialogOpen(false);
             resetForm();
         } catch (error) {
@@ -63,7 +81,7 @@ const RolesSection = () => {
         try {
             await deleteRole(roleToDelete.id);
             toast({ title: "Succès", description: "Rôle supprimé." });
-            await reloadData();
+            await loadRoles();
             setRoleToDelete(null);
         } catch (error) {
             toast({ title: "Erreur", description: "Impossible de supprimer le rôle.", variant: "destructive" });
@@ -134,7 +152,9 @@ const RolesSection = () => {
 
 // Section pour les Utilisateurs
 const UsersSection = () => {
-    const { users, roles, isLoading, reloadData } = useData();
+    const [users, setUsers] = useState<User[]>([]);
+    const [roles, setRoles] = useState<Role[]>([]);
+    const [isLoading, setIsLoading] = useState(true);
     const { toast } = useToast();
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [dialogOpen, setDialogOpen] = useState(false);
@@ -144,6 +164,23 @@ const UsersSection = () => {
     const [name, setName] = useState('');
     const [email, setEmail] = useState('');
     const [roleId, setRoleId] = useState('');
+
+    const loadUsersAndRoles = useCallback(async () => {
+        setIsLoading(true);
+        try {
+            const [usersData, rolesData] = await Promise.all([getUsers(), getRoles()]);
+            setUsers(usersData);
+            setRoles(rolesData);
+        } catch (error) {
+            toast({ title: "Erreur", description: "Impossible de charger les utilisateurs et les rôles.", variant: "destructive" });
+        } finally {
+            setIsLoading(false);
+        }
+    }, [toast]);
+    
+    useEffect(() => {
+        loadUsersAndRoles();
+    }, [loadUsersAndRoles]);
 
     const resetForm = () => { setName(''); setEmail(''); setRoleId(''); setEditingUser(null); };
 
@@ -172,7 +209,7 @@ const UsersSection = () => {
                 await createUser(userData);
                 toast({ title: "Succès", description: "Utilisateur créé." });
             }
-            await reloadData();
+            await loadUsersAndRoles();
             setDialogOpen(false);
             resetForm();
         } catch (error) {
@@ -187,7 +224,7 @@ const UsersSection = () => {
         try {
             await deleteUser(userToDelete.id);
             toast({ title: "Succès", description: "L'utilisateur a été supprimé." });
-            await reloadData();
+            await loadUsersAndRoles();
             setUserToDelete(null);
         } catch (error) {
             toast({ title: "Erreur", description: "Impossible de supprimer l'utilisateur.", variant: "destructive" });
