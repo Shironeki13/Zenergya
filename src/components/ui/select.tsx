@@ -116,16 +116,6 @@ const SelectItem = React.forwardRef<
   React.ElementRef<typeof SelectPrimitive.Item>,
   React.ComponentPropsWithoutRef<typeof SelectPrimitive.Item>
 >(({ className, children, ...props }, ref) => {
-  // Pass a value that's not an empty string
-  if (props.value === "" || props.value === null) {
-    // Or handle it in a way that doesn't pass an empty string
-    // For example, you can render a disabled item or a placeholder-like item
-    // For this case, let's treat "none" as a special value.
-    if (props.value === "none") {
-      // Don't render an invalid item
-    }
-  }
-
   return (
     <SelectPrimitive.Item
       ref={ref}

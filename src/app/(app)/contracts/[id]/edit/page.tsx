@@ -200,9 +200,9 @@ export default function EditContractPage() {
                     activityIds: contractData.activityIds,
                     marketId: contractData.marketId,
                     hasInterest: contractData.hasInterest,
-                    revisionP1: contractData.revisionP1 ? { ...contractData.revisionP1, date: contractData.revisionP1.date ? new Date(contractData.revisionP1.date) : undefined } : undefined,
-                    revisionP2: contractData.revisionP2 ? { ...contractData.revisionP2, date: contractData.revisionP2.date ? new Date(contractData.revisionP2.date) : undefined } : undefined,
-                    revisionP3: contractData.revisionP3 ? { ...contractData.revisionP3, date: contractData.revisionP3.date ? new Date(contractData.revisionP3.date) : undefined } : undefined,
+                    revisionP1: contractData.revisionP1 ? { ...contractData.revisionP1, formulaId: contractData.revisionP1.formulaId || "", date: contractData.revisionP1.date ? new Date(contractData.revisionP1.date) : undefined } : undefined,
+                    revisionP2: contractData.revisionP2 ? { ...contractData.revisionP2, formulaId: contractData.revisionP2.formulaId || "", date: contractData.revisionP2.date ? new Date(contractData.revisionP2.date) : undefined } : undefined,
+                    revisionP3: contractData.revisionP3 ? { ...contractData.revisionP3, formulaId: contractData.revisionP3.formulaId || "", date: contractData.revisionP3.date ? new Date(contractData.revisionP3.date) : undefined } : undefined,
                     monthlyBilling: contractData.monthlyBilling || months.map(m => ({ month: m, date: 1, percentage: 0 })),
                     heatingDays: contractData.heatingDays,
                     baseDJU: contractData.baseDJU,
@@ -321,7 +321,7 @@ export default function EditContractPage() {
                     </SelectTrigger>
                     </FormControl>
                     <SelectContent>
-                    <SelectItem value="none">Aucune</SelectItem>
+                    <SelectItem value="">Aucune</SelectItem>
                     {formulas.map((formula) => (
                         <SelectItem key={formula.id} value={formula.id}>
                         {formula.code} - {formula.formula}
