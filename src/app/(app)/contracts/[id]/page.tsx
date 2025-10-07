@@ -37,11 +37,10 @@ import {
   MapPin,
   Loader2,
 } from "lucide-react";
-import { getContract, getMeterReadingsByContract, getInvoicesByContract, getActivities, getSites, getMeters } from "@/services/firestore";
+import { getContract, getMeterReadingsByContract, getInvoicesByContract, getActivities, getSites, getMeters, createMeterReading } from "@/services/firestore";
 import type { Activity, Contract, Invoice, MeterReading, Site, Meter } from "@/lib/types";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { createMeterReading } from "@/services/firestore";
 
 
 export default function ContractDetailPage() {
@@ -146,6 +145,7 @@ export default function ContractDetailPage() {
   const activityMap = new Map(activities.map((a: Activity) => [a.id, a.label]));
   const contractActivities = contract.activityIds.map(id => activityMap.get(id) || 'Activité inconnue');
   const meterMap = new Map(meters.map(m => [m.id, m.name]));
+  const siteMap = new Map(sites.map(s => [s.id, s.name]));
 
   return (
     <div className="grid gap-4 md:gap-8">
@@ -198,8 +198,8 @@ export default function ContractDetailPage() {
                 <div>
                   <span className="font-medium">Sites ({sites.length}) :</span>
                   <ul className="list-disc pl-5">
-                    {sites.map((site) => (
-                      <li key={site.id} className="truncate">{site.name}</li>
+                    {contract.siteIds.map((siteId) => (
+                      <li key={siteId} className="truncate">{siteMap.get(siteId) || siteId}</li>
                     ))}
                   </ul>
                 </div>

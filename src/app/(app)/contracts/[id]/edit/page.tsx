@@ -6,7 +6,7 @@ import { useRouter, useParams } from "next/navigation"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { useForm, useFieldArray } from "react-hook-form"
 import * as z from "zod"
-import { CalendarIcon, ChevronLeft } from "lucide-react"
+import { CalendarIcon, ChevronLeft, Loader2 } from "lucide-react"
 import { format } from "date-fns"
 import { fr } from "date-fns/locale"
 import React, { useState, useEffect, useMemo } from 'react';
@@ -40,11 +40,10 @@ import {
 import { Switch } from "@/components/ui/switch"
 import { useToast } from "@/hooks/use-toast"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { updateContract, getContract } from "@/services/firestore"
+import { updateContract, getContract, getClients, getSites, getActivities, getSchedules, getTerms, getMarkets, getRevisionFormulas } from "@/services/firestore"
 import type { Contract, Activity, Schedule, Term, Client, Site, Market, RevisionFormula } from "@/lib/types"
 import { Separator } from "@/components/ui/separator"
 import { Slider } from "@/components/ui/slider"
-import { useData } from "@/context/data-context"
 
 
 const monthlyBillingSchema = z.object({
@@ -115,8 +114,16 @@ export default function EditContractPage() {
     const params = useParams();
     const id = params.id as string;
     const { toast } = useToast()
-    const { clients, sites: allSites, activities, schedules, terms, markets, revisionFormulas, reloadData, isLoading: isDataLoading } = useData();
-
+    
+    const [isLoading, setIsLoading] = useState(true);
+    const [clients, setClients] = useState<Client[]>([]);
+    const [allSites, setAllSites] = useState<Site[]>([]);
+    const [activities, setActivities] = useState<Activity[]>([]);
+    const [schedules, setSchedules] = useState<Schedule[]>([]);
+    const [terms, setTerms] = useState<Term[]>([]);
+    const [markets, setMarkets] = useState<Market[]>([]);
+    const [revisionFormulas, setRevisionFormulas] = useState<RevisionFormula[]>([]);
+    
     const [contract, setContract] = useState<Contract | null>(null);
     const [sites, setSites] = useState<Site[]>([]);
     
@@ -142,21 +149,47 @@ export default function EditContractPage() {
     });
 
     useEffect(() => {
-        const newActivityMap = new Map(activities.map(a => [a.code, a.id]));
-        setActivityMap(newActivityMap);
-    }, [activities]);
-
-    useEffect(() => {
-        async function fetchContractData() {
+        async function fetchInitialData() {
             if (!id) return;
+            setIsLoading(true);
             try {
-                const contractData = await getContract(id);
+                const [
+                    contractData,
+                    clientsData,
+                    sitesData,
+                    activitiesData,
+                    schedulesData,
+                    termsData,
+                    marketsData,
+                    revisionFormulasData,
+                ] = await Promise.all([
+                    getContract(id),
+                    getClients(),
+                    getSites(),
+                    getActivities(),
+                    getSchedules(),
+                    getTerms(),
+                    getMarkets(),
+                    getRevisionFormulas(),
+                ]);
+
                 if (!contractData) {
                     toast({ title: "Erreur", description: "Contrat non trouvé.", variant: "destructive" });
                     router.push('/contracts');
                     return;
                 }
+
                 setContract(contractData);
+                setClients(clientsData);
+                setAllSites(sitesData);
+                setActivities(activitiesData);
+                setSchedules(schedulesData);
+                setTerms(termsData);
+                setMarkets(marketsData);
+                setRevisionFormulas(revisionFormulasData);
+                
+                const newActivityMap = new Map(activitiesData.map(a => [a.code, a.id]));
+                setActivityMap(newActivityMap);
                 
                 form.reset({
                     clientId: contractData.clientId,
@@ -166,12 +199,12 @@ export default function EditContractPage() {
                     billingSchedule: contractData.billingSchedule,
                     term: contractData.term,
                     activityIds: contractData.activityIds,
-                    marketId: contractData.marketId,
+                    marketId: contractData.marketId || '',
                     hasInterest: contractData.hasInterest,
                     revisionP1: contractData.revisionP1 ? { ...contractData.revisionP1, formulaId: contractData.revisionP1.formulaId || "", date: contractData.revisionP1.date ? new Date(contractData.revisionP1.date) : undefined } : { formulaId: '', date: undefined },
                     revisionP2: contractData.revisionP2 ? { ...contractData.revisionP2, formulaId: contractData.revisionP2.formulaId || "", date: contractData.revisionP2.date ? new Date(contractData.revisionP2.date) : undefined } : { formulaId: '', date: undefined },
                     revisionP3: contractData.revisionP3 ? { ...contractData.revisionP3, formulaId: contractData.revisionP3.formulaId || "", date: contractData.revisionP3.date ? new Date(contractData.revisionP3.date) : undefined } : { formulaId: '', date: undefined },
-                    monthlyBilling: contractData.monthlyBilling || months.map(m => ({ month: m, date: 1, percentage: 0 })),
+                    monthlyBilling: contractData.monthlyBilling && contractData.monthlyBilling.length > 0 ? contractData.monthlyBilling : months.map(m => ({ month: m, date: 1, percentage: 0 })),
                     heatingDays: contractData.heatingDays,
                     baseDJU: contractData.baseDJU,
                     weatherStationCode: contractData.weatherStationCode,
@@ -183,17 +216,17 @@ export default function EditContractPage() {
                     unitPricePrimaryMWh: contractData.unitPricePrimaryMWh,
                 });
 
-                const fetchedSites = allSites.filter(site => site.clientId === contractData.clientId);
+                const fetchedSites = sitesData.filter(site => site.clientId === contractData.clientId);
                 setSites(fetchedSites);
 
             } catch (error) {
-                toast({ title: "Erreur", description: "Impossible de charger le contrat.", variant: "destructive" });
+                toast({ title: "Erreur", description: "Impossible de charger les données du contrat.", variant: "destructive" });
+            } finally {
+                setIsLoading(false);
             }
         }
-        if (!isDataLoading) {
-            fetchContractData();
-        }
-    }, [id, toast, router, form, isDataLoading, allSites]);
+        fetchInitialData();
+    }, [id, toast, router, form]);
 
 
     const selectedClientId = form.watch("clientId");
@@ -215,7 +248,7 @@ export default function EditContractPage() {
         }
     }, [selectedClientId, allSites, form, contract]);
 
-    const selectedMarket = markets.find(m => m.id === watchMarketId);
+    const selectedMarket = useMemo(() => markets.find(m => m.id === watchMarketId), [markets, watchMarketId]);
 
     const isActivitySelected = (code: string) => {
         const activityId = activityMap.get(code);
@@ -240,12 +273,11 @@ export default function EditContractPage() {
             const contractData = { ...data, ...shareRates };
             delete (contractData as any).shareRate;
 
-            await updateContract(id, contractData);
+            await updateContract(id, contractData as any);
             toast({
                 title: "Contrat Mis à Jour",
                 description: "Le contrat a été mis à jour avec succès.",
             });
-            await reloadData();
             router.push('/contracts');
         } catch (error) {
             console.error("Échec de la mise à jour du contrat:", error);
@@ -324,8 +356,8 @@ export default function EditContractPage() {
         );
     }
 
-    if (isDataLoading || !contract) {
-        return <div className="flex justify-center items-center h-full">Chargement...</div>;
+    if (isLoading) {
+        return <div className="flex justify-center items-center h-full"><Loader2 className="h-8 w-8 animate-spin" /></div>;
     }
 
     return (
