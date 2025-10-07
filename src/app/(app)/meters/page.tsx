@@ -10,16 +10,15 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
-import { PlusCircle, Edit, Trash2, BookOpen } from 'lucide-react';
+import { PlusCircle, Edit, Trash2, BookOpen, Loader2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import { getSites, getMeters, createMeter, updateMeter, deleteMeter, getMeterReadingsByMeter } from '@/services/firestore';
-import type { Site, Meter, MeterReading } from '@/lib/types';
+import { createMeter, updateMeter, deleteMeter, getMeterReadingsByMeter } from '@/services/firestore';
+import type { Meter, MeterReading } from '@/lib/types';
 import { Badge } from '@/components/ui/badge';
+import { useData } from '@/context/data-context';
 
 export default function MetersPage() {
-  const [sites, setSites] = useState<Site[]>([]);
-  const [meters, setMeters] = useState<Meter[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const { sites, meters, isLoading, reloadData } = useData();
   const { toast } = useToast();
 
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -41,23 +40,6 @@ export default function MetersPage() {
   const [selectedMeterForReadings, setSelectedMeterForReadings] = useState<Meter | null>(null);
   const [meterReadings, setMeterReadings] = useState<MeterReading[]>([]);
   const [isLoadingReadings, setIsLoadingReadings] = useState(false);
-
-  const loadData = useCallback(async () => {
-    setIsLoading(true);
-    try {
-      const [sitesData, metersData] = await Promise.all([getSites(), getMeters()]);
-      setSites(sitesData);
-      setMeters(metersData);
-    } catch (error) {
-      toast({ title: 'Erreur', description: 'Impossible de charger les données.', variant: 'destructive' });
-    } finally {
-      setIsLoading(false);
-    }
-  }, [toast]);
-
-  useEffect(() => {
-    loadData();
-  }, [loadData]);
 
   const resetForm = () => {
     setCode('');
@@ -123,7 +105,7 @@ export default function MetersPage() {
         await createMeter(meterData as Omit<Meter, 'id' | 'code'>);
         toast({ title: 'Compteur créé', description: 'Le nouveau compteur a été ajouté avec succès.' });
       }
-      await loadData();
+      await reloadData();
       setDialogOpen(false);
       resetForm();
     } catch (error) {
@@ -138,7 +120,7 @@ export default function MetersPage() {
     try {
       await deleteMeter(meterToDelete.id);
       toast({ title: 'Compteur supprimé', description: 'Le compteur a été supprimé avec succès.' });
-      await loadData();
+      await reloadData();
       setMeterToDelete(null);
     } catch (error) {
       toast({ title: 'Erreur', description: 'Impossible de supprimer le compteur.', variant: 'destructive' });
@@ -175,7 +157,9 @@ export default function MetersPage() {
           </TableHeader>
           <TableBody>
             {isLoading ? (
-              <TableRow><TableCell colSpan={8} className="h-24 text-center">Chargement...</TableCell></TableRow>
+              <TableRow><TableCell colSpan={8} className="h-24 text-center">
+                <Loader2 className="mx-auto h-8 w-8 animate-spin text-muted-foreground" />
+              </TableCell></TableRow>
             ) : meters.length === 0 ? (
               <TableRow><TableCell colSpan={8} className="h-24 text-center">Aucun compteur trouvé.</TableCell></TableRow>
             ) : (
@@ -314,5 +298,3 @@ export default function MetersPage() {
     </Card>
   );
 }
-
-    

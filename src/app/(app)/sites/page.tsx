@@ -1,10 +1,10 @@
 
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { MoreHorizontal, PlusCircle, Edit } from 'lucide-react';
+import { MoreHorizontal, PlusCircle, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   Card,
@@ -28,20 +28,18 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogClose, DialogDescription } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
-import { getSites, getClients, getActivities, updateSite } from '@/services/firestore';
-import type { Site, Client, Activity } from '@/lib/types';
+import { updateSite } from '@/services/firestore';
+import type { Site } from '@/lib/types';
 import { useToast } from '@/hooks/use-toast';
+import { useData } from '@/context/data-context';
 
 export default function SitesPage() {
-  const [sites, setSites] = useState<Site[]>([]);
-  const [clients, setClients] = useState<Client[]>([]);
-  const [activities, setActivities] = useState<Activity[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const { sites, clients, activities, isLoading, reloadData } = useData();
   
   const [addSiteDialogOpen, setAddSiteDialogOpen] = useState(false);
   const [editSiteDialogOpen, setEditSiteDialogOpen] = useState(false);
@@ -60,28 +58,6 @@ export default function SitesPage() {
   const [siteCity, setSiteCity] = useState('');
   const [siteActivityIds, setSiteActivityIds] = useState<string[]>([]);
   const [siteAmounts, setSiteAmounts] = useState<Record<string, number>>({});
-
-  const loadData = useCallback(async () => {
-    setIsLoading(true);
-    try {
-      const [sitesData, clientsData, activitiesData] = await Promise.all([
-        getSites(), 
-        getClients(),
-        getActivities()
-      ]);
-      setSites(sitesData);
-      setClients(clientsData);
-      setActivities(activitiesData);
-    } catch (error) {
-      toast({ title: 'Erreur', description: 'Impossible de charger les données.', variant: 'destructive' });
-    } finally {
-      setIsLoading(false);
-    }
-  }, [toast]);
-
-  useEffect(() => {
-    loadData();
-  }, [loadData]);
 
   const handleGoToCreateSite = () => {
     if (selectedClientId) {
@@ -141,7 +117,7 @@ export default function SitesPage() {
     try {
       await updateSite(editingSite.id, siteData);
       toast({ title: "Site mis à jour", description: "Le site a été mis à jour avec succès." });
-      await loadData();
+      await reloadData();
       setEditSiteDialogOpen(false);
       resetForm();
     } catch (error) {
@@ -216,7 +192,9 @@ export default function SitesPage() {
           <TableBody>
             {isLoading ? (
               <TableRow>
-                <TableCell colSpan={4} className="text-center h-24">Chargement...</TableCell>
+                <TableCell colSpan={4} className="text-center h-24">
+                  <Loader2 className="mx-auto h-8 w-8 animate-spin text-muted-foreground" />
+                </TableCell>
               </TableRow>
             ) : sites.length > 0 ? (
               sites.map((site: Site) => (
@@ -260,7 +238,7 @@ export default function SitesPage() {
         <DialogContent className="sm:max-w-2xl">
             <DialogHeader>
                 <DialogTitle>Modifier le site: {editingSite?.name}</DialogTitle>
-                <DialogDescription>Client: {editingSite?.clientName}</DialogDescription>
+                <CardDescription>Client: {editingSite?.clientName}</CardDescription>
             </DialogHeader>
             <form onSubmit={handleSubmitSite} className="space-y-4 max-h-[70vh] overflow-y-auto pr-6">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -332,7 +310,7 @@ export default function SitesPage() {
                 </Card>
                 
                 <DialogFooter className="pt-4">
-                    <DialogClose asChild><Button type="button" variant="outline" onClick={() => setEditSiteDialogOpen(false)}>Annuler</Button></DialogClose>
+                    <Button type="button" variant="outline" onClick={() => setEditSiteDialogOpen(false)}>Annuler</Button>
                     <Button type="submit">Enregistrer</Button>
                 </DialogFooter>
             </form>

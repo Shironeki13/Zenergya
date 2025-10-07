@@ -270,6 +270,10 @@ export async function deleteMeter(id: string) {
 }
 
 // Relevés de compteur
+export async function getMeterReadings(): Promise<MeterReading[]> {
+    return getCollection<MeterReading>(collection(db, 'meterReadings'));
+}
+
 export async function getMeterReadingsByContract(contractId: string): Promise<MeterReading[]> {
     const q = query(collection(db, 'meterReadings'), where("contractId", "==", contractId));
     return getCollection<MeterReading>(q);
@@ -570,5 +574,3 @@ export async function updateUser(id: string, data: Partial<Omit<User, 'id'>>) {
 export async function deleteUser(id: string) {
     return deleteSettingItem('users', id);
 }
-
-    

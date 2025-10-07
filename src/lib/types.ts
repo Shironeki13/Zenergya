@@ -54,6 +54,16 @@ export type Meter = {
     modifiedBy: string; // user name/id
 }
 
+export type MeterReading = {
+  id: string;
+  meterId: string;
+  contractId: string; // To know which contract the reading applies to for billing
+  date: string; // ISO String date
+  reading: number;
+  unit: string; // Copied from meter for convenience
+};
+
+
 export type MonthlyBilling = {
   month: string;
   date: number; // jour du mois
@@ -95,15 +105,6 @@ export type Contract = {
   managementFees?: number; // Frais de gestion (CP, PF)
   unitPriceUsefulMWh?: number; // Prix €/MWh utile (MC)
   unitPricePrimaryMWh?: number; // Prix €/MWh primaire (CP)
-};
-
-export type MeterReading = {
-  id: string;
-  meterId: string;
-  contractId: string; // To know which contract the reading applies to for billing
-  date: string; // ISO String date
-  reading: number;
-  unit: string; // Copied from meter for convenience
 };
 
 export type InvoiceStatus = "paid" | "due" | "overdue" | "proforma";
@@ -250,4 +251,29 @@ export const GenerateInvoiceOutputSchema = z.object({
 });
 export type GenerateInvoiceOutput = z.infer<typeof GenerateInvoiceOutputSchema>;
 
+// Data Context Type
+export type DataContextType = {
+    clients: Client[];
+    sites: Site[];
+    contracts: Contract[];
+    invoices: Invoice[];
+    meters: Meter[];
+    meterReadings: MeterReading[];
+    companies: Company[];
+    agencies: Agency[];
+    sectors: Sector[];
+    activities: Activity[];
+    schedules: Schedule[];
+    terms: Term[];
+    typologies: Typology[];
+    vatRates: VatRate[];
+    revisionFormulas: RevisionFormula[];
+    paymentTerms: PaymentTerm[];
+    pricingRules: PricingRule[];
+    markets: Market[];
+    roles: Role[];
+    users: User[];
+    isLoading: boolean;
+    reloadData: () => Promise<void>;
+};
     

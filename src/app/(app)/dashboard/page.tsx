@@ -1,7 +1,7 @@
 
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useData } from '@/context/data-context';
 import Link from 'next/link';
 import {
   ArrowUpRight,
@@ -9,6 +9,7 @@ import {
   FileSignature,
   FileText,
   Clock,
+  Loader2,
 } from 'lucide-react';
 
 import { Badge } from '@/components/ui/badge';
@@ -28,33 +29,23 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { getContracts, getInvoices } from '@/services/firestore';
-import type { Invoice, Contract, InvoiceStatus } from '@/lib/types';
+import type { InvoiceStatus } from '@/lib/types';
 
 
 export default function Dashboard() {
-  const [contracts, setContracts] = useState<Contract[]>([]);
-  const [invoices, setInvoices] = useState<Invoice[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const { contracts, invoices, isLoading } = useData();
 
-  useEffect(() => {
-    async function fetchData() {
-      try {
-        const [contractsData, invoicesData] = await Promise.all([getContracts(), getInvoices()]);
-        setContracts(contractsData);
-        setInvoices(invoicesData);
-      } catch (error) {
-        console.error("Failed to fetch dashboard data:", error);
-      } finally {
-        setIsLoading(false);
-      }
-    }
-    fetchData();
-  }, []);
+  if (isLoading) {
+    return (
+        <div className="flex items-center justify-center h-full">
+            <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+        </div>
+    )
+  }
 
-  const activeContracts = contracts.filter((c: Contract) => c.status === 'active').length;
-  const overdueInvoices = invoices.filter((i: Invoice) => i.status === 'overdue').length;
-  const recentInvoices = invoices.sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime()).slice(0, 5);
+  const activeContracts = contracts.filter((c) => c.status === 'active').length;
+  const overdueInvoices = invoices.filter((i) => i.status === 'overdue').length;
+  const recentInvoices = [...invoices].sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime()).slice(0, 5);
 
   const translateStatus = (status: InvoiceStatus) => {
     switch (status) {
@@ -68,10 +59,6 @@ export default function Dashboard() {
         return status;
     }
   };
-
-  if (isLoading) {
-    return <div>Chargement...</div>
-  }
 
   return (
     <>

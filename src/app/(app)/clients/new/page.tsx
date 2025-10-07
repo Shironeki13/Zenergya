@@ -22,12 +22,12 @@ import {
 import { Input } from "@/components/ui/input"
 import { useToast } from "@/hooks/use-toast"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { createClient, getTypologies } from "@/services/firestore"
+import { createClient } from "@/services/firestore"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { Switch } from "@/components/ui/switch"
-import type { Typology } from "@/lib/types"
 import { Separator } from "@/components/ui/separator"
+import { useData } from "@/context/data-context"
 
 const clientFormSchema = z.object({
   name: z.string().min(2, "La raison sociale est requise."),
@@ -63,8 +63,7 @@ type ClientFormValues = z.infer<typeof clientFormSchema>
 export default function NewClientPage() {
   const router = useRouter();
   const { toast } = useToast()
-  const [typologies, setTypologies] = React.useState<Typology[]>([]);
-  const [isLoading, setIsLoading] = React.useState(true);
+  const { typologies, reloadData } = useData();
 
   const form = useForm<ClientFormValues>({
     resolver: zodResolver(clientFormSchema),
@@ -99,28 +98,14 @@ export default function NewClientPage() {
   );
   const showRepresentedBy = selectedTypology?.name === 'Copropriété';
 
-  React.useEffect(() => {
-    async function fetchData() {
-      try {
-        const typologiesData = await getTypologies();
-        setTypologies(typologiesData);
-      } catch (error) {
-        toast({ title: "Erreur", description: "Impossible de charger les typologies.", variant: "destructive" });
-      } finally {
-        setIsLoading(false);
-      }
-    }
-    fetchData();
-  }, [toast]);
-
   async function onSubmit(data: ClientFormValues) {
     try {
-      const typologyName = typologies.find(t => t.id === data.typologyId)?.name;
-      await createClient({ ...data, typologyName });
+      await createClient({ ...data, typologyId: data.typologyId });
       toast({
         title: "Client Créé",
         description: "Le nouveau client a été créé avec succès.",
       });
+      await reloadData();
       router.push('/clients');
     } catch (error) {
       console.error("Échec de la création du client:", error);
@@ -196,7 +181,7 @@ export default function NewClientPage() {
                <FormField control={form.control} name="typologyId" render={({ field }) => (
                 <FormItem>
                   <FormLabel>Typologie client</FormLabel>
-                  <Select onValueChange={field.onChange} defaultValue={field.value} disabled={isLoading}>
+                  <Select onValueChange={field.onChange} defaultValue={field.value}>
                     <FormControl><SelectTrigger><SelectValue placeholder="Sélectionnez une typologie" /></SelectTrigger></FormControl>
                     <SelectContent>
                       {typologies.map(t => <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>)}

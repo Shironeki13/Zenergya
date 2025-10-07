@@ -1,9 +1,8 @@
 
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
-import { PlusCircle, MoreHorizontal } from 'lucide-react';
+import { PlusCircle, MoreHorizontal, Loader2 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -28,38 +27,10 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { getClients, getTypologies } from '@/services/firestore';
-import type { Client, Typology } from '@/lib/types';
-import { useToast } from '@/hooks/use-toast';
+import { useData } from '@/context/data-context';
 
 export default function ClientsPage() {
-  const [clients, setClients] = useState<Client[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const { toast } = useToast();
-
-  const loadClients = useCallback(async () => {
-    setIsLoading(true);
-    try {
-      const [clientsData, typologiesData] = await Promise.all([
-        getClients(),
-        getTypologies(),
-      ]);
-      const typologyMap = new Map(typologiesData.map((t: Typology) => [t.id, t.name]));
-      const clientsWithTypology = clientsData.map(client => ({
-          ...client,
-          typologyName: typologyMap.get(client.typologyId) || 'N/A'
-      }));
-      setClients(clientsWithTypology);
-    } catch (error) {
-      toast({ title: 'Erreur', description: 'Impossible de charger les clients.', variant: 'destructive' });
-    } finally {
-      setIsLoading(false);
-    }
-  }, [toast]);
-
-  useEffect(() => {
-    loadClients();
-  }, [loadClients]);
+  const { clients, isLoading } = useData();
   
   return (
     <Card>
@@ -94,7 +65,9 @@ export default function ClientsPage() {
           <TableBody>
             {isLoading ? (
                 <TableRow>
-                    <TableCell colSpan={4} className="text-center h-24">Chargement...</TableCell>
+                    <TableCell colSpan={4} className="h-24 text-center">
+                      <Loader2 className="mx-auto h-8 w-8 animate-spin text-muted-foreground" />
+                    </TableCell>
                 </TableRow>
             ) : clients.length > 0 ? (
                 clients.map((client) => (
