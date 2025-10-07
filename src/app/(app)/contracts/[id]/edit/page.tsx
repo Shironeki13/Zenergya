@@ -135,6 +135,9 @@ export default function EditContractPage() {
             hasInterest: false,
             monthlyBilling: months.map(m => ({ month: m, date: 1, percentage: 0 })),
             shareRate: [50, 50],
+            revisionP1: { formulaId: '', date: undefined },
+            revisionP2: { formulaId: '', date: undefined },
+            revisionP3: { formulaId: '', date: undefined },
         },
     })
 
@@ -200,9 +203,9 @@ export default function EditContractPage() {
                     activityIds: contractData.activityIds,
                     marketId: contractData.marketId,
                     hasInterest: contractData.hasInterest,
-                    revisionP1: contractData.revisionP1 ? { ...contractData.revisionP1, formulaId: contractData.revisionP1.formulaId || "", date: contractData.revisionP1.date ? new Date(contractData.revisionP1.date) : undefined } : undefined,
-                    revisionP2: contractData.revisionP2 ? { ...contractData.revisionP2, formulaId: contractData.revisionP2.formulaId || "", date: contractData.revisionP2.date ? new Date(contractData.revisionP2.date) : undefined } : undefined,
-                    revisionP3: contractData.revisionP3 ? { ...contractData.revisionP3, formulaId: contractData.revisionP3.formulaId || "", date: contractData.revisionP3.date ? new Date(contractData.revisionP3.date) : undefined } : undefined,
+                    revisionP1: contractData.revisionP1 ? { ...contractData.revisionP1, formulaId: contractData.revisionP1.formulaId || "", date: contractData.revisionP1.date ? new Date(contractData.revisionP1.date) : undefined } : { formulaId: '', date: undefined },
+                    revisionP2: contractData.revisionP2 ? { ...contractData.revisionP2, formulaId: contractData.revisionP2.formulaId || "", date: contractData.revisionP2.date ? new Date(contractData.revisionP2.date) : undefined } : { formulaId: '', date: undefined },
+                    revisionP3: contractData.revisionP3 ? { ...contractData.revisionP3, formulaId: contractData.revisionP3.formulaId || "", date: contractData.revisionP3.date ? new Date(contractData.revisionP3.date) : undefined } : { formulaId: '', date: undefined },
                     monthlyBilling: contractData.monthlyBilling || months.map(m => ({ month: m, date: 1, percentage: 0 })),
                     heatingDays: contractData.heatingDays,
                     baseDJU: contractData.baseDJU,
@@ -314,7 +317,7 @@ export default function EditContractPage() {
             render={({ field }) => (
                 <FormItem>
                 <FormLabel>Formule de révision {code}</FormLabel>
-                <Select onValueChange={field.onChange} value={field.value ?? undefined}>
+                <Select onValueChange={field.onChange} value={field.value ?? ""}>
                     <FormControl>
                     <SelectTrigger>
                         <SelectValue placeholder="Sélectionnez une formule" />

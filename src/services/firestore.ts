@@ -144,51 +144,63 @@ export async function getContract(id: string): Promise<Contract | null> {
 }
 
 export async function createContract(data: Omit<Contract, 'id' | 'status'>) {
-    const newContractData = {
+    const newContractData: DocumentData = {
         ...data,
         status: 'pending',
-        startDate: new Date(data.startDate),
-        endDate: new Date(data.endDate),
-        revisionP1: data.revisionP1?.date ? { ...data.revisionP1, date: new Date(data.revisionP1.date) } : data.revisionP1,
-        revisionP2: data.revisionP2?.date ? { ...data.revisionP2, date: new Date(data.revisionP2.date) } : data.revisionP2,
-        revisionP3: data.revisionP3?.date ? { ...data.revisionP3, date: new Date(data.revisionP3.date) } : data.revisionP3,
     };
+    // Convert all date strings to Date objects for Firestore
+    if (data.startDate) newContractData.startDate = new Date(data.startDate);
+    if (data.endDate) newContractData.endDate = new Date(data.endDate);
+    if (data.revisionP1?.date) newContractData.revisionP1.date = new Date(data.revisionP1.date);
+    if (data.revisionP2?.date) newContractData.revisionP2.date = new Date(data.revisionP2.date);
+    if (data.revisionP3?.date) newContractData.revisionP3.date = new Date(data.revisionP3.date);
+
     const contractsCollection = collection(db, 'contracts');
-    const docRef = await addDoc(contractsCollection, newContractData as any);
+    const docRef = await addDoc(contractsCollection, newContractData);
     return { id: docRef.id, ...newContractData };
 }
 
 export async function updateContract(id: string, data: Partial<Omit<Contract, 'id' | 'clientName' | 'status'>>) {
     const contractDoc = doc(db, 'contracts', id);
     
-    // Create a copy to mutate
-    const updateData: DocumentData = {
-        ...data,
-        startDate: new Date(data.startDate as Date),
-        endDate: new Date(data.endDate as Date),
-    };
+    // Create a copy to mutate for Firestore
+    const updateData: DocumentData = { ...data };
 
-    // Handle revision fields to avoid sending `undefined` to Firestore
+    // Convert string dates to Date objects for Firestore
+    if (data.startDate && typeof data.startDate === 'string') {
+        updateData.startDate = new Date(data.startDate);
+    }
+    if (data.endDate && typeof data.endDate === 'string') {
+        updateData.endDate = new Date(data.endDate);
+    }
+
     const revisionFields: ('revisionP1' | 'revisionP2' | 'revisionP3')[] = ['revisionP1', 'revisionP2', 'revisionP3'];
     for (const field of revisionFields) {
         if (field in data) {
             const revisionData = data[field];
             if (revisionData) {
-                 updateData[field] = {
-                    ...(revisionData.formulaId && { formulaId: revisionData.formulaId }),
-                    ...(revisionData.date && { date: new Date(revisionData.date) }),
-                 };
-                 // If the object becomes empty, remove it
-                 if (Object.keys(updateData[field]).length === 0 || !updateData[field].formulaId) {
+                 updateData[field] = { ...revisionData };
+                 if (revisionData.date && typeof revisionData.date === 'string') {
+                     updateData[field].date = new Date(revisionData.date);
+                 }
+                 if (!revisionData.formulaId) {
+                     delete updateData[field].formulaId;
+                 }
+                 if (!revisionData.date) {
+                     delete updateData[field].date;
+                 }
+                 // If the object becomes empty, remove it with deleteField
+                 if (Object.keys(updateData[field]).length === 0) {
                     updateData[field] = deleteField();
                  }
             } else {
-                updateData[field] = deleteField();
+                updateData[field] = deleteField(); // Remove field if data is null/undefined
             }
         }
     }
     await updateDoc(contractDoc, updateData);
 }
+
 
 
 // Factures
