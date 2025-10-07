@@ -26,28 +26,34 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setIsLoading(true);
     try {
         const dataPayload: Omit<DataContextType, 'isLoading' | 'reloadData'> = {
-            clients: await getClients(),
-            sites: await getSites(),
-            contracts: await getContracts(),
-            invoices: await getInvoices(),
-            meters: await getMeters(),
-            meterReadings: await getMeterReadings(),
-            companies: await getCompanies(),
-            agencies: await getAgencies(),
-            sectors: await getSectors(),
-            activities: await getActivities(),
-            schedules: await getSchedules(),
-            terms: await getTerms(),
-            typologies: await getTypologies(),
-            vatRates: await getVatRates(),
-            revisionFormulas: await getRevisionFormulas(),
-            paymentTerms: await getPaymentTerms(),
-            pricingRules: await getPricingRules(),
-            markets: await getMarkets(),
-            roles: await getRoles(),
-            users: await getUsers(),
+            clients: [], sites: [], contracts: [], invoices: [], meters: [], meterReadings: [],
+            companies: [], agencies: [], sectors: [], activities: [], schedules: [],
+            terms: [], typologies: [], vatRates: [], revisionFormulas: [], paymentTerms: [],
+            pricingRules: [], markets: [], roles: [], users: []
         };
-      setData(dataPayload);
+        
+        dataPayload.clients = await getClients();
+        dataPayload.sites = await getSites();
+        dataPayload.contracts = await getContracts();
+        dataPayload.invoices = await getInvoices();
+        dataPayload.meters = await getMeters();
+        dataPayload.meterReadings = await getMeterReadings();
+        dataPayload.companies = await getCompanies();
+        dataPayload.agencies = await getAgencies();
+        dataPayload.sectors = await getSectors();
+        dataPayload.activities = await getActivities();
+        dataPayload.schedules = await getSchedules();
+        dataPayload.terms = await getTerms();
+        dataPayload.typologies = await getTypologies();
+        dataPayload.vatRates = await getVatRates();
+        dataPayload.revisionFormulas = await getRevisionFormulas();
+        dataPayload.paymentTerms = await getPaymentTerms();
+        dataPayload.pricingRules = await getPricingRules();
+        dataPayload.markets = await getMarkets();
+        dataPayload.roles = await getRoles();
+        dataPayload.users = await getUsers();
+
+        setData(dataPayload);
     } catch (error) {
       console.error("Failed to load global data:", error);
       toast({
