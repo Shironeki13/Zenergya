@@ -102,7 +102,9 @@ export default function NewClientPage() {
 
   async function onSubmit(data: ClientFormValues) {
     try {
-      await createClient({ ...data, typologyId: data.typologyId });
+      const typologyName = typologies.find(t => t.id === data.typologyId)?.name || 'N/A';
+      const clientData = { ...data, typologyName };
+      await createClient(clientData as any); // Cast because Omit is tricky
       toast({
         title: "Client Créé",
         description: "Le nouveau client a été créé avec succès.",

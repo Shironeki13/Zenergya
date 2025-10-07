@@ -23,9 +23,10 @@ function processFirestoreDoc<T>(docData: DocumentData): T {
             const newObj: { [key: string]: any } = {};
             for (const key in data) {
                  // Check if the key exists and the value is not null/undefined
-                if (Object.prototype.hasOwnProperty.call(data, key) && data[key] != null) {
+                if (Object.prototype.hasOwnProperty.call(data, key) && data[key] !== null && data[key] !== undefined) {
                     newObj[key] = convert(data[key]);
                 } else if (Object.prototype.hasOwnProperty.call(data, key)) {
+                    // Also copy null and undefined values if they exist
                     newObj[key] = data[key];
                 }
             }
@@ -59,20 +60,24 @@ async function getCollection<T>(q: any): Promise<T[]> {
 
 // Clients
 export async function getClients(): Promise<Client[]> {
-    return getCollection<Client>(collection(db, 'clients'));
+    const clients = await getCollection<Client>(collection(db, 'clients'));
+    const typologies = await getCollection<Typology>(collection(db, 'typologies'));
+    const typologyMap = new Map(typologies.map(t => [t.id, t.name]));
+    return clients.map(c => ({...c, typologyName: typologyMap.get(c.typologyId) || 'N/A'}));
 }
 
 export async function getClient(id: string): Promise<Client | null> {
-    return getDocument<Client>(doc(db, 'clients', id));
+    const client = await getDocument<Client>(doc(db, 'clients', id));
+    if (!client) return null;
+    const typology = await getDocument<Typology>(doc(db, 'typologies', client.typologyId));
+    client.typologyName = typology?.name || 'N/A';
+    return client;
 }
 
-export async function createClient(data: Omit<Client, 'id' | 'typologyName'>) {
-    const typologies = await getTypologies();
-    const typologyName = typologies.find(t => t.id === data.typologyId)?.name || 'N/A';
-    const clientData = { ...data, typologyName };
+export async function createClient(data: Omit<Client, 'id'>) {
     const clientsCollection = collection(db, 'clients');
-    const docRef = await addDoc(clientsCollection, clientData);
-    return { id: docRef.id, ...clientData };
+    const docRef = await addDoc(clientsCollection, data);
+    return { id: docRef.id, ...data };
 }
 
 
@@ -99,7 +104,10 @@ export async function deleteClient(id: string) {
 
 // Sites
 export async function getSites(): Promise<Site[]> {
-     return getCollection<Site>(collection(db, 'sites'));
+     const sites = await getCollection<Site>(collection(db, 'sites'));
+     const clients = await getCollection<Client>(collection(db, 'clients'));
+     const clientMap = new Map(clients.map(c => [c.id, c.name]));
+     return sites.map(s => ({...s, clientName: clientMap.get(s.clientId) || 'N/A'}));
 }
 
 
@@ -110,7 +118,7 @@ export async function getSitesByClient(clientId: string): Promise<Site[]> {
 
 export async function createSite(data: Omit<Site, 'id'>) {
     const sitesCollection = collection(db, 'sites');
-    const clients = await getClients();
+    const clients = await getCollection<Client>(collection(db, 'clients'));
     const clientName = clients.find(c => c.id === data.clientId)?.name || 'N/A';
     const siteData = { ...data, clientName };
     const docRef = await addDoc(sitesCollection, siteData);
@@ -253,7 +261,14 @@ export async function createMeter(data: Omit<Meter, 'id' | 'code'>) {
     return { id: docRef.id, code: docRef.id, ...meterData };
 }
 export async function getMeters(): Promise<Meter[]> {
-    return getCollection<Meter>(collection(db, 'meters'));
+    const meters = await getCollection<Meter>(collection(db, 'meters'));
+    const sites = await getCollection<Site>(collection(db, 'sites'));
+    const siteMap = new Map(sites.map(s => [s.id, { name: s.name, clientName: s.clientName }]));
+    return meters.map(meter => ({
+        ...meter,
+        siteName: siteMap.get(meter.siteId)?.name || 'N/A',
+        clientName: siteMap.get(meter.siteId)?.clientName || 'N/A',
+    }));
 }
 export async function updateMeter(id: string, data: Partial<Omit<Meter, 'id' | 'code'>>) {
     return updateDoc(doc(db, 'meters', id), { ...data, lastModified: new Date().toISOString() });
