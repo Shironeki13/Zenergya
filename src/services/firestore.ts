@@ -16,7 +16,7 @@ function processFirestoreDoc<T>(docData: DocumentData): T {
             return data.map(convert);
         }
         // Ensure it's a plain object before recursing
-        if (data !== null && typeof data === 'object' && Object.getPrototypeOf(data) === Object.prototype) {
+        if (data !== null && typeof data === 'object' && !Array.isArray(data) && Object.prototype.toString.call(data) === '[object Object]') {
             const newObj: { [key: string]: any } = {};
             for (const key in data) {
                  // Check if the key exists and the value is not null/undefined
@@ -171,45 +171,20 @@ export async function updateContract(id: string, data: Partial<Omit<Contract, 'i
     const updateData: DocumentData = { ...data };
 
     // Convert string dates to Date objects for Firestore
-    if (data.startDate && typeof data.startDate === 'string') {
-        updateData.startDate = new Date(data.startDate);
-    } else if (data.startDate) {
-        updateData.startDate = data.startDate;
-    }
-
-    if (data.endDate && typeof data.endDate === 'string') {
-        updateData.endDate = new Date(data.endDate);
-    } else if (data.endDate) {
-        updateData.endDate = data.endDate;
-    }
-
-
+    if (data.startDate) updateData.startDate = new Date(data.startDate as any);
+    if (data.endDate) updateData.endDate = new Date(data.endDate as any);
+    
     const revisionFields: ('revisionP1' | 'revisionP2' | 'revisionP3')[] = ['revisionP1', 'revisionP2', 'revisionP3'];
     for (const field of revisionFields) {
-        if (field in data) {
+        if (data[field]) {
             const revisionData = data[field];
-            if (revisionData) {
-                 updateData[field] = { ...revisionData };
-                 if (revisionData.date && typeof revisionData.date === 'string') {
-                     updateData[field].date = new Date(revisionData.date);
-                 } else if (revisionData.date) {
-                    updateData[field].date = revisionData.date;
-                 }
-                 if (!revisionData.formulaId) {
-                     delete updateData[field].formulaId;
-                 }
-                 if (!revisionData.date) {
-                     delete updateData[field].date;
-                 }
-                 // If the object becomes empty, remove it with deleteField
-                 if (Object.keys(updateData[field]).length === 0) {
-                    updateData[field] = deleteField();
-                 }
-            } else {
-                updateData[field] = deleteField(); // Remove field if data is null/undefined
+            if (revisionData?.date) {
+                revisionData.date = new Date(revisionData.date as any);
             }
+            updateData[field] = { ...revisionData };
         }
     }
+
     await updateDoc(contractDoc, updateData);
 }
 

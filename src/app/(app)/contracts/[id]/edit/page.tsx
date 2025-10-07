@@ -40,10 +40,11 @@ import {
 import { Switch } from "@/components/ui/switch"
 import { useToast } from "@/hooks/use-toast"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { updateContract, getContract, getActivities, getSchedules, getTerms, getClients, getSitesByClient, getMarkets, getRevisionFormulas } from "@/services/firestore"
+import { updateContract, getContract } from "@/services/firestore"
 import type { Contract, Activity, Schedule, Term, Client, Site, Market, RevisionFormula } from "@/lib/types"
 import { Separator } from "@/components/ui/separator"
 import { Slider } from "@/components/ui/slider"
+import { useData } from "@/context/data-context"
 
 
 const monthlyBillingSchema = z.object({
@@ -114,16 +115,10 @@ export default function EditContractPage() {
     const params = useParams();
     const id = params.id as string;
     const { toast } = useToast()
+    const { clients, sites: allSites, activities, schedules, terms, markets, revisionFormulas, reloadData, isLoading: isDataLoading } = useData();
 
     const [contract, setContract] = useState<Contract | null>(null);
-    const [clients, setClients] = useState<Client[]>([]);
     const [sites, setSites] = useState<Site[]>([]);
-    const [activities, setActivities] = useState<Activity[]>([]);
-    const [schedules, setSchedules] = useState<Schedule[]>([]);
-    const [terms, setTerms] = useState<Term[]>([]);
-    const [markets, setMarkets] = useState<Market[]>([]);
-    const [revisionFormulas, setRevisionFormulas] = useState<RevisionFormula[]>([]);
-    const [isLoading, setIsLoading] = useState(true);
     
     const [activityMap, setActivityMap] = useState<Map<string, string>>(new Map());
 
@@ -147,39 +142,9 @@ export default function EditContractPage() {
     });
 
     useEffect(() => {
-        async function fetchInitialData() {
-        try {
-            const [
-                fetchedClients, 
-                fetchedActivities, 
-                fetchedSchedules, 
-                fetchedTerms,
-                fetchedMarkets,
-                fetchedRevisionFormulas
-            ] = await Promise.all([
-                getClients(),
-                getActivities(),
-                getSchedules(),
-                getTerms(),
-                getMarkets(),
-                getRevisionFormulas()
-            ]);
-            setClients(fetchedClients);
-            setActivities(fetchedActivities);
-            setSchedules(fetchedSchedules);
-            setTerms(fetchedTerms);
-            setMarkets(fetchedMarkets);
-            setRevisionFormulas(fetchedRevisionFormulas);
-            
-            const newActivityMap = new Map(fetchedActivities.map(a => [a.code, a.id]));
-            setActivityMap(newActivityMap);
-
-        } catch (error) {
-            toast({ title: "Erreur", description: "Impossible de charger les données de paramétrage.", variant: "destructive" })
-        }
-        }
-        fetchInitialData();
-    }, [toast]);
+        const newActivityMap = new Map(activities.map(a => [a.code, a.id]));
+        setActivityMap(newActivityMap);
+    }, [activities]);
 
     useEffect(() => {
         async function fetchContractData() {
@@ -218,17 +183,17 @@ export default function EditContractPage() {
                     unitPricePrimaryMWh: contractData.unitPricePrimaryMWh,
                 });
 
-                const fetchedSites = await getSitesByClient(contractData.clientId);
+                const fetchedSites = allSites.filter(site => site.clientId === contractData.clientId);
                 setSites(fetchedSites);
 
             } catch (error) {
                 toast({ title: "Erreur", description: "Impossible de charger le contrat.", variant: "destructive" });
-            } finally {
-                setIsLoading(false);
             }
         }
-        fetchContractData();
-    }, [id, toast, router, form]);
+        if (!isDataLoading) {
+            fetchContractData();
+        }
+    }, [id, toast, router, form, isDataLoading, allSites]);
 
 
     const selectedClientId = form.watch("clientId");
@@ -239,24 +204,16 @@ export default function EditContractPage() {
 
 
     useEffect(() => {
-        async function fetchSites() {
         if (selectedClientId) {
-            try {
-                const fetchedSites = await getSitesByClient(selectedClientId);
-                setSites(fetchedSites);
-                // Don't reset siteIds if it's the initial load for an existing contract
-                if (contract?.clientId !== selectedClientId) {
-                   form.setValue('siteIds', []);
-                }
-            } catch (error) {
-                toast({ title: "Erreur", description: "Impossible de charger les sites du client.", variant: "destructive" });
+            const fetchedSites = allSites.filter(site => site.clientId === selectedClientId);
+            setSites(fetchedSites);
+            if (contract?.clientId !== selectedClientId) {
+               form.setValue('siteIds', []);
             }
         } else {
             setSites([]);
         }
-        }
-        fetchSites();
-    }, [selectedClientId, toast, form, contract]);
+    }, [selectedClientId, allSites, form, contract]);
 
     const selectedMarket = markets.find(m => m.id === watchMarketId);
 
@@ -288,6 +245,7 @@ export default function EditContractPage() {
                 title: "Contrat Mis à Jour",
                 description: "Le contrat a été mis à jour avec succès.",
             });
+            await reloadData();
             router.push('/contracts');
         } catch (error) {
             console.error("Échec de la mise à jour du contrat:", error);
@@ -366,7 +324,7 @@ export default function EditContractPage() {
         );
     }
 
-    if (isLoading) {
+    if (isDataLoading || !contract) {
         return <div className="flex justify-center items-center h-full">Chargement...</div>;
     }
 
