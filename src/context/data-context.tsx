@@ -25,17 +25,32 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const loadAllData = useCallback(async () => {
     setIsLoading(true);
     try {
-       const [
-        clients, sites, contracts, invoices, meters, meterReadings,
-        companies, agencies, sectors, activities, schedules,
-        terms, typologies, vatRates, revisionFormulas, paymentTerms,
-        pricingRules, markets, roles, users
-      ] = await Promise.all([
+      const results = await Promise.allSettled([
         getClients(), getSites(), getContracts(), getInvoices(), getMeters(), getMeterReadings(),
         getCompanies(), getAgencies(), getSectors(), getActivities(), getSchedules(),
         getTerms(), getTypologies(), getVatRates(), getRevisionFormulas(), getPaymentTerms(),
         getPricingRules(), getMarkets(), getRoles(), getUsers()
       ]);
+
+      const [
+        clients, sites, contracts, invoices, meters, meterReadings,
+        companies, agencies, sectors, activities, schedules,
+        terms, typologies, vatRates, revisionFormulas, paymentTerms,
+        pricingRules, markets, roles, users
+      ] = results.map((result, index) => {
+        if (result.status === 'fulfilled') {
+          return result.value;
+        } else {
+          // Log l'erreur pour le débogage sans arrêter toute l'application
+          console.error(`Failed to load collection at index ${index}:`, result.reason);
+          toast({
+            title: "Erreur de chargement partielle",
+            description: `Impossible de charger une partie des données. Certaines informations peuvent manquer.`,
+            variant: "destructive",
+          });
+          return []; // Retourne un tableau vide en cas d'échec pour cette collection
+        }
+      });
       
       setData({
         clients, sites, contracts, invoices, meters, meterReadings,
@@ -45,6 +60,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       });
 
     } catch (error) {
+      // Ce catch est une sécurité, mais allSettled ne devrait pas le déclencher.
       console.error("Critical error during data loading:", error);
       toast({
         title: "Erreur de chargement critique",
@@ -74,4 +90,3 @@ export const useData = () => {
   }
   return context;
 };
-
