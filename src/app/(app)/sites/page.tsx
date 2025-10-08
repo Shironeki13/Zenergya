@@ -1,7 +1,7 @@
 
 'use client';
 
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { MoreHorizontal, PlusCircle, Loader2 } from 'lucide-react';
@@ -34,7 +34,7 @@ import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
 import { updateSite } from '@/services/firestore';
-import type { Site } from '@/lib/types';
+import type { Site, Client } from '@/lib/types';
 import { useToast } from '@/hooks/use-toast';
 import { useData } from '@/context/data-context';
 
@@ -132,6 +132,14 @@ export default function SitesPage() {
     return parts.filter(Boolean).join(', ');
   }
 
+  const sitesWithClientNames = useMemo(() => {
+    const clientMap = new Map(clients.map(c => [c.id, c.name]));
+    return sites.map(site => ({
+      ...site,
+      clientName: clientMap.get(site.clientId) || 'N/A'
+    }));
+  }, [sites, clients]);
+
   return (
     <Card>
       <CardHeader>
@@ -197,8 +205,8 @@ export default function SitesPage() {
                   <Loader2 className="mx-auto h-8 w-8 animate-spin text-muted-foreground" />
                 </TableCell>
               </TableRow>
-            ) : sites.length > 0 ? (
-              sites.map((site: Site) => (
+            ) : sitesWithClientNames.length > 0 ? (
+              sitesWithClientNames.map((site: Site) => (
                 <TableRow key={site.id}>
                   <TableCell className="font-medium">{site.name}</TableCell>
                   <TableCell>{site.clientName}</TableCell>
@@ -239,7 +247,7 @@ export default function SitesPage() {
         <DialogContent className="sm:max-w-2xl">
             <DialogHeader>
                 <DialogTitle>Modifier le site: {editingSite?.name}</DialogTitle>
-                <CardDescription>Client: {editingSite?.clientName}</CardDescription>
+                <CardDescription>Client: {clients.find(c => c.id === editingSite?.clientId)?.name}</CardDescription>
             </DialogHeader>
             <form onSubmit={handleSubmitSite} className="space-y-4 max-h-[70vh] overflow-y-auto pr-6">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

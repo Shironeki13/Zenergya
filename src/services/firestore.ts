@@ -1,13 +1,10 @@
 
-
 'use server';
 import { db } from '@/lib/firebase';
 import type { Client, Site, Contract, Invoice, MeterReading, Company, Agency, Sector, Activity, User, Role, Schedule, Term, Typology, VatRate, RevisionFormula, PaymentTerm, PricingRule, Market, Meter } from '@/lib/types';
 import { collection, getDocs, doc, getDoc, addDoc, updateDoc, deleteDoc, query, where, DocumentData, writeBatch, runTransaction, Timestamp } from 'firebase/firestore';
 
-// --- Helper function to convert Firestore Timestamps ---
 function processFirestoreDoc<T>(docData: DocumentData): T {
-    // Step 1: Recursively convert Timestamps and handle null/undefined
     function convert(data: any): any {
         if (data === null || data === undefined) {
             return data;
@@ -19,25 +16,18 @@ function processFirestoreDoc<T>(docData: DocumentData): T {
             return data.map(convert);
         }
         // Ensure it's a plain object before recursing
-        if (typeof data === 'object' && Object.prototype.toString.call(data) === '[object Object]') {
+        if (typeof data === 'object' && Object.prototype.toString.call(data) === '[object Object]' && !('_delegate' in data)) {
             const newObj: { [key: string]: any } = {};
             for (const key in data) {
-                 // Check if the key exists and the value is not null/undefined
-                if (Object.prototype.hasOwnProperty.call(data, key) && data[key] !== null && data[key] !== undefined) {
-                    newObj[key] = convert(data[key]);
-                } else if (Object.prototype.hasOwnProperty.call(data, key)) {
-                    // Also copy null and undefined values if they exist
-                    newObj[key] = data[key];
+                if (Object.prototype.hasOwnProperty.call(data, key)) {
+                     newObj[key] = convert(data[key]);
                 }
             }
             return newObj;
         }
         return data;
     }
-    const converted = convert(docData);
-
-    // Step 2: Ensure the object is a plain JavaScript object by serializing and deserializing
-    return JSON.parse(JSON.stringify(converted));
+    return JSON.parse(JSON.stringify(convert(docData)));
 }
 
 
@@ -60,21 +50,14 @@ async function getCollection<T>(q: any): Promise<T[]> {
 
 // Clients
 export async function getClients(): Promise<Client[]> {
-    const clients = await getCollection<Client>(collection(db, 'clients'));
-    const typologies = await getCollection<Typology>(collection(db, 'typologies'));
-    const typologyMap = new Map(typologies.map(t => [t.id, t.name]));
-    return clients.map(c => ({...c, typologyName: typologyMap.get(c.typologyId) || 'N/A'}));
+    return getCollection<Client>(collection(db, 'clients'));
 }
 
 export async function getClient(id: string): Promise<Client | null> {
-    const client = await getDocument<Client>(doc(db, 'clients', id));
-    if (!client) return null;
-    const typology = await getDocument<Typology>(doc(db, 'typologies', client.typologyId));
-    client.typologyName = typology?.name || 'N/A';
-    return client;
+    return getDocument<Client>(doc(db, 'clients', id));
 }
 
-export async function createClient(data: Omit<Client, 'id'>) {
+export async function createClient(data: Omit<Client, 'id'>): Promise<any> {
     const clientsCollection = collection(db, 'clients');
     const docRef = await addDoc(clientsCollection, data);
     return { id: docRef.id, ...data };
@@ -83,20 +66,10 @@ export async function createClient(data: Omit<Client, 'id'>) {
 
 export async function updateClient(id: string, data: Partial<Omit<Client, 'id'>>) {
     const clientDoc = doc(db, 'clients', id);
-    const updateData: DocumentData = { ...data };
-    
-    // Ensure typologyName is updated if typologyId changes
-    if (data.typologyId) {
-        const typologies = await getTypologies();
-        updateData.typologyName = typologies.find(t => t.id === data.typologyId)?.name || 'N/A';
-    }
-
-    await updateDoc(clientDoc, updateData);
+    await updateDoc(clientDoc, data);
 }
 
 export async function deleteClient(id: string) {
-    // This should also delete associated sites, contracts, invoices etc.
-    // For now, simple delete.
     const clientDoc = doc(db, 'clients', id);
     await deleteDoc(clientDoc);
 }
@@ -104,10 +77,7 @@ export async function deleteClient(id: string) {
 
 // Sites
 export async function getSites(): Promise<Site[]> {
-     const sites = await getCollection<Site>(collection(db, 'sites'));
-     const clients = await getCollection<Client>(collection(db, 'clients'));
-     const clientMap = new Map(clients.map(c => [c.id, c.name]));
-     return sites.map(s => ({...s, clientName: clientMap.get(s.clientId) || 'N/A'}));
+     return getCollection<Site>(collection(db, 'sites'));
 }
 
 
@@ -118,11 +88,8 @@ export async function getSitesByClient(clientId: string): Promise<Site[]> {
 
 export async function createSite(data: Omit<Site, 'id'>) {
     const sitesCollection = collection(db, 'sites');
-    const clients = await getCollection<Client>(collection(db, 'clients'));
-    const clientName = clients.find(c => c.id === data.clientId)?.name || 'N/A';
-    const siteData = { ...data, clientName };
-    const docRef = await addDoc(sitesCollection, siteData);
-    return { id: docRef.id, ...siteData };
+    const docRef = await addDoc(sitesCollection, data);
+    return { id: docRef.id, ...data };
 }
 
 export async function updateSite(id: string, data: Partial<Omit<Site, 'id'>>) {
@@ -261,14 +228,7 @@ export async function createMeter(data: Omit<Meter, 'id' | 'code'>) {
     return { id: docRef.id, code: docRef.id, ...meterData };
 }
 export async function getMeters(): Promise<Meter[]> {
-    const meters = await getCollection<Meter>(collection(db, 'meters'));
-    const sites = await getCollection<Site>(collection(db, 'sites'));
-    const siteMap = new Map(sites.map(s => [s.id, { name: s.name, clientName: s.clientName }]));
-    return meters.map(meter => ({
-        ...meter,
-        siteName: siteMap.get(meter.siteId)?.name || 'N/A',
-        clientName: siteMap.get(meter.siteId)?.clientName || 'N/A',
-    }));
+    return getCollection<Meter>(collection(db, 'meters'));
 }
 export async function updateMeter(id: string, data: Partial<Omit<Meter, 'id' | 'code'>>) {
     return updateDoc(doc(db, 'meters', id), { ...data, lastModified: new Date().toISOString() });
@@ -333,10 +293,10 @@ export async function getCompanies(): Promise<Company[]> {
     return getCollection<Company>(collection(db, 'companies'));
 }
 export async function updateCompany(id: string, data: Partial<Omit<Company, 'id'>>) {
-     const companyData = {
-        ...data,
-        siren: data.siret ? data.siret.substring(0, 9) : ''
-    };
+     const companyData = { ...data };
+     if (data.siret) {
+        (companyData as Company).siren = data.siret.substring(0, 9);
+     }
     return updateSettingItem('companies', id, companyData);
 }
 export async function deleteCompany(id: string) {
@@ -546,3 +506,5 @@ export async function updateUser(id: string, data: Partial<Omit<User, 'id'>>) {
 export async function deleteUser(id: string) {
     return deleteSettingItem('users', id);
 }
+
+    
