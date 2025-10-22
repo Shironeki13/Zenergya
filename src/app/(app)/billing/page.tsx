@@ -12,13 +12,14 @@ import { CalendarIcon } from 'lucide-react';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { useToast } from '@/hooks/use-toast';
-import { getClients, getContractsByClient } from '@/services/firestore';
 import { generateInvoice } from '@/ai/flows/generate-invoice-flow';
 import type { Client, Contract } from '@/lib/types';
 import { cn } from '@/lib/utils';
+import { useData } from '@/context/data-context';
+import { Loader2 } from 'lucide-react';
 
 export default function BillingPage() {
-  const [clients, setClients] = useState<Client[]>([]);
+  const { clients, contracts: allContracts, isLoading: isDataLoading } = useData();
   const [contracts, setContracts] = useState<Contract[]>([]);
   const [selectedClientId, setSelectedClientId] = useState<string | null>(null);
   const [selectedContractId, setSelectedContractId] = useState<string | null>(null);
@@ -27,34 +28,15 @@ export default function BillingPage() {
   const { toast } = useToast();
 
   useEffect(() => {
-    async function fetchClients() {
-      try {
-        const clientsData = await getClients();
-        setClients(clientsData);
-      } catch (error) {
-        toast({ title: 'Erreur', description: 'Impossible de charger les clients.', variant: 'destructive' });
-      }
-    }
-    fetchClients();
-  }, [toast]);
-
-  useEffect(() => {
     if (selectedClientId) {
-      async function fetchContracts() {
-        try {
-          const contractsData = await getContractsByClient(selectedClientId!);
-          setContracts(contractsData);
-          setSelectedContractId(null);
-        } catch (error) {
-          toast({ title: 'Erreur', description: 'Impossible de charger les contrats.', variant: 'destructive' });
-        }
-      }
-      fetchContracts();
+      const clientContracts = allContracts.filter(c => c.clientId === selectedClientId);
+      setContracts(clientContracts);
+      setSelectedContractId(null);
     } else {
       setContracts([]);
       setSelectedContractId(null);
     }
-  }, [selectedClientId, toast]);
+  }, [selectedClientId, allContracts]);
 
   const handleGenerate = async (isProforma: boolean) => {
     if (!selectedContractId) {
@@ -108,80 +90,88 @@ export default function BillingPage() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="client-select">Client</Label>
-            <Select onValueChange={(value) => setSelectedClientId(value)}>
-              <SelectTrigger id="client-select">
-                <SelectValue placeholder="Sélectionner un client..." />
-              </SelectTrigger>
-              <SelectContent>
-                {clients.map((client) => (
-                  <SelectItem key={client.id} value={client.id}>
-                    {client.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          {selectedClientId && (
-            <div className="space-y-2">
-              <Label htmlFor="contract-select">Contrat</Label>
-              <Select onValueChange={(value) => setSelectedContractId(value)} value={selectedContractId || ''}>
-                <SelectTrigger id="contract-select">
-                  <SelectValue placeholder="Sélectionner un contrat..." />
-                </SelectTrigger>
-                <SelectContent>
-                  {contracts.length > 0 ? (
-                    contracts.map((contract) => (
-                      <SelectItem key={contract.id} value={contract.id}>
-                        Contrat du {new Date(contract.startDate).toLocaleDateString()} au {new Date(contract.endDate).toLocaleDateString()}
-                      </SelectItem>
-                    ))
-                  ) : (
-                    <div className="p-4 text-sm text-muted-foreground">Aucun contrat pour ce client.</div>
-                  )}
-                </SelectContent>
-              </Select>
+          {isDataLoading ? (
+            <div className="flex items-center justify-center h-32">
+                <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
             </div>
-          )}
+          ) : (
+            <>
+              <div className="space-y-2">
+                <Label htmlFor="client-select">Client</Label>
+                <Select onValueChange={(value) => setSelectedClientId(value)}>
+                  <SelectTrigger id="client-select">
+                    <SelectValue placeholder="Sélectionner un client..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {clients.map((client) => (
+                      <SelectItem key={client.id} value={client.id}>
+                        {client.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
 
-          <div className="space-y-2">
-            <Label>Date du document</Label>
-             <Popover>
-                <PopoverTrigger asChild>
-                    <Button
-                    variant={"outline"}
-                    className={cn(
-                        "w-full justify-start text-left font-normal",
-                        !invoiceDate && "text-muted-foreground"
-                    )}
-                    >
-                    <CalendarIcon className="mr-2 h-4 w-4" />
-                    {invoiceDate ? format(invoiceDate, "PPP", { locale: fr }) : <span>Choisir une date</span>}
-                    </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-auto p-0">
-                    <Calendar
-                    mode="single"
-                    selected={invoiceDate}
-                    onSelect={(date) => setInvoiceDate(date || new Date())}
-                    disabled={(date) => date < new Date(new Date().setHours(0,0,0,0))}
-                    initialFocus
-                    locale={fr}
-                    />
-                </PopoverContent>
-            </Popover>
-          </div>
-          
-          <div className="flex items-center gap-4 pt-2">
-            <Button onClick={() => handleGenerate(true)} disabled={!selectedContractId || isGenerating} variant="outline">
-              {isGenerating ? 'Génération...' : 'Générer un Proforma'}
-            </Button>
-            <Button onClick={() => handleGenerate(false)} disabled={!selectedContractId || isGenerating}>
-              {isGenerating ? 'Génération...' : 'Générer la Facture'}
-            </Button>
-          </div>
+              {selectedClientId && (
+                <div className="space-y-2">
+                  <Label htmlFor="contract-select">Contrat</Label>
+                  <Select onValueChange={(value) => setSelectedContractId(value)} value={selectedContractId || ''}>
+                    <SelectTrigger id="contract-select">
+                      <SelectValue placeholder="Sélectionner un contrat..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {contracts.length > 0 ? (
+                        contracts.map((contract) => (
+                          <SelectItem key={contract.id} value={contract.id}>
+                            Contrat du {new Date(contract.startDate).toLocaleDateString()} au {new Date(contract.endDate).toLocaleDateString()}
+                          </SelectItem>
+                        ))
+                      ) : (
+                        <div className="p-4 text-sm text-muted-foreground">Aucun contrat pour ce client.</div>
+                      )}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+
+              <div className="space-y-2">
+                <Label>Date du document</Label>
+                <Popover>
+                    <PopoverTrigger asChild>
+                        <Button
+                        variant={"outline"}
+                        className={cn(
+                            "w-full justify-start text-left font-normal",
+                            !invoiceDate && "text-muted-foreground"
+                        )}
+                        >
+                        <CalendarIcon className="mr-2 h-4 w-4" />
+                        {invoiceDate ? format(invoiceDate, "PPP", { locale: fr }) : <span>Choisir une date</span>}
+                        </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-auto p-0">
+                        <Calendar
+                        mode="single"
+                        selected={invoiceDate}
+                        onSelect={(date) => setInvoiceDate(date || new Date())}
+                        disabled={(date) => date > new Date(new Date().setHours(0,0,0,0))}
+                        initialFocus
+                        locale={fr}
+                        />
+                    </PopoverContent>
+                </Popover>
+              </div>
+              
+              <div className="flex items-center gap-4 pt-2">
+                <Button onClick={() => handleGenerate(true)} disabled={!selectedContractId || isGenerating} variant="outline">
+                  {isGenerating ? 'Génération...' : 'Générer un Proforma'}
+                </Button>
+                <Button onClick={() => handleGenerate(false)} disabled={!selectedContractId || isGenerating}>
+                  {isGenerating ? 'Génération...' : 'Générer la Facture'}
+                </Button>
+              </div>
+            </>
+          )}
         </CardContent>
       </Card>
     </div>
