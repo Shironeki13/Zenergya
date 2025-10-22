@@ -140,6 +140,19 @@ export default function ContractDetailPage() {
       }
   }
   
+  const getBadgeVariant = (status: Contract['status']): 'secondary' | 'destructive' | 'warning' => {
+      switch (status) {
+        case 'Actif':
+          return 'secondary';
+        case 'Résilié':
+          return 'destructive';
+        case 'Terminé':
+          return 'warning';
+        default:
+          return 'secondary';
+      }
+  }
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-full">
@@ -169,7 +182,7 @@ export default function ContractDetailPage() {
         <h1 className="flex-1 shrink-0 whitespace-nowrap text-xl font-semibold tracking-tight sm:grow-0">
           Contrat pour {contract.clientName}
         </h1>
-        <Badge variant={contract.status === 'Actif' ? 'secondary' : contract.status === 'Résilié' ? 'destructive' : 'outline'} className="ml-auto sm:ml-0">
+        <Badge variant={getBadgeVariant(contract.status)} className="ml-auto sm:ml-0">
             {contract.status}
         </Badge>
         <Button size="sm" asChild>

@@ -28,10 +28,24 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { useData } from '@/context/data-context';
+import type { Contract } from '@/lib/types';
 
 export default function ContractsPage() {
   const { contracts, isLoading } = useData();
   
+  const getBadgeVariant = (status: Contract['status']): 'secondary' | 'destructive' | 'outline' => {
+      switch (status) {
+        case 'Actif':
+          return 'secondary';
+        case 'Résilié':
+          return 'destructive';
+        case 'Terminé':
+          return 'outline';
+        default:
+          return 'outline';
+      }
+  }
+
   return (
     <Card>
       <CardHeader>
@@ -80,9 +94,9 @@ export default function ContractsPage() {
                     <Badge variant="outline">{contract.siteIds.length}</Badge>
                     </TableCell>
                     <TableCell>
-                    <Badge variant={contract.status === 'Actif' ? 'secondary' : contract.status === 'Résilié' ? 'destructive' : 'outline'}>
+                      <Badge variant={getBadgeVariant(contract.status)}>
                         {contract.status}
-                    </Badge>
+                      </Badge>
                     </TableCell>
                     <TableCell className="hidden md:table-cell">
                     {new Date(contract.startDate).toLocaleDateString()}
