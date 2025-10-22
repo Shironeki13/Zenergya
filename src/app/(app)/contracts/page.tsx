@@ -1,5 +1,4 @@
 
-
 'use client';
 
 import { useState } from 'react';
@@ -16,7 +15,7 @@ import {
   DropdownMenuTrigger,
   DropdownMenuSeparator,
 } from '@/components/ui/dropdown-menu';
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
@@ -170,10 +169,10 @@ export default function ContractsPage() {
                             <DropdownMenuSeparator />
                             {contract.status === 'Actif' && (
                               <>
-                                <DropdownMenuItem onClick={() => handleOpenDialog(contract, 'Résilié')}>
+                                <DropdownMenuItem onSelect={() => handleOpenDialog(contract, 'Résilié')}>
                                   Passer à Résilié
                                 </DropdownMenuItem>
-                                <DropdownMenuItem onClick={() => handleOpenDialog(contract, 'Terminé')}>
+                                <DropdownMenuItem onSelect={() => handleOpenDialog(contract, 'Terminé')}>
                                   Passer à Terminé
                                 </DropdownMenuItem>
                               </>
@@ -216,6 +215,7 @@ export default function ContractsPage() {
                           <Popover>
                               <PopoverTrigger asChild>
                                   <Button
+                                      id="termination-date"
                                       variant={"outline"}
                                       className={cn(
                                           "col-span-3 justify-start text-left font-normal",
@@ -247,4 +247,5 @@ export default function ContractsPage() {
       </Dialog>
     </>
   );
-}
+    
+    
