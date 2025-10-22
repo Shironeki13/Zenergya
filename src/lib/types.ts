@@ -88,6 +88,7 @@ export type Contract = {
   status: "Actif" | "Résilié" | "Terminé";
   marketId?: string;
   hasInterest?: boolean;
+  terminationDate?: string; // ISO String for cancellation date
   
   revisionP1?: RevisionInfo;
   revisionP2?: RevisionInfo;
