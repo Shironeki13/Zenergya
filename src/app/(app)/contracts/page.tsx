@@ -3,6 +3,7 @@
 
 import { useState, useMemo } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { PlusCircle, MoreHorizontal, Loader2, Calendar as CalendarIcon } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -31,6 +32,7 @@ import { fr } from 'date-fns/locale';
 export default function ContractsPage() {
   const { contracts, sites, isLoading, reloadData } = useData();
   const { toast } = useToast();
+  const router = useRouter();
   
   const [contractToUpdate, setContractToUpdate] = useState<Contract | null>(null);
   const [newStatus, setNewStatus] = useState<"Résilié" | "Terminé" | null>(null);
@@ -86,7 +88,10 @@ export default function ContractsPage() {
         return;
       }
       updateData.terminationDate = terminationDate.toISOString();
+    } else if (newStatus === 'Terminé') {
+        updateData.endDate = new Date().toISOString();
     }
+
 
     try {
       await updateContract(contractToUpdate.id, updateData);
@@ -215,7 +220,7 @@ export default function ContractsPage() {
                   <DialogDescription>
                       {newStatus === 'Résilié' 
                           ? `Vous êtes sur le point de résilier le contrat pour ${contractToUpdate?.clientName}. Veuillez sélectionner la date de résiliation.`
-                          : `Vous êtes sur le point de marquer le contrat pour ${contractToUpdate?.clientName} comme "Terminé". Êtes-vous sûr ?`
+                          : `Vous êtes sur le point de marquer le contrat pour ${contractToUpdate?.clientName} comme "Terminé". Cela mettra la date de fin du contrat à aujourd'hui. Êtes-vous sûr ?`
                       }
                   </DialogDescription>
               </DialogHeader>
@@ -278,7 +283,7 @@ export default function ContractsPage() {
                     <TableBody>
                         {sitesToShow.length > 0 ? (
                             sitesToShow.map(site => (
-                                <TableRow key={site.id}>
+                                <TableRow key={site.id} className="cursor-pointer hover:bg-muted" onClick={() => router.push(`/clients/${site.clientId}`)}>
                                     <TableCell>{site.name}</TableCell>
                                     <TableCell>{[site.address, site.postalCode, site.city].filter(Boolean).join(', ')}</TableCell>
                                 </TableRow>
