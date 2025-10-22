@@ -1,7 +1,7 @@
 
 'use client';
 
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import Link from 'next/link';
 import { PlusCircle, MoreHorizontal, Loader2, Calendar as CalendarIcon } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
@@ -15,13 +15,13 @@ import {
   DropdownMenuTrigger,
   DropdownMenuSeparator,
 } from '@/components/ui/dropdown-menu';
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
 import { Label } from '@/components/ui/label';
 import { useData } from '@/context/data-context';
-import type { Contract } from '@/lib/types';
+import type { Contract, Site } from '@/lib/types';
 import { updateContract } from '@/services/firestore';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
@@ -29,13 +29,18 @@ import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 
 export default function ContractsPage() {
-  const { contracts, isLoading, reloadData } = useData();
+  const { contracts, sites, isLoading, reloadData } = useData();
   const { toast } = useToast();
   
   const [contractToUpdate, setContractToUpdate] = useState<Contract | null>(null);
   const [newStatus, setNewStatus] = useState<"Résilié" | "Terminé" | null>(null);
   const [terminationDate, setTerminationDate] = useState<Date | undefined>(new Date());
   
+  const [sitesToShow, setSitesToShow] = useState<Site[]>([]);
+  const [isSitesDialogOpen, setIsSitesDialogOpen] = useState(false);
+  const [selectedContractClient, setSelectedContractClient] = useState('');
+
+
   const getBadgeVariant = (status: Contract['status']): 'secondary' | 'destructive' | 'warning' | 'outline' => {
       switch (status) {
         case 'Actif':
@@ -49,7 +54,7 @@ export default function ContractsPage() {
       }
   }
   
-  const handleOpenDialog = (contract: Contract, status: "Résilié" | "Terminé") => {
+  const handleOpenStatusDialog = (contract: Contract, status: "Résilié" | "Terminé") => {
     setContractToUpdate(contract);
     setNewStatus(status);
     if(status === 'Résilié') {
@@ -57,11 +62,18 @@ export default function ContractsPage() {
     }
   }
 
-  const handleCloseDialog = () => {
+  const handleCloseStatusDialog = () => {
     setContractToUpdate(null);
     setNewStatus(null);
     setTerminationDate(undefined);
   }
+  
+  const handleShowSites = (contract: Contract) => {
+    const contractSites = sites.filter(site => contract.siteIds.includes(site.id));
+    setSitesToShow(contractSites);
+    setSelectedContractClient(contract.clientName);
+    setIsSitesDialogOpen(true);
+  };
 
   const handleStatusUpdate = async () => {
     if (!contractToUpdate || !newStatus) return;
@@ -83,7 +95,7 @@ export default function ContractsPage() {
     } catch (error) {
       toast({ title: "Erreur", description: "La mise à jour du statut a échoué.", variant: "destructive" });
     } finally {
-      handleCloseDialog();
+      handleCloseStatusDialog();
     }
   };
 
@@ -136,7 +148,9 @@ export default function ContractsPage() {
                   <TableRow key={contract.id}>
                       <TableCell className="font-medium">{contract.clientName}</TableCell>
                       <TableCell>
-                      <Badge variant="outline">{contract.siteIds.length}</Badge>
+                        <Button variant="link" className="p-0 h-auto" onClick={() => handleShowSites(contract)}>
+                          <Badge variant="outline">{contract.siteIds.length}</Badge>
+                        </Button>
                       </TableCell>
                       <TableCell>
                         <Badge variant={getBadgeVariant(contract.status)}>
@@ -167,10 +181,10 @@ export default function ContractsPage() {
                             {contract.status === 'Actif' && (
                               <>
                                 <DropdownMenuSeparator />
-                                <DropdownMenuItem onSelect={() => handleOpenDialog(contract, 'Résilié')}>
+                                <DropdownMenuItem onSelect={() => handleOpenStatusDialog(contract, 'Résilié')}>
                                   Passer à Résilié
                                 </DropdownMenuItem>
-                                <DropdownMenuItem onSelect={() => handleOpenDialog(contract, 'Terminé')}>
+                                <DropdownMenuItem onSelect={() => handleOpenStatusDialog(contract, 'Terminé')}>
                                   Passer à Terminé
                                 </DropdownMenuItem>
                               </>
@@ -194,7 +208,7 @@ export default function ContractsPage() {
         </CardContent>
       </Card>
       
-      <Dialog open={!!contractToUpdate} onOpenChange={(isOpen) => !isOpen && handleCloseDialog()}>
+      <Dialog open={!!contractToUpdate} onOpenChange={(isOpen) => !isOpen && handleCloseStatusDialog()}>
           <DialogContent>
               <DialogHeader>
                   <DialogTitle>Modifier le statut du contrat</DialogTitle>
@@ -239,12 +253,46 @@ export default function ContractsPage() {
                   </div>
               )}
               <DialogFooter>
-                  <Button variant="outline" onClick={handleCloseDialog}>Annuler</Button>
+                  <Button variant="outline" onClick={handleCloseStatusDialog}>Annuler</Button>
                   <Button onClick={handleStatusUpdate}>Confirmer</Button>
               </DialogFooter>
           </DialogContent>
       </Dialog>
+      
+      <Dialog open={isSitesDialogOpen} onOpenChange={setIsSitesDialogOpen}>
+        <DialogContent>
+            <DialogHeader>
+                <DialogTitle>Sites pour {selectedContractClient}</DialogTitle>
+                <DialogDescription>
+                    Liste des sites inclus dans ce contrat.
+                </DialogDescription>
+            </DialogHeader>
+            <div className="max-h-60 overflow-y-auto">
+                <Table>
+                    <TableHeader>
+                        <TableRow>
+                            <TableHead>Nom du Site</TableHead>
+                            <TableHead>Adresse</TableHead>
+                        </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                        {sitesToShow.length > 0 ? (
+                            sitesToShow.map(site => (
+                                <TableRow key={site.id}>
+                                    <TableCell>{site.name}</TableCell>
+                                    <TableCell>{[site.address, site.postalCode, site.city].filter(Boolean).join(', ')}</TableCell>
+                                </TableRow>
+                            ))
+                        ) : (
+                            <TableRow>
+                                <TableCell colSpan={2} className="text-center">Aucun site à afficher.</TableCell>
+                            </TableRow>
+                        )}
+                    </TableBody>
+                </Table>
+            </div>
+        </DialogContent>
+      </Dialog>
     </>
   );
-    
-    
+}
