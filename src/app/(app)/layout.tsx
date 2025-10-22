@@ -12,6 +12,7 @@ import {
   CircleDollarSign,
   Gauge,
   Copy,
+  MinusCircle,
 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
@@ -40,6 +41,7 @@ export default function AppLayout({
     { href: '/contracts', icon: FileSignature, label: 'Contrats' },
     { href: '/meters', icon: Gauge, label: 'Compteurs' },
     { href: '/invoices', icon: FileText, label: 'Factures' },
+    { href: '/credit-notes', icon: MinusCircle, label: 'Avoirs' },
     { href: '/billing', icon: CircleDollarSign, label: 'Facturation Manuelle' },
     { href: '/billing/batch', icon: Copy, label: 'Facturation Groupée' },
     { href: '/users', icon: Users, label: 'Utilisateurs' },

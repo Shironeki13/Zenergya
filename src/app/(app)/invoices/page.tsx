@@ -36,13 +36,18 @@ import { generateCreditNote } from '@/ai/flows/generate-credit-note-flow';
 
 
 export default function InvoicesPage() {
-  const { invoices, creditNotes, isLoading, reloadData } = useData();
+  const { invoices, isLoading, reloadData } = useData();
   const { toast } = useToast();
   const [selectedInvoiceIds, setSelectedInvoiceIds] = useState<string[]>([]);
   const [isGenerating, setIsGenerating] = useState(false);
 
   const cancellableInvoices = useMemo(() => 
     invoices.filter(inv => inv.status !== 'proforma' && inv.status !== 'cancelled'),
+    [invoices]
+  );
+  
+  const sortedInvoices = useMemo(() => 
+    [...invoices].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()),
     [invoices]
   );
 
@@ -120,11 +125,6 @@ export default function InvoicesPage() {
         return status;
     }
   };
-  
-  const allDocuments = [
-    ...invoices.map(i => ({ ...i, type: 'invoice' as const })),
-    ...creditNotes.map(cn => ({ ...cn, type: 'credit_note' as const }))
-  ].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
 
   return (
@@ -132,9 +132,9 @@ export default function InvoicesPage() {
       <CardHeader>
         <div className="flex items-center justify-between">
           <div>
-            <CardTitle>Factures & Avoirs</CardTitle>
+            <CardTitle>Factures</CardTitle>
             <CardDescription>
-              Liste de tous les documents de facturation.
+              Liste de toutes les factures.
             </CardDescription>
           </div>
            {selectedInvoiceIds.length > 0 && (
@@ -156,7 +156,7 @@ export default function InvoicesPage() {
                   aria-label="Tout sélectionner"
                 />
               </TableHead>
-              <TableHead>N° Document</TableHead>
+              <TableHead>N° Facture</TableHead>
               <TableHead>Client</TableHead>
               <TableHead>Statut</TableHead>
               <TableHead className="hidden md:table-cell">Date</TableHead>
@@ -173,36 +173,31 @@ export default function InvoicesPage() {
                        <Loader2 className="mx-auto h-8 w-8 animate-spin text-muted-foreground" />
                     </TableCell>
                 </TableRow>
-            ) : allDocuments.length > 0 ? (
-                allDocuments.map((doc) => (
-                <TableRow key={doc.id}>
+            ) : sortedInvoices.length > 0 ? (
+                sortedInvoices.map((invoice) => (
+                <TableRow key={invoice.id}>
                     <TableCell>
-                      {doc.type === 'invoice' && doc.status !== 'proforma' && doc.status !== 'cancelled' && (
+                      {invoice.status !== 'proforma' && invoice.status !== 'cancelled' && (
                         <Checkbox
-                          checked={selectedInvoiceIds.includes(doc.id)}
-                          onCheckedChange={(checked) => handleSelectionChange(doc.id, !!checked)}
+                          checked={selectedInvoiceIds.includes(invoice.id)}
+                          onCheckedChange={(checked) => handleSelectionChange(invoice.id, !!checked)}
                         />
                       )}
                     </TableCell>
                     <TableCell className="font-medium">
-                      {doc.type === 'invoice' ? (doc.invoiceNumber || `Proforma ${doc.id.substring(0,6)}`) : doc.creditNoteNumber}
-                      {doc.type === 'credit_note' && <span className="text-xs text-muted-foreground ml-1">(Avoir)</span>}
+                      {invoice.invoiceNumber || `Proforma ${invoice.id.substring(0,6)}`}
                     </TableCell>
-                    <TableCell>{doc.clientName}</TableCell>
+                    <TableCell>{invoice.clientName}</TableCell>
                     <TableCell>
-                     {doc.type === 'invoice' ? (
-                       <Badge variant={getBadgeVariant(doc.status)}>
-                           {translateStatus(doc.status)}
+                       <Badge variant={getBadgeVariant(invoice.status)}>
+                           {translateStatus(invoice.status)}
                        </Badge>
-                     ) : (
-                       <Badge variant="default">Finalisé</Badge>
-                     )}
                     </TableCell>
                     <TableCell className="hidden md:table-cell">
-                      {new Date(doc.date).toLocaleDateString()}
+                      {new Date(invoice.date).toLocaleDateString()}
                     </TableCell>
-                    <TableCell className="text-right" style={{color: doc.type === 'credit_note' ? 'hsl(var(--destructive))' : undefined}}>
-                      {doc.total.toFixed(2)} €
+                    <TableCell className="text-right">
+                      {invoice.total.toFixed(2)} €
                     </TableCell>
                     <TableCell>
                     <DropdownMenu>
@@ -215,11 +210,11 @@ export default function InvoicesPage() {
                         <DropdownMenuContent align="end">
                         <DropdownMenuLabel>Actions</DropdownMenuLabel>
                         <DropdownMenuItem asChild>
-                            <Link href={`/invoices/${doc.id}`}>Voir les détails</Link>
+                            <Link href={`/invoices/${invoice.id}`}>Voir les détails</Link>
                         </DropdownMenuItem>
-                        {doc.type === 'invoice' && doc.status === 'due' && <DropdownMenuItem>Marquer comme payée</DropdownMenuItem>}
-                        {doc.type === 'invoice' && doc.status === 'due' && <DropdownMenuItem>Envoyer un rappel</DropdownMenuItem>}
-                        {doc.type === 'invoice' && doc.status === 'proforma' && <DropdownMenuItem>Convertir en facture</DropdownMenuItem>}
+                        {invoice.status === 'due' && <DropdownMenuItem>Marquer comme payée</DropdownMenuItem>}
+                        {invoice.status === 'due' && <DropdownMenuItem>Envoyer un rappel</DropdownMenuItem>}
+                        {invoice.status === 'proforma' && <DropdownMenuItem>Convertir en facture</DropdownMenuItem>}
                         </DropdownMenuContent>
                     </DropdownMenu>
                     </TableCell>
@@ -227,7 +222,7 @@ export default function InvoicesPage() {
                 ))
             ) : (
                 <TableRow>
-                    <TableCell colSpan={7} className="text-center h-24">Aucun document trouvé.</TableCell>
+                    <TableCell colSpan={7} className="text-center h-24">Aucune facture trouvée.</TableCell>
                 </TableRow>
             )}
           </TableBody>
