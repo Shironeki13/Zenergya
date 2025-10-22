@@ -80,8 +80,8 @@ export default function ContractsPage() {
                     <Badge variant="outline">{contract.siteIds.length}</Badge>
                     </TableCell>
                     <TableCell>
-                    <Badge variant={contract.status === 'active' ? 'secondary' : contract.status === 'pending' ? 'outline' : 'destructive'}>
-                        {contract.status.charAt(0).toUpperCase() + contract.status.slice(1)}
+                    <Badge variant={contract.status === 'Actif' ? 'secondary' : contract.status === 'Résilié' ? 'destructive' : 'outline'}>
+                        {contract.status}
                     </Badge>
                     </TableCell>
                     <TableCell className="hidden md:table-cell">

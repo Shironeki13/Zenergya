@@ -169,8 +169,8 @@ export default function ContractDetailPage() {
         <h1 className="flex-1 shrink-0 whitespace-nowrap text-xl font-semibold tracking-tight sm:grow-0">
           Contrat pour {contract.clientName}
         </h1>
-        <Badge variant="outline" className="ml-auto sm:ml-0">
-          {contract.status.charAt(0).toUpperCase() + contract.status.slice(1)}
+        <Badge variant={contract.status === 'Actif' ? 'secondary' : contract.status === 'Résilié' ? 'destructive' : 'outline'} className="ml-auto sm:ml-0">
+            {contract.status}
         </Badge>
         <Button size="sm" asChild>
           <Link href={`/contracts/${id}/edit`}>Modifier</Link>

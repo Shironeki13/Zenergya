@@ -42,7 +42,7 @@ export default function Dashboard() {
   const dashboardData = useMemo(() => {
     if (isLoading) return null;
 
-    const activeContracts = contracts.filter((c) => c.status === 'active').length;
+    const activeContracts = contracts.filter((c) => c.status === 'Actif').length;
     const totalClients = clients.length;
     const totalBilledHT = invoices
       .filter(i => i.status !== 'proforma')
@@ -57,7 +57,7 @@ export default function Dashboard() {
     }, {} as Record<string, Invoice[]>);
 
     const invoicesToBeIssued = contracts.filter(contract => {
-        if (contract.status !== 'active') return false;
+        if (contract.status !== 'Actif') return false;
 
         const contractInvoices = invoicesPerContract[contract.id] || [];
         contractInvoices.sort((a, b) => new Date(b.periodEndDate!).getTime() - new Date(a.periodEndDate!).getTime());
@@ -99,7 +99,7 @@ export default function Dashboard() {
     });
 
     const contractStatusData = contracts.reduce((acc, contract) => {
-      const status = contract.status.charAt(0).toUpperCase() + contract.status.slice(1);
+      const status = contract.status;
       const existing = acc.find(item => item.name === status);
       if (existing) {
         existing.value++;

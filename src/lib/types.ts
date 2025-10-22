@@ -85,7 +85,7 @@ export type Contract = {
   billingSchedule: string;
   term: string;
   activityIds: string[];
-  status: "active" | "expired" | "pending";
+  status: "Actif" | "Résilié" | "Terminé";
   marketId?: string;
   hasInterest?: boolean;
   

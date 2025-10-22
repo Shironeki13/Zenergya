@@ -121,7 +121,7 @@ export async function getContract(id: string): Promise<Contract | null> {
 export async function createContract(data: Omit<Contract, 'id' | 'status'>) {
     const newContractData: DocumentData = {
         ...data,
-        status: 'pending',
+        status: 'Actif',
     };
     // Convert all date strings to Date objects for Firestore
     if (data.startDate) newContractData.startDate = new Date(data.startDate);
