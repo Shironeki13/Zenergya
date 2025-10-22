@@ -143,7 +143,7 @@ export type CreditNote = {
     clientId: string;
     clientName: string;
     date: string; // ISO date
-    status: 'draft' | 'finalized';
+    status: 'finalized';
     lineItems: InvoiceLineItem[];
     subtotal: number;
     tax: number;

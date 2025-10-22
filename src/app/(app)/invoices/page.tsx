@@ -2,7 +2,7 @@
 'use client';
 
 import Link from 'next/link';
-import { MoreHorizontal, Loader2, FilePlus, MinusCircle } from 'lucide-react';
+import { MoreHorizontal, Loader2, MinusCircle } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -31,7 +31,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import type { InvoiceStatus, Invoice } from '@/lib/types';
 import { useData } from '@/context/data-context';
 import { useToast } from '@/hooks/use-toast';
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { generateCreditNote } from '@/ai/flows/generate-credit-note-flow';
 
 
@@ -41,6 +41,10 @@ export default function InvoicesPage() {
   const [selectedInvoiceIds, setSelectedInvoiceIds] = useState<string[]>([]);
   const [isGenerating, setIsGenerating] = useState(false);
 
+  const cancellableInvoices = useMemo(() => 
+    invoices.filter(inv => inv.status !== 'proforma' && inv.status !== 'cancelled'),
+    [invoices]
+  );
 
   const handleSelectionChange = (invoiceId: string, checked: boolean) => {
     setSelectedInvoiceIds(prev =>
@@ -49,9 +53,8 @@ export default function InvoicesPage() {
   };
   
   const handleSelectAll = (checked: boolean) => {
-      const cancellableInvoices = invoices.filter(inv => inv.status !== 'proforma' && inv.status !== 'cancelled').map(inv => inv.id);
       if (checked) {
-          setSelectedInvoiceIds(cancellableInvoices);
+          setSelectedInvoiceIds(cancellableInvoices.map(inv => inv.id));
       } else {
           setSelectedInvoiceIds([]);
       }
@@ -66,7 +69,7 @@ export default function InvoicesPage() {
       try {
           const result = await generateCreditNote({
               invoiceIds: selectedInvoiceIds,
-              reason: 'Annulation demandée par le client.', // Placeholder reason
+              reason: 'Annulation demandée par l\'utilisateur.', // Placeholder reason
               creditNoteDate: new Date().toISOString(),
           });
           if (result.success && result.creditNoteId) {
@@ -74,10 +77,10 @@ export default function InvoicesPage() {
               setSelectedInvoiceIds([]);
               await reloadData();
           } else {
-              throw new Error(result.error || "Une erreur inconnue est survenue.");
+              throw new Error(result.error || "Une erreur inconnue est survenue lors de la création de l'avoir.");
           }
       } catch (error) {
-          toast({ title: "Erreur de génération", description: error instanceof Error ? error.message : String(error), variant: 'destructive'});
+          toast({ title: "Erreur de génération", description: error instanceof Error ? error.message : String(error), variant: 'destructive', duration: 10000});
       } finally {
           setIsGenerating(false);
       }
@@ -148,8 +151,8 @@ export default function InvoicesPage() {
             <TableRow>
               <TableHead className="w-[50px]">
                 <Checkbox
-                  onCheckedChange={handleSelectAll}
-                  checked={selectedInvoiceIds.length > 0 && selectedInvoiceIds.length === invoices.filter(inv => inv.status !== 'proforma' && inv.status !== 'cancelled').length}
+                  onCheckedChange={(checked) => handleSelectAll(!!checked)}
+                  checked={selectedInvoiceIds.length > 0 && selectedInvoiceIds.length === cancellableInvoices.length}
                   aria-label="Tout sélectionner"
                 />
               </TableHead>

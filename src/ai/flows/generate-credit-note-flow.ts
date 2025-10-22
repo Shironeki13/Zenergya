@@ -9,9 +9,8 @@
  */
 
 import { ai } from '@/ai/genkit';
-import { z } from 'genkit';
 import { getInvoicesByIds, createCreditNote } from '@/services/firestore';
-import type { InvoiceLineItem } from '@/lib/types';
+import type { InvoiceLineItem, Invoice } from '@/lib/types';
 import { GenerateCreditNoteInputSchema, GenerateCreditNoteOutputSchema, type GenerateCreditNoteInput, type GenerateCreditNoteOutput } from '@/lib/types';
 
 
@@ -33,12 +32,23 @@ const generateCreditNoteFlow = ai.defineFlow(
       if (!invoiceIds || invoiceIds.length === 0) {
         throw new Error("Aucun ID de facture fourni.");
       }
+      
+      if (!reason) {
+          throw new Error("Un motif est requis pour générer un avoir.");
+      }
 
       const invoicesToCredit = await getInvoicesByIds(invoiceIds);
       if (invoicesToCredit.length === 0) {
         throw new Error("Aucune facture correspondante trouvée.");
       }
       
+      // Check if any invoice is already cancelled or is a proforma
+      const invalidInvoices = invoicesToCredit.filter(inv => inv.status === 'cancelled' || inv.status === 'proforma');
+      if (invalidInvoices.length > 0) {
+        const invalidNumbers = invalidInvoices.map(inv => inv.invoiceNumber || inv.id).join(', ');
+        throw new Error(`Impossible de générer un avoir. Les factures suivantes sont déjà annulées ou sont des proformas : ${invalidNumbers}.`);
+      }
+
       const firstInvoice = invoicesToCredit[0];
       const { clientId, clientName, contractId } = firstInvoice;
 
@@ -58,7 +68,8 @@ const generateCreditNoteFlow = ai.defineFlow(
       );
       
       const subtotal = creditedLineItems.reduce((acc, item) => acc + item.total, 0);
-      const tax = invoicesToCredit.reduce((acc, inv) => acc - Math.abs(inv.tax), 0); // Sum of negative taxes
+      // The tax is also negative, summing up the negated taxes from original invoices
+      const tax = invoicesToCredit.reduce((acc, inv) => acc - Math.abs(inv.tax), 0);
       const total = subtotal + tax;
       
       const newCreditNote = {
