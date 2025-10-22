@@ -107,7 +107,7 @@ export type Contract = {
   unitPricePrimaryMWh?: number; // Prix €/MWh primaire (CP)
 };
 
-export type InvoiceStatus = "paid" | "due" | "overdue" | "proforma";
+export type InvoiceStatus = "paid" | "due" | "overdue" | "proforma" | "cancelled";
 
 export type InvoiceLineItem = {
   description: string;
@@ -134,6 +134,22 @@ export type Invoice = {
   periodStartDate?: string; // ISO String date
   periodEndDate?: string; // ISO String date
 };
+
+export type CreditNote = {
+    id: string;
+    creditNoteNumber: string;
+    originalInvoiceIds: string[];
+    contractId: string;
+    clientId: string;
+    clientName: string;
+    date: string; // ISO date
+    status: 'draft' | 'finalized';
+    lineItems: InvoiceLineItem[];
+    subtotal: number;
+    tax: number;
+    total: number;
+    reason: string;
+}
 
 // Settings Types
 export type Company = {
@@ -251,12 +267,28 @@ export const GenerateInvoiceOutputSchema = z.object({
 });
 export type GenerateInvoiceOutput = z.infer<typeof GenerateInvoiceOutputSchema>;
 
+export const GenerateCreditNoteInputSchema = z.object({
+    invoiceIds: z.array(z.string()).describe('The IDs of the invoices to create a credit note for.'),
+    reason: z.string().describe('The reason for creating the credit note.'),
+    creditNoteDate: z.string().describe('The date for the credit note in ISO format.'),
+});
+export type GenerateCreditNoteInput = z.infer<typeof GenerateCreditNoteInputSchema>;
+
+export const GenerateCreditNoteOutputSchema = z.object({
+    success: z.boolean(),
+    creditNoteId: z.string().optional(),
+    error: z.string().optional(),
+});
+export type GenerateCreditNoteOutput = z.infer<typeof GenerateCreditNoteOutputSchema>;
+
+
 // Data Context Type
 export type DataContextType = {
     clients: Client[];
     sites: Site[];
     contracts: Contract[];
     invoices: Invoice[];
+    creditNotes: CreditNote[];
     meters: Meter[];
     meterReadings: MeterReading[];
     companies: Company[];

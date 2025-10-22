@@ -3,12 +3,12 @@
 
 import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
 import {
-  getClients, getSites, getContracts, getInvoices, getMeters, getMeterReadings,
+  getClients, getSites, getContracts, getInvoices, getCreditNotes, getMeters, getMeterReadings,
   getCompanies, getAgencies, getSectors, getActivities, getSchedules, getTerms,
   getTypologies, getVatRates, getRevisionFormulas, getPaymentTerms, getPricingRules,
   getMarkets, getRoles, getUsers
 } from '@/services/firestore';
-import type { DataContextType, Client, Site, Contract, Invoice, Meter, MeterReading, Company, Agency, Sector, Activity, Schedule, Term, Typology, VatRate, RevisionFormula, PaymentTerm, PricingRule, Market, Role, User } from '@/lib/types';
+import type { DataContextType, Client, Site, Contract, Invoice, CreditNote, Meter, MeterReading, Company, Agency, Sector, Activity, Schedule, Term, Typology, VatRate, RevisionFormula, PaymentTerm, PricingRule, Market, Role, User } from '@/lib/types';
 import { useToast } from '@/hooks/use-toast';
 
 const DataContext = createContext<DataContextType | undefined>(undefined);
@@ -19,6 +19,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     sites: [] as Site[],
     contracts: [] as Contract[],
     invoices: [] as Invoice[],
+    creditNotes: [] as CreditNote[],
     meters: [] as Meter[],
     meterReadings: [] as MeterReading[],
     companies: [] as Company[],
@@ -43,14 +44,14 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     setIsLoading(true);
     try {
       const results = await Promise.allSettled([
-        getClients(), getSites(), getContracts(), getInvoices(), getMeters(), getMeterReadings(),
+        getClients(), getSites(), getContracts(), getInvoices(), getCreditNotes(), getMeters(), getMeterReadings(),
         getCompanies(), getAgencies(), getSectors(), getActivities(), getSchedules(), getTerms(),
         getTypologies(), getVatRates(), getRevisionFormulas(), getPaymentTerms(), getPricingRules(),
         getMarkets(), getRoles(), getUsers()
       ]);
 
       const [
-        clients, sites, contracts, invoices, meters, meterReadings,
+        clients, sites, contracts, invoices, creditNotes, meters, meterReadings,
         companies, agencies, sectors, activities, schedules, terms,
         typologies, vatRates, revisionFormulas, paymentTerms, pricingRules,
         markets, roles, users
@@ -60,6 +61,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       if (sites.status === 'rejected') console.error("Failed to load sites", sites.reason);
       if (contracts.status === 'rejected') console.error("Failed to load contracts", contracts.reason);
       if (invoices.status === 'rejected') console.error("Failed to load invoices", invoices.reason);
+      if (creditNotes.status === 'rejected') console.error("Failed to load credit notes", creditNotes.reason);
       if (meters.status === 'rejected') console.error("Failed to load meters", meters.reason);
       if (meterReadings.status === 'rejected') console.error("Failed to load meterReadings", meterReadings.reason);
       if (companies.status === 'rejected') console.error("Failed to load companies", companies.reason);
@@ -82,6 +84,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         sites: sites.status === 'fulfilled' ? sites.value : [],
         contracts: contracts.status === 'fulfilled' ? contracts.value : [],
         invoices: invoices.status === 'fulfilled' ? invoices.value : [],
+        creditNotes: creditNotes.status === 'fulfilled' ? creditNotes.value : [],
         meters: meters.status === 'fulfilled' ? meters.value : [],
         meterReadings: meterReadings.status === 'fulfilled' ? meterReadings.value : [],
         companies: companies.status === 'fulfilled' ? companies.value : [],

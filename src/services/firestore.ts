@@ -1,7 +1,7 @@
 
 'use server';
 import { db } from '@/lib/firebase';
-import type { Client, Site, Contract, Invoice, MeterReading, Company, Agency, Sector, Activity, User, Role, Schedule, Term, Typology, VatRate, RevisionFormula, PaymentTerm, PricingRule, Market, Meter } from '@/lib/types';
+import type { Client, Site, Contract, Invoice, CreditNote, MeterReading, Company, Agency, Sector, Activity, User, Role, Schedule, Term, Typology, VatRate, RevisionFormula, PaymentTerm, PricingRule, Market, Meter } from '@/lib/types';
 import { collection, getDocs, doc, getDoc, addDoc, updateDoc, deleteDoc, query, where, DocumentData, writeBatch, runTransaction, Timestamp } from 'firebase/firestore';
 
 function processFirestoreDoc<T>(docData: DocumentData): T {
@@ -173,6 +173,13 @@ export async function getInvoice(id: string): Promise<Invoice | null> {
     return getDocument<Invoice>(doc(db, 'invoices', id));
 }
 
+export async function getInvoicesByIds(ids: string[]): Promise<Invoice[]> {
+    if (ids.length === 0) return [];
+    const q = query(collection(db, 'invoices'), where('__name__', 'in', ids));
+    return getCollection<Invoice>(q);
+}
+
+
 export async function getInvoicesByContract(contractId: string): Promise<Invoice[]> {
     const q = query(collection(db, 'invoices'), where("contractId", "==", contractId));
     return getCollection<Invoice>(q);
@@ -190,6 +197,12 @@ export async function createInvoice(data: Omit<Invoice, 'id'>) {
     const docRef = await addDoc(invoicesCollection, invoiceData as any);
     return { id: docRef.id, ...invoiceData };
 }
+
+export async function updateInvoiceStatus(id: string, status: InvoiceStatus) {
+    const invoiceDoc = doc(db, 'invoices', id);
+    await updateDoc(invoiceDoc, { status });
+}
+
 
 export async function getNextInvoiceNumber(companyCode: string): Promise<string> {
     const now = new Date();
@@ -212,6 +225,51 @@ export async function getNextInvoiceNumber(companyCode: string): Promise<string>
         const countPadded = String(newCount).padStart(4, '0');
         
         return `${companyCode}-${period}-${countPadded}`;
+    });
+}
+
+
+// Avoirs (Credit Notes)
+export async function getCreditNotes(): Promise<CreditNote[]> {
+    return getCollection<CreditNote>(collection(db, 'creditNotes'));
+}
+
+export async function createCreditNote(data: Omit<CreditNote, 'id' | 'creditNoteNumber'>): Promise<CreditNote> {
+    const batch = writeBatch(db);
+
+    const creditNoteNumber = await getNextCreditNoteNumber();
+    
+    const newCreditNoteData = {
+        ...data,
+        creditNoteNumber,
+        date: new Date(data.date),
+    };
+    const creditNoteRef = doc(collection(db, 'creditNotes'));
+    batch.set(creditNoteRef, newCreditNoteData);
+
+    // Update status of original invoices
+    for (const invoiceId of data.originalInvoiceIds) {
+        const invoiceRef = doc(db, 'invoices', invoiceId);
+        batch.update(invoiceRef, { status: 'cancelled' });
+    }
+
+    await batch.commit();
+    return { id: creditNoteRef.id, ...newCreditNoteData };
+}
+
+export async function getNextCreditNoteNumber(): Promise<string> {
+    const year = new Date().getFullYear();
+    const counterRef = doc(db, 'counters', `creditNoteCounter_${year}`);
+
+    return runTransaction(db, async (transaction) => {
+        const counterDoc = await transaction.get(counterRef);
+        let newCount = 1;
+        if (counterDoc.exists()) {
+            newCount = counterDoc.data().current + 1;
+        }
+        transaction.set(counterRef, { current: newCount }, { merge: true });
+        const countPadded = String(newCount).padStart(4, '0');
+        return `AV${year}-${countPadded}`;
     });
 }
 
