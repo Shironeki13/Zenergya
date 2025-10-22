@@ -44,6 +44,7 @@ import { updateContract, getContract, getClients, getSites, getActivities, getSc
 import type { Contract, Activity, Schedule, Term, Client, Site, Market, RevisionFormula } from "@/lib/types"
 import { Separator } from "@/components/ui/separator"
 import { Slider } from "@/components/ui/slider"
+import { useData } from "@/context/data-context";
 
 
 const monthlyBillingSchema = z.object({
@@ -115,15 +116,9 @@ export default function EditContractPage() {
     const id = params.id as string;
     const { toast } = useToast()
     
-    const [isLoading, setIsLoading] = useState(true);
-    const [clients, setClients] = useState<Client[]>([]);
-    const [allSites, setAllSites] = useState<Site[]>([]);
-    const [activities, setActivities] = useState<Activity[]>([]);
-    const [schedules, setSchedules] = useState<Schedule[]>([]);
-    const [terms, setTerms] = useState<Term[]>([]);
-    const [markets, setMarkets] = useState<Market[]>([]);
-    const [revisionFormulas, setRevisionFormulas] = useState<RevisionFormula[]>([]);
-    const [contracts, setContracts] = useState<Contract[]>([]);
+    const { 
+        clients, sites: allSites, activities, schedules, terms, markets, revisionFormulas, contracts, isLoading: isDataLoading 
+    } = useData();
 
     const [contract, setContract] = useState<Contract | null>(null);
     const [sites, setSites] = useState<Site[]>([]);
@@ -150,50 +145,7 @@ export default function EditContractPage() {
     });
 
     useEffect(() => {
-      async function fetchData() {
-        setIsLoading(true);
-        try {
-          const [
-            clientsData,
-            sitesData,
-            activitiesData,
-            schedulesData,
-            termsData,
-            marketsData,
-            revisionFormulasData,
-            contractsData,
-          ] = await Promise.all([
-            getClients(),
-            getSites(),
-            getActivities(),
-            getSchedules(),
-            getTerms(),
-            getMarkets(),
-            getRevisionFormulas(),
-            getContracts(),
-          ]);
-
-          setClients(clientsData);
-          setAllSites(sitesData);
-          setActivities(activitiesData);
-          setSchedules(schedulesData);
-          setTerms(termsData);
-          setMarkets(marketsData);
-          setRevisionFormulas(revisionFormulasData);
-          setContracts(contractsData);
-
-        } catch (error) {
-          toast({ title: "Erreur", description: "Impossible de charger les données nécessaires.", variant: "destructive" });
-        } finally {
-          setIsLoading(false);
-        }
-      }
-      fetchData();
-    }, [id, toast]);
-
-
-    useEffect(() => {
-        if (!id || isLoading) return;
+        if (!id || isDataLoading) return;
         
         const contractData = contracts.find(c => c.id === id);
 
@@ -218,9 +170,9 @@ export default function EditContractPage() {
             activityIds: contractData.activityIds,
             marketId: contractData.marketId || '',
             hasInterest: contractData.hasInterest,
-            revisionP1: contractData.revisionP1 ? { ...contractData.revisionP1, formulaId: contractData.revisionP1.formulaId || "", date: contractData.revisionP1.date ? new Date(contractData.revisionP1.date) : undefined } : { formulaId: '', date: undefined },
-            revisionP2: contractData.revisionP2 ? { ...contractData.revisionP2, formulaId: contractData.revisionP2.formulaId || "", date: contractData.revisionP2.date ? new Date(contractData.revisionP2.date) : undefined } : { formulaId: '', date: undefined },
-            revisionP3: contractData.revisionP3 ? { ...contractData.revisionP3, formulaId: contractData.revisionP3.formulaId || "", date: contractData.revisionP3.date ? new Date(contractData.revisionP3.date) : undefined } : { formulaId: '', date: undefined },
+            revisionP1: contractData.revisionP1 ? { ...contractData.revisionP1, formulaId: contractData.revisionP1.formulaId || "none", date: contractData.revisionP1.date ? new Date(contractData.revisionP1.date) : undefined } : { formulaId: 'none', date: undefined },
+            revisionP2: contractData.revisionP2 ? { ...contractData.revisionP2, formulaId: contractData.revisionP2.formulaId || "none", date: contractData.revisionP2.date ? new Date(contractData.revisionP2.date) : undefined } : { formulaId: 'none', date: undefined },
+            revisionP3: contractData.revisionP3 ? { ...contractData.revisionP3, formulaId: contractData.revisionP3.formulaId || "none", date: contractData.revisionP3.date ? new Date(contractData.revisionP3.date) : undefined } : { formulaId: 'none', date: undefined },
             monthlyBilling: contractData.monthlyBilling && contractData.monthlyBilling.length > 0 ? contractData.monthlyBilling : months.map(m => ({ month: m, date: 1, percentage: 0 })),
             heatingDays: contractData.heatingDays,
             baseDJU: contractData.baseDJU,
@@ -236,7 +188,7 @@ export default function EditContractPage() {
         const fetchedSites = allSites.filter(site => site.clientId === contractData.clientId);
         setSites(fetchedSites);
 
-    }, [id, isLoading, contracts, activities, allSites, toast, router, form]);
+    }, [id, isDataLoading, contracts, activities, allSites, toast, router, form]);
 
 
     const selectedClientId = form.watch("clientId");
@@ -250,10 +202,6 @@ export default function EditContractPage() {
         if (selectedClientId) {
             const fetchedSites = allSites.filter(site => site.clientId === selectedClientId);
             setSites(fetchedSites);
-            // This logic prevents resetting sites if client hasn't changed.
-            // if (contract?.clientId !== selectedClientId) {
-            //    form.setValue('siteIds', []);
-            // }
         } else {
             setSites([]);
         }
@@ -282,7 +230,13 @@ export default function EditContractPage() {
         try {
             const shareRates = data.shareRate ? { shareRateClient: data.shareRate[0], shareRateOperator: data.shareRate[1] } : {};
             
-            const contractData = { ...data, ...shareRates };
+            const contractData = { 
+                ...data, 
+                ...shareRates,
+                revisionP1: { ...data.revisionP1, formulaId: data.revisionP1?.formulaId === 'none' ? null : data.revisionP1?.formulaId },
+                revisionP2: { ...data.revisionP2, formulaId: data.revisionP2?.formulaId === 'none' ? null : data.revisionP2?.formulaId },
+                revisionP3: { ...data.revisionP3, formulaId: data.revisionP3?.formulaId === 'none' ? null : data.revisionP3?.formulaId },
+            };
             delete (contractData as any).shareRate;
 
             await updateContract(id, contractData as any);
@@ -319,14 +273,14 @@ export default function EditContractPage() {
             render={({ field }) => (
                 <FormItem>
                 <FormLabel>Formule de révision {code}</FormLabel>
-                <Select onValueChange={field.onChange} value={field.value ?? ""}>
+                <Select onValueChange={field.onChange} value={field.value ?? "none"}>
                     <FormControl>
                     <SelectTrigger>
                         <SelectValue placeholder="Sélectionnez une formule" />
                     </SelectTrigger>
                     </FormControl>
                     <SelectContent>
-                    <SelectItem value="">Aucune</SelectItem>
+                    <SelectItem value="none">Aucune</SelectItem>
                     {formulas.map((formula) => (
                         <SelectItem key={formula.id} value={formula.id}>
                         {formula.code} - {formula.formula}
@@ -351,7 +305,7 @@ export default function EditContractPage() {
                             variant={"outline"}
                             className={cn("w-full pl-3 text-left font-normal", !field.value && "text-muted-foreground")}
                         >
-                            {field.value ? (format(field.value, "PPP", { locale: fr })) : (<span>Choisir une date</span>)}
+                            {field.value ? (format(new Date(field.value), "PPP", { locale: fr })) : (<span>Choisir une date</span>)}
                             <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
                         </Button>
                         </FormControl>
@@ -368,7 +322,7 @@ export default function EditContractPage() {
         );
     }
 
-    if (isLoading) {
+    if (isDataLoading) {
         return <div className="flex justify-center items-center h-full"><Loader2 className="h-8 w-8 animate-spin" /></div>;
     }
 
@@ -488,7 +442,7 @@ export default function EditContractPage() {
                             )}
                             >
                             {field.value ? (
-                                format(field.value, "PPP", { locale: fr })
+                                format(new Date(field.value), "PPP", { locale: fr })
                             ) : (
                                 <span>Choisir une date</span>
                             )}
@@ -530,7 +484,7 @@ export default function EditContractPage() {
                             )}
                             >
                             {field.value ? (
-                                format(field.value, "PPP", { locale: fr })
+                                format(new Date(field.value), "PPP", { locale: fr })
                             ) : (
                                 <span>Choisir une date</span>
                             )}

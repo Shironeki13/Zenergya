@@ -232,9 +232,9 @@ export default function NewContractPage() {
             ...data,
             startDate: data.startDate.toISOString(),
             endDate: data.endDate.toISOString(),
-            revisionP1: data.revisionP1?.date ? { ...data.revisionP1, date: data.revisionP1.date.toISOString() } : undefined,
-            revisionP2: data.revisionP2?.date ? { ...data.revisionP2, date: data.revisionP2.date.toISOString() } : undefined,
-            revisionP3: data.revisionP3?.date ? { ...data.revisionP3, date: data.revisionP3.date.toISOString() } : undefined,
+            revisionP1: data.revisionP1?.date ? { ...data.revisionP1, formulaId: data.revisionP1.formulaId === 'none' ? null : data.revisionP1.formulaId, date: data.revisionP1.date.toISOString() } : { ...data.revisionP1, formulaId: data.revisionP1?.formulaId === 'none' ? null : data.revisionP1?.formulaId },
+            revisionP2: data.revisionP2?.date ? { ...data.revisionP2, formulaId: data.revisionP2.formulaId === 'none' ? null : data.revisionP2.formulaId, date: data.revisionP2.date.toISOString() } : { ...data.revisionP2, formulaId: data.revisionP2?.formulaId === 'none' ? null : data.revisionP2?.formulaId },
+            revisionP3: data.revisionP3?.date ? { ...data.revisionP3, formulaId: data.revisionP3.formulaId === 'none' ? null : data.revisionP3.formulaId, date: data.revisionP3.date.toISOString() } : { ...data.revisionP3, formulaId: data.revisionP3?.formulaId === 'none' ? null : data.revisionP3?.formulaId },
             clientName: selectedClient.name,
             ...shareRates,
         }
@@ -275,13 +275,14 @@ export default function NewContractPage() {
           render={({ field }) => (
             <FormItem>
               <FormLabel>Formule de révision {code}</FormLabel>
-              <Select onValueChange={field.onChange} defaultValue={field.value}>
+              <Select onValueChange={field.onChange} value={field.value ?? 'none'}>
                 <FormControl>
                   <SelectTrigger>
                     <SelectValue placeholder="Sélectionnez une formule" />
                   </SelectTrigger>
                 </FormControl>
                 <SelectContent>
+                  <SelectItem value="none">Aucune</SelectItem>
                   {formulas.map((formula) => (
                     <SelectItem key={formula.id} value={formula.id}>
                       {formula.code} - {formula.formula}
