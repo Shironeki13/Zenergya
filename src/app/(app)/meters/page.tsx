@@ -12,13 +12,14 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { PlusCircle, Edit, Trash2, BookOpen, Loader2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import { createMeter, updateMeter, deleteMeter, getMeterReadingsByMeter } from '@/services/firestore';
+import { createMeter, updateMeter, deleteMeter, getMeterReadingsByMeter, getMeters, getSites } from '@/services/firestore';
 import type { Meter, MeterReading, Site } from '@/lib/types';
 import { Badge } from '@/components/ui/badge';
-import { useData } from '@/context/data-context';
 
 export default function MetersPage() {
-  const { sites, meters, reloadData, isLoading } = useData();
+  const [sites, setSites] = useState<Site[]>([]);
+  const [meters, setMeters] = useState<Meter[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
   const { toast } = useToast();
 
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -40,6 +41,30 @@ export default function MetersPage() {
   const [selectedMeterForReadings, setSelectedMeterForReadings] = useState<Meter | null>(null);
   const [meterReadings, setMeterReadings] = useState<MeterReading[]>([]);
   const [isLoadingReadings, setIsLoadingReadings] = useState(false);
+
+  const reloadData = async () => {
+    try {
+        const metersData = await getMeters();
+        setMeters(metersData);
+    } catch (error) {
+        toast({ title: 'Erreur', description: 'Impossible de recharger les compteurs.', variant: 'destructive' });
+    }
+  };
+
+  useEffect(() => {
+    async function fetchData() {
+        try {
+            const [sitesData, metersData] = await Promise.all([getSites(), getMeters()]);
+            setSites(sitesData);
+            setMeters(metersData);
+        } catch (error) {
+            toast({ title: 'Erreur', description: 'Impossible de charger les données de la page.', variant: 'destructive' });
+        } finally {
+            setIsLoading(false);
+        }
+    }
+    fetchData();
+  }, [toast]);
 
 
   const resetForm = () => {
@@ -238,7 +263,7 @@ export default function MetersPage() {
                 <Select onValueChange={setSiteId} value={siteId} required>
                     <SelectTrigger><SelectValue placeholder="Sélectionner un site..." /></SelectTrigger>
                     <SelectContent>
-                        {sites.map(s => <SelectItem key={s.id} value={s.id}>{s.name} ({s.clientName})</SelectItem>)}
+                        {sites.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
                     </SelectContent>
                 </Select>
               </div>
@@ -308,5 +333,3 @@ export default function MetersPage() {
     </Card>
   );
 }
-
-    

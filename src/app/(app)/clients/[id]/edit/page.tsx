@@ -6,8 +6,8 @@ import { useRouter, useParams } from "next/navigation"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { useForm } from "react-hook-form"
 import * as z from "zod"
-import React from "react"
-import { ChevronLeft } from "lucide-react"
+import React, { useEffect, useState } from "react"
+import { ChevronLeft, Loader2 } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import {
@@ -22,13 +22,12 @@ import {
 import { Input } from "@/components/ui/input"
 import { useToast } from "@/hooks/use-toast"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { updateClient } from "@/services/firestore"
+import { updateClient, getClient, getTypologies } from "@/services/firestore"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { Switch } from "@/components/ui/switch"
 import type { Typology, Client } from "@/lib/types"
 import { Separator } from "@/components/ui/separator"
-import { useData } from "@/context/data-context"
 
 const clientFormSchema = z.object({
   name: z.string().min(2, "La raison sociale est requise."),
@@ -66,9 +65,10 @@ export default function EditClientPage() {
   const params = useParams();
   const id = params.id as string;
   const { toast } = useToast()
-  const { clients, typologies, reloadData, isLoading: isDataLoading } = useData();
   
   const [client, setClient] = React.useState<Client | null>(null);
+  const [typologies, setTypologies] = useState<Typology[]>([]);
+  const [isDataLoading, setIsDataLoading] = useState(true);
 
   const form = useForm<ClientFormValues>({
     resolver: zodResolver(clientFormSchema),
@@ -93,40 +93,51 @@ export default function EditClientPage() {
     },
   })
 
-  React.useEffect(() => {
-    if (!isDataLoading) {
-      const clientData = clients.find(c => c.id === id);
-      
-      if (!clientData) {
-          toast({ title: "Erreur", description: "Client non trouvé.", variant: "destructive" });
-          router.push('/clients');
-          return;
-      }
-      
-      setClient(clientData);
+  useEffect(() => {
+    if (!id) return;
+    async function fetchData() {
+        try {
+            const [clientData, typologiesData] = await Promise.all([
+                getClient(id),
+                getTypologies()
+            ]);
 
-      form.reset({
-          name: clientData.name,
-          address: clientData.address || "",
-          postalCode: clientData.postalCode || "",
-          city: clientData.city || "",
-          clientType: clientData.clientType,
-          typologyId: clientData.typologyId,
-          representedBy: clientData.representedBy || "",
-          externalCode: clientData.externalCode || "",
-          isBe: clientData.isBe,
-          beName: clientData.beName || "",
-          beEmail: clientData.beEmail || "",
-          bePhone: clientData.bePhone || "",
-          useChorus: clientData.useChorus,
-          siret: clientData.siret || "",
-          chorusServiceCode: clientData.chorusServiceCode || "",
-          chorusLegalCommitmentNumber: clientData.chorusLegalCommitmentNumber || "",
-          chorusMarketNumber: clientData.chorusMarketNumber || "",
-          invoicingType: clientData.invoicingType || "multi-site",
-      });
+            if (!clientData) {
+                toast({ title: "Erreur", description: "Client non trouvé.", variant: "destructive" });
+                router.push('/clients');
+                return;
+            }
+            setClient(clientData);
+            setTypologies(typologiesData);
+
+            form.reset({
+                name: clientData.name,
+                address: clientData.address || "",
+                postalCode: clientData.postalCode || "",
+                city: clientData.city || "",
+                clientType: clientData.clientType,
+                typologyId: clientData.typologyId,
+                representedBy: clientData.representedBy || "",
+                externalCode: clientData.externalCode || "",
+                isBe: clientData.isBe,
+                beName: clientData.beName || "",
+                beEmail: clientData.beEmail || "",
+                bePhone: clientData.bePhone || "",
+                useChorus: clientData.useChorus,
+                siret: clientData.siret || "",
+                chorusServiceCode: clientData.chorusServiceCode || "",
+                chorusLegalCommitmentNumber: clientData.chorusLegalCommitmentNumber || "",
+                chorusMarketNumber: clientData.chorusMarketNumber || "",
+                invoicingType: clientData.invoicingType || "multi-site",
+            });
+        } catch (error) {
+            toast({ title: "Erreur", description: "Impossible de charger les données du client.", variant: "destructive" });
+        } finally {
+            setIsDataLoading(false);
+        }
     }
-  }, [id, router, toast, form, clients, isDataLoading]);
+    fetchData();
+  }, [id, router, toast, form]);
 
 
   const watchTypologyId = form.watch("typologyId");
@@ -147,7 +158,6 @@ export default function EditClientPage() {
         title: "Client Mis à Jour",
         description: "Le client a été mis à jour avec succès.",
       });
-      await reloadData();
       router.push('/clients');
     } catch (error) {
       console.error("Échec de la mise à jour du client:", error);
@@ -160,7 +170,7 @@ export default function EditClientPage() {
   }
 
   if (isDataLoading || !client) {
-    return <div className="flex justify-center items-center h-full">Chargement...</div>;
+    return <div className="flex justify-center items-center h-full"><Loader2 className="h-8 w-8 animate-spin" /></div>;
   }
   
   return (
@@ -315,5 +325,3 @@ export default function EditClientPage() {
     </Card>
   )
 }
-
-    

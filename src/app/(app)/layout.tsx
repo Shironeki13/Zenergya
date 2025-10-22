@@ -1,5 +1,4 @@
 
-
 import Link from 'next/link';
 import {
   LayoutDashboard,
@@ -25,7 +24,6 @@ import {
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
 import { UserNav } from '@/components/user-nav';
 import { Logo } from '@/components/logo';
-import { DataProvider } from '@/context/data-context';
 
 export default function AppLayout({
   children,
@@ -45,7 +43,7 @@ export default function AppLayout({
   ];
 
   return (
-    <DataProvider>
+    
       <div className="grid min-h-screen w-full md:grid-cols-[220px_1fr] lg:grid-cols-[280px_1fr]">
         <div className="hidden border-r bg-card md:block">
           <div className="flex h-full max-h-screen flex-col gap-2">
@@ -145,6 +143,5 @@ export default function AppLayout({
           </main>
         </div>
       </div>
-    </DataProvider>
   );
 }

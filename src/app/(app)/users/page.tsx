@@ -11,9 +11,9 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Label } from "@/components/ui/label";
 import { PlusCircle, Trash2, Edit, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { useData } from '@/context/data-context';
 import type { User, Role } from "@/lib/types";
 import {
+  getUsers, getRoles,
   createUser, updateUser, deleteUser,
   createRole, updateRole, deleteRole,
 } from "@/services/firestore";
@@ -21,13 +21,33 @@ import {
 
 // Section pour les Rôles
 const RolesSection = () => {
-    const { roles, reloadData, isLoading } = useData();
+    const [roles, setRoles] = useState<Role[]>([]);
+    const [isLoading, setIsLoading] = useState(true);
     const { toast } = useToast();
+
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [dialogOpen, setDialogOpen] = useState(false);
     const [editingRole, setEditingRole] = useState<Role | null>(null);
     const [roleToDelete, setRoleToDelete] = useState<Role | null>(null);
     const [name, setName] = useState('');
+
+    const reloadData = async () => {
+        try {
+            const rolesData = await getRoles();
+            setRoles(rolesData);
+        } catch (error) {
+            toast({ title: "Erreur", description: "Impossible de recharger les rôles.", variant: "destructive" });
+        }
+    };
+    
+    useEffect(() => {
+        async function fetchData() {
+            setIsLoading(true);
+            await reloadData();
+            setIsLoading(false);
+        }
+        fetchData();
+    }, []);
     
     const resetForm = () => { setName(''); setEditingRole(null); };
 
@@ -135,8 +155,11 @@ const RolesSection = () => {
 
 // Section pour les Utilisateurs
 const UsersSection = () => {
-    const { users, roles, reloadData, isLoading } = useData();
+    const [users, setUsers] = useState<User[]>([]);
+    const [roles, setRoles] = useState<Role[]>([]);
+    const [isLoading, setIsLoading] = useState(true);
     const { toast } = useToast();
+    
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [dialogOpen, setDialogOpen] = useState(false);
     const [editingUser, setEditingUser] = useState<User | null>(null);
@@ -145,6 +168,25 @@ const UsersSection = () => {
     const [name, setName] = useState('');
     const [email, setEmail] = useState('');
     const [roleId, setRoleId] = useState('');
+
+    const reloadData = async () => {
+        try {
+            const [usersData, rolesData] = await Promise.all([getUsers(), getRoles()]);
+            setUsers(usersData);
+            setRoles(rolesData);
+        } catch (error) {
+            toast({ title: "Erreur", description: "Impossible de recharger les utilisateurs.", variant: "destructive" });
+        }
+    };
+    
+    useEffect(() => {
+        async function fetchData() {
+            setIsLoading(true);
+            await reloadData();
+            setIsLoading(false);
+        }
+        fetchData();
+    }, []);
 
     const resetForm = () => { setName(''); setEmail(''); setRoleId(''); setEditingUser(null); };
 

@@ -27,10 +27,41 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { useData } from '@/context/data-context';
+import { getClients, getTypologies } from '@/services/firestore';
+import { useEffect, useState, useMemo } from 'react';
+import type { Client, Typology } from '@/lib/types';
+
 
 export default function ClientsPage() {
-  const { clients, isLoading } = useData();
+  const [clients, setClients] = useState<Client[]>([]);
+  const [typologies, setTypologies] = useState<Typology[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    async function fetchData() {
+      try {
+        const [clientsData, typologiesData] = await Promise.all([
+          getClients(),
+          getTypologies(),
+        ]);
+        setClients(clientsData);
+        setTypologies(typologiesData);
+      } catch (error) {
+        console.error("Failed to fetch clients data:", error);
+      } finally {
+        setIsLoading(false);
+      }
+    }
+    fetchData();
+  }, []);
+
+  const clientsWithTypology = useMemo(() => {
+    const typologyMap = new Map(typologies.map(t => [t.id, t.name]));
+    return clients.map(client => ({
+      ...client,
+      typologyName: typologyMap.get(client.typologyId) || 'N/A',
+    }));
+  }, [clients, typologies]);
   
   return (
     <Card>
@@ -70,7 +101,7 @@ export default function ClientsPage() {
                     </TableCell>
                 </TableRow>
             ) : clients.length > 0 ? (
-                clients.map((client) => (
+                clientsWithTypology.map((client) => (
                 <TableRow key={client.id}>
                     <TableCell className="font-medium">{client.name}</TableCell>
                     <TableCell>
@@ -110,5 +141,3 @@ export default function ClientsPage() {
     </Card>
   );
 }
-
-    

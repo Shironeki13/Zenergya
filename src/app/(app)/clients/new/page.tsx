@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { useForm } from "react-hook-form"
 import * as z from "zod"
-import React from "react"
+import React, { useEffect, useState, useMemo } from "react"
 import { ChevronLeft, Loader2 } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
@@ -22,13 +22,12 @@ import {
 import { Input } from "@/components/ui/input"
 import { useToast } from "@/hooks/use-toast"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { createClient } from "@/services/firestore"
+import { createClient, getTypologies } from "@/services/firestore"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { Switch } from "@/components/ui/switch"
 import { Separator } from "@/components/ui/separator"
 import type { Typology } from "@/lib/types"
-import { useData } from "@/context/data-context"
 
 
 const clientFormSchema = z.object({
@@ -65,7 +64,22 @@ type ClientFormValues = z.infer<typeof clientFormSchema>
 export default function NewClientPage() {
   const router = useRouter();
   const { toast } = useToast()
-  const { typologies, isLoading: isDataLoading, reloadData } = useData();
+  const [typologies, setTypologies] = useState<Typology[]>([]);
+  const [isDataLoading, setIsDataLoading] = useState(true);
+
+  useEffect(() => {
+    async function fetchData() {
+        try {
+            const typologiesData = await getTypologies();
+            setTypologies(typologiesData);
+        } catch (error) {
+            toast({ title: "Erreur", description: "Impossible de charger les typologies.", variant: "destructive" });
+        } finally {
+            setIsDataLoading(false);
+        }
+    }
+    fetchData();
+  }, [toast]);
 
   const form = useForm<ClientFormValues>({
     resolver: zodResolver(clientFormSchema),
@@ -107,7 +121,6 @@ export default function NewClientPage() {
         title: "Client Créé",
         description: "Le nouveau client a été créé avec succès.",
       });
-      await reloadData();
       router.push('/clients');
     } catch (error) {
       console.error("Échec de la création du client:", error);
@@ -277,5 +290,3 @@ export default function NewClientPage() {
     </Card>
   )
 }
-
-    

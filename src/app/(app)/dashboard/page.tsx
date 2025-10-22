@@ -28,11 +28,33 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import type { InvoiceStatus } from '@/lib/types';
-import { useData } from '@/context/data-context';
+import type { InvoiceStatus, Invoice, Contract } from '@/lib/types';
+import { getContracts, getInvoices } from '@/services/firestore';
+import { useEffect, useState } from 'react';
 
 export default function Dashboard() {
-  const { contracts, invoices, isLoading } = useData();
+  const [contracts, setContracts] = useState<Contract[]>([]);
+  const [invoices, setInvoices] = useState<Invoice[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  
+  useEffect(() => {
+    async function fetchData() {
+      try {
+        const [contractsData, invoicesData] = await Promise.all([
+          getContracts(),
+          getInvoices(),
+        ]);
+        setContracts(contractsData);
+        setInvoices(invoicesData);
+      } catch (error) {
+        console.error("Failed to fetch dashboard data:", error);
+      } finally {
+        setIsLoading(false);
+      }
+    }
+    fetchData();
+  }, []);
+
 
   if (isLoading) {
     return (
@@ -171,5 +193,3 @@ export default function Dashboard() {
     </>
   );
 }
-
-    

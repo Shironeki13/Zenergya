@@ -1,7 +1,7 @@
 
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { MoreHorizontal, PlusCircle, Loader2 } from 'lucide-react';
@@ -33,14 +33,16 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
-import { updateSite } from '@/services/firestore';
-import type { Site, Client } from '@/lib/types';
+import { updateSite, getSites, getClients, getActivities } from '@/services/firestore';
+import type { Site, Client, Activity } from '@/lib/types';
 import { useToast } from '@/hooks/use-toast';
-import { useData } from '@/context/data-context';
 
 
 export default function SitesPage() {
-  const { sites, clients, activities, isLoading, reloadData } = useData();
+  const [sites, setSites] = useState<Site[]>([]);
+  const [clients, setClients] = useState<Client[]>([]);
+  const [activities, setActivities] = useState<Activity[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
 
   const [addSiteDialogOpen, setAddSiteDialogOpen] = useState(false);
   const [editSiteDialogOpen, setEditSiteDialogOpen] = useState(false);
@@ -59,6 +61,35 @@ export default function SitesPage() {
   const [siteCity, setSiteCity] = useState('');
   const [siteActivityIds, setSiteActivityIds] = useState<string[]>([]);
   const [siteAmounts, setSiteAmounts] = useState<Record<string, number>>({});
+
+  const reloadData = async () => {
+    try {
+      const sitesData = await getSites();
+      setSites(sitesData);
+    } catch (error) {
+      console.error("Failed to reload sites:", error);
+    }
+  };
+
+  useEffect(() => {
+    async function fetchData() {
+        try {
+            const [sitesData, clientsData, activitiesData] = await Promise.all([
+                getSites(),
+                getClients(),
+                getActivities(),
+            ]);
+            setSites(sitesData);
+            setClients(clientsData);
+            setActivities(activitiesData);
+        } catch (error) {
+            console.error("Failed to fetch sites page data:", error);
+        } finally {
+            setIsLoading(false);
+        }
+    }
+    fetchData();
+  }, []);
   
   const handleGoToCreateSite = () => {
     if (selectedClientId) {
@@ -206,7 +237,7 @@ export default function SitesPage() {
                 </TableCell>
               </TableRow>
             ) : sitesWithClientNames.length > 0 ? (
-              sitesWithClientNames.map((site: Site) => (
+              sitesWithClientNames.map((site: Site & { clientName: string }) => (
                 <TableRow key={site.id}>
                   <TableCell className="font-medium">{site.name}</TableCell>
                   <TableCell>{site.clientName}</TableCell>
@@ -328,5 +359,3 @@ export default function SitesPage() {
     </Card>
   );
 }
-
-    

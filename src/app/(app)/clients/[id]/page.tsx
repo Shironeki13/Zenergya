@@ -11,19 +11,19 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
 import { ChevronLeft, PlusCircle, Edit, Trash2, Loader2 } from 'lucide-react';
-import { createSite, updateSite, deleteSite } from '@/services/firestore';
+import { createSite, updateSite, deleteSite, getClient, getSitesByClient, getActivities } from '@/services/firestore';
 import type { Client, Site, Activity } from '@/lib/types';
 import { useToast } from '@/hooks/use-toast';
-import { useData } from '@/context/data-context';
 
 export default function ClientDetailPage() {
   const params = useParams();
   const id = params.id as string;
   const { toast } = useToast();
-  const { clients, sites: allSites, activities, reloadData, isLoading: isDataLoading } = useData();
-
+  
   const [client, setClient] = useState<Client | null>(null);
   const [sites, setSites] = useState<Site[]>([]);
+  const [activities, setActivities] = useState<Activity[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
   
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingSite, setEditingSite] = useState<Site | null>(null);
@@ -38,18 +38,43 @@ export default function ClientDetailPage() {
   const [siteActivityIds, setSiteActivityIds] = useState<string[]>([]);
   const [siteAmounts, setSiteAmounts] = useState<Record<string, number>>({});
 
-  useEffect(() => {
-    if (!isDataLoading) {
-      const currentClient = clients.find(c => c.id === id);
-      if (!currentClient) {
-        notFound();
-        return;
-      }
-      setClient(currentClient);
-      const clientSites = allSites.filter(s => s.clientId === id);
-      setSites(clientSites);
+  const reloadData = useCallback(async () => {
+    try {
+        const clientSites = await getSitesByClient(id);
+        setSites(clientSites);
+    } catch (error) {
+        console.error("Failed to reload sites", error);
+        toast({ title: "Erreur", description: "Impossible de rafraîchir la liste des sites.", variant: "destructive" });
     }
-  }, [id, clients, allSites, isDataLoading]);
+  }, [id, toast]);
+
+
+  useEffect(() => {
+    async function fetchData() {
+        setIsLoading(true);
+        try {
+            const [clientData, clientSites, activitiesData] = await Promise.all([
+                getClient(id),
+                getSitesByClient(id),
+                getActivities(),
+            ]);
+
+            if (!clientData) {
+                notFound();
+                return;
+            }
+            setClient(clientData);
+            setSites(clientSites);
+            setActivities(activitiesData);
+        } catch (error) {
+            console.error("Failed to fetch data for client detail page", error);
+            toast({ title: "Erreur", description: "Impossible de charger les données de la page.", variant: "destructive" });
+        } finally {
+            setIsLoading(false);
+        }
+    }
+    fetchData();
+  }, [id, toast]);
 
 
   const resetForm = () => {
@@ -130,7 +155,7 @@ export default function ClientDetailPage() {
       );
   };
 
-  if (isDataLoading) {
+  if (isLoading) {
     return <div className="flex items-center justify-center h-full"><Loader2 className="h-8 w-8 animate-spin" /></div>;
   }
 
@@ -311,5 +336,3 @@ export default function ClientDetailPage() {
     </div>
   );
 }
-
-    
