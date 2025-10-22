@@ -10,24 +10,23 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger, DialogClose } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
-import { PlusCircle, Trash2, Edit, UploadCloud } from "lucide-react";
+import { PlusCircle, Trash2, Edit, UploadCloud, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Textarea } from '@/components/ui/textarea';
-import { useData } from '@/context/data-context';
 import type { Company, Agency, Sector, Activity, Schedule, Term, VatRate, Typology, RevisionFormula, PaymentTerm, PricingRule, Market } from "@/lib/types";
 import { 
-  createCompany, updateCompany, deleteCompany,
-  createAgency, updateAgency, deleteAgency,
-  createSector, updateSector, deleteSector,
-  createActivity, updateActivity, deleteActivity,
-  createSchedule, updateSchedule, deleteSchedule,
-  createTerm, updateTerm, deleteTerm,
-  createTypology, updateTypology, deleteTypology,
-  createVatRate, updateVatRate, deleteVatRate,
-  createRevisionFormula, updateRevisionFormula, deleteRevisionFormula,
-  createPaymentTerm, updatePaymentTerm, deletePaymentTerm,
-  createPricingRule, updatePricingRule, deletePricingRule,
-  createMarket, updateMarket, deleteMarket
+  getCompanies, createCompany, updateCompany, deleteCompany,
+  getAgencies, createAgency, updateAgency, deleteAgency,
+  getSectors, createSector, updateSector, deleteSector,
+  getActivities, createActivity, updateActivity, deleteActivity,
+  getSchedules, createSchedule, updateSchedule, deleteSchedule,
+  getTerms, createTerm, updateTerm, deleteTerm,
+  getTypologies, createTypology, updateTypology, deleteTypology,
+  getVatRates, createVatRate, updateVatRate, deleteVatRate,
+  getRevisionFormulas, createRevisionFormula, updateRevisionFormula, deleteRevisionFormula,
+  getPaymentTerms, createPaymentTerm, updatePaymentTerm, deletePaymentTerm,
+  getPricingRules, createPricingRule, updatePricingRule, deletePricingRule,
+  getMarkets, createMarket, updateMarket, deleteMarket
 } from "@/services/firestore";
 
 
@@ -41,9 +40,10 @@ const fileToDataUrl = (file: File): Promise<string> => {
 };
 
 // Section pour les Sociétés
-const CompaniesSection = () => {
-    const { companies, reloadData, isLoading } = useData();
+const CompaniesSection = ({ onCompaniesUpdate }: { onCompaniesUpdate: (companies: Company[]) => void }) => {
     const { toast } = useToast();
+    const [companies, setCompanies] = useState<Company[]>([]);
+    const [isLoading, setIsLoading] = useState(true);
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [dialogOpen, setDialogOpen] = useState(false);
     const [editingCompany, setEditingCompany] = useState<Company | null>(null);
@@ -60,6 +60,23 @@ const CompaniesSection = () => {
     const [logoFile, setLogoFile] = useState<File | null>(null);
     const [logoPreview, setLogoPreview] = useState<string | null>(null);
     
+    const reloadData = useCallback(async () => {
+        setIsLoading(true);
+        try {
+            const data = await getCompanies();
+            setCompanies(data);
+            onCompaniesUpdate(data);
+        } catch (error) {
+            toast({ title: "Erreur", description: "Impossible de charger les sociétés.", variant: "destructive" });
+        } finally {
+            setIsLoading(false);
+        }
+    }, [toast, onCompaniesUpdate]);
+
+    useEffect(() => {
+        reloadData();
+    }, [reloadData]);
+
     useEffect(() => {
         if (siret && siret.length >= 9) {
             setSiren(siret.substring(0, 9));
@@ -180,7 +197,7 @@ const CompaniesSection = () => {
             </TableHeader>
             <TableBody>
               {isLoading ? (
-                <TableRow><TableCell colSpan={6} className="text-center">Chargement...</TableCell></TableRow>
+                <TableRow><TableCell colSpan={6} className="text-center h-24"><Loader2 className="mx-auto h-8 w-8 animate-spin text-muted-foreground" /></TableCell></TableRow>
               ) : companies.length === 0 ? (
                 <TableRow><TableCell colSpan={6} className="text-center">Aucune société trouvée.</TableCell></TableRow>
               ) : (
@@ -302,9 +319,10 @@ const CompaniesSection = () => {
 
 
 // Section pour les Agences
-const AgenciesSection = () => {
-    const { agencies, companies, reloadData, isLoading } = useData();
+const AgenciesSection = ({ companies, onAgenciesUpdate }: { companies: Company[], onAgenciesUpdate: (agencies: Agency[]) => void }) => {
     const { toast } = useToast();
+    const [agencies, setAgencies] = useState<Agency[]>([]);
+    const [isLoading, setIsLoading] = useState(true);
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [dialogOpen, setDialogOpen] = useState(false);
     const [editingAgency, setEditingAgency] = useState<Agency | null>(null);
@@ -313,6 +331,25 @@ const AgenciesSection = () => {
     const [name, setName] = useState('');
     const [companyId, setCompanyId] = useState('');
     
+    const reloadData = useCallback(async () => {
+        setIsLoading(true);
+        try {
+            const data = await getAgencies();
+            setAgencies(data);
+            onAgenciesUpdate(data);
+        } catch (error) {
+            toast({ title: "Erreur", description: "Impossible de charger les agences.", variant: "destructive" });
+        } finally {
+            setIsLoading(false);
+        }
+    }, [toast, onAgenciesUpdate]);
+    
+    useEffect(() => {
+        if (companies.length > 0) {
+            reloadData();
+        }
+    }, [companies, reloadData]);
+
     const resetForm = () => { setName(''); setCompanyId(''); setEditingAgency(null); };
 
     const handleOpenDialog = (agency: Agency | null = null) => {
@@ -392,7 +429,7 @@ const AgenciesSection = () => {
                             </TableRow>
                         </TableHeader>
                         <TableBody>
-                            {isLoading ? ( <TableRow><TableCell colSpan={3} className="text-center">Chargement...</TableCell></TableRow>
+                            {isLoading ? ( <TableRow><TableCell colSpan={3} className="text-center h-24"><Loader2 className="mx-auto h-8 w-8 animate-spin text-muted-foreground" /></TableCell></TableRow>
                             ) : agenciesWithDetails.length === 0 ? ( <TableRow><TableCell colSpan={3} className="text-center">Aucune agence.</TableCell></TableRow>
                             ) : (
                                 agenciesWithDetails.map(agency => (
@@ -454,9 +491,10 @@ const AgenciesSection = () => {
 
 
 // Section pour les Secteurs
-const SectorsSection = () => {
-    const { sectors, agencies, reloadData, isLoading } = useData();
+const SectorsSection = ({ agencies }: { agencies: Agency[] }) => {
     const { toast } = useToast();
+    const [sectors, setSectors] = useState<Sector[]>([]);
+    const [isLoading, setIsLoading] = useState(true);
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [dialogOpen, setDialogOpen] = useState(false);
     const [editingSector, setEditingSector] = useState<Sector | null>(null);
@@ -464,6 +502,24 @@ const SectorsSection = () => {
 
     const [name, setName] = useState('');
     const [agencyId, setAgencyId] = useState('');
+
+    const reloadData = useCallback(async () => {
+        setIsLoading(true);
+        try {
+            const data = await getSectors();
+            setSectors(data);
+        } catch (error) {
+            toast({ title: "Erreur", description: "Impossible de charger les secteurs.", variant: "destructive" });
+        } finally {
+            setIsLoading(false);
+        }
+    }, [toast]);
+    
+    useEffect(() => {
+        if (agencies.length > 0) {
+            reloadData();
+        }
+    }, [agencies, reloadData]);
     
     const resetForm = () => { setName(''); setAgencyId(''); setEditingSector(null); };
 
@@ -545,7 +601,7 @@ const SectorsSection = () => {
                             </TableRow>
                         </TableHeader>
                         <TableBody>
-                            {isLoading ? ( <TableRow><TableCell colSpan={3} className="text-center">Chargement...</TableCell></TableRow>
+                            {isLoading ? ( <TableRow><TableCell colSpan={3} className="text-center h-24"><Loader2 className="mx-auto h-8 w-8 animate-spin text-muted-foreground" /></TableCell></TableRow>
                             ) : sectorsWithDetails.length === 0 ? ( <TableRow><TableCell colSpan={3} className="text-center">Aucun secteur.</TableCell></TableRow>
                             ) : (
                                 sectorsWithDetails.map(sector => (
@@ -598,15 +654,33 @@ const SectorsSection = () => {
 
 
 // Section pour les Activités
-const ActivitiesSection = () => {
-    const { activities, reloadData, isLoading } = useData();
+const ActivitiesSection = ({ onActivitiesUpdate }: { onActivitiesUpdate: (activities: Activity[]) => void }) => {
     const { toast } = useToast();
+    const [activities, setActivities] = useState<Activity[]>([]);
+    const [isLoading, setIsLoading] = useState(true);
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [dialogOpen, setDialogOpen] = useState(false);
     const [editingActivity, setEditingActivity] = useState<Activity | null>(null);
     const [activityToDelete, setActivityToDelete] = useState<Activity | null>(null);
     const [code, setCode] = useState('');
     const [label, setLabel] = useState('');
+
+    const reloadData = useCallback(async () => {
+        setIsLoading(true);
+        try {
+            const data = await getActivities();
+            setActivities(data);
+            onActivitiesUpdate(data);
+        } catch (error) {
+            toast({ title: "Erreur", description: "Impossible de charger les activités.", variant: "destructive" });
+        } finally {
+            setIsLoading(false);
+        }
+    }, [toast, onActivitiesUpdate]);
+
+    useEffect(() => {
+        reloadData();
+    }, [reloadData]);
 
     const resetForm = () => { setCode(''); setLabel(''); setEditingActivity(null); };
 
@@ -669,7 +743,7 @@ const ActivitiesSection = () => {
                     <Table>
                         <TableHeader><TableRow><TableHead className="w-[150px]">Code</TableHead><TableHead>Libellé</TableHead><TableHead className="w-[100px] text-right">Actions</TableHead></TableRow></TableHeader>
                         <TableBody>
-                            {isLoading ? ( <TableRow><TableCell colSpan={3} className="text-center">Chargement...</TableCell></TableRow>
+                            {isLoading ? ( <TableRow><TableCell colSpan={3} className="text-center h-24"><Loader2 className="mx-auto h-8 w-8 animate-spin text-muted-foreground" /></TableCell></TableRow>
                             ) : activities.length === 0 ? ( <TableRow><TableCell colSpan={3} className="text-center">Aucune activité.</TableCell></TableRow>
                             ) : (
                                 activities.map(activity => (
@@ -722,9 +796,10 @@ const ActivitiesSection = () => {
 };
 
 // Section Règles de prix
-const PricingRulesSection = () => {
-    const { pricingRules, activities, reloadData, isLoading } = useData();
+const PricingRulesSection = ({ activities }: { activities: Activity[] }) => {
     const { toast } = useToast();
+    const [pricingRules, setPricingRules] = useState<PricingRule[]>([]);
+    const [isLoading, setIsLoading] = useState(true);
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [dialogOpen, setDialogOpen] = useState(false);
     const [editingRule, setEditingRule] = useState<PricingRule | null>(null);
@@ -733,6 +808,24 @@ const PricingRulesSection = () => {
     const [activityId, setActivityId] = useState('');
     const [rule, setRule] = useState('');
     const [description, setDescription] = useState('');
+
+    const reloadData = useCallback(async () => {
+        setIsLoading(true);
+        try {
+            const data = await getPricingRules();
+            setPricingRules(data);
+        } catch (error) {
+            toast({ title: "Erreur", description: "Impossible de charger les règles de prix.", variant: "destructive" });
+        } finally {
+            setIsLoading(false);
+        }
+    }, [toast]);
+    
+    useEffect(() => {
+        if (activities.length > 0) {
+            reloadData();
+        }
+    }, [activities, reloadData]);
 
     const resetForm = () => { setActivityId(''); setRule(''); setDescription(''); setEditingRule(null); };
 
@@ -817,7 +910,7 @@ const PricingRulesSection = () => {
                             </TableRow>
                         </TableHeader>
                         <TableBody>
-                            {isLoading ? ( <TableRow><TableCell colSpan={4} className="text-center">Chargement...</TableCell></TableRow>
+                            {isLoading ? ( <TableRow><TableCell colSpan={4} className="text-center h-24"><Loader2 className="mx-auto h-8 w-8 animate-spin text-muted-foreground" /></TableCell></TableRow>
                             ) : rulesWithDetails.length === 0 ? ( <TableRow><TableCell colSpan={4} className="text-center">Aucune règle de prix.</TableCell></TableRow>
                             ) : (
                                 rulesWithDetails.map(item => (
@@ -881,8 +974,9 @@ const PricingRulesSection = () => {
 
 // Section Marchés
 const MarketsSection = () => {
-    const { markets, reloadData, isLoading } = useData();
     const { toast } = useToast();
+    const [markets, setMarkets] = useState<Market[]>([]);
+    const [isLoading, setIsLoading] = useState(true);
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [dialogOpen, setDialogOpen] = useState(false);
     const [editingItem, setEditingItem] = useState<Market | null>(null);
@@ -890,6 +984,22 @@ const MarketsSection = () => {
     const [code, setCode] = useState('');
     const [label, setLabel] = useState('');
     const [description, setDescription] = useState('');
+
+    const reloadData = useCallback(async () => {
+        setIsLoading(true);
+        try {
+            const data = await getMarkets();
+            setMarkets(data);
+        } catch (error) {
+            toast({ title: "Erreur", description: "Impossible de charger les marchés.", variant: "destructive" });
+        } finally {
+            setIsLoading(false);
+        }
+    }, [toast]);
+
+    useEffect(() => {
+        reloadData();
+    }, [reloadData]);
 
     const resetForm = () => { setCode(''); setLabel(''); setDescription(''); setEditingItem(null); };
 
@@ -954,7 +1064,7 @@ const MarketsSection = () => {
                     <Table>
                         <TableHeader><TableRow><TableHead className="w-[150px]">Code</TableHead><TableHead>Libellé</TableHead><TableHead>Description</TableHead><TableHead className="w-[100px] text-right">Actions</TableHead></TableRow></TableHeader>
                         <TableBody>
-                            {isLoading ? ( <TableRow><TableCell colSpan={4} className="text-center">Chargement...</TableCell></TableRow>
+                            {isLoading ? ( <TableRow><TableCell colSpan={4} className="text-center h-24"><Loader2 className="mx-auto h-8 w-8 animate-spin text-muted-foreground" /></TableCell></TableRow>
                             ) : markets.length === 0 ? ( <TableRow><TableCell colSpan={4} className="text-center">Aucun marché.</TableCell></TableRow>
                             ) : (
                                 markets.map(item => (
@@ -1014,14 +1124,31 @@ const MarketsSection = () => {
 
 // Section Taux de TVA
 const VatRatesSection = () => {
-    const { vatRates, reloadData, isLoading } = useData();
     const { toast } = useToast();
+    const [vatRates, setVatRates] = useState<VatRate[]>([]);
+    const [isLoading, setIsLoading] = useState(true);
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [dialogOpen, setDialogOpen] = useState(false);
     const [editingVatRate, setEditingVatRate] = useState<VatRate | null>(null);
     const [vatRateToDelete, setVatRateToDelete] = useState<VatRate | null>(null);
     const [code, setCode] = useState('');
     const [rate, setRate] = useState<number | string>('');
+    
+    const reloadData = useCallback(async () => {
+        setIsLoading(true);
+        try {
+            const data = await getVatRates();
+            setVatRates(data);
+        } catch (error) {
+            toast({ title: "Erreur", description: "Impossible de charger les taux de TVA.", variant: "destructive" });
+        } finally {
+            setIsLoading(false);
+        }
+    }, [toast]);
+    
+    useEffect(() => {
+        reloadData();
+    }, [reloadData]);
 
     const resetForm = () => { setCode(''); setRate(''); setEditingVatRate(null); };
 
@@ -1091,7 +1218,7 @@ const VatRatesSection = () => {
                           </TableRow>
                         </TableHeader>
                         <TableBody>
-                            {isLoading ? ( <TableRow><TableCell colSpan={3} className="text-center">Chargement...</TableCell></TableRow>
+                            {isLoading ? ( <TableRow><TableCell colSpan={3} className="text-center h-24"><Loader2 className="mx-auto h-8 w-8 animate-spin text-muted-foreground" /></TableCell></TableRow>
                             ) : vatRates.length === 0 ? ( <TableRow><TableCell colSpan={3} className="text-center">Aucun taux de TVA.</TableCell></TableRow>
                             ) : (
                                 vatRates.map(item => (
@@ -1144,9 +1271,10 @@ const VatRatesSection = () => {
 };
 
 // Section Formules de révision
-const RevisionFormulasSection = () => {
-    const { revisionFormulas, activities, reloadData, isLoading } = useData();
+const RevisionFormulasSection = ({ activities }: { activities: Activity[] }) => {
     const { toast } = useToast();
+    const [revisionFormulas, setRevisionFormulas] = useState<RevisionFormula[]>([]);
+    const [isLoading, setIsLoading] = useState(true);
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [dialogOpen, setDialogOpen] = useState(false);
     const [editingItem, setEditingItem] = useState<RevisionFormula | null>(null);
@@ -1154,6 +1282,24 @@ const RevisionFormulasSection = () => {
     const [code, setCode] = useState('');
     const [formula, setFormula] = useState('');
     const [activityId, setActivityId] = useState('');
+
+    const reloadData = useCallback(async () => {
+        setIsLoading(true);
+        try {
+            const data = await getRevisionFormulas();
+            setRevisionFormulas(data);
+        } catch (error) {
+            toast({ title: "Erreur", description: "Impossible de charger les formules.", variant: "destructive" });
+        } finally {
+            setIsLoading(false);
+        }
+    }, [toast]);
+    
+    useEffect(() => {
+        if (activities.length > 0) {
+            reloadData();
+        }
+    }, [activities, reloadData]);
 
     const resetForm = () => { setCode(''); setFormula(''); setActivityId(''); setEditingItem(null); };
 
@@ -1214,7 +1360,7 @@ const RevisionFormulasSection = () => {
                     <Table>
                         <TableHeader><TableRow><TableHead>Code</TableHead><TableHead>Activité</TableHead><TableHead>Formule</TableHead><TableHead className="w-[100px] text-right">Actions</TableHead></TableRow></TableHeader>
                         <TableBody>
-                            {isLoading ? (<TableRow><TableCell colSpan={4} className="text-center">Chargement...</TableCell></TableRow>) 
+                            {isLoading ? (<TableRow><TableCell colSpan={4} className="text-center h-24"><Loader2 className="mx-auto h-8 w-8 animate-spin text-muted-foreground" /></TableCell></TableRow>) 
                             : formulasWithDetails.length === 0 ? (<TableRow><TableCell colSpan={4} className="text-center">Aucune formule.</TableCell></TableRow>) 
                             : (formulasWithDetails.map(item => (
                                 <TableRow key={item.id}>
@@ -1263,14 +1409,31 @@ const RevisionFormulasSection = () => {
 
 // Section Règlements
 const PaymentTermsSection = () => {
-    const { paymentTerms, reloadData, isLoading } = useData();
     const { toast } = useToast();
+    const [paymentTerms, setPaymentTerms] = useState<PaymentTerm[]>([]);
+    const [isLoading, setIsLoading] = useState(true);
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [dialogOpen, setDialogOpen] = useState(false);
     const [editingItem, setEditingItem] = useState<PaymentTerm | null>(null);
     const [itemToDelete, setItemToDelete] = useState<PaymentTerm | null>(null);
     const [code, setCode] = useState('');
     const [deadline, setDeadline] = useState('');
+
+    const reloadData = useCallback(async () => {
+        setIsLoading(true);
+        try {
+            const data = await getPaymentTerms();
+            setPaymentTerms(data);
+        } catch (error) {
+            toast({ title: "Erreur", description: "Impossible de charger les règlements.", variant: "destructive" });
+        } finally {
+            setIsLoading(false);
+        }
+    }, [toast]);
+
+    useEffect(() => {
+        reloadData();
+    }, [reloadData]);
 
     const resetForm = () => { setCode(''); setDeadline(''); setEditingItem(null); };
 
@@ -1321,7 +1484,7 @@ const PaymentTermsSection = () => {
                     <Table>
                         <TableHeader><TableRow><TableHead>Code</TableHead><TableHead>Échéance</TableHead><TableHead className="w-[100px] text-right">Actions</TableHead></TableRow></TableHeader>
                         <TableBody>
-                            {isLoading ? (<TableRow><TableCell colSpan={3} className="text-center">Chargement...</TableCell></TableRow>) 
+                            {isLoading ? (<TableRow><TableCell colSpan={3} className="text-center h-24"><Loader2 className="mx-auto h-8 w-8 animate-spin text-muted-foreground" /></TableCell></TableRow>) 
                             : paymentTerms.length === 0 ? (<TableRow><TableCell colSpan={3} className="text-center">Aucun règlement.</TableCell></TableRow>) 
                             : (paymentTerms.map(item => (
                                 <TableRow key={item.id}>
@@ -1363,29 +1526,43 @@ const SimpleCrudSection = ({
   title,
   description,
   dataType,
-  items,
+  getData,
   createItem,
   updateItem,
   deleteItem,
-  isLoading,
-  reloadData
 }: {
   title: string;
   description: string;
   dataType: "schedule" | "term" | "typology";
-  items: { id: string; name: string }[];
+  getData: () => Promise<any[]>;
   createItem: (name: string) => Promise<any>;
   updateItem: (id: string, name: string) => Promise<void>;
   deleteItem: (id: string) => Promise<void>;
-  isLoading: boolean;
-  reloadData: () => Promise<void>;
 }) => {
     const { toast } = useToast();
+    const [items, setItems] = useState<{id: string; name: string}[]>([]);
+    const [isLoading, setIsLoading] = useState(true);
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [dialogOpen, setDialogOpen] = useState(false);
     const [editingItem, setEditingItem] = useState<{ id: string; name: string } | null>(null);
     const [itemToDelete, setItemToDelete] = useState<{ id: string; name: string } | null>(null);
     const [name, setName] = useState('');
+
+    const reloadData = useCallback(async () => {
+        setIsLoading(true);
+        try {
+            const data = await getData();
+            setItems(data);
+        } catch (error) {
+             toast({ title: "Erreur", description: `Impossible de charger: ${title}.`, variant: "destructive" });
+        } finally {
+            setIsLoading(false);
+        }
+    }, [getData, title, toast]);
+
+    useEffect(() => {
+        reloadData();
+    }, [reloadData]);
 
     const resetForm = () => { setName(''); setEditingItem(null); };
 
@@ -1447,7 +1624,7 @@ const SimpleCrudSection = ({
                     <Table>
                         <TableHeader><TableRow><TableHead>Nom</TableHead><TableHead className="w-[100px] text-right">Actions</TableHead></TableRow></TableHeader>
                         <TableBody>
-                            {isLoading ? ( <TableRow><TableCell colSpan={2} className="text-center">Chargement...</TableCell></TableRow>
+                            {isLoading ? ( <TableRow><TableCell colSpan={2} className="text-center h-24"><Loader2 className="mx-auto h-8 w-8 animate-spin text-muted-foreground" /></TableCell></TableRow>
                             ) : items.length === 0 ? ( <TableRow><TableCell colSpan={2} className="text-center">Aucun élément.</TableCell></TableRow>
                             ) : (
                                 items.map(item => (
@@ -1493,97 +1670,94 @@ const SimpleCrudSection = ({
 
 
 export default function SettingsPage() {
-  const { typologies, schedules, terms, isLoading, reloadData } = useData();
-  return (
-    <div className="space-y-6">
-       <div>
-        <h1 className="text-lg font-medium">Paramétrage</h1>
-        <p className="text-sm text-muted-foreground">
-          Configurez les entités de votre organisation.
-        </p>
-      </div>
-      <Tabs defaultValue="companies" className="w-full">
-        <TabsList className="flex-wrap h-auto justify-start">
-          <TabsTrigger value="companies">Sociétés</TabsTrigger>
-          <TabsTrigger value="agencies">Agences</TabsTrigger>
-          <TabsTrigger value="sectors">Secteurs</TabsTrigger>
-          <TabsTrigger value="activities">Activités</TabsTrigger>
-          <TabsTrigger value="pricing_rules">Règles de prix</TabsTrigger>
-          <TabsTrigger value="markets">Marchés</TabsTrigger>
-          <TabsTrigger value="typologies">Typologies</TabsTrigger>
-          <TabsTrigger value="schedules">Échéanciers</TabsTrigger>
-          <TabsTrigger value="terms">Termes</TabsTrigger>
-          <TabsTrigger value="vat_rates">Taux TVA</TabsTrigger>
-          <TabsTrigger value="revisions">Révisions</TabsTrigger>
-          <TabsTrigger value="payment_terms">Règlements</TabsTrigger>
-        </TabsList>
-        <TabsContent value="companies">
-          <CompaniesSection />
-        </TabsContent>
-        <TabsContent value="agencies">
-          <AgenciesSection />
-        </TabsContent>
-        <TabsContent value="sectors">
-          <SectorsSection />
-        </TabsContent>
-        <TabsContent value="activities">
-          <ActivitiesSection />
-        </TabsContent>
-        <TabsContent value="pricing_rules">
-          <PricingRulesSection />
-        </TabsContent>
-        <TabsContent value="markets">
-            <MarketsSection />
-        </TabsContent>
-        <TabsContent value="typologies">
-            <SimpleCrudSection 
-                title="Typologies"
-                description="Gérez les typologies de clients."
-                dataType="typology"
-                items={typologies}
-                createItem={createTypology}
-                updateItem={updateTypology}
-                deleteItem={deleteTypology}
-                isLoading={isLoading}
-                reloadData={reloadData}
-            />
-        </TabsContent>
-        <TabsContent value="schedules">
-            <SimpleCrudSection 
-                title="Échéanciers"
-                description="Gérez les échéanciers de facturation."
-                dataType="schedule"
-                items={schedules}
-                createItem={createSchedule}
-                updateItem={updateSchedule}
-                deleteItem={deleteSchedule}
-                isLoading={isLoading}
-                reloadData={reloadData}
-            />
-        </TabsContent>
-        <TabsContent value="terms">
-             <SimpleCrudSection 
-                title="Termes"
-                description="Gérez les termes de paiement."
-                dataType="term"
-                items={terms}
-                createItem={createTerm}
-                updateItem={updateTerm}
-                deleteItem={deleteTerm}
-                isLoading={isLoading}
-                reloadData={reloadData}
-            />
-        </TabsContent>
-        <TabsContent value="vat_rates">
-            <VatRatesSection />
-        </TabsContent>
-        <TabsContent value="revisions">
-            <RevisionFormulasSection />
-        </TabsContent>
-        <TabsContent value="payment_terms">
-            <PaymentTermsSection />
-        </TabsContent>
-      </Tabs>
-    </div>
-  );
+    const [companies, setCompanies] = useState<Company[]>([]);
+    const [agencies, setAgencies] = useState<Agency[]>([]);
+    const [activities, setActivities] = useState<Activity[]>([]);
+
+    return (
+        <div className="space-y-6">
+        <div>
+            <h1 className="text-lg font-medium">Paramétrage</h1>
+            <p className="text-sm text-muted-foreground">
+            Configurez les entités de votre organisation.
+            </p>
+        </div>
+        <Tabs defaultValue="companies" className="w-full">
+            <TabsList className="flex-wrap h-auto justify-start">
+                <TabsTrigger value="companies">Sociétés</TabsTrigger>
+                <TabsTrigger value="agencies">Agences</TabsTrigger>
+                <TabsTrigger value="sectors">Secteurs</TabsTrigger>
+                <TabsTrigger value="activities">Activités</TabsTrigger>
+                <TabsTrigger value="pricing_rules">Règles de prix</TabsTrigger>
+                <TabsTrigger value="markets">Marchés</TabsTrigger>
+                <TabsTrigger value="typologies">Typologies</TabsTrigger>
+                <TabsTrigger value="schedules">Échéanciers</TabsTrigger>
+                <TabsTrigger value="terms">Termes</TabsTrigger>
+                <TabsTrigger value="vat_rates">Taux TVA</TabsTrigger>
+                <TabsTrigger value="revisions">Révisions</TabsTrigger>
+                <TabsTrigger value="payment_terms">Règlements</TabsTrigger>
+            </TabsList>
+            <TabsContent value="companies">
+                <CompaniesSection onCompaniesUpdate={setCompanies} />
+            </TabsContent>
+            <TabsContent value="agencies">
+                <AgenciesSection companies={companies} onAgenciesUpdate={setAgencies} />
+            </TabsContent>
+            <TabsContent value="sectors">
+                <SectorsSection agencies={agencies} />
+            </TabsContent>
+            <TabsContent value="activities">
+                <ActivitiesSection onActivitiesUpdate={setActivities} />
+            </TabsContent>
+            <TabsContent value="pricing_rules">
+                <PricingRulesSection activities={activities} />
+            </TabsContent>
+            <TabsContent value="markets">
+                <MarketsSection />
+            </TabsContent>
+            <TabsContent value="typologies">
+                <SimpleCrudSection 
+                    title="Typologies"
+                    description="Gérez les typologies de clients."
+                    dataType="typology"
+                    getData={getTypologies}
+                    createItem={createTypology}
+                    updateItem={updateTypology}
+                    deleteItem={deleteTypology}
+                />
+            </TabsContent>
+            <TabsContent value="schedules">
+                <SimpleCrudSection 
+                    title="Échéanciers"
+                    description="Gérez les échéanciers de facturation."
+                    dataType="schedule"
+                    getData={getSchedules}
+                    createItem={createSchedule}
+                    updateItem={updateSchedule}
+                    deleteItem={deleteSchedule}
+                />
+            </TabsContent>
+            <TabsContent value="terms">
+                <SimpleCrudSection 
+                    title="Termes"
+                    description="Gérez les termes de paiement."
+                    dataType="term"
+                    getData={getTerms}
+                    createItem={createTerm}
+                    updateItem={updateTerm}
+                    deleteItem={deleteTerm}
+                />
+            </TabsContent>
+            <TabsContent value="vat_rates">
+                <VatRatesSection />
+            </TabsContent>
+            <TabsContent value="revisions">
+                <RevisionFormulasSection activities={activities} />
+            </TabsContent>
+            <TabsContent value="payment_terms">
+                <PaymentTermsSection />
+            </TabsContent>
+        </Tabs>
+        </div>
+    );
 }

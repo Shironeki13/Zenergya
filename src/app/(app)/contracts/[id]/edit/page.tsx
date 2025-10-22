@@ -40,11 +40,10 @@ import {
 import { Switch } from "@/components/ui/switch"
 import { useToast } from "@/hooks/use-toast"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { updateContract } from "@/services/firestore"
+import { updateContract, getContract, getClients, getSites, getActivities, getSchedules, getTerms, getMarkets, getRevisionFormulas, getContracts } from "@/services/firestore"
 import type { Contract, Activity, Schedule, Term, Client, Site, Market, RevisionFormula } from "@/lib/types"
 import { Separator } from "@/components/ui/separator"
 import { Slider } from "@/components/ui/slider"
-import { useData } from "@/context/data-context"
 
 
 const monthlyBillingSchema = z.object({
@@ -116,18 +115,16 @@ export default function EditContractPage() {
     const id = params.id as string;
     const { toast } = useToast()
     
-    const { 
-        clients, 
-        sites: allSites, 
-        activities, 
-        schedules, 
-        terms, 
-        markets, 
-        revisionFormulas,
-        contracts,
-        isLoading,
-    } = useData();
-        
+    const [isLoading, setIsLoading] = useState(true);
+    const [clients, setClients] = useState<Client[]>([]);
+    const [allSites, setAllSites] = useState<Site[]>([]);
+    const [activities, setActivities] = useState<Activity[]>([]);
+    const [schedules, setSchedules] = useState<Schedule[]>([]);
+    const [terms, setTerms] = useState<Term[]>([]);
+    const [markets, setMarkets] = useState<Market[]>([]);
+    const [revisionFormulas, setRevisionFormulas] = useState<RevisionFormula[]>([]);
+    const [contracts, setContracts] = useState<Contract[]>([]);
+
     const [contract, setContract] = useState<Contract | null>(null);
     const [sites, setSites] = useState<Site[]>([]);
     
@@ -151,6 +148,49 @@ export default function EditContractPage() {
         control: form.control,
         name: "monthlyBilling",
     });
+
+    useEffect(() => {
+      async function fetchData() {
+        setIsLoading(true);
+        try {
+          const [
+            clientsData,
+            sitesData,
+            activitiesData,
+            schedulesData,
+            termsData,
+            marketsData,
+            revisionFormulasData,
+            contractsData,
+          ] = await Promise.all([
+            getClients(),
+            getSites(),
+            getActivities(),
+            getSchedules(),
+            getTerms(),
+            getMarkets(),
+            getRevisionFormulas(),
+            getContracts(),
+          ]);
+
+          setClients(clientsData);
+          setAllSites(sitesData);
+          setActivities(activitiesData);
+          setSchedules(schedulesData);
+          setTerms(termsData);
+          setMarkets(marketsData);
+          setRevisionFormulas(revisionFormulasData);
+          setContracts(contractsData);
+
+        } catch (error) {
+          toast({ title: "Erreur", description: "Impossible de charger les données nécessaires.", variant: "destructive" });
+        } finally {
+          setIsLoading(false);
+        }
+      }
+      fetchData();
+    }, [id, toast]);
+
 
     useEffect(() => {
         if (!id || isLoading) return;
@@ -803,5 +843,3 @@ export default function EditContractPage() {
         </Card>
     )
 }
-
-    
