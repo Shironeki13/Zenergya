@@ -6,11 +6,17 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Loader2 } from 'lucide-react';
+import { Loader2, CalendarIcon } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useData } from '@/context/data-context';
 import type { Contract, Invoice } from '@/lib/types';
 import { generateInvoice } from '@/ai/flows/generate-invoice-flow';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Calendar } from '@/components/ui/calendar';
+import { Label } from '@/components/ui/label';
+import { format } from 'date-fns';
+import { fr } from 'date-fns/locale';
+import { cn } from '@/lib/utils';
 
 type BillableItem = {
     id: string;
@@ -27,10 +33,11 @@ export default function BatchBillingPage() {
     const { toast } = useToast();
     const [isGenerating, setIsGenerating] = useState(false);
     const [selectedItems, setSelectedItems] = useState<string[]>([]);
+    const [dueDate, setDueDate] = useState<Date>(new Date());
 
     const billableItems = useMemo(() => {
         if (isLoading) return [];
-        const today = new Date();
+        
         const results: BillableItem[] = [];
 
         const activeContracts = contracts.filter(c => c.status === 'Actif');
@@ -51,7 +58,7 @@ export default function BatchBillingPage() {
             let nextBillingStartDate = lastInvoice ? new Date(lastInvoice.periodEndDate!) : contractStartDate;
             if (lastInvoice) nextBillingStartDate.setDate(nextBillingStartDate.getDate() + 1);
 
-            while (nextBillingStartDate < today && nextBillingStartDate < new Date(contract.endDate)) {
+            while (nextBillingStartDate < dueDate && nextBillingStartDate < new Date(contract.endDate)) {
                 let billingFactor = 1;
                 let nextBillingEndDate = new Date(nextBillingStartDate);
 
@@ -113,7 +120,7 @@ export default function BatchBillingPage() {
             }
         }
         return results;
-    }, [isLoading, contracts, invoices, sites, activities]);
+    }, [isLoading, contracts, invoices, sites, activities, dueDate]);
 
     const handleSelect = (id: string, checked: boolean) => {
         if (checked) {
@@ -186,17 +193,45 @@ export default function BatchBillingPage() {
     return (
         <Card>
             <CardHeader>
-                <div className="flex items-center justify-between">
+                <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
                     <div>
                         <CardTitle>Facturation Groupée</CardTitle>
                         <CardDescription>
-                            Générez toutes les factures arrivées à échéance en une seule fois.
+                            Générez toutes les factures arrivées à échéance jusqu'à la date sélectionnée.
                         </CardDescription>
                     </div>
-                    <Button onClick={handleGenerate} disabled={isGenerating || selectedItems.length === 0}>
-                        {isGenerating && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                        Générer {selectedItems.length > 0 ? `(${selectedItems.length})` : ''}
-                    </Button>
+                     <div className="flex items-center gap-4">
+                        <div className="grid gap-2">
+                             <Label>Date d'échéance</Label>
+                             <Popover>
+                                <PopoverTrigger asChild>
+                                    <Button
+                                    variant={"outline"}
+                                    className={cn(
+                                        "w-[240px] justify-start text-left font-normal",
+                                        !dueDate && "text-muted-foreground"
+                                    )}
+                                    >
+                                    <CalendarIcon className="mr-2 h-4 w-4" />
+                                    {dueDate ? format(dueDate, "PPP", { locale: fr }) : <span>Choisir une date</span>}
+                                    </Button>
+                                </PopoverTrigger>
+                                <PopoverContent className="w-auto p-0">
+                                    <Calendar
+                                    mode="single"
+                                    selected={dueDate}
+                                    onSelect={(date) => setDueDate(date || new Date())}
+                                    initialFocus
+                                    locale={fr}
+                                    />
+                                </PopoverContent>
+                            </Popover>
+                        </div>
+                        <Button onClick={handleGenerate} disabled={isGenerating || selectedItems.length === 0} className="self-end">
+                            {isGenerating && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                            Générer {selectedItems.length > 0 ? `(${selectedItems.length})` : ''}
+                        </Button>
+                    </div>
                 </div>
             </CardHeader>
             <CardContent>
