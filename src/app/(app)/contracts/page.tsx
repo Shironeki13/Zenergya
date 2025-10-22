@@ -27,27 +27,10 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { getContracts } from '@/services/firestore';
-import type { Contract } from '@/lib/types';
-import { useEffect, useState } from 'react';
+import { useData } from '@/context/data-context';
 
 export default function ContractsPage() {
-  const [contracts, setContracts] = useState<Contract[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-
-  useEffect(() => {
-    async function fetchData() {
-      try {
-        const contractsData = await getContracts();
-        setContracts(contractsData);
-      } catch (error) {
-        console.error("Failed to fetch contracts:", error);
-      } finally {
-        setIsLoading(false);
-      }
-    }
-    fetchData();
-  }, []);
+  const { contracts, isLoading } = useData();
   
   return (
     <Card>

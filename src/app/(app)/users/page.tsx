@@ -13,16 +13,15 @@ import { PlusCircle, Trash2, Edit, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import type { User, Role } from "@/lib/types";
 import {
-  getUsers, getRoles,
   createUser, updateUser, deleteUser,
   createRole, updateRole, deleteRole,
 } from "@/services/firestore";
+import { useData } from '@/context/data-context';
 
 
 // Section pour les Rôles
 const RolesSection = () => {
-    const [roles, setRoles] = useState<Role[]>([]);
-    const [isLoading, setIsLoading] = useState(true);
+    const { roles, reloadData, isLoading } = useData();
     const { toast } = useToast();
 
     const [isSubmitting, setIsSubmitting] = useState(false);
@@ -31,24 +30,6 @@ const RolesSection = () => {
     const [roleToDelete, setRoleToDelete] = useState<Role | null>(null);
     const [name, setName] = useState('');
 
-    const reloadData = async () => {
-        try {
-            const rolesData = await getRoles();
-            setRoles(rolesData);
-        } catch (error) {
-            toast({ title: "Erreur", description: "Impossible de recharger les rôles.", variant: "destructive" });
-        }
-    };
-    
-    useEffect(() => {
-        async function fetchData() {
-            setIsLoading(true);
-            await reloadData();
-            setIsLoading(false);
-        }
-        fetchData();
-    }, []);
-    
     const resetForm = () => { setName(''); setEditingRole(null); };
 
     const handleOpenDialog = (role: Role | null = null) => {
@@ -155,9 +136,7 @@ const RolesSection = () => {
 
 // Section pour les Utilisateurs
 const UsersSection = () => {
-    const [users, setUsers] = useState<User[]>([]);
-    const [roles, setRoles] = useState<Role[]>([]);
-    const [isLoading, setIsLoading] = useState(true);
+    const { users, roles, reloadData, isLoading } = useData();
     const { toast } = useToast();
     
     const [isSubmitting, setIsSubmitting] = useState(false);
@@ -168,25 +147,6 @@ const UsersSection = () => {
     const [name, setName] = useState('');
     const [email, setEmail] = useState('');
     const [roleId, setRoleId] = useState('');
-
-    const reloadData = async () => {
-        try {
-            const [usersData, rolesData] = await Promise.all([getUsers(), getRoles()]);
-            setUsers(usersData);
-            setRoles(rolesData);
-        } catch (error) {
-            toast({ title: "Erreur", description: "Impossible de recharger les utilisateurs.", variant: "destructive" });
-        }
-    };
-    
-    useEffect(() => {
-        async function fetchData() {
-            setIsLoading(true);
-            await reloadData();
-            setIsLoading(false);
-        }
-        fetchData();
-    }, []);
 
     const resetForm = () => { setName(''); setEmail(''); setRoleId(''); setEditingUser(null); };
 

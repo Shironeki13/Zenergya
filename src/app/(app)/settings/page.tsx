@@ -15,19 +15,21 @@ import { useToast } from "@/hooks/use-toast";
 import { Textarea } from '@/components/ui/textarea';
 import type { Company, Agency, Sector, Activity, Schedule, Term, VatRate, Typology, RevisionFormula, PaymentTerm, PricingRule, Market } from "@/lib/types";
 import { 
-  getCompanies, createCompany, updateCompany, deleteCompany,
-  getAgencies, createAgency, updateAgency, deleteAgency,
-  getSectors, createSector, updateSector, deleteSector,
-  getActivities, createActivity, updateActivity, deleteActivity,
-  getSchedules, createSchedule, updateSchedule, deleteSchedule,
-  getTerms, createTerm, updateTerm, deleteTerm,
-  getTypologies, createTypology, updateTypology, deleteTypology,
-  getVatRates, createVatRate, updateVatRate, deleteVatRate,
-  getRevisionFormulas, createRevisionFormula, updateRevisionFormula, deleteRevisionFormula,
-  getPaymentTerms, createPaymentTerm, updatePaymentTerm, deletePaymentTerm,
-  getPricingRules, createPricingRule, updatePricingRule, deletePricingRule,
-  getMarkets, createMarket, updateMarket, deleteMarket
+  updateCompany, deleteCompany,
+  updateAgency, deleteAgency,
+  updateSector, deleteSector,
+  updateActivity, deleteActivity,
+  updateSchedule, deleteSchedule,
+  updateTerm, deleteTerm,
+  updateTypology, deleteTypology,
+  updateVatRate, deleteVatRate,
+  updateRevisionFormula, deleteRevisionFormula,
+  updatePaymentTerm, deletePaymentTerm,
+  updatePricingRule, deletePricingRule,
+  updateMarket, deleteMarket,
+  createCompany, createAgency, createSector, createActivity, createSchedule, createTerm, createTypology, createVatRate, createRevisionFormula, createPaymentTerm, createPricingRule, createMarket,
 } from "@/services/firestore";
+import { useData } from '@/context/data-context';
 
 
 const fileToDataUrl = (file: File): Promise<string> => {
@@ -42,8 +44,7 @@ const fileToDataUrl = (file: File): Promise<string> => {
 // Section pour les Sociétés
 const CompaniesSection = ({ onCompaniesUpdate }: { onCompaniesUpdate: (companies: Company[]) => void }) => {
     const { toast } = useToast();
-    const [companies, setCompanies] = useState<Company[]>([]);
-    const [isLoading, setIsLoading] = useState(true);
+    const { companies, reloadData, isLoading } = useData();
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [dialogOpen, setDialogOpen] = useState(false);
     const [editingCompany, setEditingCompany] = useState<Company | null>(null);
@@ -60,23 +61,6 @@ const CompaniesSection = ({ onCompaniesUpdate }: { onCompaniesUpdate: (companies
     const [logoFile, setLogoFile] = useState<File | null>(null);
     const [logoPreview, setLogoPreview] = useState<string | null>(null);
     
-    const reloadData = useCallback(async () => {
-        setIsLoading(true);
-        try {
-            const data = await getCompanies();
-            setCompanies(data);
-            onCompaniesUpdate(data);
-        } catch (error) {
-            toast({ title: "Erreur", description: "Impossible de charger les sociétés.", variant: "destructive" });
-        } finally {
-            setIsLoading(false);
-        }
-    }, [toast, onCompaniesUpdate]);
-
-    useEffect(() => {
-        reloadData();
-    }, [reloadData]);
-
     useEffect(() => {
         if (siret && siret.length >= 9) {
             setSiren(siret.substring(0, 9));
@@ -319,10 +303,10 @@ const CompaniesSection = ({ onCompaniesUpdate }: { onCompaniesUpdate: (companies
 
 
 // Section pour les Agences
-const AgenciesSection = ({ companies, onAgenciesUpdate }: { companies: Company[], onAgenciesUpdate: (agencies: Agency[]) => void }) => {
+const AgenciesSection = ({ onAgenciesUpdate }: { onAgenciesUpdate: (agencies: Agency[]) => void }) => {
     const { toast } = useToast();
-    const [agencies, setAgencies] = useState<Agency[]>([]);
-    const [isLoading, setIsLoading] = useState(true);
+    const { agencies, companies, isLoading, reloadData } = useData();
+
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [dialogOpen, setDialogOpen] = useState(false);
     const [editingAgency, setEditingAgency] = useState<Agency | null>(null);
@@ -331,25 +315,6 @@ const AgenciesSection = ({ companies, onAgenciesUpdate }: { companies: Company[]
     const [name, setName] = useState('');
     const [companyId, setCompanyId] = useState('');
     
-    const reloadData = useCallback(async () => {
-        setIsLoading(true);
-        try {
-            const data = await getAgencies();
-            setAgencies(data);
-            onAgenciesUpdate(data);
-        } catch (error) {
-            toast({ title: "Erreur", description: "Impossible de charger les agences.", variant: "destructive" });
-        } finally {
-            setIsLoading(false);
-        }
-    }, [toast, onAgenciesUpdate]);
-    
-    useEffect(() => {
-        if (companies.length > 0) {
-            reloadData();
-        }
-    }, [companies, reloadData]);
-
     const resetForm = () => { setName(''); setCompanyId(''); setEditingAgency(null); };
 
     const handleOpenDialog = (agency: Agency | null = null) => {
@@ -491,10 +456,10 @@ const AgenciesSection = ({ companies, onAgenciesUpdate }: { companies: Company[]
 
 
 // Section pour les Secteurs
-const SectorsSection = ({ agencies }: { agencies: Agency[] }) => {
+const SectorsSection = () => {
     const { toast } = useToast();
-    const [sectors, setSectors] = useState<Sector[]>([]);
-    const [isLoading, setIsLoading] = useState(true);
+    const { sectors, agencies, isLoading, reloadData } = useData();
+
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [dialogOpen, setDialogOpen] = useState(false);
     const [editingSector, setEditingSector] = useState<Sector | null>(null);
@@ -503,24 +468,6 @@ const SectorsSection = ({ agencies }: { agencies: Agency[] }) => {
     const [name, setName] = useState('');
     const [agencyId, setAgencyId] = useState('');
 
-    const reloadData = useCallback(async () => {
-        setIsLoading(true);
-        try {
-            const data = await getSectors();
-            setSectors(data);
-        } catch (error) {
-            toast({ title: "Erreur", description: "Impossible de charger les secteurs.", variant: "destructive" });
-        } finally {
-            setIsLoading(false);
-        }
-    }, [toast]);
-    
-    useEffect(() => {
-        if (agencies.length > 0) {
-            reloadData();
-        }
-    }, [agencies, reloadData]);
-    
     const resetForm = () => { setName(''); setAgencyId(''); setEditingSector(null); };
 
     const handleOpenDialog = (sector: Sector | null = null) => {
@@ -654,33 +601,15 @@ const SectorsSection = ({ agencies }: { agencies: Agency[] }) => {
 
 
 // Section pour les Activités
-const ActivitiesSection = ({ onActivitiesUpdate }: { onActivitiesUpdate: (activities: Activity[]) => void }) => {
+const ActivitiesSection = () => {
     const { toast } = useToast();
-    const [activities, setActivities] = useState<Activity[]>([]);
-    const [isLoading, setIsLoading] = useState(true);
+    const { activities, isLoading, reloadData } = useData();
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [dialogOpen, setDialogOpen] = useState(false);
     const [editingActivity, setEditingActivity] = useState<Activity | null>(null);
     const [activityToDelete, setActivityToDelete] = useState<Activity | null>(null);
     const [code, setCode] = useState('');
     const [label, setLabel] = useState('');
-
-    const reloadData = useCallback(async () => {
-        setIsLoading(true);
-        try {
-            const data = await getActivities();
-            setActivities(data);
-            onActivitiesUpdate(data);
-        } catch (error) {
-            toast({ title: "Erreur", description: "Impossible de charger les activités.", variant: "destructive" });
-        } finally {
-            setIsLoading(false);
-        }
-    }, [toast, onActivitiesUpdate]);
-
-    useEffect(() => {
-        reloadData();
-    }, [reloadData]);
 
     const resetForm = () => { setCode(''); setLabel(''); setEditingActivity(null); };
 
@@ -796,10 +725,10 @@ const ActivitiesSection = ({ onActivitiesUpdate }: { onActivitiesUpdate: (activi
 };
 
 // Section Règles de prix
-const PricingRulesSection = ({ activities }: { activities: Activity[] }) => {
+const PricingRulesSection = () => {
     const { toast } = useToast();
-    const [pricingRules, setPricingRules] = useState<PricingRule[]>([]);
-    const [isLoading, setIsLoading] = useState(true);
+    const { pricingRules, activities, isLoading, reloadData } = useData();
+
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [dialogOpen, setDialogOpen] = useState(false);
     const [editingRule, setEditingRule] = useState<PricingRule | null>(null);
@@ -808,24 +737,6 @@ const PricingRulesSection = ({ activities }: { activities: Activity[] }) => {
     const [activityId, setActivityId] = useState('');
     const [rule, setRule] = useState('');
     const [description, setDescription] = useState('');
-
-    const reloadData = useCallback(async () => {
-        setIsLoading(true);
-        try {
-            const data = await getPricingRules();
-            setPricingRules(data);
-        } catch (error) {
-            toast({ title: "Erreur", description: "Impossible de charger les règles de prix.", variant: "destructive" });
-        } finally {
-            setIsLoading(false);
-        }
-    }, [toast]);
-    
-    useEffect(() => {
-        if (activities.length > 0) {
-            reloadData();
-        }
-    }, [activities, reloadData]);
 
     const resetForm = () => { setActivityId(''); setRule(''); setDescription(''); setEditingRule(null); };
 
@@ -975,8 +886,7 @@ const PricingRulesSection = ({ activities }: { activities: Activity[] }) => {
 // Section Marchés
 const MarketsSection = () => {
     const { toast } = useToast();
-    const [markets, setMarkets] = useState<Market[]>([]);
-    const [isLoading, setIsLoading] = useState(true);
+    const { markets, isLoading, reloadData } = useData();
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [dialogOpen, setDialogOpen] = useState(false);
     const [editingItem, setEditingItem] = useState<Market | null>(null);
@@ -984,22 +894,6 @@ const MarketsSection = () => {
     const [code, setCode] = useState('');
     const [label, setLabel] = useState('');
     const [description, setDescription] = useState('');
-
-    const reloadData = useCallback(async () => {
-        setIsLoading(true);
-        try {
-            const data = await getMarkets();
-            setMarkets(data);
-        } catch (error) {
-            toast({ title: "Erreur", description: "Impossible de charger les marchés.", variant: "destructive" });
-        } finally {
-            setIsLoading(false);
-        }
-    }, [toast]);
-
-    useEffect(() => {
-        reloadData();
-    }, [reloadData]);
 
     const resetForm = () => { setCode(''); setLabel(''); setDescription(''); setEditingItem(null); };
 
@@ -1125,30 +1019,13 @@ const MarketsSection = () => {
 // Section Taux de TVA
 const VatRatesSection = () => {
     const { toast } = useToast();
-    const [vatRates, setVatRates] = useState<VatRate[]>([]);
-    const [isLoading, setIsLoading] = useState(true);
+    const { vatRates, isLoading, reloadData } = useData();
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [dialogOpen, setDialogOpen] = useState(false);
     const [editingVatRate, setEditingVatRate] = useState<VatRate | null>(null);
     const [vatRateToDelete, setVatRateToDelete] = useState<VatRate | null>(null);
     const [code, setCode] = useState('');
     const [rate, setRate] = useState<number | string>('');
-    
-    const reloadData = useCallback(async () => {
-        setIsLoading(true);
-        try {
-            const data = await getVatRates();
-            setVatRates(data);
-        } catch (error) {
-            toast({ title: "Erreur", description: "Impossible de charger les taux de TVA.", variant: "destructive" });
-        } finally {
-            setIsLoading(false);
-        }
-    }, [toast]);
-    
-    useEffect(() => {
-        reloadData();
-    }, [reloadData]);
 
     const resetForm = () => { setCode(''); setRate(''); setEditingVatRate(null); };
 
@@ -1271,10 +1148,9 @@ const VatRatesSection = () => {
 };
 
 // Section Formules de révision
-const RevisionFormulasSection = ({ activities }: { activities: Activity[] }) => {
+const RevisionFormulasSection = () => {
     const { toast } = useToast();
-    const [revisionFormulas, setRevisionFormulas] = useState<RevisionFormula[]>([]);
-    const [isLoading, setIsLoading] = useState(true);
+    const { revisionFormulas, activities, isLoading, reloadData } = useData();
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [dialogOpen, setDialogOpen] = useState(false);
     const [editingItem, setEditingItem] = useState<RevisionFormula | null>(null);
@@ -1282,24 +1158,6 @@ const RevisionFormulasSection = ({ activities }: { activities: Activity[] }) => 
     const [code, setCode] = useState('');
     const [formula, setFormula] = useState('');
     const [activityId, setActivityId] = useState('');
-
-    const reloadData = useCallback(async () => {
-        setIsLoading(true);
-        try {
-            const data = await getRevisionFormulas();
-            setRevisionFormulas(data);
-        } catch (error) {
-            toast({ title: "Erreur", description: "Impossible de charger les formules.", variant: "destructive" });
-        } finally {
-            setIsLoading(false);
-        }
-    }, [toast]);
-    
-    useEffect(() => {
-        if (activities.length > 0) {
-            reloadData();
-        }
-    }, [activities, reloadData]);
 
     const resetForm = () => { setCode(''); setFormula(''); setActivityId(''); setEditingItem(null); };
 
@@ -1410,30 +1268,13 @@ const RevisionFormulasSection = ({ activities }: { activities: Activity[] }) => 
 // Section Règlements
 const PaymentTermsSection = () => {
     const { toast } = useToast();
-    const [paymentTerms, setPaymentTerms] = useState<PaymentTerm[]>([]);
-    const [isLoading, setIsLoading] = useState(true);
+    const { paymentTerms, isLoading, reloadData } = useData();
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [dialogOpen, setDialogOpen] = useState(false);
     const [editingItem, setEditingItem] = useState<PaymentTerm | null>(null);
     const [itemToDelete, setItemToDelete] = useState<PaymentTerm | null>(null);
     const [code, setCode] = useState('');
     const [deadline, setDeadline] = useState('');
-
-    const reloadData = useCallback(async () => {
-        setIsLoading(true);
-        try {
-            const data = await getPaymentTerms();
-            setPaymentTerms(data);
-        } catch (error) {
-            toast({ title: "Erreur", description: "Impossible de charger les règlements.", variant: "destructive" });
-        } finally {
-            setIsLoading(false);
-        }
-    }, [toast]);
-
-    useEffect(() => {
-        reloadData();
-    }, [reloadData]);
 
     const resetForm = () => { setCode(''); setDeadline(''); setEditingItem(null); };
 
@@ -1526,7 +1367,7 @@ const SimpleCrudSection = ({
   title,
   description,
   dataType,
-  getData,
+  items,
   createItem,
   updateItem,
   deleteItem,
@@ -1534,35 +1375,18 @@ const SimpleCrudSection = ({
   title: string;
   description: string;
   dataType: "schedule" | "term" | "typology";
-  getData: () => Promise<any[]>;
+  items: {id: string; name: string}[];
   createItem: (name: string) => Promise<any>;
   updateItem: (id: string, name: string) => Promise<void>;
   deleteItem: (id: string) => Promise<void>;
 }) => {
     const { toast } = useToast();
-    const [items, setItems] = useState<{id: string; name: string}[]>([]);
-    const [isLoading, setIsLoading] = useState(true);
+    const { isLoading, reloadData } = useData();
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [dialogOpen, setDialogOpen] = useState(false);
     const [editingItem, setEditingItem] = useState<{ id: string; name: string } | null>(null);
     const [itemToDelete, setItemToDelete] = useState<{ id: string; name: string } | null>(null);
     const [name, setName] = useState('');
-
-    const reloadData = useCallback(async () => {
-        setIsLoading(true);
-        try {
-            const data = await getData();
-            setItems(data);
-        } catch (error) {
-             toast({ title: "Erreur", description: `Impossible de charger: ${title}.`, variant: "destructive" });
-        } finally {
-            setIsLoading(false);
-        }
-    }, [getData, title, toast]);
-
-    useEffect(() => {
-        reloadData();
-    }, [reloadData]);
 
     const resetForm = () => { setName(''); setEditingItem(null); };
 
@@ -1670,9 +1494,7 @@ const SimpleCrudSection = ({
 
 
 export default function SettingsPage() {
-    const [companies, setCompanies] = useState<Company[]>([]);
-    const [agencies, setAgencies] = useState<Agency[]>([]);
-    const [activities, setActivities] = useState<Activity[]>([]);
+    const { companies, agencies, activities, typologies, schedules, terms, reloadData } = useData();
 
     return (
         <div className="space-y-6">
@@ -1698,19 +1520,19 @@ export default function SettingsPage() {
                 <TabsTrigger value="payment_terms">Règlements</TabsTrigger>
             </TabsList>
             <TabsContent value="companies">
-                <CompaniesSection onCompaniesUpdate={setCompanies} />
+                <CompaniesSection onCompaniesUpdate={reloadData} />
             </TabsContent>
             <TabsContent value="agencies">
-                <AgenciesSection companies={companies} onAgenciesUpdate={setAgencies} />
+                <AgenciesSection onAgenciesUpdate={reloadData} />
             </TabsContent>
             <TabsContent value="sectors">
-                <SectorsSection agencies={agencies} />
+                <SectorsSection />
             </TabsContent>
             <TabsContent value="activities">
-                <ActivitiesSection onActivitiesUpdate={setActivities} />
+                <ActivitiesSection />
             </TabsContent>
             <TabsContent value="pricing_rules">
-                <PricingRulesSection activities={activities} />
+                <PricingRulesSection />
             </TabsContent>
             <TabsContent value="markets">
                 <MarketsSection />
@@ -1720,7 +1542,7 @@ export default function SettingsPage() {
                     title="Typologies"
                     description="Gérez les typologies de clients."
                     dataType="typology"
-                    getData={getTypologies}
+                    items={typologies}
                     createItem={createTypology}
                     updateItem={updateTypology}
                     deleteItem={deleteTypology}
@@ -1731,7 +1553,7 @@ export default function SettingsPage() {
                     title="Échéanciers"
                     description="Gérez les échéanciers de facturation."
                     dataType="schedule"
-                    getData={getSchedules}
+                    items={schedules}
                     createItem={createSchedule}
                     updateItem={updateSchedule}
                     deleteItem={deleteSchedule}
@@ -1742,7 +1564,7 @@ export default function SettingsPage() {
                     title="Termes"
                     description="Gérez les termes de paiement."
                     dataType="term"
-                    getData={getTerms}
+                    items={terms}
                     createItem={createTerm}
                     updateItem={updateTerm}
                     deleteItem={deleteTerm}
@@ -1752,7 +1574,7 @@ export default function SettingsPage() {
                 <VatRatesSection />
             </TabsContent>
             <TabsContent value="revisions">
-                <RevisionFormulasSection activities={activities} />
+                <RevisionFormulasSection />
             </TabsContent>
             <TabsContent value="payment_terms">
                 <PaymentTermsSection />

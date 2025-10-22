@@ -28,26 +28,10 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import type { InvoiceStatus, Invoice } from '@/lib/types';
-import { getInvoices } from '@/services/firestore';
-import { useEffect, useState } from 'react';
+import { useData } from '@/context/data-context';
 
 export default function InvoicesPage() {
-  const [invoices, setInvoices] = useState<Invoice[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-
-  useEffect(() => {
-    async function fetchData() {
-      try {
-        const invoicesData = await getInvoices();
-        setInvoices(invoicesData);
-      } catch (error) {
-        console.error("Failed to fetch invoices:", error);
-      } finally {
-        setIsLoading(false);
-      }
-    }
-    fetchData();
-  }, []);
+  const { invoices, isLoading } = useData();
 
   const getBadgeVariant = (status: InvoiceStatus) => {
     switch (status) {

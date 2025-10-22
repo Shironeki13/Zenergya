@@ -27,33 +27,12 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { getClients, getTypologies } from '@/services/firestore';
-import { useEffect, useState, useMemo } from 'react';
-import type { Client, Typology } from '@/lib/types';
+import { useData } from '@/context/data-context';
+import { useMemo } from 'react';
 
 
 export default function ClientsPage() {
-  const [clients, setClients] = useState<Client[]>([]);
-  const [typologies, setTypologies] = useState<Typology[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-
-  useEffect(() => {
-    async function fetchData() {
-      try {
-        const [clientsData, typologiesData] = await Promise.all([
-          getClients(),
-          getTypologies(),
-        ]);
-        setClients(clientsData);
-        setTypologies(typologiesData);
-      } catch (error) {
-        console.error("Failed to fetch clients data:", error);
-      } finally {
-        setIsLoading(false);
-      }
-    }
-    fetchData();
-  }, []);
+  const { clients, typologies, isLoading } = useData();
 
   const clientsWithTypology = useMemo(() => {
     const typologyMap = new Map(typologies.map(t => [t.id, t.name]));

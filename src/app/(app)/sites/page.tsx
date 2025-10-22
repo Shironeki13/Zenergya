@@ -33,16 +33,14 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
-import { updateSite, getSites, getClients, getActivities } from '@/services/firestore';
-import type { Site, Client, Activity } from '@/lib/types';
+import { updateSite } from '@/services/firestore';
+import type { Site, Activity } from '@/lib/types';
 import { useToast } from '@/hooks/use-toast';
+import { useData } from '@/context/data-context';
 
 
 export default function SitesPage() {
-  const [sites, setSites] = useState<Site[]>([]);
-  const [clients, setClients] = useState<Client[]>([]);
-  const [activities, setActivities] = useState<Activity[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const { sites, clients, activities, isLoading, reloadData } = useData();
 
   const [addSiteDialogOpen, setAddSiteDialogOpen] = useState(false);
   const [editSiteDialogOpen, setEditSiteDialogOpen] = useState(false);
@@ -62,35 +60,6 @@ export default function SitesPage() {
   const [siteActivityIds, setSiteActivityIds] = useState<string[]>([]);
   const [siteAmounts, setSiteAmounts] = useState<Record<string, number>>({});
 
-  const reloadData = async () => {
-    try {
-      const sitesData = await getSites();
-      setSites(sitesData);
-    } catch (error) {
-      console.error("Failed to reload sites:", error);
-    }
-  };
-
-  useEffect(() => {
-    async function fetchData() {
-        try {
-            const [sitesData, clientsData, activitiesData] = await Promise.all([
-                getSites(),
-                getClients(),
-                getActivities(),
-            ]);
-            setSites(sitesData);
-            setClients(clientsData);
-            setActivities(activitiesData);
-        } catch (error) {
-            console.error("Failed to fetch sites page data:", error);
-        } finally {
-            setIsLoading(false);
-        }
-    }
-    fetchData();
-  }, []);
-  
   const handleGoToCreateSite = () => {
     if (selectedClientId) {
       router.push(`/clients/${selectedClientId}`);
