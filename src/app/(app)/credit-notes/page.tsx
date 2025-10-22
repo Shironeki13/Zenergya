@@ -2,7 +2,7 @@
 'use client';
 
 import Link from 'next/link';
-import { MoreHorizontal, Loader2 } from 'lucide-react';
+import { MoreHorizontal, Loader2, PlusCircle } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -29,9 +29,11 @@ import {
 } from '@/components/ui/table';
 import { useData } from '@/context/data-context';
 import { useMemo } from 'react';
+import { useRouter } from 'next/navigation';
 
 export default function CreditNotesPage() {
   const { creditNotes, isLoading } = useData();
+  const router = useRouter();
 
   const sortedCreditNotes = useMemo(() => 
     [...creditNotes].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()),
@@ -41,10 +43,18 @@ export default function CreditNotesPage() {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Avoirs</CardTitle>
-        <CardDescription>
-          Liste de tous les avoirs émis.
-        </CardDescription>
+        <div className="flex items-center justify-between">
+          <div>
+            <CardTitle>Avoirs</CardTitle>
+            <CardDescription>
+              Liste de tous les avoirs émis.
+            </CardDescription>
+          </div>
+          <Button size="sm" className="gap-1" onClick={() => router.push('/invoices')}>
+            <PlusCircle className="h-4 w-4" />
+            Créer un Avoir
+          </Button>
+        </div>
       </CardHeader>
       <CardContent>
         <Table>
