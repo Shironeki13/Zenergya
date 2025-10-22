@@ -74,8 +74,6 @@ export default function ContractsPage() {
         return;
       }
       updateData.terminationDate = terminationDate.toISOString();
-    } else if (newStatus === 'Terminé') {
-      updateData.endDate = new Date().toISOString();
     }
 
     try {
@@ -166,9 +164,9 @@ export default function ContractsPage() {
                             <DropdownMenuLabel>Actions</DropdownMenuLabel>
                             <DropdownMenuItem asChild><Link href={`/contracts/${contract.id}`}>Voir les détails</Link></DropdownMenuItem>
                             <DropdownMenuItem asChild><Link href={`/contracts/${contract.id}/edit`}>Modifier</Link></DropdownMenuItem>
-                            <DropdownMenuSeparator />
                             {contract.status === 'Actif' && (
                               <>
+                                <DropdownMenuSeparator />
                                 <DropdownMenuItem onSelect={() => handleOpenDialog(contract, 'Résilié')}>
                                   Passer à Résilié
                                 </DropdownMenuItem>
@@ -177,6 +175,7 @@ export default function ContractsPage() {
                                 </DropdownMenuItem>
                               </>
                             )}
+                            <DropdownMenuSeparator />
                             <DropdownMenuItem className="text-destructive">
                                 Supprimer
                             </DropdownMenuItem>
@@ -202,7 +201,7 @@ export default function ContractsPage() {
                   <DialogDescription>
                       {newStatus === 'Résilié' 
                           ? `Vous êtes sur le point de résilier le contrat pour ${contractToUpdate?.clientName}. Veuillez sélectionner la date de résiliation.`
-                          : `Vous êtes sur le point de marquer le contrat pour ${contractToUpdate?.clientName} comme "Terminé". La date de fin sera mise à jour à aujourd'hui. Êtes-vous sûr ?`
+                          : `Vous êtes sur le point de marquer le contrat pour ${contractToUpdate?.clientName} comme "Terminé". Êtes-vous sûr ?`
                       }
                   </DialogDescription>
               </DialogHeader>
