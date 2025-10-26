@@ -75,6 +75,9 @@ const contractFormSchema = z.object({
   revisionP1: revisionSchema,
   revisionP2: revisionSchema,
   revisionP3: revisionSchema,
+  analyticP1: z.string().optional(),
+  analyticP2: z.string().optional(),
+  analyticP3: z.string().optional(),
   monthlyBilling: z.array(monthlyBillingSchema).optional(),
   // Conditional fields
   heatingDays: z.number().optional(),
@@ -173,6 +176,9 @@ export default function EditContractPage() {
             revisionP1: contractData.revisionP1 ? { ...contractData.revisionP1, formulaId: contractData.revisionP1.formulaId || "none", date: contractData.revisionP1.date ? new Date(contractData.revisionP1.date) : undefined } : { formulaId: 'none', date: undefined },
             revisionP2: contractData.revisionP2 ? { ...contractData.revisionP2, formulaId: contractData.revisionP2.formulaId || "none", date: contractData.revisionP2.date ? new Date(contractData.revisionP2.date) : undefined } : { formulaId: 'none', date: undefined },
             revisionP3: contractData.revisionP3 ? { ...contractData.revisionP3, formulaId: contractData.revisionP3.formulaId || "none", date: contractData.revisionP3.date ? new Date(contractData.revisionP3.date) : undefined } : { formulaId: 'none', date: undefined },
+            analyticP1: contractData.analyticP1,
+            analyticP2: contractData.analyticP2,
+            analyticP3: contractData.analyticP3,
             monthlyBilling: contractData.monthlyBilling && contractData.monthlyBilling.length > 0 ? contractData.monthlyBilling : months.map(m => ({ month: m, date: 1, percentage: 0 })),
             heatingDays: contractData.heatingDays,
             baseDJU: contractData.baseDJU,
@@ -266,56 +272,69 @@ export default function EditContractPage() {
         else if (code === 'P3') formulas = p3RevisionFormulas;
 
         return (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-8 p-4 border rounded-lg mt-4">
-            <FormField
-            control={form.control}
-            name={`revision${code}.formulaId`}
-            render={({ field }) => (
-                <FormItem>
-                <FormLabel>Formule de révision {code}</FormLabel>
-                <Select onValueChange={field.onChange} value={field.value ?? "none"}>
-                    <FormControl>
-                    <SelectTrigger>
-                        <SelectValue placeholder="Sélectionnez une formule" />
-                    </SelectTrigger>
-                    </FormControl>
-                    <SelectContent>
-                    <SelectItem value="none">Aucune</SelectItem>
-                    {formulas.map((formula) => (
-                        <SelectItem key={formula.id} value={formula.id}>
-                        {formula.code} - {formula.formula}
-                        </SelectItem>
-                    ))}
-                    </SelectContent>
-                </Select>
-                <FormMessage />
-                </FormItem>
-            )}
-            />
+        <div className="space-y-4 p-4 border rounded-lg mt-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                <FormField
+                control={form.control}
+                name={`revision${code}.formulaId`}
+                render={({ field }) => (
+                    <FormItem>
+                    <FormLabel>Formule de révision {code}</FormLabel>
+                    <Select onValueChange={field.onChange} value={field.value ?? "none"}>
+                        <FormControl>
+                        <SelectTrigger>
+                            <SelectValue placeholder="Sélectionnez une formule" />
+                        </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                        <SelectItem value="none">Aucune</SelectItem>
+                        {formulas.map((formula) => (
+                            <SelectItem key={formula.id} value={formula.id}>
+                            {formula.code} - {formula.formula}
+                            </SelectItem>
+                        ))}
+                        </SelectContent>
+                    </Select>
+                    <FormMessage />
+                    </FormItem>
+                )}
+                />
+                <FormField
+                    control={form.control}
+                    name={`revision${code}.date`}
+                    render={({ field }) => (
+                    <FormItem className="flex flex-col">
+                        <FormLabel>Date de Révision {code}</FormLabel>
+                        <Popover>
+                        <PopoverTrigger asChild>
+                            <FormControl>
+                            <Button
+                                variant={"outline"}
+                                className={cn("w-full pl-3 text-left font-normal", !field.value && "text-muted-foreground")}
+                            >
+                                {field.value ? (format(new Date(field.value), "PPP", { locale: fr })) : (<span>Choisir une date</span>)}
+                                <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
+                            </Button>
+                            </FormControl>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-auto p-0" align="start">
+                            <Calendar mode="single" selected={field.value} onSelect={field.onChange} initialFocus locale={fr}/>
+                        </PopoverContent>
+                        </Popover>
+                        <FormMessage />
+                    </FormItem>
+                    )}
+                />
+            </div>
             <FormField
                 control={form.control}
-                name={`revision${code}.date`}
+                name={`analytic${code}`}
                 render={({ field }) => (
-                <FormItem className="flex flex-col">
-                    <FormLabel>Date de Révision {code}</FormLabel>
-                    <Popover>
-                    <PopoverTrigger asChild>
-                        <FormControl>
-                        <Button
-                            variant={"outline"}
-                            className={cn("w-full pl-3 text-left font-normal", !field.value && "text-muted-foreground")}
-                        >
-                            {field.value ? (format(new Date(field.value), "PPP", { locale: fr })) : (<span>Choisir une date</span>)}
-                            <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
-                        </Button>
-                        </FormControl>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-auto p-0" align="start">
-                        <Calendar mode="single" selected={field.value} onSelect={field.onChange} initialFocus locale={fr}/>
-                    </PopoverContent>
-                    </Popover>
-                    <FormMessage />
-                </FormItem>
+                    <FormItem>
+                        <FormLabel>Analytique {code}</FormLabel>
+                        <FormControl><Input placeholder={`Code analytique pour ${code}`} {...field} /></FormControl>
+                        <FormMessage />
+                    </FormItem>
                 )}
             />
         </div>

@@ -1,4 +1,5 @@
 
+
 import { z } from 'zod';
 
 export type Client = {
@@ -92,6 +93,10 @@ export type Contract = {
   revisionP1?: RevisionInfo;
   revisionP2?: RevisionInfo;
   revisionP3?: RevisionInfo;
+  
+  analyticP1?: string;
+  analyticP2?: string;
+  analyticP3?: string;
 
   monthlyBilling?: MonthlyBilling[];
   // Conditional fields
