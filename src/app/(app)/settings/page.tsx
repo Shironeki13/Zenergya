@@ -13,7 +13,7 @@ import { Label } from "@/components/ui/label";
 import { PlusCircle, Trash2, Edit, UploadCloud, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Textarea } from '@/components/ui/textarea';
-import type { Company, Agency, Sector, Activity, Schedule, Term, VatRate, Typology, RevisionFormula, PaymentTerm, PricingRule, Market } from "@/lib/types";
+import type { Company, Agency, Sector, Activity, Schedule, Term, VatRate, Typology, RevisionFormula, PaymentTerm, PricingRule, Market, MeterType } from "@/lib/types";
 import { 
   updateCompany, deleteCompany,
   updateAgency, deleteAgency,
@@ -27,7 +27,8 @@ import {
   updatePaymentTerm, deletePaymentTerm,
   updatePricingRule, deletePricingRule,
   updateMarket, deleteMarket,
-  createCompany, createAgency, createSector, createActivity, createSchedule, createTerm, createTypology, createVatRate, createRevisionFormula, createPaymentTerm, createPricingRule, createMarket,
+  updateMeterType, deleteMeterType,
+  createCompany, createAgency, createSector, createActivity, createSchedule, createTerm, createTypology, createVatRate, createRevisionFormula, createPaymentTerm, createPricingRule, createMarket, createMeterType,
 } from "@/services/firestore";
 import { useData } from '@/context/data-context';
 
@@ -716,6 +717,106 @@ const ActivitiesSection = () => {
                                 <DialogClose asChild><Button variant="outline">Annuler</Button></DialogClose>
                                 <Button type="submit" disabled={isSubmitting}>{isSubmitting ? "Enregistrement..." : "Enregistrer"}</Button>
                             </DialogFooter>
+                        </form>
+                    </DialogContent>
+                </Dialog>
+            </CardContent>
+        </Card>
+    );
+};
+
+// Section pour les Types de Compteurs
+const MeterTypesSection = () => {
+    const { toast } = useToast();
+    const { meterTypes, isLoading, reloadData } = useData();
+    const [isSubmitting, setIsSubmitting] = useState(false);
+    const [dialogOpen, setDialogOpen] = useState(false);
+    const [editingItem, setEditingItem] = useState<MeterType | null>(null);
+    const [itemToDelete, setItemToDelete] = useState<MeterType | null>(null);
+    const [code, setCode] = useState('');
+    const [label, setLabel] = useState('');
+    const [unit, setUnit] = useState('');
+
+    const resetForm = () => { setCode(''); setLabel(''); setUnit(''); setEditingItem(null); };
+
+    const handleOpenDialog = (item: MeterType | null = null) => {
+        setEditingItem(item);
+        setCode(item ? item.code : '');
+        setLabel(item ? item.label : '');
+        setUnit(item ? item.unit : '');
+        setDialogOpen(true);
+    };
+
+    const handleSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!code.trim() || !label.trim() || !unit.trim()) return;
+        setIsSubmitting(true);
+        try {
+            const data = { code, label, unit };
+            if (editingItem) {
+                await updateMeterType(editingItem.id, data);
+                toast({ title: "Succès", description: "Type de compteur mis à jour." });
+            } else {
+                await createMeterType(data);
+                toast({ title: "Succès", description: "Type de compteur créé." });
+            }
+            await reloadData(); setDialogOpen(false); resetForm();
+        } catch (error) { toast({ title: "Erreur", description: "L'opération a échoué.", variant: "destructive" });
+        } finally { setIsSubmitting(false); }
+    };
+
+    const handleDelete = async () => {
+        if (!itemToDelete) return;
+        try {
+            await deleteMeterType(itemToDelete.id);
+            toast({ title: "Succès", description: "Type de compteur supprimé." });
+            await reloadData(); setItemToDelete(null);
+        } catch (error) { toast({ title: "Erreur", description: "Impossible de supprimer le type de compteur.", variant: "destructive" }); }
+    };
+
+    return (
+        <Card>
+            <CardHeader>
+                <div className="flex justify-between items-center">
+                    <div><CardTitle>Types de Compteurs</CardTitle><CardDescription>Gérez les types de compteurs, leurs libellés et unités.</CardDescription></div>
+                    <Button size="sm" className="gap-1" onClick={() => handleOpenDialog()}><PlusCircle className="h-4 w-4" /> Créer</Button>
+                </div>
+            </CardHeader>
+            <CardContent>
+                <div className="border rounded-md">
+                    <Table>
+                        <TableHeader><TableRow><TableHead>Code</TableHead><TableHead>Libellé</TableHead><TableHead>Unité</TableHead><TableHead className="w-[100px] text-right">Actions</TableHead></TableRow></TableHeader>
+                        <TableBody>
+                            {isLoading ? (<TableRow><TableCell colSpan={4} className="text-center h-24"><Loader2 className="mx-auto h-8 w-8 animate-spin text-muted-foreground" /></TableCell></TableRow>) 
+                            : meterTypes.length === 0 ? (<TableRow><TableCell colSpan={4} className="text-center">Aucun type de compteur.</TableCell></TableRow>) 
+                            : (meterTypes.map(item => (
+                                <TableRow key={item.id}>
+                                    <TableCell className="font-medium">{item.code}</TableCell>
+                                    <TableCell>{item.label}</TableCell>
+                                    <TableCell>{item.unit}</TableCell>
+                                    <TableCell className="text-right">
+                                        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleOpenDialog(item)}><Edit className="h-4 w-4" /></Button>
+                                        <Dialog open={!!itemToDelete && itemToDelete.id === item.id} onOpenChange={(isOpen) => !isOpen && setItemToDelete(null)}>
+                                            <DialogTrigger asChild><Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive" onClick={() => setItemToDelete(item)}><Trash2 className="h-4 w-4" /></Button></DialogTrigger>
+                                            <DialogContent>
+                                                <DialogHeader><DialogTitle>Supprimer {itemToDelete?.code}</DialogTitle><DialogDescription>Cette action est irréversible.</DialogDescription></DialogHeader>
+                                                <DialogFooter><Button variant="outline" onClick={() => setItemToDelete(null)}>Annuler</Button><Button variant="destructive" onClick={handleDelete}>Confirmer</Button></DialogFooter>
+                                            </DialogContent>
+                                        </Dialog>
+                                    </TableCell>
+                                </TableRow>
+                            )))}
+                        </TableBody>
+                    </Table>
+                </div>
+                <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+                    <DialogContent>
+                        <DialogHeader><DialogTitle>{editingItem ? "Modifier le type" : "Nouveau type de compteur"}</DialogTitle></DialogHeader>
+                        <form onSubmit={handleSubmit} className="space-y-4">
+                            <div className="space-y-2"><Label htmlFor="mtCode">Code</Label><Input id="mtCode" value={code} onChange={e => setCode(e.target.value.toUpperCase())} required placeholder="Ex: ECS" /></div>
+                            <div className="space-y-2"><Label htmlFor="mtLabel">Libellé</Label><Input id="mtLabel" value={label} onChange={e => setLabel(e.target.value)} required placeholder="Ex: Eau Chaude Sanitaire"/></div>
+                            <div className="space-y-2"><Label htmlFor="mtUnit">Unité</Label><Input id="mtUnit" value={unit} onChange={e => setUnit(e.target.value)} required placeholder="Ex: m³, kWh"/></div>
+                            <DialogFooter><DialogClose asChild><Button variant="outline">Annuler</Button></DialogClose><Button type="submit" disabled={isSubmitting}>{isSubmitting ? "Enregistrement..." : "Enregistrer"}</Button></DialogFooter>
                         </form>
                     </DialogContent>
                 </Dialog>
@@ -1510,6 +1611,7 @@ export default function SettingsPage() {
                 <TabsTrigger value="agencies">Agences</TabsTrigger>
                 <TabsTrigger value="sectors">Secteurs</TabsTrigger>
                 <TabsTrigger value="activities">Activités</TabsTrigger>
+                <TabsTrigger value="meterTypes">Types de Compteurs</TabsTrigger>
                 <TabsTrigger value="pricing_rules">Règles de prix</TabsTrigger>
                 <TabsTrigger value="markets">Marchés</TabsTrigger>
                 <TabsTrigger value="typologies">Typologies</TabsTrigger>
@@ -1530,6 +1632,9 @@ export default function SettingsPage() {
             </TabsContent>
             <TabsContent value="activities">
                 <ActivitiesSection />
+            </TabsContent>
+            <TabsContent value="meterTypes">
+                <MeterTypesSection />
             </TabsContent>
             <TabsContent value="pricing_rules">
                 <PricingRulesSection />

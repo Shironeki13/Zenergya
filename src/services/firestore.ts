@@ -1,7 +1,7 @@
 
 'use server';
 import { db } from '@/lib/firebase';
-import type { Client, Site, Contract, Invoice, CreditNote, MeterReading, Company, Agency, Sector, Activity, User, Role, Schedule, Term, Typology, VatRate, RevisionFormula, PaymentTerm, PricingRule, Market, Meter } from '@/lib/types';
+import type { Client, Site, Contract, Invoice, CreditNote, MeterReading, Company, Agency, Sector, Activity, User, Role, Schedule, Term, Typology, VatRate, RevisionFormula, PaymentTerm, PricingRule, Market, Meter, MeterType } from '@/lib/types';
 import { collection, getDocs, doc, getDoc, addDoc, updateDoc, deleteDoc, query, where, DocumentData, writeBatch, runTransaction, Timestamp } from 'firebase/firestore';
 
 function processFirestoreDoc<T>(docData: DocumentData): T {
@@ -420,6 +420,20 @@ export async function updateActivity(id: string, data: Partial<Omit<Activity, 'i
 }
 export async function deleteActivity(id: string) {
     return deleteSettingItem('activities', id);
+}
+
+// Types de Compteur
+export async function createMeterType(data: Omit<MeterType, 'id'>) {
+    return createSettingItem('meterTypes', data);
+}
+export async function getMeterTypes(): Promise<MeterType[]> {
+    return getCollection<MeterType>(collection(db, 'meterTypes'));
+}
+export async function updateMeterType(id: string, data: Partial<Omit<MeterType, 'id'>>) {
+    return updateSettingItem('meterTypes', id, data);
+}
+export async function deleteMeterType(id: string) {
+    return deleteSettingItem('meterTypes', id);
 }
 
 // Échéanciers

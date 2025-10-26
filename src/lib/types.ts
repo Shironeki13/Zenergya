@@ -39,6 +39,13 @@ export type Site = {
     amounts?: { activityId: string; amount: number }[]; // Montants à facturer par activité
 }
 
+export type MeterType = {
+    id: string;
+    code: string;
+    label: string;
+    unit: string;
+}
+
 export type Meter = {
     id: string;
     code: string; // unique code, auto-generated from document ID
@@ -46,8 +53,8 @@ export type Meter = {
     siteId: string;
     siteName?: string; // denormalized
     clientName?: string; // denormalized from site
-    type: string; // e.g., 'Eau Chaude', 'Chauffage'
-    unit: string; // e.g., 'kWh', 'm3'
+    type: string; // e.g., 'Eau Chaude', 'Chauffage' - From MeterType label
+    unit: string; // e.g., 'kWh', 'm3' - From MeterType unit
     location?: string;
     status: 'on' | 'off';
     lastModified: string; // ISO date string
@@ -295,6 +302,7 @@ export type DataContextType = {
     invoices: Invoice[];
     creditNotes: CreditNote[];
     meters: Meter[];
+    meterTypes: MeterType[];
     meterReadings: MeterReading[];
     companies: Company[];
     agencies: Agency[];

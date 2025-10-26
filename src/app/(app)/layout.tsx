@@ -58,7 +58,7 @@ export default function AppLayout({
                 <Logo />
               </Link>
             </div>
-            <div className="flex-1">
+            <div className="flex-1 overflow-y-auto">
               <nav className="grid items-start px-2 text-sm font-medium lg:px-4">
                 {navItems.map((item) => (
                   <Link

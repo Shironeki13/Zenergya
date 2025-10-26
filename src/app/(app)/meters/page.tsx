@@ -13,12 +13,12 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { PlusCircle, Edit, Trash2, BookOpen, Loader2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { createMeter, updateMeter, deleteMeter, getMeterReadingsByMeter } from '@/services/firestore';
-import type { Meter, MeterReading } from '@/lib/types';
+import type { Meter, MeterReading, MeterType } from '@/lib/types';
 import { Badge } from '@/components/ui/badge';
 import { useData } from '@/context/data-context';
 
 export default function MetersPage() {
-  const { sites, meters, reloadData, isLoading } = useData();
+  const { sites, meters, meterTypes, reloadData, isLoading } = useData();
   const { toast } = useToast();
 
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -30,8 +30,7 @@ export default function MetersPage() {
   const [code, setCode] = useState('');
   const [name, setName] = useState('');
   const [siteId, setSiteId] = useState('');
-  const [type, setType] = useState('');
-  const [unit, setUnit] = useState('');
+  const [meterTypeId, setMeterTypeId] = useState<string | undefined>(undefined);
   const [location, setLocation] = useState('');
   const [status, setStatus] = useState<'on' | 'off'>('on');
   
@@ -45,8 +44,7 @@ export default function MetersPage() {
     setCode('');
     setName('');
     setSiteId('');
-    setType('');
-    setUnit('');
+    setMeterTypeId(undefined);
     setLocation('');
     setStatus('on');
     setEditingMeter(null);
@@ -59,8 +57,8 @@ export default function MetersPage() {
       setCode(meter.code);
       setName(meter.name);
       setSiteId(meter.siteId);
-      setType(meter.type);
-      setUnit(meter.unit);
+      const foundMeterType = meterTypes.find(mt => mt.label === meter.type && mt.unit === meter.unit);
+      setMeterTypeId(foundMeterType?.id);
       setLocation(meter.location || '');
       setStatus(meter.status);
     }
@@ -83,14 +81,19 @@ export default function MetersPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name.trim() || !siteId || !type.trim() || !unit.trim()) return;
+    const selectedMeterType = meterTypes.find(mt => mt.id === meterTypeId);
+
+    if (!name.trim() || !siteId || !selectedMeterType) {
+        toast({ title: 'Erreur', description: 'Veuillez remplir tous les champs requis.', variant: 'destructive' });
+        return;
+    }
 
     setIsSubmitting(true);
     const meterData: Partial<Omit<Meter, 'id' | 'code'>> = {
       name,
       siteId,
-      type,
-      unit,
+      type: selectedMeterType.label,
+      unit: selectedMeterType.unit,
       location,
       status,
       lastModified: new Date().toISOString(),
@@ -241,16 +244,17 @@ export default function MetersPage() {
                     </SelectContent>
                 </Select>
               </div>
-              <div className="grid grid-cols-2 gap-4">
-                 <div className="space-y-2">
-                    <Label htmlFor="type">Type</Label>
-                    <Input id="type" value={type} onChange={(e) => setType(e.target.value)} required placeholder="Ex: Chauffage, ECS..."/>
-                </div>
-                 <div className="space-y-2">
-                    <Label htmlFor="unit">Unité</Label>
-                    <Input id="unit" value={unit} onChange={(e) => setUnit(e.target.value)} required placeholder="Ex: kWh, m3..."/>
-                </div>
+              
+              <div className="space-y-2">
+                <Label htmlFor="meterTypeId">Type de Compteur</Label>
+                <Select onValueChange={setMeterTypeId} value={meterTypeId} required>
+                    <SelectTrigger><SelectValue placeholder="Sélectionner un type..." /></SelectTrigger>
+                    <SelectContent>
+                        {meterTypes.map(mt => <SelectItem key={mt.id} value={mt.id}>{mt.label} ({mt.code}) - {mt.unit}</SelectItem>)}
+                    </SelectContent>
+                </Select>
               </div>
+
               <div className="space-y-2">
                     <Label htmlFor="location">Localisation</Label>
                     <Input id="location" value={location} onChange={(e) => setLocation(e.target.value)} placeholder="Ex: Local technique RDC"/>
