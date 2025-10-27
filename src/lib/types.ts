@@ -82,6 +82,20 @@ export type RevisionInfo = {
   date?: string; // ISO String date
 }
 
+export type HeatingRevisionIndices = {
+  molecule0?: number;
+  ticgn0?: number;
+  atrd2_0?: number;
+  cee0?: number;
+};
+
+export type EcsRevisionIndices = {
+  peg0?: number;
+  ticgn0?: number;
+  atrd3_0?: number;
+  cee0?: number;
+};
+
 export type Contract = {
   id: string;
   clientId: string;
@@ -106,7 +120,25 @@ export type Contract = {
   analyticP3?: string;
 
   monthlyBilling?: MonthlyBilling[];
-  // Conditional fields
+
+  // P1 Specific Fields
+  hasHeating: boolean;
+  hasECS: boolean;
+
+  // Heating fields
+  heatingFlatRateHT?: number; // Forfait P1 CH HT (€/an)
+  heatingUnitPriceKwh?: number; // PU kWh CH (€/kWh)
+  heatingReferenceDju?: number; // DJU de référence annuel
+  heatingWeatherStation?: string; // Station météo
+  heatingRevisionIndices?: HeatingRevisionIndices;
+
+  // ECS fields
+  ecsFlatRateHT?: number; // Forfait P1 ECS HT (€/an)
+  ecsUnitPriceM3?: number; // PU m3 ECS
+  ecsRevisionIndices?: EcsRevisionIndices;
+
+
+  // Conditional fields (legacy, to be reviewed if they overlap)
   heatingDays?: number; // Jours de chauffe (MF)
   baseDJU?: number; // DJU de base (MT)
   weatherStationCode?: string; // Station météo (MT)
@@ -322,4 +354,6 @@ export type DataContextType = {
     reloadData: () => Promise<void>;
 };
     
+    
+
     
