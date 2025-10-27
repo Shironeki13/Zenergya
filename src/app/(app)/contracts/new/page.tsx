@@ -362,7 +362,7 @@ export default function NewContractPage() {
             render={({ field }) => (
                 <FormItem>
                     <FormLabel>Analytique {code}</FormLabel>
-                    <FormControl><Input placeholder={`Code analytique pour ${code}`} {...field} /></FormControl>
+                    <FormControl><Input placeholder={`Code analytique pour ${code}`} {...field} value={field.value ?? ''} /></FormControl>
                     <FormMessage />
                 </FormItem>
             )}
@@ -733,18 +733,18 @@ export default function NewContractPage() {
                   <div className="space-y-4 p-4 border rounded-lg">
                     <h4 className="font-semibold">Paramètres Chauffage</h4>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <FormField control={form.control} name="heatingFlatRateHT" render={({ field }) => (<FormItem><FormLabel>Forfait P1 CH HT (€/an)</FormLabel><FormControl><Input type="number" {...field} onChange={e => field.onChange(parseFloat(e.target.value))} /></FormControl></FormItem>)} />
-                      <FormField control={form.control} name="heatingUnitPriceKwh" render={({ field }) => (<FormItem><FormLabel>PU kWh CH (€/kWh)</FormLabel><FormControl><Input type="number" {...field} onChange={e => field.onChange(parseFloat(e.target.value))} /></FormControl></FormItem>)} />
-                      <FormField control={form.control} name="heatingReferenceDju" render={({ field }) => (<FormItem><FormLabel>DJU de référence annuel</FormLabel><FormControl><Input type="number" {...field} onChange={e => field.onChange(parseFloat(e.target.value))} /></FormControl></FormItem>)} />
-                      <FormField control={form.control} name="heatingWeatherStation" render={({ field }) => (<FormItem><FormLabel>Station météo</FormLabel><FormControl><Input {...field} /></FormControl></FormItem>)} />
+                      <FormField control={form.control} name="heatingFlatRateHT" render={({ field }) => (<FormItem><FormLabel>Forfait P1 CH HT (€/an)</FormLabel><FormControl><Input type="number" {...field} value={field.value ?? ''} onChange={e => field.onChange(parseFloat(e.target.value))} /></FormControl></FormItem>)} />
+                      <FormField control={form.control} name="heatingUnitPriceKwh" render={({ field }) => (<FormItem><FormLabel>PU kWh CH (€/kWh)</FormLabel><FormControl><Input type="number" {...field} value={field.value ?? ''} onChange={e => field.onChange(parseFloat(e.target.value))} /></FormControl></FormItem>)} />
+                      <FormField control={form.control} name="heatingReferenceDju" render={({ field }) => (<FormItem><FormLabel>DJU de référence annuel</FormLabel><FormControl><Input type="number" {...field} value={field.value ?? ''} onChange={e => field.onChange(parseFloat(e.target.value))} /></FormControl></FormItem>)} />
+                      <FormField control={form.control} name="heatingWeatherStation" render={({ field }) => (<FormItem><FormLabel>Station météo</FormLabel><FormControl><Input {...field} value={field.value ?? ''} /></FormControl></FormItem>)} />
                     </div>
                     <div className="space-y-4 pt-4 border-t">
                       <h5 className="font-medium">Indices de Révision Chauffage</h5>
                       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                        <FormField control={form.control} name="heatingRevisionIndices.molecule0" render={({ field }) => (<FormItem><FormLabel>Molécule 0</FormLabel><FormControl><Input type="number" {...field} onChange={e => field.onChange(parseFloat(e.target.value))} /></FormControl></FormItem>)} />
-                        <FormField control={form.control} name="heatingRevisionIndices.ticgn0" render={({ field }) => (<FormItem><FormLabel>TICGN 0</FormLabel><FormControl><Input type="number" {...field} onChange={e => field.onChange(parseFloat(e.target.value))} /></FormControl></FormItem>)} />
-                        <FormField control={form.control} name="heatingRevisionIndices.atrd2_0" render={({ field }) => (<FormItem><FormLabel>ATRD2 0</FormLabel><FormControl><Input type="number" {...field} onChange={e => field.onChange(parseFloat(e.target.value))} /></FormControl></FormItem>)} />
-                        <FormField control={form.control} name="heatingRevisionIndices.cee0" render={({ field }) => (<FormItem><FormLabel>CEE 0</FormLabel><FormControl><Input type="number" {...field} onChange={e => field.onChange(parseFloat(e.target.value))} /></FormControl></FormItem>)} />
+                        <FormField control={form.control} name="heatingRevisionIndices.molecule0" render={({ field }) => (<FormItem><FormLabel>Molécule 0</FormLabel><FormControl><Input type="number" {...field} value={field.value ?? ''} onChange={e => field.onChange(parseFloat(e.target.value))} /></FormControl></FormItem>)} />
+                        <FormField control={form.control} name="heatingRevisionIndices.ticgn0" render={({ field }) => (<FormItem><FormLabel>TICGN 0</FormLabel><FormControl><Input type="number" {...field} value={field.value ?? ''} onChange={e => field.onChange(parseFloat(e.target.value))} /></FormControl></FormItem>)} />
+                        <FormField control={form.control} name="heatingRevisionIndices.atrd2_0" render={({ field }) => (<FormItem><FormLabel>ATRD2 0</FormLabel><FormControl><Input type="number" {...field} value={field.value ?? ''} onChange={e => field.onChange(parseFloat(e.target.value))} /></FormControl></FormItem>)} />
+                        <FormField control={form.control} name="heatingRevisionIndices.cee0" render={({ field }) => (<FormItem><FormLabel>CEE 0</FormLabel><FormControl><Input type="number" {...field} value={field.value ?? ''} onChange={e => field.onChange(parseFloat(e.target.value))} /></FormControl></FormItem>)} />
                       </div>
                     </div>
                   </div>
@@ -754,16 +754,16 @@ export default function NewContractPage() {
                   <div className="space-y-4 p-4 border rounded-lg">
                     <h4 className="font-semibold">Paramètres ECS</h4>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <FormField control={form.control} name="ecsFlatRateHT" render={({ field }) => (<FormItem><FormLabel>Forfait P1 ECS HT (€/an)</FormLabel><FormControl><Input type="number" {...field} onChange={e => field.onChange(parseFloat(e.target.value))} /></FormControl></FormItem>)} />
-                      <FormField control={form.control} name="ecsUnitPriceM3" render={({ field }) => (<FormItem><FormLabel>PU m³ ECS</FormLabel><FormControl><Input type="number" {...field} onChange={e => field.onChange(parseFloat(e.target.value))} /></FormControl></FormItem>)} />
+                      <FormField control={form.control} name="ecsFlatRateHT" render={({ field }) => (<FormItem><FormLabel>Forfait P1 ECS HT (€/an)</FormLabel><FormControl><Input type="number" {...field} value={field.value ?? ''} onChange={e => field.onChange(parseFloat(e.target.value))} /></FormControl></FormItem>)} />
+                      <FormField control={form.control} name="ecsUnitPriceM3" render={({ field }) => (<FormItem><FormLabel>PU m³ ECS</FormLabel><FormControl><Input type="number" {...field} value={field.value ?? ''} onChange={e => field.onChange(parseFloat(e.target.value))} /></FormControl></FormItem>)} />
                     </div>
                      <div className="space-y-4 pt-4 border-t">
                       <h5 className="font-medium">Indices de Révision ECS</h5>
                       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                        <FormField control={form.control} name="ecsRevisionIndices.peg0" render={({ field }) => (<FormItem><FormLabel>PEG 0</FormLabel><FormControl><Input type="number" {...field} onChange={e => field.onChange(parseFloat(e.target.value))} /></FormControl></FormItem>)} />
-                        <FormField control={form.control} name="ecsRevisionIndices.ticgn0" render={({ field }) => (<FormItem><FormLabel>TICGN 0</FormLabel><FormControl><Input type="number" {...field} onChange={e => field.onChange(parseFloat(e.target.value))} /></FormControl></FormItem>)} />
-                        <FormField control={form.control} name="ecsRevisionIndices.atrd3_0" render={({ field }) => (<FormItem><FormLabel>ATRD3 0</FormLabel><FormControl><Input type="number" {...field} onChange={e => field.onChange(parseFloat(e.target.value))} /></FormControl></FormItem>)} />
-                        <FormField control={form.control} name="ecsRevisionIndices.cee0" render={({ field }) => (<FormItem><FormLabel>CEE 0</FormLabel><FormControl><Input type="number" {...field} onChange={e => field.onChange(parseFloat(e.target.value))} /></FormControl></FormItem>)} />
+                        <FormField control={form.control} name="ecsRevisionIndices.peg0" render={({ field }) => (<FormItem><FormLabel>PEG 0</FormLabel><FormControl><Input type="number" {...field} value={field.value ?? ''} onChange={e => field.onChange(parseFloat(e.target.value))} /></FormControl></FormItem>)} />
+                        <FormField control={form.control} name="ecsRevisionIndices.ticgn0" render={({ field }) => (<FormItem><FormLabel>TICGN 0</FormLabel><FormControl><Input type="number" {...field} value={field.value ?? ''} onChange={e => field.onChange(parseFloat(e.target.value))} /></FormControl></FormItem>)} />
+                        <FormField control={form.control} name="ecsRevisionIndices.atrd3_0" render={({ field }) => (<FormItem><FormLabel>ATRD3 0</FormLabel><FormControl><Input type="number" {...field} value={field.value ?? ''} onChange={e => field.onChange(parseFloat(e.target.value))} /></FormControl></FormItem>)} />
+                        <FormField control={form.control} name="ecsRevisionIndices.cee0" render={({ field }) => (<FormItem><FormLabel>CEE 0</FormLabel><FormControl><Input type="number" {...field} value={field.value ?? ''} onChange={e => field.onChange(parseFloat(e.target.value))} /></FormControl></FormItem>)} />
                       </div>
                     </div>
                   </div>
@@ -817,7 +817,7 @@ export default function NewContractPage() {
               <FormField control={form.control} name="heatingDays" render={({ field }) => (
                 <FormItem>
                   <FormLabel>Nombre de jours de chauffe contractuels</FormLabel>
-                  <FormControl><Input type="number" placeholder="ex: 232" {...field} onChange={e => field.onChange(parseInt(e.target.value, 10))} /></FormControl>
+                  <FormControl><Input type="number" placeholder="ex: 232" {...field} value={field.value ?? ''} onChange={e => field.onChange(parseInt(e.target.value, 10))} /></FormControl>
                   <FormMessage />
                 </FormItem>
               )} />
@@ -826,14 +826,14 @@ export default function NewContractPage() {
               <FormField control={form.control} name="baseDJU" render={({ field }) => (
                 <FormItem>
                   <FormLabel>DJU de base</FormLabel>
-                  <FormControl><Input type="number" placeholder="ex: 2350" {...field} onChange={e => field.onChange(parseInt(e.target.value, 10))} /></FormControl>
+                  <FormControl><Input type="number" placeholder="ex: 2350" {...field} value={field.value ?? ''} onChange={e => field.onChange(parseInt(e.target.value, 10))} /></FormControl>
                   <FormMessage />
                 </FormItem>
               )} />
               <FormField control={form.control} name="weatherStationCode" render={({ field }) => (
                 <FormItem>
                   <FormLabel>Station météo / Code INSEE</FormLabel>
-                  <FormControl><Input placeholder="ex: 75114001" {...field} /></FormControl>
+                  <FormControl><Input placeholder="ex: 75114001" {...field} value={field.value ?? ''} /></FormControl>
                   <FormMessage />
                 </FormItem>
               )} />
@@ -842,14 +842,14 @@ export default function NewContractPage() {
               <FormField control={form.control} name="flatRateAmount" render={({ field }) => (
                 <FormItem>
                   <FormLabel>Montant forfaitaire</FormLabel>
-                  <FormControl><Input type="number" placeholder="ex: 5000" {...field} onChange={e => field.onChange(parseFloat(e.target.value))} /></FormControl>
+                  <FormControl><Input type="number" placeholder="ex: 5000" {...field} value={field.value ?? ''} onChange={e => field.onChange(parseFloat(e.target.value))} /></FormControl>
                   <FormMessage />
                 </FormItem>
               )} />
               <FormField control={form.control} name="managementFees" render={({ field }) => (
                 <FormItem>
                   <FormLabel>Frais de gestion</FormLabel>
-                  <FormControl><Input type="number" placeholder="ex: 250" {...field} onChange={e => field.onChange(parseFloat(e.target.value))} /></FormControl>
+                  <FormControl><Input type="number" placeholder="ex: 250" {...field} value={field.value ?? ''} onChange={e => field.onChange(parseFloat(e.target.value))} /></FormControl>
                   <FormMessage />
                 </FormItem>
               )} />
@@ -858,7 +858,7 @@ export default function NewContractPage() {
               <FormField control={form.control} name="unitPriceUsefulMWh" render={({ field }) => (
                 <FormItem>
                   <FormLabel>Prix unitaire (€/MWh utile)</FormLabel>
-                  <FormControl><Input type="number" placeholder="ex: 120" {...field} onChange={e => field.onChange(parseFloat(e.target.value))} /></FormControl>
+                  <FormControl><Input type="number" placeholder="ex: 120" {...field} value={field.value ?? ''} onChange={e => field.onChange(parseFloat(e.target.value))} /></FormControl>
                   <FormMessage />
                 </FormItem>
               )} />
@@ -867,7 +867,7 @@ export default function NewContractPage() {
               <FormField control={form.control} name="unitPricePrimaryMWh" render={({ field }) => (
                 <FormItem>
                   <FormLabel>Prix unitaire (€/MWh primaire)</FormLabel>
-                  <FormControl><Input type="number" placeholder="ex: 90" {...field} onChange={e => field.onChange(parseFloat(e.target.value))} /></FormControl>
+                  <FormControl><Input type="number" placeholder="ex: 90" {...field} value={field.value ?? ''} onChange={e => field.onChange(parseFloat(e.target.value))} /></FormControl>
                   <FormMessage />
                 </FormItem>
               )} />
@@ -877,7 +877,7 @@ export default function NewContractPage() {
               <FormField control={form.control} name="consumptionBase" render={({ field }) => (
                 <FormItem>
                   <FormLabel>Base de consommation théorique NB</FormLabel>
-                  <FormControl><Input type="number" placeholder="ex: 10000" {...field} onChange={e => field.onChange(parseInt(e.target.value, 10))} /></FormControl>
+                  <FormControl><Input type="number" placeholder="ex: 10000" {...field} value={field.value ?? ''} onChange={e => field.onChange(parseInt(e.target.value, 10))} /></FormControl>
                   <FormMessage />
                 </FormItem>
               )} />
@@ -911,5 +911,7 @@ export default function NewContractPage() {
     </Card>
   )
 }
+
+    
 
     
