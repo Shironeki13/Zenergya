@@ -57,6 +57,20 @@ const revisionSchema = z.object({
   date: z.date().optional(),
 }).optional();
 
+const heatingRevisionSchema = z.object({
+    molecule0: z.number().optional(),
+    ticgn0: z.number().optional(),
+    atrd2_0: z.number().optional(),
+    cee0: z.number().optional(),
+}).optional();
+
+const ecsRevisionSchema = z.object({
+    peg0: z.number().optional(),
+    ticgn0: z.number().optional(),
+    atrd3_0: z.number().optional(),
+    cee0: z.number().optional(),
+}).optional();
+
 const contractFormSchema = z.object({
   clientId: z.string({ required_error: "Un client est requis." }),
   siteIds: z.array(z.string()).refine((value) => value.length > 0, {
@@ -78,6 +92,19 @@ const contractFormSchema = z.object({
   analyticP2: z.string().optional(),
   analyticP3: z.string().optional(),
   monthlyBilling: z.array(monthlyBillingSchema).optional(),
+
+  // P1 fields
+  hasHeating: z.boolean().default(false),
+  hasECS: z.boolean().default(false),
+  heatingFlatRateHT: z.number().optional(),
+  heatingUnitPriceKwh: z.number().optional(),
+  heatingReferenceDju: z.number().optional(),
+  heatingWeatherStation: z.string().optional(),
+  heatingRevisionIndices: heatingRevisionSchema,
+  ecsFlatRateHT: z.number().optional(),
+  ecsUnitPriceM3: z.number().optional(),
+  ecsRevisionIndices: ecsRevisionSchema,
+
   // Conditional fields
   heatingDays: z.number().optional(),
   baseDJU: z.number().optional(),
@@ -118,6 +145,8 @@ const defaultValues: Partial<ContractFormValues> = {
   hasInterest: false,
   monthlyBilling: months.map(m => ({ month: m, date: 1, percentage: 0 })),
   shareRate: [50, 50],
+  hasHeating: false,
+  hasECS: false,
 }
 
 export default function NewContractPage() {
@@ -149,6 +178,8 @@ export default function NewContractPage() {
   const watchMarketId = form.watch("marketId");
   const watchActivityIds = form.watch("activityIds");
   const watchHasInterest = form.watch("hasInterest");
+  const watchHasHeating = form.watch("hasHeating");
+  const watchHasECS = form.watch("hasECS");
 
   useEffect(() => {
     async function fetchInitialData() {
@@ -671,7 +702,76 @@ export default function NewContractPage() {
             )}
           />
 
-          {p1IsSelected && renderRevisionFields('P1')}
+          {p1IsSelected && (
+            <Card>
+              <CardHeader><CardTitle>Détails Prestation P1</CardTitle></CardHeader>
+              <CardContent className="space-y-6">
+                <div className="flex gap-8">
+                  <FormField
+                    control={form.control}
+                    name="hasHeating"
+                    render={({ field }) => (
+                      <FormItem className="flex flex-row items-center space-x-3 space-y-0">
+                        <FormControl><Checkbox checked={field.value} onCheckedChange={field.onChange} /></FormControl>
+                        <FormLabel className="font-normal">Chauffage</FormLabel>
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name="hasECS"
+                    render={({ field }) => (
+                      <FormItem className="flex flex-row items-center space-x-3 space-y-0">
+                        <FormControl><Checkbox checked={field.value} onCheckedChange={field.onChange} /></FormControl>
+                        <FormLabel className="font-normal">Eau Chaude Sanitaire (ECS)</FormLabel>
+                      </FormItem>
+                    )}
+                  />
+                </div>
+
+                {watchHasHeating && (
+                  <div className="space-y-4 p-4 border rounded-lg">
+                    <h4 className="font-semibold">Paramètres Chauffage</h4>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <FormField control={form.control} name="heatingFlatRateHT" render={({ field }) => (<FormItem><FormLabel>Forfait P1 CH HT (€/an)</FormLabel><FormControl><Input type="number" {...field} onChange={e => field.onChange(parseFloat(e.target.value))} /></FormControl></FormItem>)} />
+                      <FormField control={form.control} name="heatingUnitPriceKwh" render={({ field }) => (<FormItem><FormLabel>PU kWh CH (€/kWh)</FormLabel><FormControl><Input type="number" {...field} onChange={e => field.onChange(parseFloat(e.target.value))} /></FormControl></FormItem>)} />
+                      <FormField control={form.control} name="heatingReferenceDju" render={({ field }) => (<FormItem><FormLabel>DJU de référence annuel</FormLabel><FormControl><Input type="number" {...field} onChange={e => field.onChange(parseFloat(e.target.value))} /></FormControl></FormItem>)} />
+                      <FormField control={form.control} name="heatingWeatherStation" render={({ field }) => (<FormItem><FormLabel>Station météo</FormLabel><FormControl><Input {...field} /></FormControl></FormItem>)} />
+                    </div>
+                    <div className="space-y-4 pt-4 border-t">
+                      <h5 className="font-medium">Indices de Révision Chauffage</h5>
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                        <FormField control={form.control} name="heatingRevisionIndices.molecule0" render={({ field }) => (<FormItem><FormLabel>Molécule 0</FormLabel><FormControl><Input type="number" {...field} onChange={e => field.onChange(parseFloat(e.target.value))} /></FormControl></FormItem>)} />
+                        <FormField control={form.control} name="heatingRevisionIndices.ticgn0" render={({ field }) => (<FormItem><FormLabel>TICGN 0</FormLabel><FormControl><Input type="number" {...field} onChange={e => field.onChange(parseFloat(e.target.value))} /></FormControl></FormItem>)} />
+                        <FormField control={form.control} name="heatingRevisionIndices.atrd2_0" render={({ field }) => (<FormItem><FormLabel>ATRD2 0</FormLabel><FormControl><Input type="number" {...field} onChange={e => field.onChange(parseFloat(e.target.value))} /></FormControl></FormItem>)} />
+                        <FormField control={form.control} name="heatingRevisionIndices.cee0" render={({ field }) => (<FormItem><FormLabel>CEE 0</FormLabel><FormControl><Input type="number" {...field} onChange={e => field.onChange(parseFloat(e.target.value))} /></FormControl></FormItem>)} />
+                      </div>
+                    </div>
+                  </div>
+                )}
+                
+                {watchHasECS && (
+                  <div className="space-y-4 p-4 border rounded-lg">
+                    <h4 className="font-semibold">Paramètres ECS</h4>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <FormField control={form.control} name="ecsFlatRateHT" render={({ field }) => (<FormItem><FormLabel>Forfait P1 ECS HT (€/an)</FormLabel><FormControl><Input type="number" {...field} onChange={e => field.onChange(parseFloat(e.target.value))} /></FormControl></FormItem>)} />
+                      <FormField control={form.control} name="ecsUnitPriceM3" render={({ field }) => (<FormItem><FormLabel>PU m³ ECS</FormLabel><FormControl><Input type="number" {...field} onChange={e => field.onChange(parseFloat(e.target.value))} /></FormControl></FormItem>)} />
+                    </div>
+                     <div className="space-y-4 pt-4 border-t">
+                      <h5 className="font-medium">Indices de Révision ECS</h5>
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                        <FormField control={form.control} name="ecsRevisionIndices.peg0" render={({ field }) => (<FormItem><FormLabel>PEG 0</FormLabel><FormControl><Input type="number" {...field} onChange={e => field.onChange(parseFloat(e.target.value))} /></FormControl></FormItem>)} />
+                        <FormField control={form.control} name="ecsRevisionIndices.ticgn0" render={({ field }) => (<FormItem><FormLabel>TICGN 0</FormLabel><FormControl><Input type="number" {...field} onChange={e => field.onChange(parseFloat(e.target.value))} /></FormControl></FormItem>)} />
+                        <FormField control={form.control} name="ecsRevisionIndices.atrd3_0" render={({ field }) => (<FormItem><FormLabel>ATRD3 0</FormLabel><FormControl><Input type="number" {...field} onChange={e => field.onChange(parseFloat(e.target.value))} /></FormControl></FormItem>)} />
+                        <FormField control={form.control} name="ecsRevisionIndices.cee0" render={({ field }) => (<FormItem><FormLabel>CEE 0</FormLabel><FormControl><Input type="number" {...field} onChange={e => field.onChange(parseFloat(e.target.value))} /></FormControl></FormItem>)} />
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          )}
+
           {p2IsSelected && renderRevisionFields('P2')}
           {p3IsSelected && renderRevisionFields('P3')}
 
@@ -811,3 +911,5 @@ export default function NewContractPage() {
     </Card>
   )
 }
+
+    
