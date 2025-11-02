@@ -2,7 +2,7 @@
 'use client';
 
 import Link from 'next/link';
-import { PlusCircle, MoreHorizontal, Loader2 } from 'lucide-react';
+import { PlusCircle, MoreHorizontal, Loader2, Download } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -29,6 +29,7 @@ import {
 } from '@/components/ui/table';
 import { useData } from '@/context/data-context';
 import { useMemo } from 'react';
+import { downloadCSV } from '@/lib/utils';
 
 
 export default function ClientsPage() {
@@ -41,6 +42,11 @@ export default function ClientsPage() {
       typologyName: typologyMap.get(client.typologyId) || 'N/A',
     }));
   }, [clients, typologies]);
+
+  const handleExport = () => {
+    const dataToExport = clientsWithTypology.map(({ id, ...rest }) => rest);
+    downloadCSV(dataToExport, 'clients.csv');
+  };
   
   return (
     <Card>
@@ -52,12 +58,18 @@ export default function ClientsPage() {
               Gérez les entités clientes et leurs sites.
             </CardDescription>
           </div>
-          <Button asChild size="sm" className="gap-1">
-            <Link href="/clients/new">
-              <PlusCircle className="h-4 w-4" />
-              Nouveau Client
-            </Link>
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button asChild size="sm" className="gap-1">
+              <Link href="/clients/new">
+                <PlusCircle className="h-4 w-4" />
+                Nouveau Client
+              </Link>
+            </Button>
+            <Button size="sm" variant="outline" className="gap-1" onClick={handleExport}>
+              <Download className="h-4 w-4" />
+              Exporter
+            </Button>
+          </div>
         </div>
       </CardHeader>
       <CardContent>
