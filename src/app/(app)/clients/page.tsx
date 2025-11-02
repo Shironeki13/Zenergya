@@ -2,7 +2,7 @@
 'use client';
 
 import Link from 'next/link';
-import { PlusCircle, MoreHorizontal, Loader2, Download } from 'lucide-react';
+import { PlusCircle, MoreHorizontal, Loader2, Download, Search } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -27,31 +27,42 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import { Input } from '@/components/ui/input';
 import { useData } from '@/context/data-context';
-import { useMemo } from 'react';
+import { useState, useMemo } from 'react';
 import { downloadCSV } from '@/lib/utils';
 
 
 export default function ClientsPage() {
   const { clients, typologies, isLoading } = useData();
+  const [searchTerm, setSearchTerm] = useState('');
 
-  const clientsWithTypology = useMemo(() => {
+  const filteredClients = useMemo(() => {
     const typologyMap = new Map(typologies.map(t => [t.id, t.name]));
-    return clients.map(client => ({
+    
+    let clientsWithTypology = clients.map(client => ({
       ...client,
       typologyName: typologyMap.get(client.typologyId) || 'N/A',
     }));
-  }, [clients, typologies]);
+
+    if (!searchTerm) {
+      return clientsWithTypology;
+    }
+
+    return clientsWithTypology.filter(client =>
+      client.name.toLowerCase().includes(searchTerm.toLowerCase())
+    );
+  }, [clients, typologies, searchTerm]);
 
   const handleExport = () => {
-    const dataToExport = clientsWithTypology.map(({ id, ...rest }) => rest);
+    const dataToExport = filteredClients.map(({ id, ...rest }) => rest);
     downloadCSV(dataToExport, 'clients.csv');
   };
   
   return (
     <Card>
       <CardHeader>
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between gap-4">
           <div>
             <CardTitle>Clients</CardTitle>
             <CardDescription>
@@ -59,15 +70,25 @@ export default function ClientsPage() {
             </CardDescription>
           </div>
           <div className="flex items-center gap-2">
+            <div className="relative">
+              <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+              <Input
+                type="search"
+                placeholder="Rechercher un client..."
+                className="pl-8 sm:w-[300px]"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+              />
+            </div>
             <Button asChild size="sm" className="gap-1">
               <Link href="/clients/new">
                 <PlusCircle className="h-4 w-4" />
-                Nouveau Client
+                <span className="hidden sm:inline">Nouveau Client</span>
               </Link>
             </Button>
             <Button size="sm" variant="outline" className="gap-1" onClick={handleExport}>
               <Download className="h-4 w-4" />
-              Exporter
+              <span className="hidden sm:inline">Exporter</span>
             </Button>
           </div>
         </div>
@@ -91,8 +112,8 @@ export default function ClientsPage() {
                       <Loader2 className="mx-auto h-8 w-8 animate-spin text-muted-foreground" />
                     </TableCell>
                 </TableRow>
-            ) : clients.length > 0 ? (
-                clientsWithTypology.map((client) => (
+            ) : filteredClients.length > 0 ? (
+                filteredClients.map((client) => (
                 <TableRow key={client.id}>
                     <TableCell className="font-medium">{client.name}</TableCell>
                     <TableCell>
