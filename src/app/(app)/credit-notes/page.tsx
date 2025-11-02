@@ -2,7 +2,7 @@
 'use client';
 
 import Link from 'next/link';
-import { MoreHorizontal, Loader2, PlusCircle, Search } from 'lucide-react';
+import { MoreHorizontal, Loader2, PlusCircle, Search, Download } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -31,6 +31,7 @@ import { Input } from '@/components/ui/input';
 import { useData } from '@/context/data-context';
 import { useState, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
+import { downloadCSV } from '@/lib/utils';
 
 export default function CreditNotesPage() {
   const { creditNotes, isLoading } = useData();
@@ -51,6 +52,14 @@ export default function CreditNotesPage() {
       cn.clientName.toLowerCase().includes(searchTerm.toLowerCase())
     );
   }, [sortedCreditNotes, searchTerm]);
+
+  const handleExport = () => {
+    const dataToExport = filteredCreditNotes.map(({ lineItems, ...rest }) => ({
+        ...rest,
+        lineItems: lineItems.map(li => `[${li.description}:${li.total}]`).join('; ')
+    }));
+    downloadCSV(dataToExport, 'avoirs.csv');
+  };
 
   return (
     <Card>
@@ -73,6 +82,10 @@ export default function CreditNotesPage() {
                 onChange={(e) => setSearchTerm(e.target.value)}
               />
             </div>
+            <Button size="sm" variant="outline" className="gap-1" onClick={handleExport}>
+              <Download className="h-4 w-4" />
+              Exporter
+            </Button>
             <Button size="sm" className="gap-1" onClick={() => router.push('/invoices')}>
               <PlusCircle className="h-4 w-4" />
               Créer un Avoir

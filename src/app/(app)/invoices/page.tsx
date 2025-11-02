@@ -2,7 +2,7 @@
 'use client';
 
 import Link from 'next/link';
-import { MoreHorizontal, Loader2, MinusCircle, Search } from 'lucide-react';
+import { MoreHorizontal, Loader2, MinusCircle, Search, Download } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -34,6 +34,7 @@ import { useToast } from '@/hooks/use-toast';
 import { useState, useMemo } from 'react';
 import { generateCreditNote } from '@/ai/flows/generate-credit-note-flow';
 import { Input } from '@/components/ui/input';
+import { downloadCSV } from '@/lib/utils';
 
 
 export default function InvoicesPage() {
@@ -63,6 +64,14 @@ export default function InvoicesPage() {
     filteredInvoices.filter(inv => inv.status !== 'proforma' && inv.status !== 'cancelled'),
     [filteredInvoices]
   );
+
+  const handleExport = () => {
+    const dataToExport = filteredInvoices.map(({ lineItems, ...rest }) => ({
+        ...rest,
+        lineItems: lineItems.map(li => `[${li.description}:${li.total}]`).join('; ')
+    }));
+    downloadCSV(dataToExport, 'factures.csv');
+  };
 
 
   const handleSelectionChange = (invoiceId: string, checked: boolean) => {
@@ -162,10 +171,15 @@ export default function InvoicesPage() {
                 onChange={(e) => setSearchTerm(e.target.value)}
               />
             </div>
-            {selectedInvoiceIds.length > 0 && (
+            {selectedInvoiceIds.length > 0 ? (
               <Button size="sm" className="gap-1" onClick={handleGenerateCreditNote} disabled={isGenerating}>
                   {isGenerating ? <Loader2 className="h-4 w-4 animate-spin" /> : <MinusCircle className="h-4 w-4" />}
                   Générer un Avoir ({selectedInvoiceIds.length})
+              </Button>
+            ) : (
+              <Button size="sm" variant="outline" className="gap-1" onClick={handleExport}>
+                <Download className="h-4 w-4" />
+                Exporter
               </Button>
             )}
           </div>

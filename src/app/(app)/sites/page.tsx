@@ -4,7 +4,7 @@
 import { useState, useMemo, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { MoreHorizontal, PlusCircle, Loader2, Search } from 'lucide-react';
+import { MoreHorizontal, PlusCircle, Loader2, Search, Download } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   Card,
@@ -37,6 +37,7 @@ import { updateSite } from '@/services/firestore';
 import type { Site, Activity } from '@/lib/types';
 import { useToast } from '@/hooks/use-toast';
 import { useData } from '@/context/data-context';
+import { downloadCSV } from '@/lib/utils';
 
 
 export default function SitesPage() {
@@ -151,6 +152,11 @@ export default function SitesPage() {
     );
   }, [sitesWithClientNames, searchTerm]);
 
+  const handleExport = () => {
+    const dataToExport = filteredSites.map(({ id, clientId, ...rest }) => rest);
+    downloadCSV(dataToExport, 'sites.csv');
+  };
+
 
   return (
     <Card>
@@ -173,6 +179,10 @@ export default function SitesPage() {
                     onChange={(e) => setSearchTerm(e.target.value)}
                 />
             </div>
+            <Button size="sm" variant="outline" className="gap-1" onClick={handleExport}>
+              <Download className="h-4 w-4" />
+              Exporter
+            </Button>
             <Dialog open={addSiteDialogOpen} onOpenChange={setAddSiteDialogOpen}>
                 <DialogTrigger asChild>
                   <Button size="sm" className="gap-1">

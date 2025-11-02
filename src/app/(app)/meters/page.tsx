@@ -10,12 +10,13 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
-import { PlusCircle, Edit, Trash2, BookOpen, Loader2, Search } from 'lucide-react';
+import { PlusCircle, Edit, Trash2, BookOpen, Loader2, Search, Download } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { createMeter, updateMeter, deleteMeter, getMeterReadingsByMeter } from '@/services/firestore';
 import type { Meter, MeterReading, MeterType } from '@/lib/types';
 import { Badge } from '@/components/ui/badge';
 import { useData } from '@/context/data-context';
+import { downloadCSV } from '@/lib/utils';
 
 export default function MetersPage() {
   const { sites, meters, meterTypes, reloadData, isLoading } = useData();
@@ -152,6 +153,11 @@ export default function MetersPage() {
     );
   }, [metersWithDetails, searchTerm]);
 
+  const handleExport = () => {
+    const dataToExport = filteredMeters.map(({ id, ...rest }) => rest);
+    downloadCSV(dataToExport, 'compteurs.csv');
+  };
+
   return (
     <Card>
       <CardHeader>
@@ -171,6 +177,10 @@ export default function MetersPage() {
                 onChange={(e) => setSearchTerm(e.target.value)}
               />
             </div>
+            <Button size="sm" variant="outline" className="gap-1" onClick={handleExport}>
+              <Download className="h-4 w-4" />
+              Exporter
+            </Button>
             <Button size="sm" className="gap-1" onClick={() => handleOpenDialog()}>
               <PlusCircle className="h-4 w-4" />
               Nouveau Compteur

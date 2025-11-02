@@ -4,7 +4,7 @@
 import { useState, useMemo } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { PlusCircle, MoreHorizontal, Loader2, Calendar as CalendarIcon, Search } from 'lucide-react';
+import { PlusCircle, MoreHorizontal, Loader2, Calendar as CalendarIcon, Search, Download } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -29,6 +29,7 @@ import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
+import { downloadCSV } from '@/lib/utils';
 
 export default function ContractsPage() {
   const { contracts, sites, isLoading, reloadData } = useData();
@@ -52,6 +53,15 @@ export default function ContractsPage() {
       contract.clientName.toLowerCase().includes(searchTerm.toLowerCase())
     );
   }, [contracts, searchTerm]);
+
+  const handleExport = () => {
+    const dataToExport = filteredContracts.map(({ id, ...rest }) => ({
+        ...rest,
+        siteIds: rest.siteIds.join('; '),
+        activityIds: rest.activityIds.join('; '),
+    }));
+    downloadCSV(dataToExport, 'contrats.csv');
+  };
 
 
   const getBadgeVariant = (status: Contract['status']): 'secondary' | 'destructive' | 'warning' | 'outline' => {
@@ -137,6 +147,10 @@ export default function ContractsPage() {
                         onChange={(e) => setSearchTerm(e.target.value)}
                     />
                 </div>
+                <Button size="sm" variant="outline" className="gap-1" onClick={handleExport}>
+                    <Download className="h-4 w-4" />
+                    Exporter
+                </Button>
                 <Button asChild size="sm" className="gap-1">
                 <Link href="/contracts/new">
                     <PlusCircle className="h-4 w-4" />
