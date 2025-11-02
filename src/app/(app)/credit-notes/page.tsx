@@ -2,7 +2,7 @@
 'use client';
 
 import Link from 'next/link';
-import { MoreHorizontal, Loader2, PlusCircle } from 'lucide-react';
+import { MoreHorizontal, Loader2, PlusCircle, Search } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -27,33 +27,57 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import { Input } from '@/components/ui/input';
 import { useData } from '@/context/data-context';
-import { useMemo } from 'react';
+import { useState, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 
 export default function CreditNotesPage() {
   const { creditNotes, isLoading } = useData();
   const router = useRouter();
+  const [searchTerm, setSearchTerm] = useState('');
 
   const sortedCreditNotes = useMemo(() => 
     [...creditNotes].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()),
     [creditNotes]
   );
 
+  const filteredCreditNotes = useMemo(() => {
+    if (!searchTerm) {
+      return sortedCreditNotes;
+    }
+    return sortedCreditNotes.filter(cn =>
+      cn.creditNoteNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      cn.clientName.toLowerCase().includes(searchTerm.toLowerCase())
+    );
+  }, [sortedCreditNotes, searchTerm]);
+
   return (
     <Card>
       <CardHeader>
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between gap-4">
           <div>
             <CardTitle>Avoirs</CardTitle>
             <CardDescription>
               Liste de tous les avoirs émis.
             </CardDescription>
           </div>
-          <Button size="sm" className="gap-1" onClick={() => router.push('/invoices')}>
-            <PlusCircle className="h-4 w-4" />
-            Créer un Avoir
-          </Button>
+          <div className="flex items-center gap-2">
+            <div className="relative">
+              <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+              <Input
+                type="search"
+                placeholder="Rechercher..."
+                className="pl-8 sm:w-[300px]"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+              />
+            </div>
+            <Button size="sm" className="gap-1" onClick={() => router.push('/invoices')}>
+              <PlusCircle className="h-4 w-4" />
+              Créer un Avoir
+            </Button>
+          </div>
         </div>
       </CardHeader>
       <CardContent>
@@ -77,8 +101,8 @@ export default function CreditNotesPage() {
                   <Loader2 className="mx-auto h-8 w-8 animate-spin text-muted-foreground" />
                 </TableCell>
               </TableRow>
-            ) : sortedCreditNotes.length > 0 ? (
-              sortedCreditNotes.map((cn) => (
+            ) : filteredCreditNotes.length > 0 ? (
+              filteredCreditNotes.map((cn) => (
                 <TableRow key={cn.id}>
                   <TableCell className="font-medium">{cn.creditNoteNumber}</TableCell>
                   <TableCell>{cn.clientName}</TableCell>

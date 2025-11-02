@@ -10,7 +10,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
-import { PlusCircle, Edit, Trash2, BookOpen, Loader2 } from 'lucide-react';
+import { PlusCircle, Edit, Trash2, BookOpen, Loader2, Search } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { createMeter, updateMeter, deleteMeter, getMeterReadingsByMeter } from '@/services/firestore';
 import type { Meter, MeterReading, MeterType } from '@/lib/types';
@@ -25,6 +25,7 @@ export default function MetersPage() {
   const [editingMeter, setEditingMeter] = useState<Meter | null>(null);
   const [meterToDelete, setMeterToDelete] = useState<Meter | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
 
   // Form state
   const [code, setCode] = useState('');
@@ -139,18 +140,42 @@ export default function MetersPage() {
     }));
   }, [meters, sites]);
 
+  const filteredMeters = useMemo(() => {
+    if (!searchTerm) {
+        return metersWithDetails;
+    }
+    return metersWithDetails.filter(meter =>
+        meter.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        meter.code.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        meter.siteName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (meter.clientName && meter.clientName.toLowerCase().includes(searchTerm.toLowerCase()))
+    );
+  }, [metersWithDetails, searchTerm]);
+
   return (
     <Card>
       <CardHeader>
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between gap-4">
           <div>
             <CardTitle>Compteurs</CardTitle>
             <CardDescription>Gérez l'ensemble de vos compteurs et de leurs relevés.</CardDescription>
           </div>
-          <Button size="sm" className="gap-1" onClick={() => handleOpenDialog()}>
-            <PlusCircle className="h-4 w-4" />
-            Nouveau Compteur
-          </Button>
+          <div className="flex items-center gap-2">
+            <div className="relative">
+              <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+              <Input
+                type="search"
+                placeholder="Rechercher..."
+                className="pl-8 sm:w-[300px]"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+              />
+            </div>
+            <Button size="sm" className="gap-1" onClick={() => handleOpenDialog()}>
+              <PlusCircle className="h-4 w-4" />
+              Nouveau Compteur
+            </Button>
+          </div>
         </div>
       </CardHeader>
       <CardContent>
@@ -172,10 +197,10 @@ export default function MetersPage() {
               <TableRow><TableCell colSpan={8} className="h-24 text-center">
                 <Loader2 className="mx-auto h-8 w-8 animate-spin text-muted-foreground" />
               </TableCell></TableRow>
-            ) : meters.length === 0 ? (
+            ) : filteredMeters.length === 0 ? (
               <TableRow><TableCell colSpan={8} className="h-24 text-center">Aucun compteur trouvé.</TableCell></TableRow>
             ) : (
-              metersWithDetails.map((meter) => (
+              filteredMeters.map((meter) => (
                 <TableRow key={meter.id}>
                   <TableCell className="font-medium">{meter.code}</TableCell>
                   <TableCell>{meter.name}</TableCell>

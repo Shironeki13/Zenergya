@@ -2,7 +2,7 @@
 'use client';
 
 import Link from 'next/link';
-import { MoreHorizontal, Loader2, MinusCircle } from 'lucide-react';
+import { MoreHorizontal, Loader2, MinusCircle, Search } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -33,6 +33,7 @@ import { useData } from '@/context/data-context';
 import { useToast } from '@/hooks/use-toast';
 import { useState, useMemo } from 'react';
 import { generateCreditNote } from '@/ai/flows/generate-credit-note-flow';
+import { Input } from '@/components/ui/input';
 
 
 export default function InvoicesPage() {
@@ -40,16 +41,29 @@ export default function InvoicesPage() {
   const { toast } = useToast();
   const [selectedInvoiceIds, setSelectedInvoiceIds] = useState<string[]>([]);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
 
-  const cancellableInvoices = useMemo(() => 
-    invoices.filter(inv => inv.status !== 'proforma' && inv.status !== 'cancelled'),
-    [invoices]
-  );
-  
   const sortedInvoices = useMemo(() => 
     [...invoices].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()),
     [invoices]
   );
+  
+  const filteredInvoices = useMemo(() => {
+    if (!searchTerm) {
+      return sortedInvoices;
+    }
+    return sortedInvoices.filter(invoice => 
+      (invoice.invoiceNumber && invoice.invoiceNumber.toLowerCase().includes(searchTerm.toLowerCase())) ||
+      invoice.clientName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      invoice.id.toLowerCase().includes(searchTerm.toLowerCase())
+    );
+  }, [sortedInvoices, searchTerm]);
+  
+  const cancellableInvoices = useMemo(() => 
+    filteredInvoices.filter(inv => inv.status !== 'proforma' && inv.status !== 'cancelled'),
+    [filteredInvoices]
+  );
+
 
   const handleSelectionChange = (invoiceId: string, checked: boolean) => {
     setSelectedInvoiceIds(prev =>
@@ -130,19 +144,31 @@ export default function InvoicesPage() {
   return (
     <Card>
       <CardHeader>
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between gap-4">
           <div>
             <CardTitle>Factures</CardTitle>
             <CardDescription>
               Liste de toutes les factures.
             </CardDescription>
           </div>
-           {selectedInvoiceIds.length > 0 && (
+          <div className="flex items-center gap-2">
+             <div className="relative">
+              <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+              <Input
+                type="search"
+                placeholder="Rechercher..."
+                className="pl-8 sm:w-[300px]"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+              />
+            </div>
+            {selectedInvoiceIds.length > 0 && (
               <Button size="sm" className="gap-1" onClick={handleGenerateCreditNote} disabled={isGenerating}>
                   {isGenerating ? <Loader2 className="h-4 w-4 animate-spin" /> : <MinusCircle className="h-4 w-4" />}
                   Générer un Avoir ({selectedInvoiceIds.length})
               </Button>
             )}
+          </div>
         </div>
       </CardHeader>
       <CardContent>
@@ -152,8 +178,9 @@ export default function InvoicesPage() {
               <TableHead className="w-[50px]">
                 <Checkbox
                   onCheckedChange={(checked) => handleSelectAll(!!checked)}
-                  checked={selectedInvoiceIds.length > 0 && selectedInvoiceIds.length === cancellableInvoices.length}
+                  checked={selectedInvoiceIds.length > 0 && cancellableInvoices.length > 0 && selectedInvoiceIds.length === cancellableInvoices.length}
                   aria-label="Tout sélectionner"
+                  disabled={cancellableInvoices.length === 0}
                 />
               </TableHead>
               <TableHead>N° Facture</TableHead>
@@ -173,8 +200,8 @@ export default function InvoicesPage() {
                        <Loader2 className="mx-auto h-8 w-8 animate-spin text-muted-foreground" />
                     </TableCell>
                 </TableRow>
-            ) : sortedInvoices.length > 0 ? (
-                sortedInvoices.map((invoice) => (
+            ) : filteredInvoices.length > 0 ? (
+                filteredInvoices.map((invoice) => (
                 <TableRow key={invoice.id}>
                     <TableCell>
                       {invoice.status !== 'proforma' && invoice.status !== 'cancelled' && (

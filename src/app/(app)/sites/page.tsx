@@ -4,7 +4,7 @@
 import { useState, useMemo, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { MoreHorizontal, PlusCircle, Loader2 } from 'lucide-react';
+import { MoreHorizontal, PlusCircle, Loader2, Search } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   Card,
@@ -47,6 +47,7 @@ export default function SitesPage() {
   
   const [selectedClientId, setSelectedClientId] = useState<string | null>(null);
   const [editingSite, setEditingSite] = useState<Site | null>(null);
+  const [searchTerm, setSearchTerm] = useState('');
   
   const router = useRouter();
   const { toast } = useToast();
@@ -139,51 +140,74 @@ export default function SitesPage() {
       clientName: clientMap.get(site.clientId) || 'N/A'
     }));
   }, [sites, clients]);
+  
+  const filteredSites = useMemo(() => {
+    if (!searchTerm) {
+      return sitesWithClientNames;
+    }
+    return sitesWithClientNames.filter(site =>
+      site.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      site.clientName.toLowerCase().includes(searchTerm.toLowerCase())
+    );
+  }, [sitesWithClientNames, searchTerm]);
+
 
   return (
     <Card>
       <CardHeader>
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between gap-4">
           <div>
             <CardTitle>Sites</CardTitle>
             <CardDescription>
               Liste de tous les sites d'intervention, tous clients confondus.
             </CardDescription>
           </div>
-           <Dialog open={addSiteDialogOpen} onOpenChange={setAddSiteDialogOpen}>
-              <DialogTrigger asChild>
-                <Button size="sm" className="gap-1">
-                  <PlusCircle className="h-4 w-4" />
-                  Ajouter un Site
-                </Button>
-              </DialogTrigger>
-              <DialogContent>
-                <DialogHeader>
-                  <DialogTitle>À quel client ce site appartient-il ?</DialogTitle>
-                </DialogHeader>
-                <div className="space-y-4 py-4">
-                    <Label htmlFor="client-select">Sélectionnez un client</Label>
-                    <Select onValueChange={(value) => setSelectedClientId(value)}>
-                        <SelectTrigger id="client-select">
-                            <SelectValue placeholder="Choisir un client..." />
-                        </SelectTrigger>
-                        <SelectContent>
-                            {clients.map((client) => (
-                                <SelectItem key={client.id} value={client.id}>
-                                    {client.name}
-                                </SelectItem>
-                            ))}
-                        </SelectContent>
-                    </Select>
-                </div>
-                <DialogFooter>
-                    <Button variant="outline" onClick={() => setAddSiteDialogOpen(false)}>Annuler</Button>
-                    <Button onClick={handleGoToCreateSite} disabled={!selectedClientId}>
-                        Continuer
-                    </Button>
-                </DialogFooter>
-              </DialogContent>
-           </Dialog>
+          <div className="flex items-center gap-2">
+            <div className="relative">
+                <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                <Input
+                    type="search"
+                    placeholder="Rechercher un site..."
+                    className="pl-8 sm:w-[300px]"
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                />
+            </div>
+            <Dialog open={addSiteDialogOpen} onOpenChange={setAddSiteDialogOpen}>
+                <DialogTrigger asChild>
+                  <Button size="sm" className="gap-1">
+                    <PlusCircle className="h-4 w-4" />
+                    Ajouter un Site
+                  </Button>
+                </DialogTrigger>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>À quel client ce site appartient-il ?</DialogTitle>
+                  </DialogHeader>
+                  <div className="space-y-4 py-4">
+                      <Label htmlFor="client-select">Sélectionnez un client</Label>
+                      <Select onValueChange={(value) => setSelectedClientId(value)}>
+                          <SelectTrigger id="client-select">
+                              <SelectValue placeholder="Choisir un client..." />
+                          </SelectTrigger>
+                          <SelectContent>
+                              {clients.map((client) => (
+                                  <SelectItem key={client.id} value={client.id}>
+                                      {client.name}
+                                  </SelectItem>
+                              ))}
+                          </SelectContent>
+                      </Select>
+                  </div>
+                  <DialogFooter>
+                      <Button variant="outline" onClick={() => setAddSiteDialogOpen(false)}>Annuler</Button>
+                      <Button onClick={handleGoToCreateSite} disabled={!selectedClientId}>
+                          Continuer
+                      </Button>
+                  </DialogFooter>
+                </DialogContent>
+            </Dialog>
+           </div>
         </div>
       </CardHeader>
       <CardContent>
@@ -205,8 +229,8 @@ export default function SitesPage() {
                   <Loader2 className="mx-auto h-8 w-8 animate-spin text-muted-foreground" />
                 </TableCell>
               </TableRow>
-            ) : sitesWithClientNames.length > 0 ? (
-              sitesWithClientNames.map((site: Site & { clientName: string }) => (
+            ) : filteredSites.length > 0 ? (
+              filteredSites.map((site: Site & { clientName: string }) => (
                 <TableRow key={site.id}>
                   <TableCell className="font-medium">{site.name}</TableCell>
                   <TableCell>{site.clientName}</TableCell>

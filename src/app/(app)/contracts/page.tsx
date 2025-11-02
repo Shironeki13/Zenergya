@@ -4,7 +4,7 @@
 import { useState, useMemo } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { PlusCircle, MoreHorizontal, Loader2, Calendar as CalendarIcon } from 'lucide-react';
+import { PlusCircle, MoreHorizontal, Loader2, Calendar as CalendarIcon, Search } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -21,6 +21,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
 import { Label } from '@/components/ui/label';
+import { Input } from '@/components/ui/input';
 import { useData } from '@/context/data-context';
 import type { Contract, Site } from '@/lib/types';
 import { updateContract } from '@/services/firestore';
@@ -41,6 +42,16 @@ export default function ContractsPage() {
   const [sitesToShow, setSitesToShow] = useState<Site[]>([]);
   const [isSitesDialogOpen, setIsSitesDialogOpen] = useState(false);
   const [selectedContractClient, setSelectedContractClient] = useState('');
+  const [searchTerm, setSearchTerm] = useState('');
+
+  const filteredContracts = useMemo(() => {
+    if (!searchTerm) {
+      return contracts;
+    }
+    return contracts.filter(contract =>
+      contract.clientName.toLowerCase().includes(searchTerm.toLowerCase())
+    );
+  }, [contracts, searchTerm]);
 
 
   const getBadgeVariant = (status: Contract['status']): 'secondary' | 'destructive' | 'warning' | 'outline' => {
@@ -108,19 +119,31 @@ export default function ContractsPage() {
     <>
       <Card>
         <CardHeader>
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between gap-4">
             <div>
               <CardTitle>Contrats</CardTitle>
               <CardDescription>
                 Gérez tous les contrats de vos clients.
               </CardDescription>
             </div>
-            <Button asChild size="sm" className="gap-1">
-              <Link href="/contracts/new">
-                <PlusCircle className="h-4 w-4" />
-                Nouveau Contrat
-              </Link>
-            </Button>
+            <div className="flex items-center gap-2">
+                <div className="relative">
+                    <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                    <Input
+                        type="search"
+                        placeholder="Rechercher un client..."
+                        className="pl-8 sm:w-[300px]"
+                        value={searchTerm}
+                        onChange={(e) => setSearchTerm(e.target.value)}
+                    />
+                </div>
+                <Button asChild size="sm" className="gap-1">
+                <Link href="/contracts/new">
+                    <PlusCircle className="h-4 w-4" />
+                    Nouveau Contrat
+                </Link>
+                </Button>
+            </div>
           </div>
         </CardHeader>
         <CardContent>
@@ -148,8 +171,8 @@ export default function ContractsPage() {
                           <Loader2 className="mx-auto h-8 w-8 animate-spin text-muted-foreground" />
                       </TableCell>
                   </TableRow>
-              ) : contracts.length > 0 ? (
-                  contracts.map((contract) => (
+              ) : filteredContracts.length > 0 ? (
+                  filteredContracts.map((contract) => (
                   <TableRow key={contract.id}>
                       <TableCell className="font-medium">{contract.clientName}</TableCell>
                       <TableCell>
