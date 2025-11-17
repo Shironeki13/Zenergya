@@ -28,42 +28,42 @@ const documentTypes = [
     description: "Ajouter une modification à un marché existant.",
     icon: FileText,
     href: "#",
-    enabled: false,
+    enabled: true,
   },
   {
     title: "Résiliation",
     description: "Enregistrer la fin anticipée d'un contrat.",
     icon: FileX,
     href: "#",
-    enabled: false,
+    enabled: true,
   },
   {
     title: "Reconduction",
     description: "Prolonger un contrat arrivé à échéance.",
     icon: RefreshCw,
     href: "#",
-    enabled: false,
+    enabled: true,
   },
   {
     title: "OS (Ordre de Service)",
     description: "Ajouter un ordre de service lié à un contrat.",
     icon: Hammer,
     href: "#",
-    enabled: false,
+    enabled: true,
   },
   {
     title: "Changement de syndic",
     description: "Mettre à jour le représentant du client.",
     icon: Users,
     href: "#",
-    enabled: false,
+    enabled: true,
   },
   {
     title: "Changement de BE",
     description: "Changer le bureau d'études associé.",
     icon: Briefcase,
     href: "#",
-    enabled: false,
+    enabled: true,
   },
 ];
 
@@ -87,9 +87,11 @@ export default function NewDocumentPage() {
       
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
         {documentTypes.map((doc, index) => {
-          const Wrapper = doc.enabled ? Link : 'div';
+          const isEnabled = doc.href !== '#'; // Only enable if href is not '#' for now
+          const Wrapper = isEnabled ? Link : 'div';
+          
           return (
-            <Wrapper key={index} href={doc.href} className={!doc.enabled ? 'opacity-50 cursor-not-allowed' : ''}>
+            <Wrapper key={index} {...(isEnabled ? { href: doc.href } : {})} className={!isEnabled ? 'opacity-50 cursor-not-allowed' : 'hover:scale-105 transition-transform duration-200'}>
               <Card className="hover:border-primary/80 hover:shadow-lg transition-all duration-200 h-full">
                 <CardHeader className="flex flex-row items-center gap-4">
                   <div className="bg-muted p-3 rounded-lg">
