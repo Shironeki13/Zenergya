@@ -8,7 +8,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { ChevronLeft, FileUp, Loader2, Wand2, X } from 'lucide-react';
+import { ChevronLeft, FileUp, Loader2, Wand2, X, CalendarIcon } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
 import { useForm } from 'react-hook-form';
@@ -16,9 +16,29 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Checkbox } from '@/components/ui/checkbox';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
+import { Switch } from '@/components/ui/switch';
+import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
+import { Calendar } from '@/components/ui/calendar';
 import { useData } from '@/context/data-context';
-import type { ClientFormValues, Contract, Client } from '@/lib/types'; // We'll need a dedicated type later
+import type { Client } from '@/lib/types';
 import { ClientSchema } from '@/lib/types';
+import { extractContractInfo } from '@/ai/flows/extract-contract-info-flow';
+import { cn } from '@/lib/utils';
+import { format } from 'date-fns';
+import { fr } from 'date-fns/locale';
+
+type ClientFormValues = z.infer<typeof ClientSchema>;
+
+const fileToDataUrl = (file: File): Promise<string> => {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+};
 
 
 export default function NewContractFromPdfPage() {
@@ -33,8 +53,41 @@ export default function NewContractFromPdfPage() {
 
   const form = useForm<ClientFormValues>({
     resolver: zodResolver(ClientSchema),
-    defaultValues: {},
+    defaultValues: {
+      name: "",
+      address: "",
+      postalCode: "",
+      city: "",
+      clientType: "private",
+      representedBy: "",
+      externalCode: "",
+      isBe: false,
+      beName: "",
+      beEmail: "",
+      bePhone: "",
+      useChorus: false,
+      siret: "",
+      chorusServiceCode: "",
+      chorusLegalCommitmentNumber: "",
+      chorusMarketNumber: "",
+      invoicingType: "multi-site",
+      renewal: false,
+      tacitRenewal: false,
+      activityIds: [],
+    },
   });
+  
+  const watchTypologyId = form.watch("typologyId");
+  const watchIsBe = form.watch("isBe");
+  const watchUseChorus = form.watch("useChorus");
+  const watchRenewal = form.watch("renewal");
+
+  const selectedTypology = useMemo(() => 
+    typologies.find(t => t.id === watchTypologyId),
+    [typologies, watchTypologyId]
+  );
+  const showRepresentedBy = selectedTypology?.name === 'Copropriété';
+
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
@@ -62,39 +115,34 @@ export default function NewContractFromPdfPage() {
     }
     setIsAnalyzing(true);
     
-    // TODO: Connect to Genkit flow for analysis
-    console.log("Analyse du fichier:", file.name);
+    try {
+        const dataUri = await fileToDataUrl(file);
+        const result = await extractContractInfo({ documentDataUri: dataUri, activities });
 
-    // Simulate AI analysis and get pre-filled data
-    setTimeout(() => {
-      const simulatedData: Partial<ClientFormValues> = {
-        name: 'ACME Corp',
-        address: '123 Main Street',
-        postalCode: '12345',
-        city: 'Anytown',
-        clientType: 'private',
-        typologyId: typologies.length > 0 ? typologies[0].id : undefined,
-        siret: "12345678901234",
-        useChorus: true,
-        chorusServiceCode: "SERVICE-01",
-        chorusLegalCommitmentNumber: "EJ-5678",
-        activityIds: activities.length > 0 ? [activities[0].id] : [],
-        startDate: new Date(),
-        endDate: new Date(new Date().setFullYear(new Date().getFullYear() + 1)),
-        renewal: true,
-        renewalDuration: "1 an",
-        tacitRenewal: true,
-      };
-      
-      setAnalysisResult(simulatedData);
-      form.reset(simulatedData);
-      setIsSheetOpen(true);
-      setIsAnalyzing(false);
-      toast({
-        title: "Analyse terminée",
-        description: "Veuillez vérifier et compléter les informations extraites.",
-      });
-    }, 2000);
+        const mappedData: Partial<ClientFormValues> = {
+            ...result,
+            startDate: result.startDate ? new Date(result.startDate) : undefined,
+            endDate: result.endDate ? new Date(result.endDate) : undefined,
+        };
+
+        setAnalysisResult(mappedData);
+        form.reset(mappedData);
+        setIsSheetOpen(true);
+        toast({
+            title: "Analyse terminée",
+            description: "Veuillez vérifier et compléter les informations extraites.",
+        });
+
+    } catch (error) {
+        console.error("Échec de l'analyse du contrat:", error);
+        toast({
+            title: "Erreur d'analyse",
+            description: "Impossible d'extraire les informations du document. Veuillez réessayer.",
+            variant: "destructive",
+        });
+    } finally {
+        setIsAnalyzing(false);
+    }
   };
   
   async function onSubmit(data: ClientFormValues) {
@@ -175,7 +223,7 @@ export default function NewContractFromPdfPage() {
                     Vérifiez, corrigez et complétez les champs ci-dessous avant de créer la base marché.
                 </SheetDescription>
             </SheetHeader>
-            <div className="py-4">
+            <div className="py-4 pr-6">
                 {analysisResult && (
                     <Form {...form}>
                         <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-8">
@@ -193,6 +241,34 @@ export default function NewContractFromPdfPage() {
                                 <FormMessage />
                                 </FormItem>
                             )} />
+                            <div className="grid grid-cols-2 gap-4">
+                              <FormField control={form.control} name="postalCode" render={({ field }) => (
+                                <FormItem>
+                                  <FormLabel>Code postal</FormLabel>
+                                  <FormControl><Input placeholder="75000" {...field} /></FormControl>
+                                  <FormMessage />
+                                </FormItem>
+                              )} />
+                              <FormField control={form.control} name="city" render={({ field }) => (
+                                <FormItem>
+                                  <FormLabel>Ville</FormLabel>
+                                  <FormControl><Input placeholder="Gotham" {...field} /></FormControl>
+                                  <FormMessage />
+                                </FormItem>
+                              )} />
+                            </div>
+                            <FormField control={form.control} name="clientType" render={({ field }) => (
+                              <FormItem>
+                                <FormLabel>Privé / Public</FormLabel>
+                                <FormControl>
+                                  <RadioGroup onValueChange={field.onChange} value={field.value} className="flex gap-4 pt-2">
+                                    <FormItem className="flex items-center space-x-2"><FormControl><RadioGroupItem value="private" id="private" /></FormControl><FormLabel htmlFor="private" className="font-normal">Privé</FormLabel></FormItem>
+                                    <FormItem className="flex items-center space-x-2"><FormControl><RadioGroupItem value="public" id="public" /></FormControl><FormLabel htmlFor="public" className="font-normal">Public</FormLabel></FormItem>
+                                  </RadioGroup>
+                                </FormControl>
+                                <FormMessage />
+                              </FormItem>
+                            )} />
                              <FormField control={form.control} name="typologyId" render={({ field }) => (
                                 <FormItem>
                                 <FormLabel>Typologie client</FormLabel>
@@ -205,7 +281,101 @@ export default function NewContractFromPdfPage() {
                                 <FormMessage />
                                 </FormItem>
                             )} />
-                            {/* ... more fields would go here based on ClientSchema ... */}
+                             {showRepresentedBy && <FormField control={form.control} name="representedBy" render={({ field }) => (
+                                <FormItem>
+                                <FormLabel>Représenté par</FormLabel>
+                                <FormControl><Input placeholder="Syndic de copropriété" {...field} /></FormControl>
+                                <FormMessage />
+                                </FormItem>
+                            )}/>}
+                             <FormField
+                                control={form.control} name="activityIds" render={() => (
+                                <FormItem>
+                                    <div className="mb-4"><FormLabel className="text-base">Type de prestation</FormLabel></div>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                                        {activities.map((item) => (
+                                        <FormField
+                                            key={item.id} control={form.control} name="activityIds"
+                                            render={({ field }) => {
+                                            return (
+                                                <FormItem key={item.id} className="flex flex-row items-start space-x-3 space-y-0 rounded-md border p-4">
+                                                <FormControl>
+                                                    <Checkbox
+                                                    checked={field.value?.includes(item.id)}
+                                                    onCheckedChange={(checked) => {
+                                                        return checked
+                                                        ? field.onChange([...(field.value || []), item.id])
+                                                        : field.onChange(field.value?.filter((value) => value !== item.id))
+                                                    }}
+                                                    />
+                                                </FormControl>
+                                                <FormLabel className="font-normal">{item.label} ({item.code})</FormLabel>
+                                                </FormItem>
+                                            )}}
+                                        />
+                                        ))}
+                                    </div><FormMessage />
+                                </FormItem>
+                            )} />
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                                <FormField control={form.control} name="startDate" render={({ field }) => (
+                                    <FormItem className="flex flex-col"><FormLabel>Date de Démarrage</FormLabel>
+                                    <Popover><PopoverTrigger asChild><FormControl>
+                                        <Button variant={"outline"} className={cn("w-full pl-3 text-left font-normal", !field.value && "text-muted-foreground")}>
+                                        {field.value ? format(field.value, "PPP", { locale: fr }) : <span>Choisir une date</span>}
+                                        <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
+                                        </Button>
+                                    </FormControl></PopoverTrigger><PopoverContent className="w-auto p-0" align="start">
+                                        <Calendar mode="single" selected={field.value} onSelect={field.onChange} initialFocus locale={fr}/>
+                                    </PopoverContent></Popover><FormMessage />
+                                    </FormItem>
+                                )} />
+                                <FormField control={form.control} name="endDate" render={({ field }) => (
+                                    <FormItem className="flex flex-col"><FormLabel>Date de Fin</FormLabel>
+                                    <Popover><PopoverTrigger asChild><FormControl>
+                                        <Button variant={"outline"} className={cn("w-full pl-3 text-left font-normal", !field.value && "text-muted-foreground")}>
+                                        {field.value ? format(field.value, "PPP", { locale: fr }) : <span>Choisir une date</span>}
+                                        <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
+                                        </Button>
+                                    </FormControl></PopoverTrigger><PopoverContent className="w-auto p-0" align="start">
+                                        <Calendar mode="single" selected={field.value} onSelect={field.onChange} initialFocus locale={fr}/>
+                                    </PopoverContent></Popover><FormMessage />
+                                    </FormItem>
+                                )} />
+                            </div>
+                             <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-start">
+                                <FormField control={form.control} name="renewal" render={({ field }) => (
+                                    <FormItem className="flex flex-row items-center justify-between rounded-lg border p-4">
+                                        <div className="space-y-0.5"><FormLabel>Reconduction</FormLabel></div>
+                                        <FormControl><Switch checked={field.value} onCheckedChange={field.onChange} /></FormControl>
+                                    </FormItem>
+                                )} />
+                                {watchRenewal && (
+                                    <div className="space-y-4">
+                                        <FormField control={form.control} name="renewalDuration" render={({ field }) => (<FormItem><FormLabel>Durée de reconduction</FormLabel><FormControl><Input placeholder="Ex: 1 an" {...field} /></FormControl><FormMessage /></FormItem>)} />
+                                        <FormField control={form.control} name="tacitRenewal" render={({ field }) => (
+                                            <FormItem className="flex flex-row items-center justify-between rounded-lg border p-4">
+                                                <div className="space-y-0.5"><FormLabel>Tacite reconduction</FormLabel></div>
+                                                <FormControl><Switch checked={field.value} onCheckedChange={field.onChange} /></FormControl>
+                                            </FormItem>
+                                        )} />
+                                    </div>
+                                )}
+                            </div>
+                             <FormField control={form.control} name="useChorus" render={({ field }) => (
+                                <FormItem className="flex flex-row items-center justify-between rounded-lg border p-4">
+                                    <div className="space-y-0.5"><FormLabel>Dépôt Chorus</FormLabel></div>
+                                    <FormControl><Switch checked={field.value} onCheckedChange={field.onChange} /></FormControl>
+                                </FormItem>
+                             )} />
+                             {watchUseChorus && (
+                                <div className="space-y-4 p-4 border rounded-lg">
+                                    <FormField control={form.control} name="siret" render={({ field }) => (<FormItem><FormLabel>SIRET</FormLabel><FormControl><Input placeholder="12345678901234" {...field} /></FormControl><FormMessage /></FormItem>)} />
+                                    <FormField control={form.control} name="chorusServiceCode" render={({ field }) => (<FormItem><FormLabel>Code service</FormLabel><FormControl><Input placeholder="Code service Chorus" {...field} /></FormControl><FormMessage /></FormItem>)} />
+                                    <FormField control={form.control} name="chorusLegalCommitmentNumber" render={({ field }) => (<FormItem><FormLabel>Numéro engagement juridique</FormLabel><FormControl><Input placeholder="Numéro EJ" {...field} /></FormControl><FormMessage /></FormItem>)} />
+                                </div>
+                             )}
+
                             <div className="pt-6 flex justify-end gap-4">
                                 <Button type="button" variant="outline" onClick={() => setIsSheetOpen(false)}>Annuler</Button>
                                 <Button type="submit">Créer la Base Marché</Button>
@@ -219,4 +389,3 @@ export default function NewContractFromPdfPage() {
     </div>
   );
 }
-
