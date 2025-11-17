@@ -1,4 +1,6 @@
 
+'use client';
+
 import Link from 'next/link';
 import {
   LayoutDashboard,
@@ -13,6 +15,8 @@ import {
   Gauge,
   Copy,
   MinusCircle,
+  ChevronDown,
+  Library,
 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
@@ -27,6 +31,9 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/co
 import { UserNav } from '@/components/user-nav';
 import { Logo } from '@/components/logo';
 import { DataProvider } from '@/context/data-context';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import { usePathname } from 'next/navigation';
+import { cn } from '@/lib/utils';
 
 
 export default function AppLayout({
@@ -34,11 +41,13 @@ export default function AppLayout({
 }: {
   children: React.ReactNode;
 }) {
+  const pathname = usePathname();
+
   const navItems = [
     { href: '/dashboard', icon: LayoutDashboard, label: 'Tableau de bord' },
     { href: '/clients', icon: Building, label: 'Clients' },
     { href: '/sites', icon: MapPin, label: 'Sites' },
-    { href: '/contracts', icon: FileSignature, label: 'Contrats' },
+    // { href: '/contracts', icon: FileSignature, label: 'Contrats' },
     { href: '/meters', icon: Gauge, label: 'Compteurs' },
     { href: '/invoices', icon: FileText, label: 'Factures' },
     { href: '/credit-notes', icon: MinusCircle, label: 'Avoirs' },
@@ -46,6 +55,11 @@ export default function AppLayout({
     { href: '/billing/batch', icon: Copy, label: 'Facturation Groupée' },
     { href: '/users', icon: Users, label: 'Utilisateurs' },
     { href: '/settings', icon: Settings, label: 'Paramétrage' },
+  ];
+  
+  const contractLinks = [
+      { href: '/contracts', label: 'Liste des Contrats' },
+      { href: '/contracts/library', label: 'Contrathèque' }
   ];
 
   return (
@@ -70,6 +84,34 @@ export default function AppLayout({
                     {item.label}
                   </Link>
                 ))}
+                 <Collapsible
+                    defaultOpen={pathname.startsWith('/contracts')}
+                    className="flex flex-col gap-1"
+                  >
+                    <CollapsibleTrigger asChild>
+                      <div
+                        className="flex items-center gap-3 rounded-lg px-3 py-2 text-muted-foreground transition-all hover:text-primary cursor-pointer"
+                      >
+                         <FileSignature className="h-4 w-4" />
+                         <span>Contrats & Bibliothèque</span>
+                         <ChevronDown className="ml-auto h-4 w-4 transition-transform [&[data-state=open]]:rotate-180" />
+                      </div>
+                    </CollapsibleTrigger>
+                    <CollapsibleContent className="pl-7 space-y-1">
+                        {contractLinks.map(link => (
+                             <Link
+                                key={link.href}
+                                href={link.href}
+                                className={cn(
+                                    "flex items-center gap-3 rounded-lg px-3 py-2 text-muted-foreground transition-all hover:text-primary",
+                                    pathname === link.href && "text-primary bg-muted"
+                                )}
+                              >
+                                {link.label}
+                              </Link>
+                        ))}
+                    </CollapsibleContent>
+                 </Collapsible>
               </nav>
             </div>
             <div className="mt-auto p-4">
@@ -123,6 +165,29 @@ export default function AppLayout({
                       {item.label}
                     </Link>
                   ))}
+                  <Collapsible defaultOpen={pathname.startsWith('/contracts')}>
+                      <CollapsibleTrigger className="w-full">
+                        <div className="mx-[-0.65rem] flex items-center gap-4 rounded-xl px-3 py-2 text-muted-foreground hover:text-foreground">
+                            <FileSignature className="h-5 w-5" />
+                            Contrats & Bibliothèque
+                            <ChevronDown className="ml-auto h-5 w-5 transition-transform [&[data-state=open]]:rotate-180" />
+                        </div>
+                      </CollapsibleTrigger>
+                      <CollapsibleContent className="pl-10 mt-2 space-y-2">
+                        {contractLinks.map(link => (
+                             <Link
+                                key={link.href}
+                                href={link.href}
+                                className={cn(
+                                    "mx-[-0.65rem] flex items-center gap-4 rounded-xl px-3 py-2 text-muted-foreground hover:text-foreground",
+                                    pathname === link.href && "bg-muted text-foreground"
+                                )}
+                              >
+                                {link.label}
+                              </Link>
+                        ))}
+                      </CollapsibleContent>
+                  </Collapsible>
                 </nav>
                 <div className="mt-auto">
                   <Card>

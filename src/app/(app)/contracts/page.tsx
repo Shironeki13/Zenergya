@@ -131,7 +131,7 @@ export default function ContractsPage() {
         <CardHeader>
           <div className="flex items-center justify-between gap-4">
             <div>
-              <CardTitle>Contrats</CardTitle>
+              <CardTitle>Liste des Contrats</CardTitle>
               <CardDescription>
                 Gérez tous les contrats de vos clients.
               </CardDescription>
