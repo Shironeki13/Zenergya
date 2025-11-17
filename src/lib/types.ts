@@ -2,29 +2,57 @@
 
 import { z } from 'zod';
 
-export type Client = {
-  id: string;
-  name: string; // Raison Sociale
-  address?: string;
-  postalCode?: string;
-  city?: string;
-  clientType: 'private' | 'public';
-  typologyId: string;
-  typologyName?: string; // denormalized for display
-  representedBy?: string; // Si typologyId correspond à 'Copropriété'
-  externalCode?: string;
-  isBe: boolean; // Bureau d'études
-  beName?: string;
-  beEmail?: string;
-  bePhone?: string;
-  useChorus: boolean; // Dépôt Chorus
-  siret?: string;
-  chorusServiceCode?: string;
-  chorusLegalCommitmentNumber?: string;
-  chorusMarketNumber?: string;
-  contactEmail?: string;
-  invoicingType: 'multi-site' | 'global';
+export const ClientSchema = z.object({
+  name: z.string().min(2, "La raison sociale est requise."),
+  address: z.string().optional(),
+  postalCode: z.string().optional(),
+  city: z.string().optional(),
+  clientType: z.enum(["private", "public"], { required_error: "Le type de client est requis." }),
+  typologyId: z.string({ required_error: "La typologie est requise." }),
+  representedBy: z.string().optional(),
+  externalCode: z.string().optional(),
+  isBe: z.boolean().default(false),
+  beName: z.string().optional(),
+  beEmail: z.string().email({ message: "Email BE invalide." }).optional().or(z.literal('')),
+  bePhone: z.string().optional(),
+  useChorus: z.boolean().default(false),
+  siret: z.string().optional(),
+  chorusServiceCode: z.string().optional(),
+  chorusLegalCommitmentNumber: z.string().optional(),
+  chorusMarketNumber: z.string().optional(),
+  invoicingType: z.enum(['multi-site', 'global'], { required_error: "Le type de facturation est requis."}),
+  // Contract fields
+  siteIds: z.array(z.string()).optional(),
+  startDate: z.date().optional(),
+  endDate: z.date().optional(),
+  renewal: z.boolean().default(false),
+  renewalDuration: z.string().optional(),
+  tacitRenewal: z.boolean().default(false),
+  activityIds: z.array(z.string()).optional(),
+}).superRefine((data, ctx) => {
+    if (data.useChorus && (!data.siret || data.siret.length === 0)) {
+        ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: "Le SIRET est obligatoire si le dépôt Chorus est activé.",
+            path: ["siret"],
+        });
+    }
+    if (data.renewal && !data.renewalDuration) {
+        ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: "La durée de reconduction est requise.",
+            path: ["renewalDuration"],
+        });
+    }
+});
+
+
+export type Client = z.infer<typeof ClientSchema> & {
+    id: string;
+    typologyName?: string; // denormalized for display
+    contactEmail?: string;
 };
+
 
 export type Site = {
     id: string;

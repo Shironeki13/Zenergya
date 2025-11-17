@@ -7,8 +7,11 @@ import { zodResolver } from "@hookform/resolvers/zod"
 import { useForm } from "react-hook-form"
 import * as z from "zod"
 import React, { useEffect, useState } from "react"
-import { ChevronLeft, Loader2 } from "lucide-react"
+import { ChevronLeft, Loader2, CalendarIcon } from "lucide-react"
+import { format } from "date-fns"
+import { fr } from "date-fns/locale"
 
+import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import {
   Form,
@@ -22,43 +25,18 @@ import {
 import { Input } from "@/components/ui/input"
 import { useToast } from "@/hooks/use-toast"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { updateClient, getClient, getTypologies } from "@/services/firestore"
+import { updateClient, getClient, getTypologies, getActivities } from "@/services/firestore"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { Switch } from "@/components/ui/switch"
-import type { Typology, Client } from "@/lib/types"
 import { Separator } from "@/components/ui/separator"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import { Calendar } from "@/components/ui/calendar"
+import { Checkbox } from "@/components/ui/checkbox"
+import type { Typology, Client, Activity } from "@/lib/types"
+import { ClientSchema } from "@/lib/types"
 
-const clientFormSchema = z.object({
-  name: z.string().min(2, "La raison sociale est requise."),
-  address: z.string().optional(),
-  postalCode: z.string().optional(),
-  city: z.string().optional(),
-  clientType: z.enum(["private", "public"], { required_error: "Le type de client est requis." }),
-  typologyId: z.string({ required_error: "La typologie est requise." }),
-  representedBy: z.string().optional(),
-  externalCode: z.string().optional(),
-  isBe: z.boolean().default(false),
-  beName: z.string().optional(),
-  beEmail: z.string().email({ message: "Email BE invalide." }).optional().or(z.literal('')),
-  bePhone: z.string().optional(),
-  useChorus: z.boolean().default(false),
-  siret: z.string().optional(),
-  chorusServiceCode: z.string().optional(),
-  chorusLegalCommitmentNumber: z.string().optional(),
-  chorusMarketNumber: z.string().optional(),
-  invoicingType: z.enum(['multi-site', 'global'], { required_error: "Le type de facturation est requis."}),
-}).superRefine((data, ctx) => {
-    if (data.useChorus && (!data.siret || data.siret.length === 0)) {
-        ctx.addIssue({
-            code: z.ZodIssueCode.custom,
-            message: "Le SIRET est obligatoire si le dépôt Chorus est activé.",
-            path: ["siret"],
-        });
-    }
-});
-
-type ClientFormValues = z.infer<typeof clientFormSchema>
+type ClientFormValues = z.infer<typeof ClientSchema>
 
 export default function EditClientPage() {
   const router = useRouter();
@@ -68,10 +46,11 @@ export default function EditClientPage() {
   
   const [client, setClient] = React.useState<Client | null>(null);
   const [typologies, setTypologies] = useState<Typology[]>([]);
+  const [activities, setActivities] = useState<Activity[]>([]);
   const [isDataLoading, setIsDataLoading] = useState(true);
 
   const form = useForm<ClientFormValues>({
-    resolver: zodResolver(clientFormSchema),
+    resolver: zodResolver(ClientSchema),
     defaultValues: {
       name: "",
       address: "",
@@ -90,6 +69,9 @@ export default function EditClientPage() {
       chorusLegalCommitmentNumber: "",
       chorusMarketNumber: "",
       invoicingType: "multi-site",
+      renewal: false,
+      tacitRenewal: false,
+      activityIds: [],
     },
   })
 
@@ -97,9 +79,10 @@ export default function EditClientPage() {
     if (!id) return;
     async function fetchData() {
         try {
-            const [clientData, typologiesData] = await Promise.all([
+            const [clientData, typologiesData, activitiesData] = await Promise.all([
                 getClient(id),
-                getTypologies()
+                getTypologies(),
+                getActivities(),
             ]);
 
             if (!clientData) {
@@ -109,26 +92,12 @@ export default function EditClientPage() {
             }
             setClient(clientData);
             setTypologies(typologiesData);
-
+            setActivities(activitiesData);
+            
             form.reset({
-                name: clientData.name,
-                address: clientData.address || "",
-                postalCode: clientData.postalCode || "",
-                city: clientData.city || "",
-                clientType: clientData.clientType,
-                typologyId: clientData.typologyId,
-                representedBy: clientData.representedBy || "",
-                externalCode: clientData.externalCode || "",
-                isBe: clientData.isBe,
-                beName: clientData.beName || "",
-                beEmail: clientData.beEmail || "",
-                bePhone: clientData.bePhone || "",
-                useChorus: clientData.useChorus,
-                siret: clientData.siret || "",
-                chorusServiceCode: clientData.chorusServiceCode || "",
-                chorusLegalCommitmentNumber: clientData.chorusLegalCommitmentNumber || "",
-                chorusMarketNumber: clientData.chorusMarketNumber || "",
-                invoicingType: clientData.invoicingType || "multi-site",
+                ...clientData,
+                startDate: clientData.startDate ? new Date(clientData.startDate) : undefined,
+                endDate: clientData.endDate ? new Date(clientData.endDate) : undefined,
             });
         } catch (error) {
             toast({ title: "Erreur", description: "Impossible de charger les données du client.", variant: "destructive" });
@@ -143,6 +112,8 @@ export default function EditClientPage() {
   const watchTypologyId = form.watch("typologyId");
   const watchIsBe = form.watch("isBe");
   const watchUseChorus = form.watch("useChorus");
+  const watchRenewal = form.watch("renewal");
+
   
   const selectedTypology = React.useMemo(() => 
     typologies.find(t => t.id === watchTypologyId),
@@ -184,13 +155,14 @@ export default function EditClientPage() {
           </Link>
           <div>
             <CardTitle>Modifier le Client: {client?.name}</CardTitle>
-            <CardDescription>Mettez à jour le formulaire pour modifier la fiche client.</CardDescription>
+            <CardDescription>Mettez à jour le formulaire pour modifier la fiche client et son contrat.</CardDescription>
           </div>
         </div>
       </CardHeader>
       <CardContent>
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-8">
+            <h2 className="text-xl font-semibold">Informations Client</h2>
             <div className="grid md:grid-cols-2 gap-8">
               <FormField control={form.control} name="name" render={({ field }) => (
                 <FormItem>
@@ -276,7 +248,88 @@ export default function EditClientPage() {
             </div>
 
             <Separator />
+            <h2 className="text-xl font-semibold">Informations Contrat</h2>
             
+             <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                <FormField control={form.control} name="startDate" render={({ field }) => (
+                    <FormItem className="flex flex-col"><FormLabel>Date de Démarrage</FormLabel>
+                    <Popover><PopoverTrigger asChild><FormControl>
+                        <Button variant={"outline"} className={cn("w-full pl-3 text-left font-normal", !field.value && "text-muted-foreground")}>
+                        {field.value ? format(field.value, "PPP", { locale: fr }) : <span>Choisir une date</span>}
+                        <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
+                        </Button>
+                    </FormControl></PopoverTrigger><PopoverContent className="w-auto p-0" align="start">
+                        <Calendar mode="single" selected={field.value} onSelect={field.onChange} initialFocus locale={fr}/>
+                    </PopoverContent></Popover><FormMessage />
+                    </FormItem>
+                )} />
+                <FormField control={form.control} name="endDate" render={({ field }) => (
+                    <FormItem className="flex flex-col"><FormLabel>Date de Fin</FormLabel>
+                    <Popover><PopoverTrigger asChild><FormControl>
+                        <Button variant={"outline"} className={cn("w-full pl-3 text-left font-normal", !field.value && "text-muted-foreground")}>
+                        {field.value ? format(field.value, "PPP", { locale: fr }) : <span>Choisir une date</span>}
+                        <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
+                        </Button>
+                    </FormControl></PopoverTrigger><PopoverContent className="w-auto p-0" align="start">
+                        <Calendar mode="single" selected={field.value} onSelect={field.onChange} initialFocus locale={fr}/>
+                    </PopoverContent></Popover><FormMessage />
+                    </FormItem>
+                )} />
+            </div>
+
+            <FormField
+                control={form.control} name="activityIds" render={() => (
+                <FormItem>
+                    <div className="mb-4"><FormLabel className="text-base">Type de prestation</FormLabel></div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                        {activities.map((item) => (
+                        <FormField
+                            key={item.id} control={form.control} name="activityIds"
+                            render={({ field }) => {
+                            return (
+                                <FormItem key={item.id} className="flex flex-row items-start space-x-3 space-y-0 rounded-md border p-4">
+                                <FormControl>
+                                    <Checkbox
+                                    checked={field.value?.includes(item.id)}
+                                    onCheckedChange={(checked) => {
+                                        return checked
+                                        ? field.onChange([...(field.value || []), item.id])
+                                        : field.onChange(field.value?.filter((value) => value !== item.id))
+                                    }}
+                                    />
+                                </FormControl>
+                                <FormLabel className="font-normal">{item.label} ({item.code})</FormLabel>
+                                </FormItem>
+                            )}}
+                        />
+                        ))}
+                    </div><FormMessage />
+                </FormItem>
+            )} />
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-start">
+                <FormField control={form.control} name="renewal" render={({ field }) => (
+                    <FormItem className="flex flex-row items-center justify-between rounded-lg border p-4">
+                        <div className="space-y-0.5"><FormLabel>Reconduction</FormLabel><FormDescription>Le contrat est-il à reconduction ?</FormDescription></div>
+                        <FormControl><Switch checked={field.value} onCheckedChange={field.onChange} /></FormControl>
+                    </FormItem>
+                )} />
+                {watchRenewal && (
+                    <div className="space-y-4">
+                        <FormField control={form.control} name="renewalDuration" render={({ field }) => (<FormItem><FormLabel>Durée de reconduction</FormLabel><FormControl><Input placeholder="Ex: 1 an" {...field} /></FormControl><FormMessage /></FormItem>)} />
+                        <FormField control={form.control} name="tacitRenewal" render={({ field }) => (
+                            <FormItem className="flex flex-row items-center justify-between rounded-lg border p-4">
+                                <div className="space-y-0.5"><FormLabel>Tacite reconduction</FormLabel></div>
+                                <FormControl><Switch checked={field.value} onCheckedChange={field.onChange} /></FormControl>
+                            </FormItem>
+                        )} />
+                    </div>
+                )}
+            </div>
+
+            <Separator />
+            <h2 className="text-xl font-semibold">Options Avancées Client</h2>
+
             <div className="grid md:grid-cols-2 gap-8 items-start">
                <FormField control={form.control} name="isBe" render={({ field }) => (
                 <FormItem className="flex flex-row items-center justify-between rounded-lg border p-4">
@@ -292,8 +345,6 @@ export default function EditClientPage() {
                 </div>
               )}
             </div>
-
-            <Separator />
 
             <div className="grid md:grid-cols-2 gap-8 items-start">
                  <FormField control={form.control} name="useChorus" render={({ field }) => (
