@@ -87,11 +87,12 @@ export default function NewDocumentPage() {
       
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
         {documentTypes.map((doc, index) => {
-          const isEnabled = doc.href !== '#'; // Only enable if href is not '#' for now
-          const Wrapper = isEnabled ? Link : 'div';
+          // A link is only functional if its href is not '#'.
+          const isFunctional = doc.href !== '#';
+          const Wrapper = isFunctional ? Link : 'div';
           
           return (
-            <Wrapper key={index} {...(isEnabled ? { href: doc.href } : {})} className={!isEnabled ? 'opacity-50 cursor-not-allowed' : 'hover:scale-105 transition-transform duration-200'}>
+            <Wrapper key={index} {...(isFunctional ? { href: doc.href } : {})} className={!doc.enabled ? 'opacity-50 cursor-not-allowed' : 'hover:scale-105 transition-transform duration-200'}>
               <Card className="hover:border-primary/80 hover:shadow-lg transition-all duration-200 h-full">
                 <CardHeader className="flex flex-row items-center gap-4">
                   <div className="bg-muted p-3 rounded-lg">
