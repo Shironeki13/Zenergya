@@ -45,21 +45,23 @@ export default function AppLayout({
 
   const navItems = [
     { href: '/dashboard', icon: LayoutDashboard, label: 'Tableau de bord' },
-    { href: '/clients', icon: Building, label: 'Clients' },
-    { href: '/sites', icon: MapPin, label: 'Sites' },
-    // { href: '/contracts', icon: FileSignature, label: 'Contrats' },
     { href: '/meters', icon: Gauge, label: 'Compteurs' },
-    { href: '/invoices', icon: FileText, label: 'Factures' },
-    { href: '/credit-notes', icon: MinusCircle, label: 'Avoirs' },
-    { href: '/billing', icon: CircleDollarSign, label: 'Facturation Manuelle' },
-    { href: '/billing/batch', icon: Copy, label: 'Facturation Groupée' },
     { href: '/users', icon: Users, label: 'Utilisateurs' },
     { href: '/settings', icon: Settings, label: 'Paramétrage' },
   ];
   
-  const contractLinks = [
-      { href: '/contracts', label: 'Liste des Contrats' },
-      { href: '/contracts/library', label: 'Bibliothèque' }
+  const contrathequeLinks = [
+      { href: '/contracts/library', label: 'Bibliothèque', icon: Library },
+      { href: '/contracts', label: 'Liste des Contrats', icon: FileSignature },
+      { href: '/clients', label: 'Clients', icon: Building },
+      { href: '/sites', label: 'Sites', icon: MapPin },
+  ];
+
+  const facturationLinks = [
+      { href: '/invoices', label: 'Factures', icon: FileText },
+      { href: '/credit-notes', label: 'Avoirs', icon: MinusCircle },
+      { href: '/billing', label: 'Facturation Manuelle', icon: CircleDollarSign },
+      { href: '/billing/batch', label: 'Facturation Groupée', icon: Copy },
   ];
 
   return (
@@ -78,14 +80,15 @@ export default function AppLayout({
                   <Link
                     key={item.href}
                     href={item.href}
-                    className="flex items-center gap-3 rounded-lg px-3 py-2 text-muted-foreground transition-all hover:text-primary"
+                    className={cn("flex items-center gap-3 rounded-lg px-3 py-2 text-muted-foreground transition-all hover:text-primary",
+                    pathname === item.href && "text-primary bg-muted")}
                   >
                     <item.icon className="h-4 w-4" />
                     {item.label}
                   </Link>
                 ))}
                  <Collapsible
-                    defaultOpen={pathname.startsWith('/contracts')}
+                    defaultOpen={pathname.startsWith('/contracts') || pathname.startsWith('/clients') || pathname.startsWith('/sites')}
                     className="flex flex-col gap-1"
                   >
                     <CollapsibleTrigger asChild>
@@ -98,7 +101,35 @@ export default function AppLayout({
                       </div>
                     </CollapsibleTrigger>
                     <CollapsibleContent className="pl-7 space-y-1">
-                        {contractLinks.map(link => (
+                        {contrathequeLinks.map(link => (
+                             <Link
+                                key={link.href}
+                                href={link.href}
+                                className={cn(
+                                    "flex items-center gap-3 rounded-lg px-3 py-2 text-muted-foreground transition-all hover:text-primary",
+                                    pathname === link.href && "text-primary bg-muted"
+                                )}
+                              >
+                                {link.label}
+                              </Link>
+                        ))}
+                    </CollapsibleContent>
+                 </Collapsible>
+                 <Collapsible
+                    defaultOpen={pathname.startsWith('/invoices') || pathname.startsWith('/credit-notes') || pathname.startsWith('/billing')}
+                    className="flex flex-col gap-1"
+                  >
+                    <CollapsibleTrigger asChild>
+                      <div
+                        className="flex items-center gap-3 rounded-lg px-3 py-2 text-muted-foreground transition-all hover:text-primary cursor-pointer"
+                      >
+                         <CircleDollarSign className="h-4 w-4" />
+                         <span>Facturation</span>
+                         <ChevronDown className="ml-auto h-4 w-4 transition-transform [&[data-state=open]]:rotate-180" />
+                      </div>
+                    </CollapsibleTrigger>
+                    <CollapsibleContent className="pl-7 space-y-1">
+                        {facturationLinks.map(link => (
                              <Link
                                 key={link.href}
                                 href={link.href}
@@ -165,7 +196,7 @@ export default function AppLayout({
                       {item.label}
                     </Link>
                   ))}
-                  <Collapsible defaultOpen={pathname.startsWith('/contracts')}>
+                  <Collapsible defaultOpen={pathname.startsWith('/contracts') || pathname.startsWith('/clients') || pathname.startsWith('/sites')}>
                       <CollapsibleTrigger className="w-full">
                         <div className="mx-[-0.65rem] flex items-center gap-4 rounded-xl px-3 py-2 text-muted-foreground hover:text-foreground">
                             <Library className="h-5 w-5" />
@@ -174,7 +205,30 @@ export default function AppLayout({
                         </div>
                       </CollapsibleTrigger>
                       <CollapsibleContent className="pl-10 mt-2 space-y-2">
-                        {contractLinks.map(link => (
+                        {contrathequeLinks.map(link => (
+                             <Link
+                                key={link.href}
+                                href={link.href}
+                                className={cn(
+                                    "mx-[-0.65rem] flex items-center gap-4 rounded-xl px-3 py-2 text-muted-foreground hover:text-foreground",
+                                    pathname === link.href && "bg-muted text-foreground"
+                                )}
+                              >
+                                {link.label}
+                              </Link>
+                        ))}
+                      </CollapsibleContent>
+                  </Collapsible>
+                   <Collapsible defaultOpen={pathname.startsWith('/invoices') || pathname.startsWith('/credit-notes') || pathname.startsWith('/billing')}>
+                      <CollapsibleTrigger className="w-full">
+                        <div className="mx-[-0.65rem] flex items-center gap-4 rounded-xl px-3 py-2 text-muted-foreground hover:text-foreground">
+                            <CircleDollarSign className="h-5 w-5" />
+                            Facturation
+                            <ChevronDown className="ml-auto h-5 w-5 transition-transform [&[data-state=open]]:rotate-180" />
+                        </div>
+                      </CollapsibleTrigger>
+                      <CollapsibleContent className="pl-10 mt-2 space-y-2">
+                        {facturationLinks.map(link => (
                              <Link
                                 key={link.href}
                                 href={link.href}
