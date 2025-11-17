@@ -18,9 +18,9 @@ import { Button } from '@/components/ui/button';
 const documentTypes = [
   {
     title: "Base Marché",
-    description: "Créer un nouveau contrat principal.",
+    description: "Créer un nouveau contrat principal à partir d'un document.",
     icon: FilePlus2,
-    href: "/contracts/new",
+    href: "/contracts/new-from-pdf",
     enabled: true,
   },
   {
@@ -87,7 +87,6 @@ export default function NewDocumentPage() {
       
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
         {documentTypes.map((doc, index) => {
-          // A link is only functional if its href is not '#'.
           const isFunctional = doc.href !== '#';
           const Wrapper = isFunctional ? Link : 'div';
           
