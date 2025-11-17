@@ -49,19 +49,14 @@ export default function AppLayout({
     { href: '/settings', icon: Settings, label: 'Paramétrage' },
   ];
   
-  const contrathequeLinks = [
-      { href: '/contracts/library', label: 'Bibliothèque', icon: Library },
-      { href: '/contracts', label: 'Liste des Contrats', icon: FileSignature },
-      { href: '/clients', label: 'Clients', icon: Building },
-      { href: '/sites', label: 'Sites', icon: MapPin },
-  ];
-
   const facturationLinks = [
       { href: '/dashboard', label: 'Tableau de bord', icon: LayoutDashboard },
       { href: '/invoices', label: 'Factures', icon: FileText },
       { href: '/credit-notes', label: 'Avoirs', icon: MinusCircle },
       { href: '/billing', label: 'Facturation Manuelle', icon: CircleDollarSign },
       { href: '/billing/batch', label: 'Facturation Groupée', icon: Copy },
+      { href: '/clients', label: 'Clients', icon: Building },
+      { href: '/sites', label: 'Sites', icon: MapPin },
   ];
 
   return (
@@ -76,47 +71,17 @@ export default function AppLayout({
             </div>
             <div className="flex-1 overflow-y-auto">
               <nav className="grid items-start px-2 text-sm font-medium lg:px-4">
-                {navItems.map((item) => (
-                  <Link
-                    key={item.href}
-                    href={item.href}
+                 <Link
+                    href="/contracts/library"
                     className={cn("flex items-center gap-3 rounded-lg px-3 py-2 text-muted-foreground transition-all hover:text-primary",
-                    pathname === item.href && "text-primary bg-muted")}
+                    pathname.startsWith('/contracts') && "text-primary bg-muted")}
                   >
-                    <item.icon className="h-4 w-4" />
-                    {item.label}
+                    <Library className="h-4 w-4" />
+                    Contrathèque
                   </Link>
-                ))}
+
                  <Collapsible
-                    defaultOpen={pathname.startsWith('/contracts') || pathname.startsWith('/clients') || pathname.startsWith('/sites')}
-                    className="flex flex-col gap-1"
-                  >
-                    <CollapsibleTrigger asChild>
-                      <div
-                        className="flex items-center gap-3 rounded-lg px-3 py-2 text-muted-foreground transition-all hover:text-primary cursor-pointer"
-                      >
-                         <Library className="h-4 w-4" />
-                         <span>Contrathèque</span>
-                         <ChevronDown className="ml-auto h-4 w-4 transition-transform [&[data-state=open]]:rotate-180" />
-                      </div>
-                    </CollapsibleTrigger>
-                    <CollapsibleContent className="pl-7 space-y-1">
-                        {contrathequeLinks.map(link => (
-                             <Link
-                                key={link.href}
-                                href={link.href}
-                                className={cn(
-                                    "flex items-center gap-3 rounded-lg px-3 py-2 text-muted-foreground transition-all hover:text-primary",
-                                    pathname === link.href && "text-primary bg-muted"
-                                )}
-                              >
-                                {link.label}
-                              </Link>
-                        ))}
-                    </CollapsibleContent>
-                 </Collapsible>
-                 <Collapsible
-                    defaultOpen={pathname.startsWith('/invoices') || pathname.startsWith('/credit-notes') || pathname.startsWith('/billing') || pathname.startsWith('/dashboard')}
+                    defaultOpen={pathname.startsWith('/invoices') || pathname.startsWith('/credit-notes') || pathname.startsWith('/billing') || pathname.startsWith('/dashboard') || pathname.startsWith('/clients') || pathname.startsWith('/sites')}
                     className="flex flex-col gap-1"
                   >
                     <CollapsibleTrigger asChild>
@@ -143,6 +108,18 @@ export default function AppLayout({
                         ))}
                     </CollapsibleContent>
                  </Collapsible>
+
+                {navItems.map((item) => (
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    className={cn("flex items-center gap-3 rounded-lg px-3 py-2 text-muted-foreground transition-all hover:text-primary",
+                    pathname === item.href && "text-primary bg-muted")}
+                  >
+                    <item.icon className="h-4 w-4" />
+                    {item.label}
+                  </Link>
+                ))}
               </nav>
             </div>
             <div className="mt-auto p-4">
@@ -186,40 +163,16 @@ export default function AppLayout({
                   >
                     <Logo />
                   </Link>
-                  {navItems.map((item) => (
-                    <Link
-                      key={item.href}
-                      href={item.href}
-                      className="mx-[-0.65rem] flex items-center gap-4 rounded-xl px-3 py-2 text-muted-foreground hover:text-foreground"
+                   <Link
+                        href="/contracts/library"
+                        className={cn("mx-[-0.65rem] flex items-center gap-4 rounded-xl px-3 py-2 text-muted-foreground hover:text-foreground", 
+                        pathname.startsWith('/contracts') && 'bg-muted text-foreground')}
                     >
-                      <item.icon className="h-5 w-5" />
-                      {item.label}
+                        <Library className="h-5 w-5" />
+                        Contrathèque
                     </Link>
-                  ))}
-                  <Collapsible defaultOpen={pathname.startsWith('/contracts') || pathname.startsWith('/clients') || pathname.startsWith('/sites')}>
-                      <CollapsibleTrigger className="w-full">
-                        <div className="mx-[-0.65rem] flex items-center gap-4 rounded-xl px-3 py-2 text-muted-foreground hover:text-foreground">
-                            <Library className="h-5 w-5" />
-                            Contrathèque
-                            <ChevronDown className="ml-auto h-5 w-5 transition-transform [&[data-state=open]]:rotate-180" />
-                        </div>
-                      </CollapsibleTrigger>
-                      <CollapsibleContent className="pl-10 mt-2 space-y-2">
-                        {contrathequeLinks.map(link => (
-                             <Link
-                                key={link.href}
-                                href={link.href}
-                                className={cn(
-                                    "mx-[-0.65rem] flex items-center gap-4 rounded-xl px-3 py-2 text-muted-foreground hover:text-foreground",
-                                    pathname === link.href && "bg-muted text-foreground"
-                                )}
-                              >
-                                {link.label}
-                              </Link>
-                        ))}
-                      </CollapsibleContent>
-                  </Collapsible>
-                   <Collapsible defaultOpen={pathname.startsWith('/invoices') || pathname.startsWith('/credit-notes') || pathname.startsWith('/billing') || pathname.startsWith('/dashboard')}>
+
+                   <Collapsible defaultOpen={pathname.startsWith('/invoices') || pathname.startsWith('/credit-notes') || pathname.startsWith('/billing') || pathname.startsWith('/dashboard') || pathname.startsWith('/clients') || pathname.startsWith('/sites')}>
                       <CollapsibleTrigger className="w-full">
                         <div className="mx-[-0.65rem] flex items-center gap-4 rounded-xl px-3 py-2 text-muted-foreground hover:text-foreground">
                             <CircleDollarSign className="h-5 w-5" />
@@ -242,6 +195,16 @@ export default function AppLayout({
                         ))}
                       </CollapsibleContent>
                   </Collapsible>
+                  {navItems.map((item) => (
+                    <Link
+                      key={item.href}
+                      href={item.href}
+                      className="mx-[-0.65rem] flex items-center gap-4 rounded-xl px-3 py-2 text-muted-foreground hover:text-foreground"
+                    >
+                      <item.icon className="h-5 w-5" />
+                      {item.label}
+                    </Link>
+                  ))}
                 </nav>
                 <div className="mt-auto">
                   <Card>

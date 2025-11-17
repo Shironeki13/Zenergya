@@ -3,9 +3,7 @@
 
 import { useMemo, useState } from 'react';
 import Link from 'next/link';
-import { PlusCircle, MoreHorizontal, Loader2, Download, Search, UploadCloud } from 'lucide-react';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
+import { UploadCloud, FileSignature } from 'lucide-react';
 import {
   Card,
   CardContent,
@@ -13,138 +11,54 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
-import { Input } from '@/components/ui/input';
-import { useData } from '@/context/data-context';
-import type { Contract } from '@/lib/types';
-import { downloadCSV } from '@/lib/utils';
 
 export default function ContractLibraryPage() {
-  const { contracts, isLoading } = useData();
-  const [searchTerm, setSearchTerm] = useState('');
-
-  const filteredContracts = useMemo(() => {
-    if (!searchTerm) {
-      return contracts;
-    }
-    return contracts.filter(contract =>
-      contract.clientName.toLowerCase().includes(searchTerm.toLowerCase())
-    );
-  }, [contracts, searchTerm]);
-
-  const handleExport = () => {
-    const dataToExport = filteredContracts.map(({ id, ...rest }) => ({
-        ...rest,
-        siteIds: rest.siteIds.join('; '),
-        activityIds: rest.activityIds.join('; '),
-    }));
-    downloadCSV(dataToExport, 'contratheque.csv');
-  };
-
-  const getBadgeVariant = (status: Contract['status']): 'secondary' | 'destructive' | 'warning' | 'outline' => {
-      switch (status) {
-        case 'Actif':
-          return 'secondary';
-        case 'Résilié':
-          return 'destructive';
-        case 'Terminé':
-          return 'warning';
-        default:
-          return 'outline';
-      }
-  }
 
   return (
-    <Card>
-      <CardHeader>
-        <div className="flex items-center justify-between gap-4">
-          <div>
-            <CardTitle>Contrathèque</CardTitle>
-            <CardDescription>
+    <div>
+        <div className="mb-6">
+            <h1 className="text-3xl font-bold tracking-tight">Contrathèque</h1>
+            <p className="text-muted-foreground">
               Gérez et analysez tous vos documents contractuels.
-            </CardDescription>
-          </div>
-          <div className="flex items-center gap-2">
-            <div className="relative">
-              <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-              <Input
-                type="search"
-                placeholder="Rechercher un contrat..."
-                className="pl-8 sm:w-[300px]"
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-              />
-            </div>
-             <Button size="sm" variant="outline" className="gap-1" onClick={handleExport}>
-              <Download className="h-4 w-4" />
-              Exporter
-            </Button>
-            <Button size="sm" className="gap-1" disabled>
-              <UploadCloud className="h-4 w-4" />
-              Ajouter un Contrat PDF
-            </Button>
-          </div>
+            </p>
         </div>
-      </CardHeader>
-      <CardContent>
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Client</TableHead>
-              <TableHead>Statut</TableHead>
-              <TableHead>Date de début</TableHead>
-              <TableHead>Date de fin</TableHead>
-              <TableHead><span className="sr-only">Actions</span></TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {isLoading ? (
-              <TableRow>
-                <TableCell colSpan={5} className="h-24 text-center">
-                  <Loader2 className="mx-auto h-8 w-8 animate-spin text-muted-foreground" />
-                </TableCell>
-              </TableRow>
-            ) : filteredContracts.length > 0 ? (
-              filteredContracts.map((contract) => (
-                <TableRow key={contract.id}>
-                  <TableCell className="font-medium">{contract.clientName}</TableCell>
-                  <TableCell>
-                    <Badge variant={getBadgeVariant(contract.status)}>
-                      {contract.status}
-                    </Badge>
-                  </TableCell>
-                  <TableCell>{new Date(contract.startDate).toLocaleDateString()}</TableCell>
-                  <TableCell>
-                    {contract.status === 'Résilié' && contract.terminationDate 
-                      ? new Date(contract.terminationDate).toLocaleDateString() 
-                      : new Date(contract.endDate).toLocaleDateString()
-                    }
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <Button asChild variant="ghost" size="icon">
-                        <Link href={`/contracts/${contract.id}`}>
-                            <MoreHorizontal className="h-4 w-4" />
-                            <span className="sr-only">Voir les détails</span>
-                        </Link>
-                    </Button>
-                  </TableCell>
-                </TableRow>
-              ))
-            ) : (
-              <TableRow>
-                <TableCell colSpan={5} className="text-center h-24">Aucun contrat trouvé.</TableCell>
-              </TableRow>
-            )}
-          </TableBody>
-        </Table>
-      </CardContent>
-    </Card>
+        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+             <Link href="/contracts" className="block hover:scale-105 transition-transform duration-200">
+                <Card className="h-full flex flex-col">
+                    <CardHeader>
+                        <div className="flex items-center gap-4">
+                             <div className="bg-primary text-primary-foreground p-3 rounded-lg">
+                                <FileSignature className="h-6 w-6" />
+                            </div>
+                            <CardTitle>Liste des Contrats</CardTitle>
+                        </div>
+                    </CardHeader>
+                    <CardContent>
+                        <p className="text-muted-foreground">
+                            Accédez à la liste complète de tous les contrats saisis manuellement, modifiez-les et suivez leur statut.
+                        </p>
+                    </CardContent>
+                </Card>
+            </Link>
+
+            <Link href="#" className="block hover:scale-105 transition-transform duration-200 opacity-50 cursor-not-allowed">
+                 <Card className="h-full flex flex-col">
+                    <CardHeader>
+                        <div className="flex items-center gap-4">
+                             <div className="bg-secondary text-secondary-foreground p-3 rounded-lg">
+                                <UploadCloud className="h-6 w-6" />
+                            </div>
+                            <CardTitle>Ajouter un Contrat PDF</CardTitle>
+                        </div>
+                    </CardHeader>
+                    <CardContent>
+                        <p className="text-muted-foreground">
+                           (Prochainement) Importez un document PDF et laissez l'IA extraire automatiquement les informations clés du contrat.
+                        </p>
+                    </CardContent>
+                </Card>
+            </Link>
+        </div>
+    </div>
   );
 }
