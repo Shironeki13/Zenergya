@@ -44,7 +44,6 @@ export default function AppLayout({
   const pathname = usePathname();
 
   const navItems = [
-    { href: '/dashboard', icon: LayoutDashboard, label: 'Tableau de bord' },
     { href: '/meters', icon: Gauge, label: 'Compteurs' },
     { href: '/users', icon: Users, label: 'Utilisateurs' },
     { href: '/settings', icon: Settings, label: 'Paramétrage' },
@@ -58,6 +57,7 @@ export default function AppLayout({
   ];
 
   const facturationLinks = [
+      { href: '/dashboard', label: 'Tableau de bord', icon: LayoutDashboard },
       { href: '/invoices', label: 'Factures', icon: FileText },
       { href: '/credit-notes', label: 'Avoirs', icon: MinusCircle },
       { href: '/billing', label: 'Facturation Manuelle', icon: CircleDollarSign },
@@ -116,7 +116,7 @@ export default function AppLayout({
                     </CollapsibleContent>
                  </Collapsible>
                  <Collapsible
-                    defaultOpen={pathname.startsWith('/invoices') || pathname.startsWith('/credit-notes') || pathname.startsWith('/billing')}
+                    defaultOpen={pathname.startsWith('/invoices') || pathname.startsWith('/credit-notes') || pathname.startsWith('/billing') || pathname.startsWith('/dashboard')}
                     className="flex flex-col gap-1"
                   >
                     <CollapsibleTrigger asChild>
@@ -219,7 +219,7 @@ export default function AppLayout({
                         ))}
                       </CollapsibleContent>
                   </Collapsible>
-                   <Collapsible defaultOpen={pathname.startsWith('/invoices') || pathname.startsWith('/credit-notes') || pathname.startsWith('/billing')}>
+                   <Collapsible defaultOpen={pathname.startsWith('/invoices') || pathname.startsWith('/credit-notes') || pathname.startsWith('/billing') || pathname.startsWith('/dashboard')}>
                       <CollapsibleTrigger className="w-full">
                         <div className="mx-[-0.65rem] flex items-center gap-4 rounded-xl px-3 py-2 text-muted-foreground hover:text-foreground">
                             <CircleDollarSign className="h-5 w-5" />
