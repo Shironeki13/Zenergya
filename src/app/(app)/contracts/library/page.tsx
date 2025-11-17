@@ -1,7 +1,6 @@
 
 'use client';
 
-import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { UploadCloud, FileSignature } from 'lucide-react';
 import {
@@ -41,19 +40,19 @@ export default function ContractLibraryPage() {
                 </Card>
             </Link>
 
-            <Link href="#" className="block hover:scale-105 transition-transform duration-200 opacity-50 cursor-not-allowed">
+            <Link href="/contracts/new-document" className="block hover:scale-105 transition-transform duration-200">
                  <Card className="h-full flex flex-col">
                     <CardHeader>
                         <div className="flex items-center gap-4">
                              <div className="bg-secondary text-secondary-foreground p-3 rounded-lg">
                                 <UploadCloud className="h-6 w-6" />
                             </div>
-                            <CardTitle>Ajouter un Contrat PDF</CardTitle>
+                            <CardTitle>Ajouter un/des document(s)</CardTitle>
                         </div>
                     </CardHeader>
                     <CardContent>
                         <p className="text-muted-foreground">
-                           (Prochainement) Importez un document PDF et laissez l'IA extraire automatiquement les informations clés du contrat.
+                           Importez un document PDF et laissez l'IA extraire automatiquement les informations clés du contrat.
                         </p>
                     </CardContent>
                 </Card>
