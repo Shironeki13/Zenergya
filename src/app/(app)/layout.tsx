@@ -59,7 +59,7 @@ export default function AppLayout({
   
   const contractLinks = [
       { href: '/contracts', label: 'Liste des Contrats' },
-      { href: '/contracts/library', label: 'Contrathèque' }
+      { href: '/contracts/library', label: 'Bibliothèque' }
   ];
 
   return (
@@ -92,8 +92,8 @@ export default function AppLayout({
                       <div
                         className="flex items-center gap-3 rounded-lg px-3 py-2 text-muted-foreground transition-all hover:text-primary cursor-pointer"
                       >
-                         <FileSignature className="h-4 w-4" />
-                         <span>Contrats & Bibliothèque</span>
+                         <Library className="h-4 w-4" />
+                         <span>Contrathèque</span>
                          <ChevronDown className="ml-auto h-4 w-4 transition-transform [&[data-state=open]]:rotate-180" />
                       </div>
                     </CollapsibleTrigger>
@@ -168,8 +168,8 @@ export default function AppLayout({
                   <Collapsible defaultOpen={pathname.startsWith('/contracts')}>
                       <CollapsibleTrigger className="w-full">
                         <div className="mx-[-0.65rem] flex items-center gap-4 rounded-xl px-3 py-2 text-muted-foreground hover:text-foreground">
-                            <FileSignature className="h-5 w-5" />
-                            Contrats & Bibliothèque
+                            <Library className="h-5 w-5" />
+                            Contrathèque
                             <ChevronDown className="ml-auto h-5 w-5 transition-transform [&[data-state=open]]:rotate-180" />
                         </div>
                       </CollapsibleTrigger>
