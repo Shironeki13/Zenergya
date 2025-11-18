@@ -31,7 +31,7 @@ const extractContractInfoFlow = ai.defineFlow(
     
     const { output } = await ai.generate({
         prompt: fullPrompt,
-        model: 'googleai/gemini-pro',
+        model: 'googleai/gemini-2.0-flash',
         output: {
             schema: ExtractContractInfoOutputSchema
         }
