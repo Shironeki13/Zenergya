@@ -21,16 +21,18 @@ const extractContractInfoFlow = ai.defineFlow(
     inputSchema: ExtractContractInfoInputSchema,
     outputSchema: ExtractContractInfoOutputSchema,
   },
-  async (input) => {
+  async ({ documentDataUri, activities, prompt }) => {
     
-    const template = Handlebars.compile(input.prompt);
+    const template = Handlebars.compile(prompt);
     const fullPrompt = template({
-        activities: JSON.stringify(input.activities.map(({ id, code, label }) => ({ id, code, label })), null, 2),
-        documentDataUri: input.documentDataUri,
+        activities: JSON.stringify(activities.map(({ id, code, label }) => ({ id, code, label })), null, 2),
     });
     
     const { output } = await ai.generate({
-        prompt: fullPrompt,
+        prompt: [
+            { text: fullPrompt },
+            { media: { url: documentDataUri } }
+        ],
         model: 'googleai/gemini-2.0-flash',
         output: {
             schema: ExtractContractInfoOutputSchema
