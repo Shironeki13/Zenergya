@@ -40,7 +40,8 @@ Voici les informations à extraire:
 - Type de client (clientType): Détermine si le client est 'private' (privé) ou 'public' (public).
 - Typologie du client (typologyId): Déduis la typologie du client. Ce doit être l'une des valeurs suivantes : 'Santé', 'Industrie', 'Tertiaire', 'Défense', 'Copropriété', 'Bailleur Social'.
 - Représenté par (representedBy): Le représentant légal, pertinent uniquement si la typologie est 'Copropriété'.
-- Prestations/Activités (amounts): Pour chaque prestation détectée dans le contrat, extrais son montant annuel HT. Les prestations à rechercher sont : Fourniture et gestion de l’énergie (P1), Maintenance préventive et petit entretien (P2), Garantie totale / gros entretien (P3). Tu dois retourner un tableau d'objets, chacun avec 'activityId' (l'ID de l'activité correspondante) et 'amount' (le montant numérique). Choisis les IDs parmi cette liste de prestations disponibles: {{{json activities}}}
+- activityIds: Trouve les prestations présentes dans le contrat. Ce champ doit être un tableau contenant les IDs des prestations détectées. Les prestations à rechercher sont : Fourniture et gestion de l’énergie (P1), Maintenance préventive et petit entretien (P2), Garantie totale / gros entretien (P3). Choisis les IDs parmi cette liste: {{{json activities}}}.
+- amounts: Pour chaque prestation identifiée dans 'activityIds', extrais son montant annuel HT. Retourne un tableau d'objets, chacun avec 'activityId' et 'amount'. Si aucun montant n'est trouvé pour une prestation, ne l'inclus pas dans ce tableau.
 - Date de démarrage (startDate): La date de début du contrat, au format YYYY-MM-DD.
 - Date de fin (endDate): La date de fin du contrat, au format YYYY-MM-DD.
 - Reconduction (renewal): Indique si le contrat est à reconduction (true ou false).
