@@ -25,7 +25,7 @@ const extractContractInfoFlow = ai.defineFlow(
     
     const template = Handlebars.compile(input.prompt);
     const fullPrompt = template({
-        activities: JSON.stringify(input.activities, null, 2),
+        activities: JSON.stringify(input.activities.map(({ id, code, label }) => ({ id, code, label })), null, 2),
         documentDataUri: input.documentDataUri,
     });
     
@@ -38,8 +38,10 @@ const extractContractInfoFlow = ai.defineFlow(
     });
 
     if (output) {
-        // Automatically populate activityIds from the extracted amounts
-        output.activityIds = output.amounts?.map(a => a.activityId) ?? [];
+        // Automatically populate activityIds from the extracted amounts if not already present
+        if (!output.activityIds || output.activityIds.length === 0) {
+            output.activityIds = output.amounts?.map(a => a.activityId) ?? [];
+        }
     }
     return output!;
   }
