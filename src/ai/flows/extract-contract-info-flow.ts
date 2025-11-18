@@ -19,24 +19,22 @@ const prompt = ai.definePrompt({
   name: 'extractContractInfoPrompt',
   input: { schema: ExtractContractInfoInputSchema },
   output: { schema: ExtractContractInfoOutputSchema },
-  prompt: `Tu es un expert en analyse de documents contractuels. Analyse le document PDF fourni et extrais les informations suivantes de manière structurée.
+  prompt: `Tu es un expert en analyse de documents contractuels. Analyse le document PDF fourni et extrais les informations suivantes de manière structurée. Si une information n'est pas trouvée, laisse le champ vide.
 
   Voici les informations à extraire:
-  - Raison sociale du client (name)
-  - Adresse, Code Postal, Ville (address, postalCode, city)
-  - Type de client: 'private' ou 'public' (clientType)
-  - Typologie du client (typologyId). Par exemple 'Copropriété'.
-  - Représenté par (representedBy), si c'est une copropriété.
-  - Utilisation de Chorus Pro (useChorus). Si le client est 'public' et qu'un SIRET est mentionné, mettre à true.
-  - SIRET (siret)
-  - Code service Chorus (chorusServiceCode)
-  - Numéro d'engagement juridique Chorus (chorusLegalCommitmentNumber)
-  - Prestations/Activités (activityIds). C'est un tableau d'IDs. Tu dois choisir les IDs correspondants parmi cette liste de prestations disponibles: {{{json activities}}}
-  - Date de démarrage (startDate) au format YYYY-MM-DD.
-  - Date de fin (endDate) au format YYYY-MM-DD.
-  - Reconduction (renewal): true ou false.
-  - Durée de la reconduction (renewalDuration), si applicable.
-  - Tacite reconduction (tacitRenewal): true ou false, si applicable.
+  - Raison sociale du client (name): Le nom complet du client.
+  - Adresse (address): L'adresse complète du client (numéro, rue, etc.).
+  - Code Postal (postalCode): Le code postal du client.
+  - Ville (city): La ville du client.
+  - Type de client (clientType): Détermine si le client est 'private' (privé) ou 'public' (public).
+  - Typologie du client (typologyId): Déduis la typologie du client. Ce doit être l'une des valeurs suivantes : 'Santé', 'Industrie', 'Tertiaire', 'Défense', 'Copropriété', 'Bailleur Social'.
+  - Représenté par (representedBy): Le représentant légal, pertinent uniquement si la typologie est 'Copropriété'.
+  - Prestations/Activités (activityIds): Coche les cases correspondantes si tu détectes la présence des prestations P1, P2, ou P3 dans le contrat. C'est un tableau d'IDs. Tu dois choisir les IDs correspondants parmi cette liste de prestations disponibles: {{{json activities}}}
+  - Date de démarrage (startDate): La date de début du contrat, au format YYYY-MM-DD.
+  - Date de fin (endDate): La date de fin du contrat, au format YYYY-MM-DD.
+  - Reconduction (renewal): Indique si le contrat est à reconduction (true ou false).
+  - Durée de la reconduction (renewalDuration): Si la reconduction est activée, précise sa durée (ex: '1 an').
+  - Tacite reconduction (tacitRenewal): Si la reconduction est activée, indique si elle est tacite (true ou false).
 
   Document à analyser:
   {{media url=documentDataUri}}
