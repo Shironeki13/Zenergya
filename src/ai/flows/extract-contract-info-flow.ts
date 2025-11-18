@@ -29,7 +29,7 @@ const prompt = ai.definePrompt({
   - Type de client (clientType): Détermine si le client est 'private' (privé) ou 'public' (public).
   - Typologie du client (typologyId): Déduis la typologie du client. Ce doit être l'une des valeurs suivantes : 'Santé', 'Industrie', 'Tertiaire', 'Défense', 'Copropriété', 'Bailleur Social'.
   - Représenté par (representedBy): Le représentant légal, pertinent uniquement si la typologie est 'Copropriété'.
-  - Prestations/Activités (activityIds): Coche les cases correspondantes si tu détectes la présence des prestations P1, P2, ou P3 dans le contrat. C'est un tableau d'IDs. Tu dois choisir les IDs correspondants parmi cette liste de prestations disponibles: {{{json activities}}}
+  - Prestations/Activités (amounts): Pour chaque prestation P1, P2, ou P3 détectée dans le contrat, extrais son montant annuel HT. Tu dois retourner un tableau d'objets, chacun avec 'activityId' (l'ID de l'activité correspondante) et 'amount' (le montant numérique). Choisis les IDs parmi cette liste de prestations disponibles: {{{json activities}}}
   - Date de démarrage (startDate): La date de début du contrat, au format YYYY-MM-DD.
   - Date de fin (endDate): La date de fin du contrat, au format YYYY-MM-DD.
   - Reconduction (renewal): Indique si le contrat est à reconduction (true ou false).
@@ -49,6 +49,10 @@ const extractContractInfoFlow = ai.defineFlow(
   },
   async (input) => {
     const { output } = await prompt(input);
+    if (output) {
+        // Automatically populate activityIds from the extracted amounts
+        output.activityIds = output.amounts?.map(a => a.activityId) ?? [];
+    }
     return output!;
   }
 );

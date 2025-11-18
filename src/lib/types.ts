@@ -29,6 +29,10 @@ export const ClientSchema = z.object({
   renewalDuration: z.string().optional(),
   tacitRenewal: z.boolean().default(false),
   activityIds: z.array(z.string()).optional(),
+  amounts: z.array(z.object({
+      activityId: z.string(),
+      amount: z.number(),
+  })).optional(),
 }).superRefine((data, ctx) => {
     if (data.useChorus && (!data.siret || data.siret.length === 0)) {
         ctx.addIssue({
@@ -364,6 +368,11 @@ export const ExtractContractInfoInputSchema = z.object({
 });
 export type ExtractContractInfoInput = z.infer<typeof ExtractContractInfoInputSchema>;
 
+const ExtractedAmountSchema = z.object({
+    activityId: z.string().describe("L'ID de l'activité correspondante (P1, P2, P3, etc.)."),
+    amount: z.number().describe("Le montant annuel HT associé à cette activité. Ne pas inclure de devise."),
+});
+
 export const ExtractContractInfoOutputSchema = z.object({
   name: z.string().optional().describe("Raison sociale du client. Toujours en MAJUSCULES."),
   address: z.string().optional().describe("Adresse complète du client (numéro, rue, etc.)."),
@@ -377,6 +386,7 @@ export const ExtractContractInfoOutputSchema = z.object({
   chorusServiceCode: z.string().optional().describe("Le code service Chorus, si disponible."),
   chorusLegalCommitmentNumber: z.string().optional().describe("Le numéro d'engagement juridique (EJ) pour Chorus, si disponible."),
   activityIds: z.array(z.string()).optional().describe("Un tableau des IDs des prestations (activités) trouvées dans le document. Choisir parmi la liste fournie."),
+  amounts: z.array(ExtractedAmountSchema).optional().describe("Un tableau des montants annuels HT pour chaque activité détectée. Ne renseigner que pour les activités effectivement présentes dans le contrat."),
   startDate: z.string().optional().describe("Date de démarrage du contrat au format ISO 8601 (YYYY-MM-DD)."),
   endDate: z.string().optional().describe("Date de fin du contrat au format ISO 8601 (YYYY-MM-DD)."),
   renewal: z.boolean().optional().describe("Indique si le contrat est à reconduction."),

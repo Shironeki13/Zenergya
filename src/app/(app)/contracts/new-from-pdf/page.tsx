@@ -23,7 +23,7 @@ import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover
 import { Calendar } from '@/components/ui/calendar';
 import { useData } from '@/context/data-context';
 import type { Client } from '@/lib/types';
-import { ClientSchema } from '@/lib/types';
+import { ClientSchema, type ExtractContractInfoOutput } from '@/lib/types';
 import { extractContractInfo } from '@/ai/flows/extract-contract-info-flow';
 import { cn } from '@/lib/utils';
 import { format } from 'date-fns';
@@ -74,13 +74,14 @@ export default function NewContractFromPdfPage() {
       renewal: false,
       tacitRenewal: false,
       activityIds: [],
+      amounts: [],
     },
   });
   
   const watchTypologyId = form.watch("typologyId");
-  const watchIsBe = form.watch("isBe");
-  const watchUseChorus = form.watch("useChorus");
   const watchRenewal = form.watch("renewal");
+  const watchActivityIds = form.watch("activityIds") || [];
+
 
   const selectedTypology = useMemo(() => 
     typologies.find(t => t.id === watchTypologyId),
@@ -123,6 +124,7 @@ export default function NewContractFromPdfPage() {
             ...result,
             startDate: result.startDate ? new Date(result.startDate) : undefined,
             endDate: result.endDate ? new Date(result.endDate) : undefined,
+            activityIds: result.amounts?.map(a => a.activityId) ?? [],
         };
 
         setAnalysisResult(mappedData);
@@ -288,7 +290,8 @@ export default function NewContractFromPdfPage() {
                                 <FormMessage />
                                 </FormItem>
                             )}/>}
-                             <FormField
+                            
+                            <FormField
                                 control={form.control} name="activityIds" render={() => (
                                 <FormItem>
                                     <div className="mb-4"><FormLabel className="text-base">Type de prestation</FormLabel></div>
@@ -303,9 +306,10 @@ export default function NewContractFromPdfPage() {
                                                     <Checkbox
                                                     checked={field.value?.includes(item.id)}
                                                     onCheckedChange={(checked) => {
-                                                        return checked
-                                                        ? field.onChange([...(field.value || []), item.id])
-                                                        : field.onChange(field.value?.filter((value) => value !== item.id))
+                                                        const newActivities = checked
+                                                            ? [...(field.value || []), item.id]
+                                                            : field.value?.filter((value) => value !== item.id);
+                                                        field.onChange(newActivities);
                                                     }}
                                                     />
                                                 </FormControl>
@@ -317,6 +321,39 @@ export default function NewContractFromPdfPage() {
                                     </div><FormMessage />
                                 </FormItem>
                             )} />
+                            
+                            {watchActivityIds.length > 0 && (
+                                <Card>
+                                    <CardHeader><CardTitle>Montants Annuels HT</CardTitle></CardHeader>
+                                    <CardContent className="space-y-4">
+                                        {activities.filter(a => watchActivityIds.includes(a.id)).map(activity => {
+                                            const amountIndex = form.getValues('amounts')?.findIndex(a => a.activityId === activity.id) ?? -1;
+                                            return (
+                                                <FormField
+                                                    key={activity.id}
+                                                    control={form.control}
+                                                    name={`amounts.${amountIndex}.amount`}
+                                                    render={({ field }) => (
+                                                        <FormItem>
+                                                            <FormLabel>Montant pour {activity.label} (€)</FormLabel>
+                                                            <FormControl>
+                                                                <Input 
+                                                                    type="number"
+                                                                    {...field}
+                                                                    onChange={e => field.onChange(parseFloat(e.target.value) || 0)}
+                                                                />
+                                                            </FormControl>
+                                                            <FormMessage />
+                                                        </FormItem>
+                                                    )}
+                                                />
+                                            );
+                                        })}
+                                    </CardContent>
+                                </Card>
+                            )}
+
+
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                                 <FormField control={form.control} name="startDate" render={({ field }) => (
                                     <FormItem className="flex flex-col"><FormLabel>Date de Démarrage</FormLabel>
@@ -368,7 +405,7 @@ export default function NewContractFromPdfPage() {
                                     <FormControl><Switch checked={field.value} onCheckedChange={field.onChange} /></FormControl>
                                 </FormItem>
                              )} />
-                             {watchUseChorus && (
+                             {form.watch("useChorus") && (
                                 <div className="space-y-4 p-4 border rounded-lg">
                                     <FormField control={form.control} name="siret" render={({ field }) => (<FormItem><FormLabel>SIRET</FormLabel><FormControl><Input placeholder="12345678901234" {...field} /></FormControl><FormMessage /></FormItem>)} />
                                     <FormField control={form.control} name="chorusServiceCode" render={({ field }) => (<FormItem><FormLabel>Code service</FormLabel><FormControl><Input placeholder="Code service Chorus" {...field} /></FormControl><FormMessage /></FormItem>)} />
