@@ -28,6 +28,29 @@ import { extractContractInfo } from '@/ai/flows/extract-contract-info-flow';
 import { cn } from '@/lib/utils';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
+import { Textarea } from '@/components/ui/textarea';
+
+const defaultPrompt = `Tu es un expert en analyse de documents contractuels. Analyse le document PDF fourni et extrais les informations suivantes de manière structurée. Si une information n'est pas trouvée, laisse le champ vide.
+
+Voici les informations à extraire:
+- Raison sociale du client (name): Le nom complet du client. Toujours en MAJUSCULES.
+- Adresse (address): L'adresse complète du client (numéro, rue, etc.).
+- Code Postal (postalCode): Le code postal du client.
+- Ville (city): La ville du client. Toujours en MAJUSCULES.
+- Type de client (clientType): Détermine si le client est 'private' (privé) ou 'public' (public).
+- Typologie du client (typologyId): Déduis la typologie du client. Ce doit être l'une des valeurs suivantes : 'Santé', 'Industrie', 'Tertiaire', 'Défense', 'Copropriété', 'Bailleur Social'.
+- Représenté par (representedBy): Le représentant légal, pertinent uniquement si la typologie est 'Copropriété'.
+- Prestations/Activités (amounts): Pour chaque prestation détectée dans le contrat, extrais son montant annuel HT. Les prestations à rechercher sont : Fourniture et gestion de l’énergie (P1), Maintenance préventive et petit entretien (P2), Garantie totale / gros entretien (P3). Tu dois retourner un tableau d'objets, chacun avec 'activityId' (l'ID de l'activité correspondante) et 'amount' (le montant numérique). Choisis les IDs parmi cette liste de prestations disponibles: {{{json activities}}}
+- Date de démarrage (startDate): La date de début du contrat, au format YYYY-MM-DD.
+- Date de fin (endDate): La date de fin du contrat, au format YYYY-MM-DD.
+- Reconduction (renewal): Indique si le contrat est à reconduction (true ou false).
+- Durée de la reconduction (renewalDuration): Si la reconduction est activée, précise sa durée (ex: '1 an').
+- Tacite reconduction (tacitRenewal): Si la reconduction est activée, indique si elle est tacite (true ou false).
+
+Document à analyser:
+{{media url=documentDataUri}}
+`;
+
 
 type ClientFormValues = z.infer<typeof ClientSchema>;
 
@@ -46,6 +69,7 @@ export default function NewContractFromPdfPage() {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [analysisResult, setAnalysisResult] = useState<Partial<ClientFormValues> | null>(null);
   const [isSheetOpen, setIsSheetOpen] = useState(false);
+  const [prompt, setPrompt] = useState(defaultPrompt);
 
   const { toast } = useToast();
   const router = useRouter();
@@ -118,7 +142,7 @@ export default function NewContractFromPdfPage() {
     
     try {
         const dataUri = await fileToDataUrl(file);
-        const result = await extractContractInfo({ documentDataUri: dataUri, activities });
+        const result = await extractContractInfo({ documentDataUri: dataUri, activities, prompt });
 
         const mappedData: Partial<ClientFormValues> = {
             ...result,
@@ -175,33 +199,53 @@ export default function NewContractFromPdfPage() {
         </div>
       </div>
       
-      <Card className="max-w-2xl mx-auto">
-        <CardHeader>
-          <CardTitle>1. Importer le document</CardTitle>
-          <CardDescription>
-            Sélectionnez le contrat ou la base marché au format PDF.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-            <div className="space-y-2">
-                <Label htmlFor="pdf-upload">Fichier PDF</Label>
-                <div className="flex gap-2">
-                    <Input id="pdf-upload" type="file" accept="application/pdf" onChange={handleFileChange} />
+      <div className="grid lg:grid-cols-2 gap-6">
+        <Card className="flex-1">
+            <CardHeader>
+            <CardTitle>1. Importer le document</CardTitle>
+            <CardDescription>
+                Sélectionnez le contrat ou la base marché au format PDF.
+            </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+                <div className="space-y-2">
+                    <Label htmlFor="pdf-upload">Fichier PDF</Label>
+                    <div className="flex gap-2">
+                        <Input id="pdf-upload" type="file" accept="application/pdf" onChange={handleFileChange} />
+                    </div>
                 </div>
-            </div>
-            {file && (
-                <div className="flex items-center gap-2 rounded-md border bg-muted/50 p-3 text-sm">
-                    <FileUp className="h-5 w-5 shrink-0"/>
-                    <span className="font-medium truncate flex-1">{file.name}</span>
-                    <span className="text-muted-foreground">{Math.round(file.size / 1024)} ko</span>
-                    <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => setFile(null)}>
-                        <X className="h-4 w-4" />
-                    </Button>
-                </div>
-            )}
-        </CardContent>
-        <CardFooter>
-            <Button onClick={handleAnalyze} disabled={!file || isAnalyzing}>
+                {file && (
+                    <div className="flex items-center gap-2 rounded-md border bg-muted/50 p-3 text-sm">
+                        <FileUp className="h-5 w-5 shrink-0"/>
+                        <span className="font-medium truncate flex-1">{file.name}</span>
+                        <span className="text-muted-foreground">{Math.round(file.size / 1024)} ko</span>
+                        <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => setFile(null)}>
+                            <X className="h-4 w-4" />
+                        </Button>
+                    </div>
+                )}
+            </CardContent>
+        </Card>
+        
+        <Card className="flex-1">
+            <CardHeader>
+                <CardTitle>2. Personnaliser le Prompt (Optionnel)</CardTitle>
+                <CardDescription>
+                    Modifiez le prompt ci-dessous pour affiner les instructions données à l'IA.
+                </CardDescription>
+            </CardHeader>
+            <CardContent>
+                <Textarea 
+                    value={prompt}
+                    onChange={(e) => setPrompt(e.target.value)}
+                    className="min-h-[200px] font-mono text-xs"
+                />
+            </CardContent>
+        </Card>
+      </div>
+      
+       <div className="flex justify-center">
+            <Button onClick={handleAnalyze} disabled={!file || isAnalyzing} size="lg">
                 {isAnalyzing ? (
                     <>
                         <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -214,8 +258,8 @@ export default function NewContractFromPdfPage() {
                     </>
                 )}
             </Button>
-        </CardFooter>
-      </Card>
+        </div>
+
 
       <Sheet open={isSheetOpen} onOpenChange={setIsSheetOpen}>
         <SheetContent className="w-full sm:max-w-3xl overflow-y-auto">
@@ -426,3 +470,5 @@ export default function NewContractFromPdfPage() {
     </div>
   );
 }
+
+    

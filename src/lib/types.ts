@@ -1,5 +1,4 @@
 
-
 import { z } from 'zod';
 
 export const ClientSchema = z.object({
@@ -365,6 +364,7 @@ export const ExtractContractInfoInputSchema = z.object({
     code: z.string(),
     label: z.string(),
   })).describe('List of available activities to choose from.'),
+  prompt: z.string().describe('The prompt to use for the AI analysis.'),
 });
 export type ExtractContractInfoInput = z.infer<typeof ExtractContractInfoInputSchema>;
 
@@ -424,6 +424,8 @@ export type DataContextType = {
     reloadData: () => Promise<void>;
 };
     
+    
+
     
 
     
