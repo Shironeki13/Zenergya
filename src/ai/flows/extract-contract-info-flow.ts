@@ -40,9 +40,9 @@ const extractContractInfoFlow = ai.defineFlow(
     });
 
     if (output) {
-        // Automatically populate activityIds from the extracted amounts if not already present
-        if (!output.activityIds || output.activityIds.length === 0) {
-            output.activityIds = output.amounts?.map(a => a.activityId) ?? [];
+        // Ensure activityIds are populated from amounts if amounts are present but activityIds are not.
+        if ((!output.activityIds || output.activityIds.length === 0) && output.amounts && output.amounts.length > 0) {
+            output.activityIds = output.amounts.map(a => a.activityId);
         }
     }
     return output!;
