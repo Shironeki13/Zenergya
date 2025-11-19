@@ -27,9 +27,9 @@ const extractContractInfoFlow = ai.defineFlow(
         activities: JSON.stringify(activities.map(({ id, code, label }) => ({ id, code, label })), null, 2),
     });
     
-    // Using gemini-1.5-flash-latest as it is a reliable alias for the latest version.
+    // Using a more robust model alias to ensure availability.
     const { output } = await ai.generate({
-        model: 'googleai/gemini-1.5-flash-latest',
+        model: 'googleai/gemini-1.5-pro-latest',
         prompt: [
             { text: fullPrompt },
             { media: { url: documentDataUri } }
