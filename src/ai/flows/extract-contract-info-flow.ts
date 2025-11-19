@@ -8,6 +8,7 @@
 import { ai } from '@/ai/genkit';
 import { ExtractContractInfoInputSchema, ExtractContractInfoOutputSchema, type ExtractContractInfoInput, type ExtractContractInfoOutput } from '@/lib/types';
 import Handlebars from 'handlebars';
+import { gemini15Flash } from '@genkit-ai/vertexai';
 
 
 export async function extractContractInfo(input: ExtractContractInfoInput): Promise<ExtractContractInfoOutput> {
@@ -27,16 +28,18 @@ const extractContractInfoFlow = ai.defineFlow(
         activities: JSON.stringify(activities.map(({ id, code, label }) => ({ id, code, label })), null, 2),
     });
     
-    // Using a more robust model alias to ensure availability.
     const { output } = await ai.generate({
-        model: 'googleai/gemini-1.5-pro-latest',
+        model: gemini15Flash,
         prompt: [
             { text: fullPrompt },
-            { media: { url: documentDataUri } }
+            { media: { url: documentDataUri, contentType: 'application/pdf' } }
         ],
         output: {
             schema: ExtractContractInfoOutputSchema
-        }
+        },
+        config: {
+            temperature: 0.2,
+        },
     });
 
     if (output) {
