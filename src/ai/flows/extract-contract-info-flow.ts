@@ -33,6 +33,7 @@ const extractContractInfoFlow = ai.defineFlow(
             { text: fullPrompt },
             { media: { url: documentDataUri } }
         ],
+        model: 'googleai/gemini-pro-vision',
         output: {
             schema: ExtractContractInfoOutputSchema
         }
