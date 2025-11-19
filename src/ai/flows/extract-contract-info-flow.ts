@@ -6,6 +6,7 @@
  * - extractContractInfo - The main function to trigger the analysis.
  */
 import { ai } from '@/ai/genkit';
+import { googleAI } from '@genkit-ai/googleai';
 import { ExtractContractInfoInputSchema, ExtractContractInfoOutputSchema, type ExtractContractInfoInput, type ExtractContractInfoOutput } from '@/lib/types';
 import Handlebars from 'handlebars';
 
@@ -32,7 +33,7 @@ const extractContractInfoFlow = ai.defineFlow(
             { text: fullPrompt },
             { media: { url: documentDataUri } }
         ],
-        model: 'googleai/gemini-pro',
+        model: googleAI.model('gemini-pro'),
         output: {
             schema: ExtractContractInfoOutputSchema
         }
