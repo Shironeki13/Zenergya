@@ -27,12 +27,11 @@ const extractContractInfoFlow = ai.defineFlow(
         activities: JSON.stringify(activities.map(({ id, code, label }) => ({ id, code, label })), null, 2),
     });
     
+    // Using gemini-pro as it's known to be available. This model doesn't support PDF input directly.
+    // The prompt must contain the text to be analyzed.
     const { output } = await ai.generate({
-        model: 'googleai/gemini-1.5-flash',
-        prompt: [
-            { text: fullPrompt },
-            { media: { url: documentDataUri } }
-        ],
+        model: 'googleai/gemini-pro',
+        prompt: fullPrompt,
         output: {
             schema: ExtractContractInfoOutputSchema
         }

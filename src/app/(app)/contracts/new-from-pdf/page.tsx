@@ -30,7 +30,7 @@ import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { Textarea } from '@/components/ui/textarea';
 
-const defaultPrompt = `Tu es un expert en analyse de documents contractuels. Analyse le document PDF fourni et extrais les informations suivantes de manière structurée. Si une information n'est pas trouvée, laisse le champ vide.
+const defaultPrompt = `Tu es un expert en analyse de documents contractuels. Analyse le TEXTE ci-dessous et extrais les informations suivantes de manière structurée. Si une information n'est pas trouvée, laisse le champ vide.
 
 Voici les informations à extraire:
 - Raison sociale du client (name): Le nom complet du client. Toujours en MAJUSCULES.
@@ -48,8 +48,10 @@ Voici les informations à extraire:
 - Durée de la reconduction (renewalDuration): Si la reconduction est activée, précise sa durée (ex: '1 an').
 - Tacite reconduction (tacitRenewal): Si la reconduction est activée, indique si elle est tacite (true ou false).
 
-Document à analyser:
-{{media url=documentDataUri}}
+TEXTE DU CONTRAT A ANALYSER :
+"""
+COPIEZ ET COLLEZ LE CONTENU DE VOTRE CONTRAT ICI
+"""
 `;
 
 
@@ -131,10 +133,10 @@ export default function NewContractFromPdfPage() {
   };
 
   const handleAnalyze = async () => {
-    if (!file) {
+    if (!prompt) {
       toast({
-        title: "Aucun fichier",
-        description: "Veuillez sélectionner un fichier à analyser.",
+        title: "Aucun prompt",
+        description: "Veuillez saisir un prompt à analyser.",
         variant: "destructive",
       });
       return;
@@ -142,8 +144,9 @@ export default function NewContractFromPdfPage() {
     setIsAnalyzing(true);
     
     try {
-        const dataUri = await fileToDataUrl(file);
-        const result = await extractContractInfo({ documentDataUri: dataUri, activities, prompt });
+        // We pass a dummy data URI as it's required by the schema, but the flow will ignore it.
+        const dummyDataUri = 'data:application/pdf;base64,';
+        const result = await extractContractInfo({ documentDataUri: dummyDataUri, activities, prompt });
 
         const mappedData: Partial<ClientFormValues> = {
             ...result,
@@ -164,7 +167,7 @@ export default function NewContractFromPdfPage() {
         console.error("Échec de l'analyse du contrat:", error);
         toast({
             title: "Erreur d'analyse",
-            description: "Impossible d'extraire les informations du document. Veuillez réessayer.",
+            description: "Impossible d'extraire les informations. Veuillez vérifier le prompt et réessayer.",
             variant: "destructive",
         });
     } finally {
@@ -195,58 +198,31 @@ export default function NewContractFromPdfPage() {
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Nouvelle Base Marché</h1>
           <p className="text-muted-foreground">
-            Importez un document PDF pour que l'IA en extraie les informations.
+            Copiez-collez le contenu de votre contrat dans le prompt pour que l'IA en extraie les informations.
           </p>
         </div>
       </div>
       
-      <div className="grid lg:grid-cols-2 gap-6">
+      <div className="grid lg:grid-cols-1 gap-6">
         <Card className="flex-1">
             <CardHeader>
-            <CardTitle>1. Importer le document</CardTitle>
-            <CardDescription>
-                Sélectionnez le contrat ou la base marché au format PDF.
-            </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-                <div className="space-y-2">
-                    <Label htmlFor="pdf-upload">Fichier PDF</Label>
-                    <div className="flex gap-2">
-                        <Input id="pdf-upload" type="file" accept="application/pdf" onChange={handleFileChange} />
-                    </div>
-                </div>
-                {file && (
-                    <div className="flex items-center gap-2 rounded-md border bg-muted/50 p-3 text-sm">
-                        <FileUp className="h-5 w-5 shrink-0"/>
-                        <span className="font-medium truncate flex-1">{file.name}</span>
-                        <span className="text-muted-foreground">{Math.round(file.size / 1024)} ko</span>
-                        <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => setFile(null)}>
-                            <X className="h-4 w-4" />
-                        </Button>
-                    </div>
-                )}
-            </CardContent>
-        </Card>
-        
-        <Card className="flex-1">
-            <CardHeader>
-                <CardTitle>2. Personnaliser le Prompt (Optionnel)</CardTitle>
+                <CardTitle>1. Personnaliser le Prompt</CardTitle>
                 <CardDescription>
-                    Modifiez le prompt ci-dessous pour affiner les instructions données à l'IA.
+                    Modifiez le prompt ci-dessous pour inclure le texte de votre contrat.
                 </CardDescription>
             </CardHeader>
             <CardContent>
                 <Textarea 
                     value={prompt}
                     onChange={(e) => setPrompt(e.target.value)}
-                    className="min-h-[200px] font-mono text-xs"
+                    className="min-h-[300px] font-mono text-xs"
                 />
             </CardContent>
         </Card>
       </div>
       
        <div className="flex justify-center">
-            <Button onClick={handleAnalyze} disabled={!file || isAnalyzing} size="lg">
+            <Button onClick={handleAnalyze} disabled={isAnalyzing} size="lg">
                 {isAnalyzing ? (
                     <>
                         <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -471,5 +447,3 @@ export default function NewContractFromPdfPage() {
     </div>
   );
 }
-
-    
