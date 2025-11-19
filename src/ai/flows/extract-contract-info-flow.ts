@@ -8,7 +8,6 @@
 import { ai } from '@/ai/genkit';
 import { ExtractContractInfoInputSchema, ExtractContractInfoOutputSchema, type ExtractContractInfoInput, type ExtractContractInfoOutput } from '@/lib/types';
 import Handlebars from 'handlebars';
-import { gemini15Flash } from '@genkit-ai/google-genai';
 
 
 export async function extractContractInfo(input: ExtractContractInfoInput): Promise<ExtractContractInfoOutput> {
@@ -29,7 +28,7 @@ const extractContractInfoFlow = ai.defineFlow(
     });
     
     const { output } = await ai.generate({
-        model: gemini15Flash,
+        model: 'googleai/gemini-1.5-flash',
         prompt: [
             { text: fullPrompt },
             { media: { url: documentDataUri, contentType: 'application/pdf' } }
