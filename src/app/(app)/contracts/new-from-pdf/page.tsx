@@ -133,10 +133,18 @@ export default function NewContractFromPdfPage() {
   };
 
   const handleAnalyze = async () => {
-    if (!prompt) {
+    if (!prompt.includes('COPIEZ ET COLLEZ')) {
+        toast({
+            title: "Prompt non modifié",
+            description: "Veuillez copier et coller le contenu de votre contrat dans le prompt.",
+            variant: "destructive",
+        });
+        return;
+    }
+    if (!file) {
       toast({
-        title: "Aucun prompt",
-        description: "Veuillez saisir un prompt à analyser.",
+        title: "Aucun fichier",
+        description: "Veuillez sélectionner un fichier PDF à analyser.",
         variant: "destructive",
       });
       return;
@@ -144,9 +152,8 @@ export default function NewContractFromPdfPage() {
     setIsAnalyzing(true);
     
     try {
-        // We pass a dummy data URI as it's required by the schema, but the flow will ignore it.
-        const dummyDataUri = 'data:application/pdf;base64,';
-        const result = await extractContractInfo({ documentDataUri: dummyDataUri, activities, prompt });
+        const documentDataUri = await fileToDataUrl(file);
+        const result = await extractContractInfo({ documentDataUri, activities, prompt });
 
         const mappedData: Partial<ClientFormValues> = {
             ...result,
@@ -167,8 +174,9 @@ export default function NewContractFromPdfPage() {
         console.error("Échec de l'analyse du contrat:", error);
         toast({
             title: "Erreur d'analyse",
-            description: "Impossible d'extraire les informations. Veuillez vérifier le prompt et réessayer.",
+            description: error instanceof Error ? error.message : "Impossible d'extraire les informations.",
             variant: "destructive",
+            duration: 10000,
         });
     } finally {
         setIsAnalyzing(false);
@@ -198,31 +206,49 @@ export default function NewContractFromPdfPage() {
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Nouvelle Base Marché</h1>
           <p className="text-muted-foreground">
-            Copiez-collez le contenu de votre contrat dans le prompt pour que l'IA en extraie les informations.
+            Déposez un contrat PDF et ajustez le prompt pour que l'IA en extraie les informations.
           </p>
         </div>
       </div>
       
-      <div className="grid lg:grid-cols-1 gap-6">
+      <div className="grid lg:grid-cols-2 gap-6">
+        <Card className="flex-1">
+          <CardHeader>
+              <CardTitle>1. Importer le document</CardTitle>
+              <CardDescription>
+                  Sélectionnez le document PDF du contrat que vous souhaitez analyser.
+              </CardDescription>
+          </CardHeader>
+          <CardContent>
+              <div className="space-y-2">
+                  <Label htmlFor="pdf-upload">Fichier PDF</Label>
+                  <div className="flex items-center gap-2">
+                      <Input id="pdf-upload" type="file" accept="application/pdf" onChange={handleFileChange} className="flex-1" />
+                      {file && <Button variant="ghost" size="icon" onClick={() => setFile(null)}><X className="h-4 w-4" /></Button>}
+                  </div>
+                  {file && <p className="text-sm text-muted-foreground">Fichier sélectionné : {file.name}</p>}
+              </div>
+          </CardContent>
+        </Card>
         <Card className="flex-1">
             <CardHeader>
-                <CardTitle>1. Personnaliser le Prompt</CardTitle>
+                <CardTitle>2. Personnaliser le Prompt</CardTitle>
                 <CardDescription>
-                    Modifiez le prompt ci-dessous pour inclure le texte de votre contrat.
+                    Modifiez le prompt ci-dessous pour affiner l'extraction de données si nécessaire.
                 </CardDescription>
             </CardHeader>
             <CardContent>
                 <Textarea 
                     value={prompt}
                     onChange={(e) => setPrompt(e.target.value)}
-                    className="min-h-[300px] font-mono text-xs"
+                    className="min-h-[150px] font-mono text-xs"
                 />
             </CardContent>
         </Card>
       </div>
       
        <div className="flex justify-center">
-            <Button onClick={handleAnalyze} disabled={isAnalyzing} size="lg">
+            <Button onClick={handleAnalyze} disabled={isAnalyzing || !file} size="lg">
                 {isAnalyzing ? (
                     <>
                         <Loader2 className="mr-2 h-4 w-4 animate-spin" />
