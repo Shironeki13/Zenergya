@@ -17,6 +17,7 @@ import {
   MinusCircle,
   ChevronDown,
   Library,
+  MessageSquareQuote,
 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
@@ -46,6 +47,7 @@ export default function AppLayout({
   const navItems = [
     { href: '/meters', icon: Gauge, label: 'Compteurs' },
     { href: '/users', icon: Users, label: 'Utilisateurs' },
+    { href: '/qa', icon: MessageSquareQuote, label: 'Test IA' },
     { href: '/settings', icon: Settings, label: 'Paramétrage' },
   ];
   
@@ -199,7 +201,8 @@ export default function AppLayout({
                     <Link
                       key={item.href}
                       href={item.href}
-                      className="mx-[-0.65rem] flex items-center gap-4 rounded-xl px-3 py-2 text-muted-foreground hover:text-foreground"
+                      className={cn("mx-[-0.65rem] flex items-center gap-4 rounded-xl px-3 py-2 text-muted-foreground hover:text-foreground",
+                      pathname === item.href && 'bg-muted text-foreground')}
                     >
                       <item.icon className="h-5 w-5" />
                       {item.label}
