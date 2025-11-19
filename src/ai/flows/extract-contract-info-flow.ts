@@ -8,7 +8,7 @@
 import { ai } from '@/ai/genkit';
 import { ExtractContractInfoInputSchema, ExtractContractInfoOutputSchema, type ExtractContractInfoInput, type ExtractContractInfoOutput } from '@/lib/types';
 import Handlebars from 'handlebars';
-import { gemini15Flash } from '@genkit-ai/vertexai';
+import { gemini15Flash } from '@genkit-ai/google-genai';
 
 
 export async function extractContractInfo(input: ExtractContractInfoInput): Promise<ExtractContractInfoOutput> {
