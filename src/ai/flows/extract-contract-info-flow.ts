@@ -1,5 +1,5 @@
 
-'use server';
+'use client';
 /**
  * @fileOverview Flow to extract contract information from a PDF document.
  *
@@ -33,7 +33,7 @@ const extractContractInfoFlow = ai.defineFlow(
             { text: fullPrompt },
             { media: { url: documentDataUri } }
         ],
-        model: googleAI.model('gemini-pro'),
+        model: 'googleai/gemini-1.5-flash-latest',
         output: {
             schema: ExtractContractInfoOutputSchema
         }
