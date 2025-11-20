@@ -8,7 +8,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { ChevronLeft, FileUp, Loader2, Wand2, X, CalendarIcon } from 'lucide-react';
+import { ChevronLeft, FileUp, Loader2, Wand2, X, CalendarIcon, Paperclip } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
 import { useForm } from 'react-hook-form';
@@ -30,27 +30,29 @@ import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { Textarea } from '@/components/ui/textarea';
 
-const defaultPrompt = `Tu es un expert en analyse de documents contractuels. Analyse le TEXTE ci-dessous et extrais les informations suivantes de manière structurée. Si une information n'est pas trouvée, laisse le champ vide.
+const defaultPrompt = `Tu es un expert en analyse de documents contractuels de marchés publics. Analyse le contenu des fichiers TEXTE ci-dessous (Acte d'Engagement, CCAP, CCTP, etc.) et extrais les informations suivantes de manière structurée. Si une information n'est pas trouvée, laisse le champ vide.
 
 Voici les informations à extraire:
 - Raison sociale du client (name): Le nom complet du client. Toujours en MAJUSCULES.
 - Adresse (address): L'adresse complète du client (numéro, rue, etc.).
 - Code Postal (postalCode): Le code postal du client.
 - Ville (city): La ville du client. Toujours en MAJUSCULES.
-- Type de client (clientType): Détermine si le client est 'private' (privé) ou 'public' (public).
+- Type de client (clientType): 'public'.
 - Typologie du client (typologyId): Déduis la typologie du client. Ce doit être l'une des valeurs suivantes : 'Santé', 'Industrie', 'Tertiaire', 'Défense', 'Copropriété', 'Bailleur Social'.
-- Représenté par (representedBy): Le représentant légal, pertinent uniquement si la typologie est 'Copropriété'.
-- activityIds: Trouve les prestations présentes dans le contrat. Ce champ doit être un tableau contenant les IDs des prestations détectées. Les prestations à rechercher sont : Fourniture et gestion de l’énergie (P1), Maintenance préventive et petit entretien (P2), Garantie totale / gros entretien (P3). Choisis les IDs parmi cette liste: {{{json activities}}}.
-- amounts: Pour chaque prestation identifiée dans 'activityIds', extrais son montant annuel HT. Retourne un tableau d'objets, chacun avec 'activityId' et 'amount'. Si aucun montant n'est trouvé pour une prestation, ne l'inclus pas dans ce tableau.
-- Date de démarrage (startDate): La date de début du contrat, au format YYYY-MM-DD.
+- activityIds: Trouve les prestations présentes dans le contrat (souvent dans le CCTP ou l'AE). Ce champ doit être un tableau contenant les IDs des prestations détectées. Les prestations à rechercher sont : Fourniture et gestion de l’énergie (P1), Maintenance préventive et petit entretien (P2), Garantie totale / gros entretien (P3). Choisis les IDs parmi cette liste: {{{json activities}}}.
+- amounts: Pour chaque prestation identifiée dans 'activityIds', extrais son montant annuel HT (souvent dans l'Acte d'Engagement). Retourne un tableau d'objets, chacun avec 'activityId' et 'amount'. Si aucun montant n'est trouvé pour une prestation, ne l'inclus pas dans ce tableau.
+- Date de démarrage (startDate): La date de début du contrat ou de notification, au format YYYY-MM-DD.
 - Date de fin (endDate): La date de fin du contrat, au format YYYY-MM-DD.
-- Reconduction (renewal): Indique si le contrat est à reconduction (true ou false).
+- Reconduction (renewal): Indique si le contrat est à reconduction (true ou false), souvent dans le CCAP.
 - Durée de la reconduction (renewalDuration): Si la reconduction est activée, précise sa durée (ex: '1 an').
 - Tacite reconduction (tacitRenewal): Si la reconduction est activée, indique si elle est tacite (true ou false).
+- SIRET (siret): Le SIRET de l'entité publique.
+- Code service Chorus (chorusServiceCode): Le code service pour la facturation Chorus Pro.
+- Numéro d'engagement juridique (chorusLegalCommitmentNumber): Le numéro EJ pour Chorus.
 
-TEXTE DU CONTRAT A ANALYSER :
+TEXTE DES DOCUMENTS A ANALYSER :
 """
-COPIEZ ET COLLEZ LE CONTENU DE VOTRE CONTRAT ICI
+COPIEZ ET COLLEZ LE CONTENU DE TOUS VOS DOCUMENTS ICI (AE, CCAP, CCTP...)
 """
 `;
 
@@ -67,8 +69,8 @@ const fileToDataUrl = (file: File): Promise<string> => {
 };
 
 
-export default function NewContractFromPdfPage() {
-  const [file, setFile] = useState<File | null>(null);
+export default function NewContractFromPublicPdfPage() {
+  const [files, setFiles] = useState<File[]>([]);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [analysisResult, setAnalysisResult] = useState<Partial<ClientFormValues> | null>(null);
   const [isSheetOpen, setIsSheetOpen] = useState(false);
@@ -81,23 +83,8 @@ export default function NewContractFromPdfPage() {
   const form = useForm<ClientFormValues>({
     resolver: zodResolver(ClientSchema),
     defaultValues: {
-      name: "",
-      address: "",
-      postalCode: "",
-      city: "",
-      clientType: "private",
-      representedBy: "",
-      externalCode: "",
-      isBe: false,
-      beName: "",
-      beEmail: "",
-      bePhone: "",
-      useChorus: false,
-      siret: "",
-      chorusServiceCode: "",
-      chorusLegalCommitmentNumber: "",
-      chorusMarketNumber: "",
-      invoicingType: "multi-site",
+      clientType: "public",
+      useChorus: true,
       renewal: false,
       tacitRenewal: false,
       activityIds: [],
@@ -119,32 +106,37 @@ export default function NewContractFromPdfPage() {
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
-      const selectedFile = e.target.files[0];
-      if (selectedFile.type !== 'application/pdf') {
-        toast({
-          title: "Fichier invalide",
-          description: "Veuillez sélectionner un document au format PDF.",
+      const selectedFiles = Array.from(e.target.files);
+      const pdfFiles = selectedFiles.filter(file => file.type === 'application/pdf');
+      
+      if (pdfFiles.length !== selectedFiles.length) {
+         toast({
+          title: "Fichiers invalides",
+          description: "Veuillez ne sélectionner que des documents au format PDF.",
           variant: "destructive",
         });
-        return;
       }
-      setFile(selectedFile);
+      setFiles(prev => [...prev, ...pdfFiles]);
     }
   };
+  
+  const removeFile = (index: number) => {
+    setFiles(prev => prev.filter((_, i) => i !== index));
+  }
 
   const handleAnalyze = async () => {
     if (!prompt.includes('COPIEZ ET COLLEZ')) {
         toast({
             title: "Prompt non modifié",
-            description: "Veuillez copier et coller le contenu de votre contrat dans le prompt.",
+            description: "Veuillez copier et coller le contenu de vos documents dans le prompt.",
             variant: "destructive",
         });
         return;
     }
-    if (!file) {
+    if (files.length === 0) {
       toast({
         title: "Aucun fichier",
-        description: "Veuillez sélectionner un fichier PDF à analyser.",
+        description: "Veuillez sélectionner au moins un fichier PDF à analyser.",
         variant: "destructive",
       });
       return;
@@ -152,11 +144,14 @@ export default function NewContractFromPdfPage() {
     setIsAnalyzing(true);
     
     try {
-        const documentDataUri = await fileToDataUrl(file);
+        // For now, we'll analyze the first document. A more advanced implementation would merge content.
+        const documentDataUri = await fileToDataUrl(files[0]);
         const result = await extractContractInfo({ documentDataUri, activities, prompt });
 
         const mappedData: Partial<ClientFormValues> = {
             ...result,
+            clientType: "public",
+            useChorus: true,
             startDate: result.startDate ? new Date(result.startDate) : undefined,
             endDate: result.endDate ? new Date(result.endDate) : undefined,
             activityIds: result.amounts?.map(a => a.activityId) ?? [],
@@ -204,9 +199,9 @@ export default function NewContractFromPdfPage() {
           </Button>
         </Link>
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Nouvelle Base Marché (Privé)</h1>
+          <h1 className="text-2xl font-bold tracking-tight">Nouvelle Base Marché Public</h1>
           <p className="text-muted-foreground">
-            Déposez un contrat PDF et ajustez le prompt pour que l'IA en extraie les informations.
+            Déposez les documents du marché public (AE, CCAP, CCTP, etc.) et ajustez le prompt.
           </p>
         </div>
       </div>
@@ -214,19 +209,34 @@ export default function NewContractFromPdfPage() {
       <div className="grid lg:grid-cols-2 gap-6">
         <Card className="flex-1">
           <CardHeader>
-              <CardTitle>1. Importer le document</CardTitle>
+              <CardTitle>1. Importer les documents</CardTitle>
               <CardDescription>
-                  Sélectionnez le document PDF du contrat que vous souhaitez analyser.
+                  Sélectionnez les documents PDF du marché public que vous souhaitez analyser.
               </CardDescription>
           </CardHeader>
           <CardContent>
-              <div className="space-y-2">
-                  <Label htmlFor="pdf-upload">Fichier PDF</Label>
-                  <div className="flex items-center gap-2">
-                      <Input id="pdf-upload" type="file" accept="application/pdf" onChange={handleFileChange} className="flex-1" />
-                      {file && <Button variant="ghost" size="icon" onClick={() => setFile(null)}><X className="h-4 w-4" /></Button>}
+              <div className="space-y-4">
+                  <Label htmlFor="pdf-upload" className="sr-only">Fichiers PDF</Label>
+                  <div className="flex items-center gap-2 p-4 border-2 border-dashed rounded-lg justify-center">
+                    <FileUp className="h-8 w-8 text-muted-foreground" />
+                    <Input id="pdf-upload" type="file" accept="application/pdf" onChange={handleFileChange} multiple className="sr-only" />
+                    <Label htmlFor="pdf-upload" className="font-medium text-primary cursor-pointer hover:underline">
+                      Cliquez pour choisir vos fichiers
+                    </Label>
                   </div>
-                  {file && <p className="text-sm text-muted-foreground">Fichier sélectionné : {file.name}</p>}
+                  {files.length > 0 && 
+                    <div className="space-y-2">
+                      <h3 className="font-medium text-sm">Fichiers sélectionnés :</h3>
+                      <ul className="space-y-1">
+                        {files.map((file, index) => (
+                          <li key={index} className="flex items-center justify-between text-sm text-muted-foreground bg-muted/50 p-2 rounded-md">
+                            <span className="truncate flex items-center gap-2"><Paperclip className="h-4 w-4"/>{file.name}</span>
+                            <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => removeFile(index)}><X className="h-4 w-4" /></Button>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  }
               </div>
           </CardContent>
         </Card>
@@ -241,14 +251,14 @@ export default function NewContractFromPdfPage() {
                 <Textarea 
                     value={prompt}
                     onChange={(e) => setPrompt(e.target.value)}
-                    className="min-h-[150px] font-mono text-xs"
+                    className="min-h-[200px] font-mono text-xs"
                 />
             </CardContent>
         </Card>
       </div>
       
        <div className="flex justify-center">
-            <Button onClick={handleAnalyze} disabled={isAnalyzing || !file} size="lg">
+            <Button onClick={handleAnalyze} disabled={isAnalyzing || files.length === 0} size="lg">
                 {isAnalyzing ? (
                     <>
                         <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -306,19 +316,7 @@ export default function NewContractFromPdfPage() {
                                 </FormItem>
                               )} />
                             </div>
-                            <FormField control={form.control} name="clientType" render={({ field }) => (
-                              <FormItem>
-                                <FormLabel>Privé / Public</FormLabel>
-                                <FormControl>
-                                  <RadioGroup onValueChange={field.onChange} value={field.value} className="flex gap-4 pt-2">
-                                    <FormItem className="flex items-center space-x-2"><FormControl><RadioGroupItem value="private" id="private" /></FormControl><FormLabel htmlFor="private" className="font-normal">Privé</FormLabel></FormItem>
-                                    <FormItem className="flex items-center space-x-2"><FormControl><RadioGroupItem value="public" id="public" /></FormControl><FormLabel htmlFor="public" className="font-normal">Public</FormLabel></FormItem>
-                                  </RadioGroup>
-                                </FormControl>
-                                <FormMessage />
-                              </FormItem>
-                            )} />
-                             <FormField control={form.control} name="typologyId" render={({ field }) => (
+                            <FormField control={form.control} name="typologyId" render={({ field }) => (
                                 <FormItem>
                                 <FormLabel>Typologie client</FormLabel>
                                 <Select onValueChange={field.onChange} value={field.value}>
@@ -330,13 +328,6 @@ export default function NewContractFromPdfPage() {
                                 <FormMessage />
                                 </FormItem>
                             )} />
-                             {showRepresentedBy && <FormField control={form.control} name="representedBy" render={({ field }) => (
-                                <FormItem>
-                                <FormLabel>Représenté par</FormLabel>
-                                <FormControl><Input placeholder="Syndic de copropriété" {...field} /></FormControl>
-                                <FormMessage />
-                                </FormItem>
-                            )}/>}
                             
                             <FormField
                                 control={form.control} name="activityIds" render={() => (
@@ -446,19 +437,11 @@ export default function NewContractFromPdfPage() {
                                     </div>
                                 )}
                             </div>
-                             <FormField control={form.control} name="useChorus" render={({ field }) => (
-                                <FormItem className="flex flex-row items-center justify-between rounded-lg border p-4">
-                                    <div className="space-y-0.5"><FormLabel>Dépôt Chorus</FormLabel></div>
-                                    <FormControl><Switch checked={field.value} onCheckedChange={field.onChange} /></FormControl>
-                                </FormItem>
-                             )} />
-                             {form.watch("useChorus") && (
-                                <div className="space-y-4 p-4 border rounded-lg">
-                                    <FormField control={form.control} name="siret" render={({ field }) => (<FormItem><FormLabel>SIRET</FormLabel><FormControl><Input placeholder="12345678901234" {...field} /></FormControl><FormMessage /></FormItem>)} />
-                                    <FormField control={form.control} name="chorusServiceCode" render={({ field }) => (<FormItem><FormLabel>Code service</FormLabel><FormControl><Input placeholder="Code service Chorus" {...field} /></FormControl><FormMessage /></FormItem>)} />
-                                    <FormField control={form.control} name="chorusLegalCommitmentNumber" render={({ field }) => (<FormItem><FormLabel>Numéro engagement juridique</FormLabel><FormControl><Input placeholder="Numéro EJ" {...field} /></FormControl><FormMessage /></FormItem>)} />
-                                </div>
-                             )}
+                             <div className="space-y-4 p-4 border rounded-lg">
+                                <FormField control={form.control} name="siret" render={({ field }) => (<FormItem><FormLabel>SIRET</FormLabel><FormControl><Input placeholder="12345678901234" {...field} /></FormControl><FormMessage /></FormItem>)} />
+                                <FormField control={form.control} name="chorusServiceCode" render={({ field }) => (<FormItem><FormLabel>Code service</FormLabel><FormControl><Input placeholder="Code service Chorus" {...field} /></FormControl><FormMessage /></FormItem>)} />
+                                <FormField control={form.control} name="chorusLegalCommitmentNumber" render={({ field }) => (<FormItem><FormLabel>Numéro engagement juridique</FormLabel><FormControl><Input placeholder="Numéro EJ" {...field} /></FormControl><FormMessage /></FormItem>)} />
+                            </div>
 
                             <div className="pt-6 flex justify-end gap-4">
                                 <Button type="button" variant="outline" onClick={() => setIsSheetOpen(false)}>Annuler</Button>

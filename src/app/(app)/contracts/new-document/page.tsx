@@ -10,17 +10,26 @@ import {
   Hammer, 
   Users, 
   Briefcase,
-  ChevronLeft
+  ChevronLeft,
+  Building,
+  Landmark
 } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 
 const documentTypes = [
   {
-    title: "Base Marché",
-    description: "Créer un nouveau contrat principal à partir d'un document.",
-    icon: FilePlus2,
+    title: "Marché Privé",
+    description: "Créer une base marché à partir d'un contrat privé unique.",
+    icon: Building,
     href: "/contracts/new-from-pdf",
+    enabled: true,
+  },
+  {
+    title: "Marché Public",
+    description: "Analyser un Acte d'Engagement, CCAP, CCTP, etc.",
+    icon: Landmark,
+    href: "/contracts/new-from-public-pdf",
     enabled: true,
   },
   {
@@ -28,42 +37,42 @@ const documentTypes = [
     description: "Ajouter une modification à un marché existant.",
     icon: FileText,
     href: "#",
-    enabled: true,
+    enabled: false,
   },
   {
     title: "Résiliation",
     description: "Enregistrer la fin anticipée d'un contrat.",
     icon: FileX,
     href: "#",
-    enabled: true,
+    enabled: false,
   },
   {
     title: "Reconduction",
     description: "Prolonger un contrat arrivé à échéance.",
     icon: RefreshCw,
     href: "#",
-    enabled: true,
+    enabled: false,
   },
   {
     title: "OS (Ordre de Service)",
     description: "Ajouter un ordre de service lié à un contrat.",
     icon: Hammer,
     href: "#",
-    enabled: true,
+    enabled: false,
   },
   {
     title: "Changement de syndic",
     description: "Mettre à jour le représentant du client.",
     icon: Users,
     href: "#",
-    enabled: true,
+    enabled: false,
   },
   {
     title: "Changement de BE",
     description: "Changer le bureau d'études associé.",
     icon: Briefcase,
     href: "#",
-    enabled: true,
+    enabled: false,
   },
 ];
 
@@ -87,7 +96,7 @@ export default function NewDocumentPage() {
       
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
         {documentTypes.map((doc, index) => {
-          const isFunctional = doc.href !== '#';
+          const isFunctional = doc.href !== '#' && doc.enabled;
           const Wrapper = isFunctional ? Link : 'div';
           
           return (
