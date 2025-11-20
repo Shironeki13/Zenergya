@@ -1,6 +1,12 @@
 
 import { z } from 'zod';
 
+export const ContractDocumentSchema = z.object({
+  name: z.string(),
+  type: z.string(),
+  url: z.string().url(),
+});
+
 export const ClientSchema = z.object({
   name: z.string().min(2, "La raison sociale est requise."),
   address: z.string().optional(),
@@ -32,6 +38,7 @@ export const ClientSchema = z.object({
       activityId: z.string(),
       amount: z.number(),
   })).optional(),
+  documents: z.array(ContractDocumentSchema).optional(), // Champ pour la GED
 }).superRefine((data, ctx) => {
     if (data.useChorus && (!data.siret || data.siret.length === 0)) {
         ctx.addIssue({
@@ -127,6 +134,8 @@ export type EcsRevisionIndices = {
   cee0?: number;
 };
 
+export type ContractDocument = z.infer<typeof ContractDocumentSchema>;
+
 export type Contract = {
   id: string;
   clientId: string;
@@ -141,6 +150,7 @@ export type Contract = {
   marketId?: string;
   hasInterest?: boolean;
   terminationDate?: string; // ISO String for cancellation date
+  documents?: ContractDocument[]; // Champ pour la GED
   
   revisionP1?: RevisionInfo;
   revisionP2?: RevisionInfo;
