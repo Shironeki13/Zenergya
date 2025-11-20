@@ -402,6 +402,15 @@ export const ExtractContractInfoOutputSchema = z.object({
   renewal: z.boolean().optional().describe("Indique si le contrat est à reconduction."),
   renewalDuration: z.string().optional().describe("La durée de la reconduction (ex: '1 an', '2 ans')."),
   tacitRenewal: z.boolean().optional().describe("Indique si la reconduction est tacite."),
+  // New fields
+  revisionP1: z.string().optional().describe("Formule de révision pour la prestation P1."),
+  revisionP2: z.string().optional().describe("Formule de révision pour la prestation P2."),
+  revisionP3: z.string().optional().describe("Formule de révision pour la prestation P3."),
+  contractualTemperature: z.number().optional().describe("Température contractuelle moyenne en degrés Celsius."),
+  contractualDJU: z.number().optional().describe("DJU (Degrés Jours Unifiés) contractuels."),
+  contractualNB: z.number().optional().describe("NB contractuels (besoins en chauffage)."),
+  ecsSmallQ: z.number().optional().describe("Petit q ECS (besoin en eau chaude sanitaire)."),
+  ecsNB: z.number().optional().describe("NB ECS (besoins en eau chaude sanitaire)."),
 });
 export type ExtractContractInfoOutput = z.infer<typeof ExtractContractInfoOutputSchema>;
 

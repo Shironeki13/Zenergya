@@ -29,6 +29,7 @@ import { cn } from '@/lib/utils';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { Textarea } from '@/components/ui/textarea';
+import { Separator } from '@/components/ui/separator';
 
 const defaultPrompt = `Tu es un expert en analyse de documents contractuels. Analyse le TEXTE ci-dessous et extrais les informations suivantes de manière structurée. Si une information n'est pas trouvée, laisse le champ vide.
 
@@ -47,6 +48,14 @@ Voici les informations à extraire:
 - Reconduction (renewal): Indique si le contrat est à reconduction (true ou false).
 - Durée de la reconduction (renewalDuration): Si la reconduction est activée, précise sa durée (ex: '1 an').
 - Tacite reconduction (tacitRenewal): Si la reconduction est activée, indique si elle est tacite (true ou false).
+- Formule de révision P1 (revisionP1): La formule textuelle de révision pour la prestation P1.
+- Formule de révision P2 (revisionP2): La formule textuelle de révision pour la prestation P2.
+- Formule de révision P3 (revisionP3): La formule textuelle de révision pour la prestation P3.
+- Température contractuelle moyenne (contractualTemperature): La température intérieure de référence.
+- DJU contractuels (contractualDJU): Les Degrés Jours Unifiés de référence pour le contrat.
+- NB contractuels (contractualNB): Les besoins de chauffage contractuels (souvent en kWh).
+- Petit q ECS (ecsSmallQ): Les besoins en Eau Chaude Sanitaire (souvent en kWh/logement ou similaire).
+- NB ECS (ecsNB): Les besoins totaux en Eau Chaude Sanitaire.
 
 TEXTE DU CONTRAT A ANALYSER :
 """
@@ -55,7 +64,7 @@ COPIEZ ET COLLEZ LE CONTENU DE VOTRE CONTRAT ICI
 `;
 
 
-type ClientFormValues = z.infer<typeof ClientSchema>;
+type ClientFormValues = z.infer<typeof ClientSchema> & z.infer<typeof ExtractContractInfoOutputSchema>;
 
 const fileToDataUrl = (file: File): Promise<string> => {
   return new Promise((resolve, reject) => {
@@ -459,6 +468,24 @@ export default function NewContractFromPdfPage() {
                                     <FormField control={form.control} name="chorusLegalCommitmentNumber" render={({ field }) => (<FormItem><FormLabel>Numéro engagement juridique</FormLabel><FormControl><Input placeholder="Numéro EJ" {...field} /></FormControl><FormMessage /></FormItem>)} />
                                 </div>
                              )}
+
+                            <Separator />
+                            <h3 className="text-lg font-medium">Données Contractuelles Spécifiques</h3>
+
+                            <div className="space-y-4">
+                                <FormField control={form.control} name="revisionP1" render={({ field }) => (<FormItem><FormLabel>Formule de révision P1</FormLabel><FormControl><Input {...field} value={field.value ?? ''} /></FormControl></FormItem>)} />
+                                <FormField control={form.control} name="revisionP2" render={({ field }) => (<FormItem><FormLabel>Formule de révision P2</FormLabel><FormControl><Input {...field} value={field.value ?? ''} /></FormControl></FormItem>)} />
+                                <FormField control={form.control} name="revisionP3" render={({ field }) => (<FormItem><FormLabel>Formule de révision P3</FormLabel><FormControl><Input {...field} value={field.value ?? ''} /></FormControl></FormItem>)} />
+                            </div>
+
+                             <div className="grid grid-cols-2 gap-4">
+                                <FormField control={form.control} name="contractualTemperature" render={({ field }) => (<FormItem><FormLabel>Température contractuelle (°C)</FormLabel><FormControl><Input type="number" {...field} value={field.value ?? ''} onChange={e => field.onChange(parseFloat(e.target.value))} /></FormControl></FormItem>)} />
+                                <FormField control={form.control} name="contractualDJU" render={({ field }) => (<FormItem><FormLabel>DJU contractuels</FormLabel><FormControl><Input type="number" {...field} value={field.value ?? ''} onChange={e => field.onChange(parseFloat(e.target.value))} /></FormControl></FormItem>)} />
+                                <FormField control={form.control} name="contractualNB" render={({ field }) => (<FormItem><FormLabel>NB contractuels</FormLabel><FormControl><Input type="number" {...field} value={field.value ?? ''} onChange={e => field.onChange(parseFloat(e.target.value))} /></FormControl></FormItem>)} />
+                                <FormField control={form.control} name="ecsSmallQ" render={({ field }) => (<FormItem><FormLabel>Petit q ECS</FormLabel><FormControl><Input type="number" {...field} value={field.value ?? ''} onChange={e => field.onChange(parseFloat(e.target.value))} /></FormControl></FormItem>)} />
+                                <FormField control={form.control} name="ecsNB" render={({ field }) => (<FormItem><FormLabel>NB ECS</FormLabel><FormControl><Input type="number" {...field} value={field.value ?? ''} onChange={e => field.onChange(parseFloat(e.target.value))} /></FormControl></FormItem>)} />
+                            </div>
+
 
                             <div className="pt-6 flex justify-end gap-4">
                                 <Button type="button" variant="outline" onClick={() => setIsSheetOpen(false)}>Annuler</Button>
