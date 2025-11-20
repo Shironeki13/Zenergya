@@ -360,7 +360,7 @@ export default function NewContractFromPdfPage() {
                                                     }}
                                                     />
                                                 </FormControl>
-                                                <FormLabel className="font-normal">{item.label} ({item.code})</FormLabel>
+                                                <FormLabel className="font-normal">{item.code}</FormLabel>
                                                 </FormItem>
                                             )}}
                                         />
@@ -382,7 +382,7 @@ export default function NewContractFromPdfPage() {
                                                     name={`amounts.${amountIndex}.amount`}
                                                     render={({ field }) => (
                                                         <FormItem>
-                                                            <FormLabel>Montant pour {activity.label} (€)</FormLabel>
+                                                            <FormLabel>Montant {activity.code} (€)</FormLabel>
                                                             <FormControl>
                                                                 <Input 
                                                                     type="number"
