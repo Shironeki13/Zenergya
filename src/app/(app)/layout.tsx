@@ -36,17 +36,11 @@ import { DataProvider, useData } from '@/context/data-context';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { usePathname } from 'next/navigation';
 import { cn } from '@/lib/utils';
-import { LoadingIndicator } from '@/components/loading-indicator';
 
 
 function MainAppLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const { isLoading } = useData();
-  const [isClient, setIsClient] = useState(false);
-
-  useEffect(() => {
-    setIsClient(true);
-  }, []);
 
   const navItems = [
     { href: '/meters', icon: Gauge, label: 'Compteurs' },
@@ -128,7 +122,7 @@ function MainAppLayout({ children }: { children: React.ReactNode }) {
               </nav>
             </div>
             <div className="mt-auto p-4">
-              {isClient ? <LoadingIndicator isLoading={isLoading} /> : null}
+              {/* Loading indicator removed */}
             </div>
           </div>
         </div>
@@ -201,7 +195,7 @@ function MainAppLayout({ children }: { children: React.ReactNode }) {
                   ))}
                 </nav>
                 <div className="mt-auto">
-                  {isClient ? <LoadingIndicator isLoading={isLoading} /> : null}
+                  {/* Loading indicator removed */}
                 </div>
               </SheetContent>
             </Sheet>
