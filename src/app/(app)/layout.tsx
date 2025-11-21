@@ -201,7 +201,7 @@ function MainAppLayout({ children }: { children: React.ReactNode }) {
                   ))}
                 </nav>
                 <div className="mt-auto">
-                  {isClient && <LoadingIndicator isLoading={true} />}
+                  {isClient && <LoadingIndicator isLoading={isLoading} />}
                 </div>
               </SheetContent>
             </Sheet>
