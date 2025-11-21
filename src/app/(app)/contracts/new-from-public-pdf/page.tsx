@@ -38,7 +38,7 @@ Voici les informations à extraire:
 - Code Postal (postalCode): Le code postal du client.
 - Ville (city): La ville du client. Toujours en MAJUSCULES.
 - Type de client (clientType): 'public'.
-- Typologie du client (typologyId): Déduis la typologie du client. Ce doit être l'une des valeurs suivantes : 'Santé', 'Industrie', 'Tertiaire', 'Défense', 'Copropriété', 'Bailleur Social'.
+- Typologie du client (typologyId): Déduis la typologie du client. Ce doit être l'un des IDs de la liste suivante : {{{json typologies}}}.
 - activityIds: Trouve les prestations présentes dans le contrat (souvent dans le CCTP ou l'AE). Ce champ doit être un tableau contenant les IDs des prestations détectées. Les prestations à rechercher sont : Fourniture et gestion de l’énergie (P1), Maintenance préventive et petit entretien (P2), Garantie totale / gros entretien (P3). Choisis les IDs parmi cette liste: {{{json activities}}}.
 - amounts: Pour chaque prestation identifiée dans 'activityIds', extrais son montant annuel HT (souvent dans l'Acte d'Engagement). Retourne un tableau d'objets, chacun avec 'activityId' et 'amount'. Si aucun montant n'est trouvé pour une prestation, ne l'inclus pas dans ce tableau.
 - Date de démarrage (startDate): La date de début du contrat ou de notification, au format YYYY-MM-DD.

@@ -7,6 +7,7 @@
  */
 import { ai } from '@/ai/genkit';
 import { ExtractContractInfoInputSchema, ExtractContractInfoOutputSchema, type ExtractContractInfoInput, type ExtractContractInfoOutput } from '@/lib/types';
+import { getTypologies } from '@/services/firestore';
 import Handlebars from 'handlebars';
 
 
@@ -22,9 +23,13 @@ const extractContractInfoFlow = ai.defineFlow(
   },
   async ({ documentDataUri, activities, prompt }) => {
     
+    // Fetch typologies to inject them into the prompt
+    const typologies = await getTypologies();
+
     const template = Handlebars.compile(prompt);
     const fullPrompt = template({
         activities: JSON.stringify(activities.map(({ id, code, label }) => ({ id, code, label })), null, 2),
+        typologies: JSON.stringify(typologies.map(({ id, name }) => ({ id, name })), null, 2),
     });
     
     const { output } = await ai.generate({
