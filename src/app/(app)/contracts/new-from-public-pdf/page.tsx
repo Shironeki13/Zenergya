@@ -8,13 +8,13 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { ChevronLeft, FileUp, Loader2, Wand2, X, CalendarIcon, Paperclip } from 'lucide-react';
+import { ChevronLeft, FileUp, Loader2, Wand2, X, Paperclip, FileText } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
-import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Checkbox } from '@/components/ui/checkbox';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
@@ -68,9 +68,21 @@ const fileToDataUrl = (file: File): Promise<string> => {
   });
 };
 
+type DocumentType = 'acteEngagement' | 'ccap' | 'cctp' | 'notification' | 'bpu' | 'dpgf';
+
+const documentFields: { id: DocumentType; label: string; required: boolean }[] = [
+    { id: 'acteEngagement', label: "Acte d'Engagement (AE)", required: true },
+    { id: 'ccap', label: "CCAP", required: true },
+    { id: 'cctp', label: "CCTP", required: true },
+    { id: 'notification', label: "Notification", required: false },
+    { id: 'bpu', label: "BPU", required: false },
+    { id: 'dpgf', label: "DPGF", required: false },
+];
 
 export default function NewContractFromPublicPdfPage() {
-  const [files, setFiles] = useState<File[]>([]);
+  const [files, setFiles] = useState<Record<DocumentType, File | null>>({
+    acteEngagement: null, ccap: null, cctp: null, notification: null, bpu: null, dpgf: null
+  });
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [analysisResult, setAnalysisResult] = useState<Partial<ClientFormValues> | null>(null);
   const [isSheetOpen, setIsSheetOpen] = useState(false);
@@ -101,27 +113,24 @@ export default function NewContractFromPublicPdfPage() {
     typologies.find(t => t.id === watchTypologyId),
     [typologies, watchTypologyId]
   );
-  const showRepresentedBy = selectedTypology?.name === 'Copropriété';
 
-
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files) {
-      const selectedFiles = Array.from(e.target.files);
-      const pdfFiles = selectedFiles.filter(file => file.type === 'application/pdf');
-      
-      if (pdfFiles.length !== selectedFiles.length) {
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>, type: DocumentType) => {
+    if (e.target.files && e.target.files[0]) {
+      const file = e.target.files[0];
+       if (file.type !== 'application/pdf') {
          toast({
-          title: "Fichiers invalides",
+          title: "Fichier invalide",
           description: "Veuillez ne sélectionner que des documents au format PDF.",
           variant: "destructive",
         });
+        return;
       }
-      setFiles(prev => [...prev, ...pdfFiles]);
+      setFiles(prev => ({...prev, [type]: file }));
     }
   };
   
-  const removeFile = (index: number) => {
-    setFiles(prev => prev.filter((_, i) => i !== index));
+  const removeFile = (type: DocumentType) => {
+    setFiles(prev => ({...prev, [type]: null }));
   }
 
   const handleAnalyze = async () => {
@@ -133,10 +142,11 @@ export default function NewContractFromPublicPdfPage() {
         });
         return;
     }
-    if (files.length === 0) {
+    const mainFile = files.acteEngagement || files.ccap || files.cctp;
+    if (!mainFile) {
       toast({
-        title: "Aucun fichier",
-        description: "Veuillez sélectionner au moins un fichier PDF à analyser.",
+        title: "Aucun fichier principal",
+        description: "Veuillez déposer au moins l'AE, le CCAP ou le CCTP.",
         variant: "destructive",
       });
       return;
@@ -144,8 +154,7 @@ export default function NewContractFromPublicPdfPage() {
     setIsAnalyzing(true);
     
     try {
-        // For now, we'll analyze the first document. A more advanced implementation would merge content.
-        const documentDataUri = await fileToDataUrl(files[0]);
+        const documentDataUri = await fileToDataUrl(mainFile);
         const result = await extractContractInfo({ documentDataUri, activities, prompt });
 
         const mappedData: Partial<ClientFormValues> = {
@@ -201,7 +210,7 @@ export default function NewContractFromPublicPdfPage() {
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Nouvelle Base Marché Public</h1>
           <p className="text-muted-foreground">
-            Déposez les documents du marché public (AE, CCAP, CCTP, etc.) et ajustez le prompt.
+            Déposez les documents du marché public, ajustez le prompt, puis lancez l'analyse.
           </p>
         </div>
       </div>
@@ -211,54 +220,51 @@ export default function NewContractFromPublicPdfPage() {
           <CardHeader>
               <CardTitle>1. Importer les documents</CardTitle>
               <CardDescription>
-                  Sélectionnez les documents PDF du marché public que vous souhaitez analyser.
+                  Déposez chaque document du marché dans son champ respectif.
               </CardDescription>
           </CardHeader>
-          <CardContent>
-              <div className="space-y-4">
-                  <Label htmlFor="pdf-upload" className="sr-only">Fichiers PDF</Label>
-                  <div className="flex items-center gap-2 p-4 border-2 border-dashed rounded-lg justify-center">
-                    <FileUp className="h-8 w-8 text-muted-foreground" />
-                    <Input id="pdf-upload" type="file" accept="application/pdf" onChange={handleFileChange} multiple className="sr-only" />
-                    <Label htmlFor="pdf-upload" className="font-medium text-primary cursor-pointer hover:underline">
-                      Cliquez pour choisir vos fichiers
+          <CardContent className="space-y-4">
+            {documentFields.map(docField => (
+                <div key={docField.id}>
+                    <Label htmlFor={docField.id} className="mb-2 flex items-center gap-2">
+                        {docField.label}
+                        {docField.required && <span className="text-destructive text-xs">*</span>}
                     </Label>
-                  </div>
-                  {files.length > 0 && 
-                    <div className="space-y-2">
-                      <h3 className="font-medium text-sm">Fichiers sélectionnés :</h3>
-                      <ul className="space-y-1">
-                        {files.map((file, index) => (
-                          <li key={index} className="flex items-center justify-between text-sm text-muted-foreground bg-muted/50 p-2 rounded-md">
-                            <span className="truncate flex items-center gap-2"><Paperclip className="h-4 w-4"/>{file.name}</span>
-                            <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => removeFile(index)}><X className="h-4 w-4" /></Button>
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  }
-              </div>
+                    {files[docField.id] ? (
+                         <div className="flex items-center justify-between text-sm text-muted-foreground bg-muted/50 p-2 rounded-md">
+                            <span className="truncate flex items-center gap-2"><Paperclip className="h-4 w-4"/>{files[docField.id]!.name}</span>
+                            <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => removeFile(docField.id)}><X className="h-4 w-4" /></Button>
+                        </div>
+                    ) : (
+                         <div className="relative">
+                            <FileText className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                            <Input id={docField.id} type="file" accept="application/pdf" onChange={(e) => handleFileChange(e, docField.id)} className="pl-9" />
+                        </div>
+                    )}
+                </div>
+            ))}
           </CardContent>
         </Card>
+
         <Card className="flex-1">
             <CardHeader>
                 <CardTitle>2. Personnaliser le Prompt</CardTitle>
                 <CardDescription>
-                    Modifiez le prompt ci-dessous pour affiner l'extraction de données si nécessaire.
+                    Copiez et collez le contenu textuel des documents dans le champ ci-dessous pour que l'IA puisse les analyser.
                 </CardDescription>
             </CardHeader>
             <CardContent>
                 <Textarea 
                     value={prompt}
                     onChange={(e) => setPrompt(e.target.value)}
-                    className="min-h-[200px] font-mono text-xs"
+                    className="min-h-[300px] font-mono text-xs"
                 />
             </CardContent>
         </Card>
       </div>
       
        <div className="flex justify-center">
-            <Button onClick={handleAnalyze} disabled={isAnalyzing || files.length === 0} size="lg">
+            <Button onClick={handleAnalyze} disabled={isAnalyzing || !files.acteEngagement && !files.ccap && !files.cctp} size="lg">
                 {isAnalyzing ? (
                     <>
                         <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -456,3 +462,4 @@ export default function NewContractFromPublicPdfPage() {
     </div>
   );
 }
+
