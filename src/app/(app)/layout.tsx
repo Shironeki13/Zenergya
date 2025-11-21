@@ -31,18 +31,16 @@ import {
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
 import { UserNav } from '@/components/user-nav';
 import { Logo } from '@/components/logo';
-import { DataProvider } from '@/context/data-context';
+import { DataProvider, useData } from '@/context/data-context';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { usePathname } from 'next/navigation';
 import { cn } from '@/lib/utils';
+import { LoadingIndicator } from '@/components/loading-indicator';
 
 
-export default function AppLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+function MainAppLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
+  const { isLoading } = useData();
 
   const navItems = [
     { href: '/meters', icon: Gauge, label: 'Compteurs' },
@@ -62,8 +60,7 @@ export default function AppLayout({
   ];
 
   return (
-    <DataProvider>
-      <div className="grid min-h-screen w-full md:grid-cols-[220px_1fr] lg:grid-cols-[280px_1fr]">
+    <div className="grid min-h-screen w-full md:grid-cols-[220px_1fr] lg:grid-cols-[280px_1fr]">
         <div className="hidden border-r bg-card md:block">
           <div className="flex h-full max-h-screen flex-col gap-2">
             <div className="flex h-14 items-center border-b px-4 lg:h-[60px] lg:px-6">
@@ -125,19 +122,7 @@ export default function AppLayout({
               </nav>
             </div>
             <div className="mt-auto p-4">
-              <Card>
-                <CardHeader className="p-2 pt-0 md:p-4">
-                  <CardTitle>Besoin d'aide ?</CardTitle>
-                  <CardDescription>
-                    Contactez le support pour une assistance avec votre compte.
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="p-2 pt-0 md:p-4 md:pt-0">
-                  <Button size="sm" className="w-full">
-                    Contacter le support
-                  </Button>
-                </CardContent>
-              </Card>
+              <LoadingIndicator isLoading={isLoading} />
             </div>
           </div>
         </div>
@@ -210,19 +195,7 @@ export default function AppLayout({
                   ))}
                 </nav>
                 <div className="mt-auto">
-                  <Card>
-                    <CardHeader>
-                      <CardTitle>Besoin d'aide ?</CardTitle>
-                      <CardDescription>
-                        Contactez le support pour une assistance avec votre compte.
-                      </CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                      <Button size="sm" className="w-full">
-                        Contacter le support
-                      </Button>
-                    </CardContent>
-                  </Card>
+                  <LoadingIndicator isLoading={true} />
                 </div>
               </SheetContent>
             </Sheet>
@@ -234,6 +207,18 @@ export default function AppLayout({
           </main>
         </div>
       </div>
-    </DataProvider>
   );
+}
+
+
+export default function AppLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  return (
+    <DataProvider>
+      <MainAppLayout>{children}</MainAppLayout>
+    </DataProvider>
+  )
 }
