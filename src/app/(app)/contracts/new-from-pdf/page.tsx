@@ -152,8 +152,8 @@ export default function NewContractFromPdfPage() {
     }
     if (!file) {
       toast({
-        title: "Aucun fichier",
-        description: "Veuillez sélectionner un fichier PDF à analyser.",
+        title: "Aucun contrat sélectionné",
+        description: "Veuillez sélectionner un contrat PDF à analyser.",
         variant: "destructive",
       });
       return;
@@ -223,14 +223,14 @@ export default function NewContractFromPdfPage() {
       <div className="grid lg:grid-cols-2 gap-6">
         <Card className="flex-1">
           <CardHeader>
-              <CardTitle>1. Importer le document</CardTitle>
+              <CardTitle>1. Importer le contrat</CardTitle>
               <CardDescription>
                   Sélectionnez le document PDF du contrat que vous souhaitez analyser.
               </CardDescription>
           </CardHeader>
           <CardContent>
               <div className="space-y-2">
-                  <Label htmlFor="pdf-upload">Fichier PDF</Label>
+                  <Label htmlFor="pdf-upload">Contrat PDF</Label>
                   <div className="flex items-center gap-2">
                       <Input id="pdf-upload" type="file" accept="application/pdf" onChange={handleFileChange} className="flex-1" />
                       {file && <Button variant="ghost" size="icon" onClick={() => setFile(null)}><X className="h-4 w-4" /></Button>}
