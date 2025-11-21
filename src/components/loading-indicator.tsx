@@ -1,16 +1,9 @@
-
 'use client';
 import { cn } from "@/lib/utils"
-import { useState, useEffect } from "react";
 
 export function LoadingIndicator({ isLoading }: { isLoading: boolean }) {
-  const [isClient, setIsClient] = useState(false);
 
-  useEffect(() => {
-    setIsClient(true);
-  }, []);
-
-  if (!isLoading || !isClient) return null;
+  if (!isLoading) return null;
 
   return (
     <div className="flex items-center gap-3 p-2 rounded-lg text-sm text-muted-foreground">

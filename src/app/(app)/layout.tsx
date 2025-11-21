@@ -2,6 +2,7 @@
 'use client';
 
 import Link from 'next/link';
+import React, { useState, useEffect } from 'react';
 import {
   LayoutDashboard,
   FileSignature,
@@ -41,6 +42,11 @@ import { LoadingIndicator } from '@/components/loading-indicator';
 function MainAppLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const { isLoading } = useData();
+  const [isClient, setIsClient] = useState(false);
+
+  useEffect(() => {
+    setIsClient(true);
+  }, []);
 
   const navItems = [
     { href: '/meters', icon: Gauge, label: 'Compteurs' },
@@ -122,7 +128,7 @@ function MainAppLayout({ children }: { children: React.ReactNode }) {
               </nav>
             </div>
             <div className="mt-auto p-4">
-              <LoadingIndicator isLoading={isLoading} />
+              {isClient && <LoadingIndicator isLoading={isLoading} />}
             </div>
           </div>
         </div>
@@ -195,7 +201,7 @@ function MainAppLayout({ children }: { children: React.ReactNode }) {
                   ))}
                 </nav>
                 <div className="mt-auto">
-                  <LoadingIndicator isLoading={true} />
+                  {isClient && <LoadingIndicator isLoading={true} />}
                 </div>
               </SheetContent>
             </Sheet>
