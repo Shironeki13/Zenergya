@@ -128,7 +128,7 @@ function MainAppLayout({ children }: { children: React.ReactNode }) {
               </nav>
             </div>
             <div className="mt-auto p-4">
-              {isClient && <LoadingIndicator isLoading={isLoading} />}
+              {isClient ? <LoadingIndicator isLoading={isLoading} /> : null}
             </div>
           </div>
         </div>
@@ -201,7 +201,7 @@ function MainAppLayout({ children }: { children: React.ReactNode }) {
                   ))}
                 </nav>
                 <div className="mt-auto">
-                  {isClient && <LoadingIndicator isLoading={isLoading} />}
+                  {isClient ? <LoadingIndicator isLoading={isLoading} /> : null}
                 </div>
               </SheetContent>
             </Sheet>
