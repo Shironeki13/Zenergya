@@ -21,6 +21,10 @@ import {
   MessageSquareQuote,
   ShieldCheck,
   Home,
+  Briefcase,
+  Calculator,
+  ShieldAlert,
+  Store,
 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
@@ -38,7 +42,6 @@ import { DataProvider, useData } from '@/context/data-context';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { usePathname } from 'next/navigation';
 import { cn } from '@/lib/utils';
-import LoadingIndicator from '@/components/loading-indicator';
 
 
 function MainAppLayout({ children }: { children: React.ReactNode }) {
@@ -71,6 +74,13 @@ function MainAppLayout({ children }: { children: React.ReactNode }) {
     { href: '/contracts/library', label: 'Accueil', icon: Home },
     { href: '/contracts/validation', label: 'Admin', icon: ShieldCheck },
     { href: '/contracts', label: 'Liste des contrats', icon: FileSignature },
+  ];
+
+  const workflowLinks = [
+    { href: '#', label: 'ADV', icon: Briefcase },
+    { href: '#', label: 'CDG', icon: Calculator },
+    { href: '#', label: 'DPO', icon: ShieldAlert },
+    { href: '#', label: 'Commerce', icon: Store },
   ];
 
   return (
@@ -142,6 +152,18 @@ function MainAppLayout({ children }: { children: React.ReactNode }) {
                         ))}
                     </CollapsibleContent>
                  </Collapsible>
+                
+                {workflowLinks.map((item) => (
+                  <Link
+                    key={item.label}
+                    href={item.href}
+                    className={cn("flex items-center gap-3 rounded-lg px-3 py-2 text-muted-foreground transition-all hover:text-primary",
+                    pathname === item.href && "text-primary bg-muted")}
+                  >
+                    <item.icon className="h-4 w-4" />
+                    {item.label}
+                  </Link>
+                ))}
 
                 {navItems.map((item) => (
                   <Link
@@ -157,7 +179,16 @@ function MainAppLayout({ children }: { children: React.ReactNode }) {
               </nav>
             </div>
             <div className="mt-auto p-4">
-              {isClient && <LoadingIndicator isLoading={isLoading} />}
+              {isClient && isLoading && <div className="flex items-center gap-2 p-2 rounded-lg text-sm text-muted-foreground">
+                <div className="relative h-6 w-6">
+                    <div className="absolute inset-0 border-2 border-primary/20 rounded-full"></div>
+                    <div className="absolute inset-0 border-t-2 border-primary rounded-full animate-spin"></div>
+                    <div className="relative flex items-center justify-center h-full w-full font-bold text-primary text-xs">
+                        Z
+                    </div>
+                </div>
+                <span>Chargement...</span>
+            </div>}
             </div>
           </div>
         </div>
@@ -232,6 +263,19 @@ function MainAppLayout({ children }: { children: React.ReactNode }) {
                         ))}
                       </CollapsibleContent>
                   </Collapsible>
+                  
+                   {workflowLinks.map((item) => (
+                    <Link
+                      key={item.label}
+                      href={item.href}
+                      className={cn("mx-[-0.65rem] flex items-center gap-4 rounded-xl px-3 py-2 text-muted-foreground hover:text-foreground",
+                      pathname === item.href && 'bg-muted text-foreground')}
+                    >
+                      <item.icon className="h-5 w-5" />
+                      {item.label}
+                    </Link>
+                  ))}
+
                   {navItems.map((item) => (
                     <Link
                       key={item.href}
@@ -245,7 +289,16 @@ function MainAppLayout({ children }: { children: React.ReactNode }) {
                   ))}
                 </nav>
                 <div className="mt-auto">
-                   {isClient && <LoadingIndicator isLoading={isLoading} />}
+                   {isClient && isLoading && <div className="flex items-center gap-2 p-2 rounded-lg text-sm text-muted-foreground">
+                        <div className="relative h-6 w-6">
+                            <div className="absolute inset-0 border-2 border-primary/20 rounded-full"></div>
+                            <div className="absolute inset-0 border-t-2 border-primary rounded-full animate-spin"></div>
+                            <div className="relative flex items-center justify-center h-full w-full font-bold text-primary text-xs">
+                                Z
+                            </div>
+                        </div>
+                        <span>Chargement...</span>
+                    </div>}
                 </div>
               </SheetContent>
             </Sheet>
