@@ -20,6 +20,7 @@ import {
   Library,
   MessageSquareQuote,
   ShieldCheck,
+  Home,
 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
@@ -67,8 +68,8 @@ function MainAppLayout({ children }: { children: React.ReactNode }) {
   ];
   
   const contrathequeLinks = [
-    { href: '/contracts/library', label: 'Bibliothèque', icon: Library },
-    { href: '/contracts/validation', label: 'Validation', icon: ShieldCheck },
+    { href: '/contracts/library', label: 'Accueil', icon: Home },
+    { href: '/contracts/validation', label: 'Admin', icon: ShieldCheck },
     { href: '/contracts', label: 'Liste des contrats', icon: FileSignature },
   ];
 
