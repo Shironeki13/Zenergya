@@ -19,6 +19,7 @@ import {
   ChevronDown,
   Library,
   MessageSquareQuote,
+  ShieldCheck,
 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
@@ -36,6 +37,7 @@ import { DataProvider, useData } from '@/context/data-context';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { usePathname } from 'next/navigation';
 import { cn } from '@/lib/utils';
+import LoadingIndicator from '@/components/loading-indicator';
 
 
 function MainAppLayout({ children }: { children: React.ReactNode }) {
@@ -73,10 +75,18 @@ function MainAppLayout({ children }: { children: React.ReactNode }) {
                  <Link
                     href="/contracts/library"
                     className={cn("flex items-center gap-3 rounded-lg px-3 py-2 text-muted-foreground transition-all hover:text-primary",
-                    pathname.startsWith('/contracts') && "text-primary bg-muted")}
+                    pathname.startsWith('/contracts/library') && "text-primary bg-muted")}
                   >
                     <Library className="h-4 w-4" />
                     Contrathèque
+                  </Link>
+                  <Link
+                    href="/contracts/validation"
+                    className={cn("flex items-center gap-3 rounded-lg px-3 py-2 text-muted-foreground transition-all hover:text-primary",
+                    pathname.startsWith('/contracts/validation') && "text-primary bg-muted")}
+                  >
+                    <ShieldCheck className="h-4 w-4" />
+                    Validation Contrats
                   </Link>
 
                  <Collapsible
@@ -122,7 +132,7 @@ function MainAppLayout({ children }: { children: React.ReactNode }) {
               </nav>
             </div>
             <div className="mt-auto p-4">
-              {/* Loading indicator removed */}
+              <LoadingIndicator />
             </div>
           </div>
         </div>
@@ -157,6 +167,14 @@ function MainAppLayout({ children }: { children: React.ReactNode }) {
                     >
                         <Library className="h-5 w-5" />
                         Contrathèque
+                    </Link>
+                    <Link
+                        href="/contracts/validation"
+                        className={cn("mx-[-0.65rem] flex items-center gap-4 rounded-xl px-3 py-2 text-muted-foreground hover:text-foreground", 
+                        pathname.startsWith('/contracts/validation') && 'bg-muted text-foreground')}
+                    >
+                        <ShieldCheck className="h-5 w-5" />
+                        Validation Contrats
                     </Link>
 
                    <Collapsible defaultOpen={pathname.startsWith('/invoices') || pathname.startsWith('/credit-notes') || pathname.startsWith('/billing') || pathname.startsWith('/dashboard') || pathname.startsWith('/clients') || pathname.startsWith('/sites')}>
@@ -195,7 +213,7 @@ function MainAppLayout({ children }: { children: React.ReactNode }) {
                   ))}
                 </nav>
                 <div className="mt-auto">
-                  {/* Loading indicator removed */}
+                   <LoadingIndicator />
                 </div>
               </SheetContent>
             </Sheet>
