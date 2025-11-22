@@ -47,11 +47,6 @@ import { cn } from '@/lib/utils';
 function MainAppLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const { isLoading } = useData();
-  const [isClient, setIsClient] = useState(false);
-
-  useEffect(() => {
-    setIsClient(true);
-  }, []);
 
   const navItems = [
     { href: '/meters', icon: Gauge, label: 'Compteurs' },
@@ -106,18 +101,33 @@ function MainAppLayout({ children }: { children: React.ReactNode }) {
                       </div>
                     </CollapsibleTrigger>
                     <CollapsibleContent className="pl-7 space-y-1">
-                        {contrathequeLinks.map(link => (
+                        {contrathequeLinks.map(link => {
+                          const isPlaceholder = link.href === '#';
+                          const commonClasses = "flex items-center gap-3 rounded-lg px-3 py-2 text-muted-foreground transition-all";
+                          const activeClasses = pathname === link.href && "text-primary bg-muted";
+                          const hoverClasses = !isPlaceholder ? "hover:text-primary" : "opacity-50 cursor-not-allowed";
+
+                          if (isPlaceholder) {
+                            return (
+                              <div
+                                key={link.href + link.label}
+                                className={cn(commonClasses, hoverClasses)}
+                              >
+                                {link.label}
+                              </div>
+                            );
+                          }
+                          
+                          return (
                              <Link
                                 key={link.href + link.label}
                                 href={link.href}
-                                className={cn(
-                                    "flex items-center gap-3 rounded-lg px-3 py-2 text-muted-foreground transition-all hover:text-primary",
-                                    pathname === link.href && "text-primary bg-muted"
-                                )}
+                                className={cn(commonClasses, hoverClasses, activeClasses)}
                               >
                                 {link.label}
                               </Link>
-                        ))}
+                          );
+                        })}
                     </CollapsibleContent>
                  </Collapsible>
                  
@@ -164,18 +174,7 @@ function MainAppLayout({ children }: { children: React.ReactNode }) {
               </nav>
             </div>
             <div className="mt-auto p-4">
-              {isClient && isLoading && (
-                <div className="flex items-center gap-2 p-2 rounded-lg text-sm text-muted-foreground">
-                    <div className="relative h-6 w-6">
-                        <div className="absolute inset-0 border-2 border-primary/20 rounded-full"></div>
-                        <div className="absolute inset-0 border-t-2 border-primary rounded-full animate-spin"></div>
-                        <div className="relative flex items-center justify-center h-full w-full font-bold text-primary text-xs">
-                            Z
-                        </div>
-                    </div>
-                    <span>Chargement...</span>
-                </div>
-              )}
+              
             </div>
           </div>
         </div>
@@ -212,18 +211,33 @@ function MainAppLayout({ children }: { children: React.ReactNode }) {
                         </div>
                       </CollapsibleTrigger>
                       <CollapsibleContent className="pl-10 mt-2 space-y-2">
-                        {contrathequeLinks.map(link => (
+                        {contrathequeLinks.map(link => {
+                           const isPlaceholder = link.href === '#';
+                           const commonClasses = "mx-[-0.65rem] flex items-center gap-4 rounded-xl px-3 py-2 text-muted-foreground";
+                           const activeClasses = pathname === link.href && "bg-muted text-foreground";
+                           const hoverClasses = !isPlaceholder ? "hover:text-foreground" : "opacity-50 cursor-not-allowed";
+
+                           if (isPlaceholder) {
+                              return (
+                                <div
+                                  key={link.href + link.label}
+                                  className={cn(commonClasses, hoverClasses)}
+                                >
+                                  {link.label}
+                                </div>
+                              );
+                           }
+
+                          return (
                              <Link
                                 key={link.href + link.label}
                                 href={link.href}
-                                className={cn(
-                                    "mx-[-0.65rem] flex items-center gap-4 rounded-xl px-3 py-2 text-muted-foreground hover:text-foreground",
-                                    pathname === link.href && "bg-muted text-foreground"
-                                )}
+                                className={cn(commonClasses, hoverClasses, activeClasses)}
                               >
                                 {link.label}
                               </Link>
-                        ))}
+                          );
+                        })}
                       </CollapsibleContent>
                   </Collapsible>
 
@@ -264,16 +278,7 @@ function MainAppLayout({ children }: { children: React.ReactNode }) {
                   ))}
                 </nav>
                 <div className="mt-auto">
-                   {isClient && isLoading && <div className="flex items-center gap-2 p-2 rounded-lg text-sm text-muted-foreground">
-                        <div className="relative h-6 w-6">
-                            <div className="absolute inset-0 border-2 border-primary/20 rounded-full"></div>
-                            <div className="absolute inset-0 border-t-2 border-primary rounded-full animate-spin"></div>
-                            <div className="relative flex items-center justify-center h-full w-full font-bold text-primary text-xs">
-                                Z
-                            </div>
-                        </div>
-                        <span>Chargement...</span>
-                    </div>}
+                   
                 </div>
               </SheetContent>
             </Sheet>
