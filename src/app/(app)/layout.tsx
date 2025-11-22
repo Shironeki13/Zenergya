@@ -43,6 +43,11 @@ import LoadingIndicator from '@/components/loading-indicator';
 function MainAppLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const { isLoading } = useData();
+  const [isClient, setIsClient] = useState(false);
+
+  useEffect(() => {
+    setIsClient(true);
+  }, []);
 
   const navItems = [
     { href: '/meters', icon: Gauge, label: 'Compteurs' },
@@ -60,6 +65,12 @@ function MainAppLayout({ children }: { children: React.ReactNode }) {
       { href: '/clients', label: 'Clients', icon: Building },
       { href: '/sites', label: 'Sites', icon: MapPin },
   ];
+  
+  const contrathequeLinks = [
+    { href: '/contracts/library', label: 'Bibliothèque', icon: Library },
+    { href: '/contracts/validation', label: 'Validation', icon: ShieldCheck },
+    { href: '/contracts', label: 'Liste des contrats', icon: FileSignature },
+  ];
 
   return (
     <div className="grid min-h-screen w-full md:grid-cols-[220px_1fr] lg:grid-cols-[280px_1fr]">
@@ -72,23 +83,36 @@ function MainAppLayout({ children }: { children: React.ReactNode }) {
             </div>
             <div className="flex-1 overflow-y-auto">
               <nav className="grid items-start px-2 text-sm font-medium lg:px-4">
-                 <Link
-                    href="/contracts/library"
-                    className={cn("flex items-center gap-3 rounded-lg px-3 py-2 text-muted-foreground transition-all hover:text-primary",
-                    pathname.startsWith('/contracts/library') && "text-primary bg-muted")}
+                 
+                 <Collapsible
+                    defaultOpen={pathname.startsWith('/contracts')}
+                    className="flex flex-col gap-1"
                   >
-                    <Library className="h-4 w-4" />
-                    Contrathèque
-                  </Link>
-                  <Link
-                    href="/contracts/validation"
-                    className={cn("flex items-center gap-3 rounded-lg px-3 py-2 text-muted-foreground transition-all hover:text-primary",
-                    pathname.startsWith('/contracts/validation') && "text-primary bg-muted")}
-                  >
-                    <ShieldCheck className="h-4 w-4" />
-                    Validation Contrats
-                  </Link>
-
+                    <CollapsibleTrigger asChild>
+                      <div
+                        className="flex items-center gap-3 rounded-lg px-3 py-2 text-muted-foreground transition-all hover:text-primary cursor-pointer"
+                      >
+                         <Library className="h-4 w-4" />
+                         <span>Contrathèque</span>
+                         <ChevronDown className="ml-auto h-4 w-4 transition-transform [&[data-state=open]]:rotate-180" />
+                      </div>
+                    </CollapsibleTrigger>
+                    <CollapsibleContent className="pl-7 space-y-1">
+                        {contrathequeLinks.map(link => (
+                             <Link
+                                key={link.href}
+                                href={link.href}
+                                className={cn(
+                                    "flex items-center gap-3 rounded-lg px-3 py-2 text-muted-foreground transition-all hover:text-primary",
+                                    pathname === link.href && "text-primary bg-muted"
+                                )}
+                              >
+                                {link.label}
+                              </Link>
+                        ))}
+                    </CollapsibleContent>
+                 </Collapsible>
+                 
                  <Collapsible
                     defaultOpen={pathname.startsWith('/invoices') || pathname.startsWith('/credit-notes') || pathname.startsWith('/billing') || pathname.startsWith('/dashboard') || pathname.startsWith('/clients') || pathname.startsWith('/sites')}
                     className="flex flex-col gap-1"
@@ -132,7 +156,7 @@ function MainAppLayout({ children }: { children: React.ReactNode }) {
               </nav>
             </div>
             <div className="mt-auto p-4">
-              <LoadingIndicator />
+              {isClient && <LoadingIndicator isLoading={isLoading} />}
             </div>
           </div>
         </div>
@@ -160,22 +184,29 @@ function MainAppLayout({ children }: { children: React.ReactNode }) {
                   >
                     <Logo />
                   </Link>
-                   <Link
-                        href="/contracts/library"
-                        className={cn("mx-[-0.65rem] flex items-center gap-4 rounded-xl px-3 py-2 text-muted-foreground hover:text-foreground", 
-                        pathname.startsWith('/contracts') && 'bg-muted text-foreground')}
-                    >
-                        <Library className="h-5 w-5" />
-                        Contrathèque
-                    </Link>
-                    <Link
-                        href="/contracts/validation"
-                        className={cn("mx-[-0.65rem] flex items-center gap-4 rounded-xl px-3 py-2 text-muted-foreground hover:text-foreground", 
-                        pathname.startsWith('/contracts/validation') && 'bg-muted text-foreground')}
-                    >
-                        <ShieldCheck className="h-5 w-5" />
-                        Validation Contrats
-                    </Link>
+                  <Collapsible defaultOpen={pathname.startsWith('/contracts')}>
+                      <CollapsibleTrigger className="w-full">
+                        <div className="mx-[-0.65rem] flex items-center gap-4 rounded-xl px-3 py-2 text-muted-foreground hover:text-foreground">
+                            <Library className="h-5 w-5" />
+                            Contrathèque
+                            <ChevronDown className="ml-auto h-5 w-5 transition-transform [&[data-state=open]]:rotate-180" />
+                        </div>
+                      </CollapsibleTrigger>
+                      <CollapsibleContent className="pl-10 mt-2 space-y-2">
+                        {contrathequeLinks.map(link => (
+                             <Link
+                                key={link.href}
+                                href={link.href}
+                                className={cn(
+                                    "mx-[-0.65rem] flex items-center gap-4 rounded-xl px-3 py-2 text-muted-foreground hover:text-foreground",
+                                    pathname === link.href && "bg-muted text-foreground"
+                                )}
+                              >
+                                {link.label}
+                              </Link>
+                        ))}
+                      </CollapsibleContent>
+                  </Collapsible>
 
                    <Collapsible defaultOpen={pathname.startsWith('/invoices') || pathname.startsWith('/credit-notes') || pathname.startsWith('/billing') || pathname.startsWith('/dashboard') || pathname.startsWith('/clients') || pathname.startsWith('/sites')}>
                       <CollapsibleTrigger className="w-full">
@@ -213,7 +244,7 @@ function MainAppLayout({ children }: { children: React.ReactNode }) {
                   ))}
                 </nav>
                 <div className="mt-auto">
-                   <LoadingIndicator />
+                   {isClient && <LoadingIndicator isLoading={isLoading} />}
                 </div>
               </SheetContent>
             </Sheet>

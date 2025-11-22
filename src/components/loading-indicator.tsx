@@ -1,27 +1,8 @@
 
 'use client';
 
-import { useData } from "@/context/data-context";
-import { useEffect, useState } from "react";
-
-export default function LoadingIndicator() {
-  const { isLoading } = useData();
-  const [show, setShow] = useState(false);
-
-  useEffect(() => {
-    // Only show loading indicator after a short delay
-    // to avoid flickering for fast data loads.
-    let timeout: NodeJS.Timeout;
-    if (isLoading) {
-      timeout = setTimeout(() => setShow(true), 200);
-    } else {
-      setShow(false);
-    }
-    return () => clearTimeout(timeout);
-  }, [isLoading]);
-
-
-  if (!show) {
+export default function LoadingIndicator({ isLoading }: { isLoading: boolean }) {
+  if (!isLoading) {
     return null;
   }
 
