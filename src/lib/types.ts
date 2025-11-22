@@ -146,7 +146,8 @@ export type Contract = {
   billingSchedule: string;
   term: string;
   activityIds: string[];
-  status: "Actif" | "Résilié" | "Terminé";
+  status: "Actif" | "Résilié" | "Terminé" | "Brouillon";
+  validationStatus: "pending_validation" | "validated" | "refused";
   marketId?: string;
   hasInterest?: boolean;
   terminationDate?: string; // ISO String for cancellation date
@@ -375,6 +376,10 @@ export const ExtractContractInfoInputSchema = z.object({
     label: z.string(),
   })).describe('List of available activities to choose from.'),
   prompt: z.string().describe('The prompt to use for the AI analysis.'),
+  typologies: z.array(z.object({
+      id: z.string(),
+      name: z.string(),
+  })).describe('List of available typologies to choose from.'),
 });
 export type ExtractContractInfoInput = z.infer<typeof ExtractContractInfoInputSchema>;
 

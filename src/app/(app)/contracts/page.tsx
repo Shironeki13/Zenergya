@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import { useState, useMemo } from 'react';
@@ -46,10 +47,11 @@ export default function ContractsPage() {
   const [searchTerm, setSearchTerm] = useState('');
 
   const filteredContracts = useMemo(() => {
+    const baseContracts = contracts.filter(c => c.validationStatus === 'validated');
     if (!searchTerm) {
-      return contracts;
+      return baseContracts;
     }
-    return contracts.filter(contract =>
+    return baseContracts.filter(contract =>
       contract.clientName.toLowerCase().includes(searchTerm.toLowerCase())
     );
   }, [contracts, searchTerm]);

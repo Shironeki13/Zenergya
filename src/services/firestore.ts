@@ -118,10 +118,11 @@ export async function getContract(id: string): Promise<Contract | null> {
     return getDocument<Contract>(doc(db, 'contracts', id));
 }
 
-export async function createContract(data: Omit<Contract, 'id' | 'status'>) {
+export async function createContract(data: Omit<Contract, 'id' | 'status' | 'validationStatus'>) {
     const newContractData: DocumentData = {
         ...data,
-        status: 'Actif',
+        status: 'Brouillon',
+        validationStatus: 'pending_validation',
     };
     // Convert all date strings to Date objects for Firestore
     if (data.startDate) newContractData.startDate = new Date(data.startDate);
@@ -135,7 +136,7 @@ export async function createContract(data: Omit<Contract, 'id' | 'status'>) {
     return { id: docRef.id, ...newContractData };
 }
 
-export async function updateContract(id: string, data: Partial<Omit<Contract, 'id' | 'clientName' | 'status'>>) {
+export async function updateContract(id: string, data: Partial<Omit<Contract, 'id' | 'clientName'>>) {
     const contractDoc = doc(db, 'contracts', id);
     const updateData: { [key: string]: any } = { ...data };
 

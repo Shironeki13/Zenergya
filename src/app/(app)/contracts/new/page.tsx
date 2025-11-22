@@ -277,7 +277,7 @@ export default function NewContractPage() {
       await createContract(contractData as any);
       toast({
         title: "Contrat Créé",
-        description: "Le nouveau contrat a été créé avec succès.",
+        description: "Le nouveau contrat a été créé et est en attente de validation.",
       });
       router.push('/contracts');
     } catch (error) {
