@@ -23,7 +23,7 @@ import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover
 import { Calendar } from '@/components/ui/calendar';
 import { useData } from '@/context/data-context';
 import type { Client } from '@/lib/types';
-import { ClientSchema, type ExtractContractInfoOutput } from '@/lib/types';
+import { ClientSchema, ExtractContractInfoOutputSchema } from '@/lib/types';
 import { extractContractInfo } from '@/ai/flows/extract-contract-info-flow';
 import { cn } from '@/lib/utils';
 import { format } from 'date-fns';
@@ -60,7 +60,7 @@ COPIEZ ET COLLEZ LE CONTENU DE TOUS VOS DOCUMENTS ICI (AE, CCAP, CCTP...)
 `;
 
 
-type ClientFormValues = z.infer<typeof ClientSchema>;
+type ClientFormValues = z.infer<typeof ClientSchema> & z.infer<typeof ExtractContractInfoOutputSchema>;
 
 const fileToDataUrl = (file: File): Promise<string> => {
   return new Promise((resolve, reject) => {
@@ -137,7 +137,7 @@ export default function NewContractFromPublicPdfPage() {
   }
 
   const handleAnalyze = async () => {
-    if (!prompt.includes('COPIEZ ET COLLEZ')) {
+    if (prompt.includes('COPIEZ ET COLLEZ LE CONTENU DE VOS DOCUMENTS ICI')) {
         toast({
             title: "Prompt non modifié",
             description: "Veuillez copier et coller le contenu de vos documents dans le prompt.",

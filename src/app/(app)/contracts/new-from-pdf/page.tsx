@@ -23,7 +23,7 @@ import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover
 import { Calendar } from '@/components/ui/calendar';
 import { useData } from '@/context/data-context';
 import type { Client } from '@/lib/types';
-import { ClientSchema, type ExtractContractInfoOutput } from '@/lib/types';
+import { ClientSchema, ExtractContractInfoOutputSchema } from '@/lib/types';
 import { extractContractInfo } from '@/ai/flows/extract-contract-info-flow';
 import { cn } from '@/lib/utils';
 import { format } from 'date-fns';
@@ -145,7 +145,7 @@ export default function NewContractFromPdfPage() {
   };
 
   const handleAnalyze = async () => {
-    if (!prompt.includes('COPIEZ ET COLLEZ')) {
+    if (prompt.includes('COPIEZ ET COLLEZ LE CONTENU DE VOTRE CONTRAT ICI')) {
         toast({
             title: "Prompt non modifié",
             description: "Veuillez copier et coller le contenu de votre contrat dans le prompt.",
@@ -246,7 +246,7 @@ export default function NewContractFromPdfPage() {
             <CardHeader>
                 <CardTitle>2. Personnaliser le Prompt</CardTitle>
                 <CardDescription>
-                    Modifiez le prompt ci-dessous pour affiner l'extraction de données si nécessaire.
+                    Modifiez le prompt ci-dessous pour affiner l'extraction de données si nécessaire. N'oubliez pas de copier-coller le texte de votre contrat dans la zone dédiée.
                 </CardDescription>
             </CardHeader>
             <CardContent>
