@@ -21,7 +21,12 @@ import { Switch } from '@/components/ui/switch';
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
 import { useData } from '@/context/data-context';
+<<<<<<< HEAD
 import { ClientSchema, type ExtractContractInfoOutput, ExtractContractInfoOutputSchema } from '@/lib/types';
+=======
+import type { Client } from '@/lib/types';
+import { ClientSchema, ExtractContractInfoOutputSchema } from '@/lib/types';
+>>>>>>> 10324e28099d433f4daa7afffa92206358661cbb
 import { extractContractInfo } from '@/ai/flows/extract-contract-info-flow';
 import { createClientAndContract } from '@/services/firestore';
 import { cn } from '@/lib/utils';
@@ -31,7 +36,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Separator } from '@/components/ui/separator';
 import { CalendarIcon } from 'lucide-react';
 
-const defaultPrompt = `Tu es un expert en analyse de documents contractuels de marchés publics. Analyse le contenu des fichiers TEXTE ci-dessous (Acte d'Engagement, CCAP, CCTP, etc.) et extrais les informations suivantes de manière structurée. Si une information n'est pas trouvée, laisse le champ vide.
+const defaultPrompt = `Tu es un expert en analyse de documents contractuels de marchés publics. Analyse le contenu des fichiers PDF fournis (Acte d'Engagement, CCAP, CCTP, etc.) et extrais les informations suivantes de manière structurée. Si une information n'est pas trouvée, laisse le champ vide.
 
 Voici les informations à extraire:
 - Raison sociale du client (name): Le nom complet du client. Toujours en MAJUSCULES.
@@ -40,6 +45,9 @@ Voici les informations à extraire:
 - Ville (city): La ville du client. Toujours en MAJUSCULES.
 - Type de client (clientType): 'public'.
 - Typologie du client (typologyId): Déduis la typologie du client. Ce doit être l'un des IDs de la liste suivante : {{{json typologies}}}.
+- Échéancier de facturation (billingSchedule): Trouve la périodicité de facturation. Choisis parmi : {{{json schedules}}}.
+- Terme de facturation (term): Trouve le terme. Choisis parmi : {{{json terms}}}.
+- Station météo (weatherStation): La station météo de référence.
 - activityIds: Trouve les prestations présentes dans le contrat (souvent dans le CCTP ou l'AE). Ce champ doit être un tableau contenant les IDs des prestations détectées. Les prestations à rechercher sont : Fourniture et gestion de l’énergie (P1), Maintenance préventive et petit entretien (P2), Garantie totale / gros entretien (P3). Choisis les IDs parmi cette liste: {{{json activities}}}.
 - activitiesDetails: Pour chaque prestation identifiée dans 'activityIds', extrais les détails suivants. Retourne un tableau d'objets.
     - activityId: L'ID de l'activité.
@@ -63,13 +71,12 @@ Voici les informations à extraire:
 - SIRET (siret): Le SIRET de l'entité publique.
 - Code service Chorus (chorusServiceCode): Le code service pour la facturation Chorus Pro.
 - Numéro d'engagement juridique (chorusLegalCommitmentNumber): Le numéro EJ pour Chorus.
-
-TEXTE DES DOCUMENTS A ANALYSER :
-"""
-COPIEZ ET COLLEZ LE CONTENU DE TOUS VOS DOCUMENTS ICI (AE, CCAP, CCTP...)
-"""
 `;
 
+<<<<<<< HEAD
+=======
+
+>>>>>>> 10324e28099d433f4daa7afffa92206358661cbb
 type ClientFormValues = z.infer<typeof ClientSchema> & z.infer<typeof ExtractContractInfoOutputSchema>;
 
 const fileToDataUrl = (file: File): Promise<string> => {
@@ -93,8 +100,124 @@ const documentFields: { id: DocumentType; label: string; required: boolean }[] =
 ];
 
 export default function NewContractFromPublicPdfPage() {
+<<<<<<< HEAD
     const [files, setFiles] = useState<Record<DocumentType, File | null>>({
         acteEngagement: null, ccap: null, cctp: null, notification: null, bpu: null, dpgf: null
+=======
+  const [files, setFiles] = useState<Record<DocumentType, File | null>>({
+    acteEngagement: null, ccap: null, cctp: null, notification: null, bpu: null, dpgf: null
+  });
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [analysisResult, setAnalysisResult] = useState<Partial<ClientFormValues> | null>(null);
+  const [isSheetOpen, setIsSheetOpen] = useState(false);
+  const [prompt, setPrompt] = useState(defaultPrompt);
+
+  const { toast } = useToast();
+  const router = useRouter();
+  const { clients, typologies, activities, schedules, terms } = useData();
+
+  const form = useForm<ClientFormValues>({
+    resolver: zodResolver(ClientSchema),
+    defaultValues: {
+      clientType: "public",
+      useChorus: true,
+      renewal: false,
+      tacitRenewal: false,
+      activityIds: [],
+      amounts: [],
+    },
+  });
+  
+  const watchTypologyId = form.watch("typologyId");
+  const watchRenewal = form.watch("renewal");
+  const watchActivityIds = form.watch("activityIds") || [];
+
+
+  const selectedTypology = useMemo(() => 
+    typologies.find(t => t.id === watchTypologyId),
+    [typologies, watchTypologyId]
+  );
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>, type: DocumentType) => {
+    if (e.target.files && e.target.files[0]) {
+      const file = e.target.files[0];
+       if (file.type !== 'application/pdf') {
+         toast({
+          title: "Fichier invalide",
+          description: "Veuillez ne sélectionner que des documents au format PDF.",
+          variant: "destructive",
+        });
+        return;
+      }
+      setFiles(prev => ({...prev, [type]: file }));
+    }
+  };
+  
+  const removeFile = (type: DocumentType) => {
+    setFiles(prev => ({...prev, [type]: null }));
+  }
+
+  const handleAnalyze = async () => {
+    
+    const mainFile = files.acteEngagement || files.ccap || files.cctp;
+    if (!mainFile) {
+      toast({
+        title: "Aucun fichier principal",
+        description: "Veuillez déposer au moins l'AE, le CCAP ou le CCTP.",
+        variant: "destructive",
+      });
+      return;
+    }
+    setIsAnalyzing(true);
+    
+    try {
+        const documentDataUri = await fileToDataUrl(mainFile);
+        const result = await extractContractInfo({ 
+            documentDataUri, 
+            activities: activities.map(({id, code, label}) => ({id, code, label})), 
+            prompt, 
+            typologies: typologies.map(({id, name}) => ({id, name})), 
+            schedules: schedules.map(({id, name}) => ({id, name})), 
+            terms: terms.map(({id, name}) => ({id, name}))
+        });
+
+        const mappedData: Partial<ClientFormValues> = {
+            ...result,
+            clientType: "public",
+            useChorus: true,
+            startDate: result.startDate ? new Date(result.startDate) : undefined,
+            endDate: result.endDate ? new Date(result.endDate) : undefined,
+            activityIds: result.amounts?.map(a => a.activityId) ?? [],
+        };
+
+        setAnalysisResult(mappedData);
+        form.reset(mappedData);
+        setIsSheetOpen(true);
+        toast({
+            title: "Analyse terminée",
+            description: "Veuillez vérifier et compléter les informations extraites.",
+        });
+
+    } catch (error) {
+        console.error("Échec de l'analyse du contrat:", error);
+        toast({
+            title: "Erreur d'analyse",
+            description: error instanceof Error ? error.message : "Impossible d'extraire les informations.",
+            variant: "destructive",
+            duration: 10000,
+        });
+    } finally {
+        setIsAnalyzing(false);
+    }
+  };
+  
+  async function onSubmit(data: ClientFormValues) {
+    // Here we would normally call a function like `createClientAndContract(data)`
+    console.log("Formulaire validé avec les données:", data);
+    toast({
+        title: "Base Marché Créée (Simulation)",
+        description: "La nouvelle base marché a été enregistrée avec succès.",
+>>>>>>> 10324e28099d433f4daa7afffa92206358661cbb
     });
     const [isAnalyzing, setIsAnalyzing] = useState(false);
     const [analysisResult, setAnalysisResult] = useState<Partial<ClientFormValues> | null>(null);
@@ -268,6 +391,7 @@ export default function NewContractFromPublicPdfPage() {
                 </div>
             </div>
 
+<<<<<<< HEAD
             <div className="grid lg:grid-cols-2 gap-6">
                 <Card className="flex-1">
                     <CardHeader>
@@ -291,6 +415,122 @@ export default function NewContractFromPublicPdfPage() {
                                             accept="application/pdf"
                                             onChange={(e) => handleFileChange(e, doc.id)}
                                             className="flex-1"
+=======
+        <Card className="flex-1">
+            <CardHeader>
+                <CardTitle>2. Personnaliser le Prompt</CardTitle>
+                <CardDescription>
+                    Modifiez le prompt ci-dessous si nécessaire. L'IA lira directement le contenu des PDF fournis.
+                </CardDescription>
+            </CardHeader>
+            <CardContent>
+                <Textarea 
+                    value={prompt}
+                    onChange={(e) => setPrompt(e.target.value)}
+                    className="min-h-[300px] font-mono text-xs"
+                />
+            </CardContent>
+        </Card>
+      </div>
+      
+       <div className="flex justify-center">
+            <Button onClick={handleAnalyze} disabled={isAnalyzing || !files.acteEngagement && !files.ccap && !files.cctp} size="lg">
+                {isAnalyzing ? (
+                    <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Analyse en cours...
+                    </>
+                ) : (
+                    <>
+                        <Wand2 className="mr-2 h-4 w-4" />
+                        Lancer l'analyse
+                    </>
+                )}
+            </Button>
+        </div>
+
+
+      <Sheet open={isSheetOpen} onOpenChange={setIsSheetOpen}>
+        <SheetContent className="w-full sm:max-w-3xl overflow-y-auto">
+            <SheetHeader>
+                <SheetTitle>Valider les informations extraites</SheetTitle>
+                <SheetDescription>
+                    Vérifiez, corrigez et complétez les champs ci-dessous avant de créer la base marché.
+                </SheetDescription>
+            </SheetHeader>
+            <div className="py-4 pr-6">
+                {analysisResult && (
+                    <Form {...form}>
+                        <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-8">
+                             <FormField control={form.control} name="name" render={({ field }) => (
+                                <FormItem>
+                                <FormLabel>Raison Sociale</FormLabel>
+                                <FormControl><Input {...field} /></FormControl>
+                                <FormMessage />
+                                </FormItem>
+                            )} />
+                             <FormField control={form.control} name="address" render={({ field }) => (
+                                <FormItem>
+                                <FormLabel>Adresse</FormLabel>
+                                <FormControl><Input {...field} /></FormControl>
+                                <FormMessage />
+                                </FormItem>
+                            )} />
+                            <div className="grid grid-cols-2 gap-4">
+                              <FormField control={form.control} name="postalCode" render={({ field }) => (
+                                <FormItem>
+                                  <FormLabel>Code postal</FormLabel>
+                                  <FormControl><Input placeholder="75000" {...field} /></FormControl>
+                                  <FormMessage />
+                                </FormItem>
+                              )} />
+                              <FormField control={form.control} name="city" render={({ field }) => (
+                                <FormItem>
+                                  <FormLabel>Ville</FormLabel>
+                                  <FormControl><Input placeholder="Gotham" {...field} /></FormControl>
+                                  <FormMessage />
+                                </FormItem>
+                              )} />
+                            </div>
+                            <FormField control={form.control} name="typologyId" render={({ field }) => (
+                                <FormItem>
+                                <FormLabel>Typologie client</FormLabel>
+                                <Select onValueChange={field.onChange} value={field.value}>
+                                    <FormControl><SelectTrigger><SelectValue placeholder="Sélectionnez une typologie" /></SelectTrigger></FormControl>
+                                    <SelectContent>
+                                    {typologies.map(t => <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>)}
+                                    </SelectContent>
+                                </Select>
+                                <FormMessage />
+                                </FormItem>
+                            )} />
+                            
+                            <FormField
+                                control={form.control} name="activityIds" render={() => (
+                                <FormItem>
+                                    <div className="mb-4"><FormLabel className="text-base">Type de prestation</FormLabel></div>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                                        {activities.map((item) => (
+                                        <FormField
+                                            key={item.id} control={form.control} name="activityIds"
+                                            render={({ field }) => {
+                                            return (
+                                                <FormItem key={item.id} className="flex flex-row items-start space-x-3 space-y-0 rounded-md border p-4">
+                                                <FormControl>
+                                                    <Checkbox
+                                                    checked={field.value?.includes(item.id)}
+                                                    onCheckedChange={(checked) => {
+                                                        const newActivities = checked
+                                                            ? [...(field.value || []), item.id]
+                                                            : field.value?.filter((value) => value !== item.id);
+                                                        field.onChange(newActivities);
+                                                    }}
+                                                    />
+                                                </FormControl>
+                                                <FormLabel className="font-normal">{item.code}</FormLabel>
+                                                </FormItem>
+                                            )}}
+>>>>>>> 10324e28099d433f4daa7afffa92206358661cbb
                                         />
                                         {files[doc.id] && (
                                             <Button variant="ghost" size="icon" onClick={() => removeFile(doc.id)}>

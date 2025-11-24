@@ -1,7 +1,7 @@
 
 'use client';
 
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { notFound, useRouter, useParams } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
@@ -35,9 +35,12 @@ import {
   ClipboardList,
   MapPin,
   Loader2,
+  Settings,
+  Flame,
+  Droplets,
 } from "lucide-react";
-import { createMeterReading, getContract, getSitesByClient, getMeters, getMeterReadingsByContract, getInvoicesByContract, getActivities } from "@/services/firestore";
-import type { Activity, Contract, Invoice, MeterReading, Site, Meter } from "@/lib/types";
+import { createMeterReading, getContract, getSitesByClient, getMeters, getMeterReadingsByContract, getInvoicesByContract, getActivities, getRevisionFormulas } from "@/services/firestore";
+import type { Activity, Contract, Invoice, MeterReading, Site, Meter, RevisionFormula } from "@/lib/types";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 
@@ -54,6 +57,7 @@ export default function ContractDetailPage() {
   const [meterReadings, setMeterReadings] = useState<MeterReading[]>([]);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [activities, setActivities] = useState<Activity[]>([]);
+  const [revisionFormulas, setRevisionFormulas] = useState<RevisionFormula[]>([]);
   
   const [selectedMeterId, setSelectedMeterId] = useState<string | null>(null);
   const [readingValue, setReadingValue] = useState('');
@@ -81,12 +85,13 @@ export default function ContractDetailPage() {
             }
             setContract(contractData);
 
-            const [sitesData, metersData, readingsData, invoicesData, activitiesData] = await Promise.all([
+            const [sitesData, metersData, readingsData, invoicesData, activitiesData, formulasData] = await Promise.all([
                 getSitesByClient(contractData.clientId),
-                getMeters(), // Assuming getMeters fetches all and we filter locally for now
+                getMeters(),
                 getMeterReadingsByContract(id),
                 getInvoicesByContract(id),
                 getActivities(),
+                getRevisionFormulas(),
             ]);
 
             const contractSites = sitesData.filter(site => contractData.siteIds.includes(site.id));
@@ -99,6 +104,7 @@ export default function ContractDetailPage() {
             setMeterReadings(readingsData);
             setInvoices(invoicesData);
             setActivities(activitiesData);
+            setRevisionFormulas(formulasData);
 
         } catch (error) {
             console.error("Failed to fetch contract details:", error);
@@ -140,7 +146,7 @@ export default function ContractDetailPage() {
       }
   }
   
-  const getBadgeVariant = (status: Contract['status']): 'secondary' | 'destructive' | 'warning' => {
+  const getBadgeVariant = (status: Contract['status']): 'secondary' | 'destructive' | 'warning' | 'outline' => {
       switch (status) {
         case 'Actif':
           return 'secondary';
@@ -148,12 +154,14 @@ export default function ContractDetailPage() {
           return 'destructive';
         case 'Terminé':
           return 'warning';
+        case 'Brouillon':
+          return 'outline';
         default:
           return 'secondary';
       }
   }
-
-  if (isLoading) {
+  
+   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-full">
         <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
@@ -165,10 +173,28 @@ export default function ContractDetailPage() {
     return notFound();
   }
 
-  const activityMap = new Map(activities.map((a: Activity) => [a.id, a.label]));
-  const contractActivities = contract.activityIds.map(id => activityMap.get(id) || 'Activité inconnue');
+  const activityMap = new Map(activities.map((a: Activity) => [a.id, { label: a.label, code: a.code }]));
+  const revisionFormulaMap = new Map(revisionFormulas.map(f => [f.id, f.code]));
+  
+  const getActivitiesByCode = (code: string) => {
+    return activities.find(a => a.code === code);
+  }
+
+  const p1Activity = getActivitiesByCode('P1');
+  const p2Activity = getActivitiesByCode('P2');
+  const p3Activity = getActivitiesByCode('P3');
+
+
   const meterMap = new Map(meters.map(m => [m.id, m.name]));
   const siteMap = new Map(sites.map(s => [s.id, s.name]));
+  
+  const renderRevisionInfo = (revision?: { formulaId?: string | null, date?: string }) => {
+    if (!revision || !revision.formulaId) return "N/A";
+    const formulaCode = revisionFormulaMap.get(revision.formulaId);
+    const date = revision.date ? ` (depuis le ${new Date(revision.date).toLocaleDateString()})` : '';
+    return `${formulaCode}${date}`;
+  };
+
 
   return (
     <div className="grid gap-4 md:gap-8">
@@ -223,17 +249,6 @@ export default function ContractDetailPage() {
                   <ul className="list-disc pl-5">
                     {contract.siteIds.map((siteId) => (
                       <li key={siteId} className="truncate">{siteMap.get(siteId) || siteId}</li>
-                    ))}
-                  </ul>
-                </div>
-              </div>
-              <div className="flex items-start">
-                <CheckCircle className="mr-2 h-4 w-4 mt-1 text-muted-foreground" />
-                <div>
-                  <span className="font-medium">Prestations :</span>
-                  <ul className="list-disc pl-5">
-                    {contractActivities.map((activity) => (
-                      <li key={activity}>{activity}</li>
                     ))}
                   </ul>
                 </div>
@@ -329,6 +344,50 @@ export default function ContractDetailPage() {
           </CardFooter>
         </Card>
       </div>
+
+       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+         {p1Activity && contract.activityIds.includes(p1Activity.id) && (
+            <Card className="lg:col-span-1">
+                <CardHeader><CardTitle className="flex items-center gap-2"><CheckCircle className="h-5 w-5 text-green-500" /> Prestation P1</CardTitle></CardHeader>
+                <CardContent className="space-y-4 text-sm">
+                    <div className="flex items-center"><Settings className="mr-2 h-4 w-4" /> Révision: {renderRevisionInfo(contract.revisionP1)}</div>
+                    {contract.hasHeating && (
+                        <div className="p-3 border rounded-md">
+                            <h4 className="font-semibold mb-2 flex items-center gap-2"><Flame className="h-4 w-4 text-orange-500"/> Chauffage</h4>
+                            <p>Forfait HT: {contract.heatingFlatRateHT?.toFixed(2) ?? 'N/A'} €/an</p>
+                            <p>PU kWh: {contract.heatingUnitPriceKwh?.toFixed(4) ?? 'N/A'} €</p>
+                            <p>DJU Réf: {contract.heatingReferenceDju ?? 'N/A'}</p>
+                            <p>Station Météo: {contract.heatingWeatherStation || 'N/A'}</p>
+                        </div>
+                    )}
+                     {contract.hasECS && (
+                        <div className="p-3 border rounded-md">
+                            <h4 className="font-semibold mb-2 flex items-center gap-2"><Droplets className="h-4 w-4 text-blue-500"/> Eau Chaude Sanitaire</h4>
+                            <p>Forfait HT: {contract.ecsFlatRateHT?.toFixed(2) ?? 'N/A'} €/an</p>
+                            <p>PU m³: {contract.ecsUnitPriceM3?.toFixed(2) ?? 'N/A'} €</p>
+                        </div>
+                    )}
+                </CardContent>
+            </Card>
+         )}
+         {p2Activity && contract.activityIds.includes(p2Activity.id) && (
+            <Card>
+                <CardHeader><CardTitle className="flex items-center gap-2"><CheckCircle className="h-5 w-5 text-green-500" /> Prestation P2</CardTitle></CardHeader>
+                <CardContent className="space-y-2 text-sm">
+                   <div className="flex items-center"><Settings className="mr-2 h-4 w-4" /> Révision: {renderRevisionInfo(contract.revisionP2)}</div>
+                </CardContent>
+            </Card>
+         )}
+          {p3Activity && contract.activityIds.includes(p3Activity.id) && (
+            <Card>
+                <CardHeader><CardTitle className="flex items-center gap-2"><CheckCircle className="h-5 w-5 text-green-500" /> Prestation P3</CardTitle></CardHeader>
+                <CardContent className="space-y-2 text-sm">
+                   <div className="flex items-center"><Settings className="mr-2 h-4 w-4" /> Révision: {renderRevisionInfo(contract.revisionP3)}</div>
+                </CardContent>
+            </Card>
+         )}
+      </div>
+
     </div>
   );
 }
