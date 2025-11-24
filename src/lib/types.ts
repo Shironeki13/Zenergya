@@ -402,7 +402,7 @@ export const ExtractContractInfoOutputSchema = z.object({
   postalCode: z.string().optional().describe("Code postal du client."),
   city: z.string().optional().describe("Ville du client. Toujours en MAJUSCULES."),
   clientType: z.enum(["private", "public"]).optional().describe("Le type de client, 'private' (privé) ou 'public' (public)."),
-  typologyId: z.string().optional().describe("L'ID de la typologie client. Ex: 'Copropriété', 'Industrie', 'Tertiaire'."),
+  typologyId: z.string().optional().describe("L'ID de la typologie client. Choisis parmi la liste fournie."),
   representedBy: z.string().optional().describe("Le représentant légal, pertinent seulement si la typologie est 'Copropriété'."),
   useChorus: z.boolean().optional().describe("Indique si le client utilise la facturation via Chorus Pro. Déduire si un SIRET est présent pour un client public."),
   siret: z.string().optional().describe("Le numéro de SIRET du client, si disponible."),

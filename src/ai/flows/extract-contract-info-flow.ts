@@ -36,7 +36,7 @@ const extractContractInfoFlow = ai.defineFlow(
     });
     
     const { output } = await ai.generate({
-        model: 'googleai/gemini-1.5-flash-latest',
+        model: 'googleai/gemini-2.5-pro',
         prompt: [
             { text: fullPrompt },
             { media: { url: documentDataUri, contentType: 'application/pdf' } }
