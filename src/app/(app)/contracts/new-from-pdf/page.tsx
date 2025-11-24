@@ -140,14 +140,6 @@ export default function NewContractFromPdfPage() {
   };
 
   const handleAnalyze = async () => {
-    if (prompt.includes('COPIEZ ET COLLEZ LE CONTENU DE VOTRE CONTRAT ICI')) {
-        toast({
-            title: "Prompt non modifié",
-            description: "Veuillez copier et coller le contenu de votre contrat dans le prompt.",
-            variant: "destructive",
-        });
-        return;
-    }
     if (!file) {
       toast({
         title: "Aucun contrat sélectionné",
