@@ -82,29 +82,31 @@ export default function ContractsValidationPage() {
                   <Loader2 className="mx-auto h-8 w-8 animate-spin text-muted-foreground" />
                 </TableCell>
               </TableRow>
-            ) : pendingContracts.length > 0 ? (
-              pendingContracts.map((contract) => (
+            ) : pendingContracts.length > 0 ? (<>
+              {pendingContracts.map((contract) => (
                 <TableRow key={contract.id}>
                   <TableCell className="font-medium">{contract.clientName}</TableCell>
                   <TableCell>{new Date().toLocaleDateString()}</TableCell> {/* Placeholder */}
                   <TableCell className="hidden md:table-cell">{new Date(contract.startDate).toLocaleDateString()}</TableCell>
                   <TableCell className="hidden md:table-cell">{new Date(contract.endDate).toLocaleDateString()}</TableCell>
                   <TableCell className="text-right">
-                    <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleUpdateStatus(contract.id, 'validated')}>
+                    <div className="flex justify-end gap-1">
+                      <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleUpdateStatus(contract.id, 'validated')}>
                         <Check className="h-4 w-4 text-green-600" />
-                    </Button>
-                    <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleUpdateStatus(contract.id, 'refused')}>
+                      </Button>
+                      <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleUpdateStatus(contract.id, 'refused')}>
                         <X className="h-4 w-4 text-destructive" />
-                    </Button>
-                    <Button variant="ghost" size="icon" className="h-8 w-8" asChild>
+                      </Button>
+                      <Button variant="ghost" size="icon" className="h-8 w-8" asChild>
                         <Link href={`/contracts/${contract.id}/edit`}>
-                            <Edit className="h-4 w-4" />
+                          <Edit className="h-4 w-4" />
                         </Link>
-                    </Button>
+                      </Button>
+                    </div>
                   </TableCell>
                 </TableRow>
-              ))
-            ) : (
+              ))}
+            </>) : (
               <TableRow>
                 <TableCell colSpan={5} className="text-center h-24">Aucun contrat en attente de validation.</TableCell>
               </TableRow>

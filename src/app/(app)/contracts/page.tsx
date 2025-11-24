@@ -245,17 +245,15 @@ export default function ContractsPage() {
                           <DropdownMenuLabel>Actions</DropdownMenuLabel>
                           <DropdownMenuItem asChild><Link href={`/contracts/${contract.id}`}>Voir les détails</Link></DropdownMenuItem>
                           <DropdownMenuItem asChild><Link href={`/contracts/${contract.id}/edit`}>Modifier</Link></DropdownMenuItem>
-                          {contract.status === 'Actif' && (
-                            <>
-                              <DropdownMenuSeparator />
-                              <DropdownMenuItem onSelect={() => handleOpenStatusDialog(contract, 'Résilié')}>
-                                Passer à Résilié
-                              </DropdownMenuItem>
-                              <DropdownMenuItem onSelect={() => handleOpenStatusDialog(contract, 'Terminé')}>
-                                Passer à Terminé
-                              </DropdownMenuItem>
-                            </>
-                          )}
+                          {contract.status === 'Actif' && (<>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem onSelect={() => handleOpenStatusDialog(contract, 'Résilié')}>
+                              Passer à Résilié
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onSelect={() => handleOpenStatusDialog(contract, 'Terminé')}>
+                              Passer à Terminé
+                            </DropdownMenuItem>
+                          </>)}
                           <DropdownMenuSeparator />
                           <DropdownMenuItem className="text-destructive">
                             Supprimer

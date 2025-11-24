@@ -23,11 +23,7 @@ import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover
 import { Calendar } from '@/components/ui/calendar';
 import { useData } from '@/context/data-context';
 import type { Client } from '@/lib/types';
-<<<<<<< HEAD
 import { ClientSchema, type ExtractContractInfoOutput, ExtractContractInfoOutputSchema } from '@/lib/types';
-=======
-import { ClientSchema, ExtractContractInfoOutputSchema } from '@/lib/types';
->>>>>>> 10324e28099d433f4daa7afffa92206358661cbb
 import { extractContractInfo } from '@/ai/flows/extract-contract-info-flow';
 import { createClientAndContract } from '@/services/firestore';
 import { cn } from '@/lib/utils';
@@ -53,9 +49,10 @@ Voici les informations à extraire:
 - activitiesDetails: Pour chaque prestation identifiée dans 'activityIds', extrais les détails suivants. Retourne un tableau d'objets.
     - activityId: L'ID de l'activité.
     - amount: Le montant annuel HT.
-    - termId: Le terme de facturation (ex: échu, à échoir). Choisis parmi : {{{json terms}}}.
-    - scheduleId: La périodicité de facturation (ex: trimestriel, mensuel). Choisis parmi : {{{json schedules}}}.
+    - termId: Le terme de facturation (ex: échu, à échoir). Retourne l'ID correspondant dans la liste : {{{json terms}}}.
+    - scheduleId: La périodicité de facturation (ex: trimestriel, mensuel). Retourne l'ID correspondant dans la liste : {{{json schedules}}}.
     - revisionFormula: La formule de révision de prix.
+    - revisionBaseIndices: Les valeurs de base des indices de révision (mois 0). Retourne un tableau d'objets { code: string, value: number, description?: string }. Cherche les valeurs comme "ATRD0", "TICGN0", "Indice_0", "Valeur initiale", etc.
     - SI l'activité est de type P1 (Fourniture d'énergie), extrais aussi :
         - weatherStation: La station météo de référence.
         - contractualTemperature: La température contractuelle moyenne.
@@ -69,26 +66,15 @@ Voici les informations à extraire:
 - Reconduction (renewal): Indique si le contrat est à reconduction (true ou false).
 - Durée de la reconduction (renewalDuration): Si la reconduction est activée, précise sa durée (ex: '1 an').
 - Tacite reconduction (tacitRenewal): Si la reconduction est activée, indique si elle est tacite (true ou false).
-<<<<<<< HEAD
 
 TEXTE DU CONTRAT A ANALYSER :
 """
 COPIEZ ET COLLEZ LE CONTENU DE VOTRE CONTRAT ICI
 """
-=======
-- Formule de révision P1 (revisionP1): La formule textuelle de révision pour la prestation P1.
-- Formule de révision P2 (revisionP2): La formule textuelle de révision pour la prestation P2.
-- Formule de révision P3 (revisionP3): La formule textuelle de révision pour la prestation P3.
-- Température contractuelle moyenne (contractualTemperature): La température intérieure de référence.
-- DJU contractuels (contractualDJU): Les Degrés Jours Unifiés de référence pour le contrat.
-- NB contractuels (contractualNB): Les besoins de chauffage contractuels (souvent en kWh).
-- Petit q ECS (ecsSmallQ): Les besoins en Eau Chaude Sanitaire (souvent en kWh/logement ou similaire).
-- NB ECS (ecsNB): Les besoins totaux en Eau Chaude Sanitaire.
->>>>>>> 10324e28099d433f4daa7afffa92206358661cbb
 `;
 
 
-type ClientFormValues = z.infer<typeof ClientSchema> & z.infer<typeof ExtractContractInfoOutputSchema>;
+type ClientFormValues = z.infer<typeof ClientSchema>;
 
 const fileToDataUrl = (file: File): Promise<string> => {
     return new Promise((resolve, reject) => {
@@ -107,7 +93,6 @@ export default function NewContractFromPdfPage() {
     const [isSheetOpen, setIsSheetOpen] = useState(false);
     const [prompt, setPrompt] = useState(defaultPrompt);
 
-<<<<<<< HEAD
     const { toast } = useToast();
     const router = useRouter();
     const { clients, typologies, activities, terms, schedules, companies, agencies, sectors } = useData();
@@ -140,125 +125,8 @@ export default function NewContractFromPdfPage() {
             agencyId: "",
             sectorId: "",
         },
-=======
-  const { toast } = useToast();
-  const router = useRouter();
-  const { clients, typologies, activities, schedules, terms } = useData();
-
-  const form = useForm<ClientFormValues>({
-    resolver: zodResolver(ClientSchema),
-    defaultValues: {
-      name: "",
-      address: "",
-      postalCode: "",
-      city: "",
-      clientType: "private",
-      representedBy: "",
-      externalCode: "",
-      isBe: false,
-      beName: "",
-      beEmail: "",
-      bePhone: "",
-      useChorus: false,
-      siret: "",
-      chorusServiceCode: "",
-      chorusLegalCommitmentNumber: "",
-      chorusMarketNumber: "",
-      invoicingType: "multi-site",
-      renewal: false,
-      tacitRenewal: false,
-      activityIds: [],
-      amounts: [],
-    },
-  });
-  
-  const watchTypologyId = form.watch("typologyId");
-  const watchRenewal = form.watch("renewal");
-  const watchActivityIds = form.watch("activityIds") || [];
-
-
-  const selectedTypology = useMemo(() => 
-    typologies.find(t => t.id === watchTypologyId),
-    [typologies, watchTypologyId]
-  );
-  const showRepresentedBy = selectedTypology?.name === 'Copropriété';
-
-
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files) {
-      const selectedFile = e.target.files[0];
-      if (selectedFile.type !== 'application/pdf') {
-        toast({
-          title: "Fichier invalide",
-          description: "Veuillez sélectionner un document au format PDF.",
-          variant: "destructive",
-        });
-        return;
-      }
-      setFile(selectedFile);
-    }
-  };
-
-  const handleAnalyze = async () => {
-    if (!file) {
-      toast({
-        title: "Aucun contrat sélectionné",
-        description: "Veuillez sélectionner un contrat PDF à analyser.",
-        variant: "destructive",
-      });
-      return;
-    }
-    setIsAnalyzing(true);
-    
-    try {
-        const documentDataUri = await fileToDataUrl(file);
-        const result = await extractContractInfo({ 
-            documentDataUri, 
-            activities: activities.map(({id, code, label}) => ({id, code, label})), 
-            prompt, 
-            typologies: typologies.map(({id, name}) => ({id, name})), 
-            schedules: schedules.map(({id, name}) => ({id, name})), 
-            terms: terms.map(({id, name}) => ({id, name}))
-        });
-
-        const mappedData: Partial<ClientFormValues> = {
-            ...result,
-            startDate: result.startDate ? new Date(result.startDate) : undefined,
-            endDate: result.endDate ? new Date(result.endDate) : undefined,
-            activityIds: result.amounts?.map(a => a.activityId) ?? [],
-        };
-
-        setAnalysisResult(mappedData);
-        form.reset(mappedData);
-        setIsSheetOpen(true);
-        toast({
-            title: "Analyse terminée",
-            description: "Veuillez vérifier et compléter les informations extraites.",
-        });
-
-    } catch (error) {
-        console.error("Échec de l'analyse du contrat:", error);
-        toast({
-            title: "Erreur d'analyse",
-            description: error instanceof Error ? error.message : "Impossible d'extraire les informations.",
-            variant: "destructive",
-            duration: 10000,
-        });
-    } finally {
-        setIsAnalyzing(false);
-    }
-  };
-  
-  async function onSubmit(data: ClientFormValues) {
-    // Here we would normally call a function like `createClientAndContract(data)`
-    console.log("Formulaire validé avec les données:", data);
-    toast({
-        title: "Base Marché Créée (Simulation)",
-        description: "La nouvelle base marché a été enregistrée avec succès.",
->>>>>>> 10324e28099d433f4daa7afffa92206358661cbb
     });
 
-<<<<<<< HEAD
     const watchCompanyId = form.watch("companyId");
     const watchAgencyId = form.watch("agencyId");
 
@@ -275,76 +143,6 @@ export default function NewContractFromPdfPage() {
     const watchTypologyId = form.watch("typologyId");
     const watchRenewal = form.watch("renewal");
     const watchActivityIds = form.watch("activityIds") || [];
-=======
-  return (
-    <div className="space-y-6">
-      <div className="flex items-center gap-4">
-        <Link href="/contracts/new-document">
-          <Button variant="outline" size="icon" className="h-7 w-7">
-            <ChevronLeft className="h-4 w-4" />
-            <span className="sr-only">Retour</span>
-          </Button>
-        </Link>
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">Nouvelle Base Marché (Privé)</h1>
-          <p className="text-muted-foreground">
-            Déposez un contrat PDF et ajustez le prompt pour que l'IA en extraie les informations.
-          </p>
-        </div>
-      </div>
-      
-      <div className="grid lg:grid-cols-2 gap-6">
-        <Card className="flex-1">
-          <CardHeader>
-              <CardTitle>1. Importer le contrat</CardTitle>
-              <CardDescription>
-                  Sélectionnez le document PDF du contrat que vous souhaitez analyser.
-              </CardDescription>
-          </CardHeader>
-          <CardContent>
-              <div className="space-y-2">
-                  <Label htmlFor="pdf-upload">Contrat PDF</Label>
-                  <div className="flex items-center gap-2">
-                      <Input id="pdf-upload" type="file" accept="application/pdf" onChange={handleFileChange} className="flex-1" />
-                      {file && <Button variant="ghost" size="icon" onClick={() => setFile(null)}><X className="h-4 w-4" /></Button>}
-                  </div>
-                  {file && <p className="text-sm text-muted-foreground">Fichier sélectionné : {file.name}</p>}
-              </div>
-          </CardContent>
-        </Card>
-        <Card className="flex-1">
-            <CardHeader>
-                <CardTitle>2. Personnaliser le Prompt</CardTitle>
-                <CardDescription>
-                    Modifiez le prompt ci-dessous pour affiner l'extraction de données si nécessaire. L'IA lira le contenu du PDF directement.
-                </CardDescription>
-            </CardHeader>
-            <CardContent>
-                <Textarea 
-                    value={prompt}
-                    onChange={(e) => setPrompt(e.target.value)}
-                    className="min-h-[150px] font-mono text-xs"
-                />
-            </CardContent>
-        </Card>
-      </div>
-      
-       <div className="flex justify-center">
-            <Button onClick={handleAnalyze} disabled={isAnalyzing || !file} size="lg">
-                {isAnalyzing ? (
-                    <>
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        Analyse en cours...
-                    </>
-                ) : (
-                    <>
-                        <Wand2 className="mr-2 h-4 w-4" />
-                        Lancer l'analyse
-                    </>
-                )}
-            </Button>
-        </div>
->>>>>>> 10324e28099d433f4daa7afffa92206358661cbb
 
 
     const selectedTypology = useMemo(() =>
@@ -390,13 +188,21 @@ export default function NewContractFromPdfPage() {
 
         try {
             const documentDataUri = await fileToDataUrl(file);
-            const result = await extractContractInfo({ documentDataUri, activities, prompt, typologies, terms, schedules });
+            const result = await extractContractInfo({
+                documentDataUri,
+                activities: activities.map(({ id, code, label }) => ({ id, code, label })),
+                prompt,
+                typologies: typologies.map(({ id, name }) => ({ id, name })),
+                schedules: schedules.map(({ id, name }) => ({ id, name })),
+                terms: terms.map(({ id, name }) => ({ id, name }))
+            });
 
             const mappedData: Partial<ClientFormValues> = {
                 ...result,
                 startDate: result.startDate ? new Date(result.startDate) : undefined,
                 endDate: result.endDate ? new Date(result.endDate) : undefined,
                 activityIds: result.activitiesDetails?.map(a => a.activityId) ?? [],
+                invoicingType: result.invoicingType || 'multi-site',
             };
 
             setAnalysisResult(mappedData);
@@ -446,15 +252,15 @@ export default function NewContractFromPdfPage() {
                     <Button variant="outline" size="icon" className="h-7 w-7">
                         <ChevronLeft className="h-4 w-4" />
                         <span className="sr-only">Retour</span>
-                    </Button >
-                </Link >
+                    </Button>
+                </Link>
                 <div>
                     <h1 className="text-2xl font-bold tracking-tight">Nouvelle Base Marché (Privé)</h1>
                     <p className="text-muted-foreground">
                         Déposez un contrat PDF et ajustez le prompt pour que l'IA en extraie les informations.
                     </p>
                 </div>
-            </div >
+            </div>
 
             <div className="grid lg:grid-cols-2 gap-6">
                 <Card className="flex-1">
@@ -471,7 +277,6 @@ export default function NewContractFromPdfPage() {
                                 <Input id="pdf-upload" type="file" accept="application/pdf" onChange={handleFileChange} className="flex-1" />
                                 {file && <Button variant="ghost" size="icon" onClick={() => setFile(null)}><X className="h-4 w-4" /></Button>}
                             </div>
-<<<<<<< HEAD
                             {file && <p className="text-sm text-muted-foreground">Fichier sélectionné : {file.name}</p>}
                         </div>
                     </CardContent>
@@ -508,131 +313,6 @@ export default function NewContractFromPdfPage() {
                     )}
                 </Button>
             </div>
-=======
-                            <FormField control={form.control} name="clientType" render={({ field }) => (
-                              <FormItem>
-                                <FormLabel>Privé / Public</FormLabel>
-                                <FormControl>
-                                  <RadioGroup onValueChange={field.onChange} value={field.value} className="flex gap-4 pt-2">
-                                    <FormItem className="flex items-center space-x-2"><FormControl><RadioGroupItem value="private" id="private" /></FormControl><FormLabel htmlFor="private" className="font-normal">Privé</FormLabel></FormItem>
-                                    <FormItem className="flex items-center space-x-2"><FormControl><RadioGroupItem value="public" id="public" /></FormControl><FormLabel htmlFor="public" className="font-normal">Public</FormLabel></FormItem>
-                                  </RadioGroup>
-                                </FormControl>
-                                <FormMessage />
-                              </FormItem>
-                            )} />
-                             <FormField control={form.control} name="typologyId" render={({ field }) => (
-                                <FormItem>
-                                <FormLabel>Typologie client</FormLabel>
-                                <Select onValueChange={field.onChange} value={field.value}>
-                                    <FormControl><SelectTrigger><SelectValue placeholder="Sélectionnez une typologie" /></SelectTrigger></FormControl>
-                                    <SelectContent>
-                                    {typologies.map(t => <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>)}
-                                    </SelectContent>
-                                </Select>
-                                <FormMessage />
-                                </FormItem>
-                            )} />
-                             {showRepresentedBy && <FormField control={form.control} name="representedBy" render={({ field }) => (
-                                <FormItem>
-                                <FormLabel>Représenté par</FormLabel>
-                                <FormControl><Input placeholder="Syndic de copropriété" {...field} /></FormControl>
-                                <FormMessage />
-                                </FormItem>
-                            )}/>}
-                            
-                             <FormField control={form.control} name="billingSchedule" render={({ field }) => (
-                                <FormItem>
-                                <FormLabel>Échéancier de facturation</FormLabel>
-                                 <Select onValueChange={field.onChange} value={field.value}>
-                                    <FormControl><SelectTrigger><SelectValue placeholder="Sélectionnez un échéancier" /></SelectTrigger></FormControl>
-                                    <SelectContent>{schedules.map(s => <SelectItem key={s.id} value={s.name}>{s.name}</SelectItem>)}</SelectContent>
-                                </Select>
-                                <FormMessage />
-                                </FormItem>
-                            )} />
-
-                             <FormField control={form.control} name="term" render={({ field }) => (
-                                <FormItem>
-                                <FormLabel>Terme de facturation</FormLabel>
-                                 <Select onValueChange={field.onChange} value={field.value}>
-                                    <FormControl><SelectTrigger><SelectValue placeholder="Sélectionnez un terme" /></SelectTrigger></FormControl>
-                                    <SelectContent>{terms.map(t => <SelectItem key={t.id} value={t.name}>{t.name}</SelectItem>)}</SelectContent>
-                                </Select>
-                                <FormMessage />
-                                </FormItem>
-                            )} />
-
-                            <FormField control={form.control} name="weatherStation" render={({ field }) => (
-                                <FormItem>
-                                <FormLabel>Station Météo</FormLabel>
-                                <FormControl><Input placeholder="Ex: Paris-Montsouris" {...field} /></FormControl>
-                                <FormMessage />
-                                </FormItem>
-                            )} />
-
-                            <FormField
-                                control={form.control} name="activityIds" render={() => (
-                                <FormItem>
-                                    <div className="mb-4"><FormLabel className="text-base">Type de prestation</FormLabel></div>
-                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                                        {activities.map((item) => (
-                                        <FormField
-                                            key={item.id} control={form.control} name="activityIds"
-                                            render={({ field }) => {
-                                            return (
-                                                <FormItem key={item.id} className="flex flex-row items-start space-x-3 space-y-0 rounded-md border p-4">
-                                                <FormControl>
-                                                    <Checkbox
-                                                    checked={field.value?.includes(item.id)}
-                                                    onCheckedChange={(checked) => {
-                                                        const newActivities = checked
-                                                            ? [...(field.value || []), item.id]
-                                                            : field.value?.filter((value) => value !== item.id);
-                                                        field.onChange(newActivities);
-                                                    }}
-                                                    />
-                                                </FormControl>
-                                                <FormLabel className="font-normal">{item.code}</FormLabel>
-                                                </FormItem>
-                                            )}}
-                                        />
-                                        ))}
-                                    </div><FormMessage />
-                                </FormItem>
-                            )} />
-                            
-                            {watchActivityIds.length > 0 && (
-                                <Card>
-                                    <CardHeader><CardTitle>Montants Annuels HT</CardTitle></CardHeader>
-                                    <CardContent className="space-y-4">
-                                        {activities.filter(a => watchActivityIds.includes(a.id)).map(activity => {
-                                            const amountIndex = form.getValues('amounts')?.findIndex(a => a.activityId === activity.id) ?? -1;
-                                            return (
-                                                <FormField
-                                                    key={activity.id}
-                                                    control={form.control}
-                                                    name={`amounts.${amountIndex}.amount`}
-                                                    render={({ field }) => (
-                                                        <FormItem>
-                                                            <FormLabel>Montant {activity.code} (€)</FormLabel>
-                                                            <FormControl>
-                                                                <Input 
-                                                                    type="number"
-                                                                    {...field}
-                                                                    onChange={e => field.onChange(parseFloat(e.target.value) || 0)}
-                                                                />
-                                                            </FormControl>
-                                                            <FormMessage />
-                                                        </FormItem>
-                                                    )}
-                                                />
-                                            );
-                                        })}
-                                    </CardContent>
-                                </Card>
-                            )}
->>>>>>> 10324e28099d433f4daa7afffa92206358661cbb
 
 
             <Sheet open={isSheetOpen} onOpenChange={setIsSheetOpen}>
@@ -646,7 +326,30 @@ export default function NewContractFromPdfPage() {
                     <div className="py-4 pr-6">
                         {analysisResult && (
                             <Form {...form}>
-                                <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-8">
+                                <form onSubmit={form.handleSubmit(onSubmit, (errors) => {
+                                    console.error("Form validation errors:", errors);
+                                    const fieldLabels: Record<string, string> = {
+                                        companyId: "Société",
+                                        agencyId: "Agence",
+                                        sectorId: "Secteur",
+                                        name: "Raison Sociale",
+                                        address: "Adresse",
+                                        postalCode: "Code postal",
+                                        city: "Ville",
+                                        clientType: "Type de client (Privé/Public)",
+                                        typologyId: "Typologie client",
+                                        invoicingType: "Type de facturation",
+                                        activityIds: "Types de prestation",
+                                        startDate: "Date de démarrage",
+                                        endDate: "Date de fin",
+                                    };
+                                    const errorFields = Object.keys(errors).map(key => fieldLabels[key] || key);
+                                    toast({
+                                        title: "Erreur de validation",
+                                        description: `Veuillez vérifier les champs suivants: ${errorFields.join(', ')}`,
+                                        variant: "destructive",
+                                    });
+                                })} className="space-y-8">
                                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                                         <FormField control={form.control} name="companyId" render={({ field }) => (
                                             <FormItem>
@@ -859,6 +562,58 @@ export default function NewContractFromPdfPage() {
                                                                 )}
                                                             />
 
+                                                            <div className="space-y-4 border rounded-md p-4">
+                                                                <div className="flex items-center justify-between">
+                                                                    <Label>Indices de Révision (Valeurs de base)</Label>
+                                                                    <Button
+                                                                        type="button"
+                                                                        variant="outline"
+                                                                        size="sm"
+                                                                        onClick={() => {
+                                                                            const currentIndices = form.getValues(`activitiesDetails.${detailIndex}.revisionBaseIndices`) || [];
+                                                                            form.setValue(`activitiesDetails.${detailIndex}.revisionBaseIndices`, [...currentIndices, { code: '', value: 0 }]);
+                                                                        }}
+                                                                    >
+                                                                        Ajouter un indice
+                                                                    </Button>
+                                                                </div>
+                                                                {(form.watch(`activitiesDetails.${detailIndex}.revisionBaseIndices`) || []).map((_, index) => (
+                                                                    <div key={index} className="flex gap-2 items-start">
+                                                                        <FormField
+                                                                            control={form.control}
+                                                                            name={`activitiesDetails.${detailIndex}.revisionBaseIndices.${index}.code`}
+                                                                            render={({ field }) => (
+                                                                                <FormItem className="flex-1">
+                                                                                    <FormControl><Input placeholder="Code (ex: ATRD0)" {...field} /></FormControl>
+                                                                                    <FormMessage />
+                                                                                </FormItem>
+                                                                            )}
+                                                                        />
+                                                                        <FormField
+                                                                            control={form.control}
+                                                                            name={`activitiesDetails.${detailIndex}.revisionBaseIndices.${index}.value`}
+                                                                            render={({ field }) => (
+                                                                                <FormItem className="flex-1">
+                                                                                    <FormControl><Input type="number" placeholder="Valeur" {...field} onChange={e => field.onChange(parseFloat(e.target.value))} /></FormControl>
+                                                                                    <FormMessage />
+                                                                                </FormItem>
+                                                                            )}
+                                                                        />
+                                                                        <Button
+                                                                            type="button"
+                                                                            variant="ghost"
+                                                                            size="icon"
+                                                                            onClick={() => {
+                                                                                const currentIndices = form.getValues(`activitiesDetails.${detailIndex}.revisionBaseIndices`) || [];
+                                                                                form.setValue(`activitiesDetails.${detailIndex}.revisionBaseIndices`, currentIndices.filter((_, i) => i !== index));
+                                                                            }}
+                                                                        >
+                                                                            <X className="h-4 w-4" />
+                                                                        </Button>
+                                                                    </div>
+                                                                ))}
+                                                            </div>
+
                                                             {isP1 && (
                                                                 <>
                                                                     <Separator className="my-4" />
@@ -946,10 +701,11 @@ export default function NewContractFromPdfPage() {
                                     </div>
                                 </form>
                             </Form>
-                        )}
-                    </div>
-                </SheetContent>
-            </Sheet>
+                        )
+                        }
+                    </div >
+                </SheetContent >
+            </Sheet >
         </div >
     );
 }

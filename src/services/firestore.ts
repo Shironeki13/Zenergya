@@ -59,7 +59,11 @@ export async function getClient(id: string): Promise<Client | null> {
 
 export async function createClient(data: Omit<Client, 'id'>): Promise<any> {
     const clientsCollection = collection(db, 'clients');
-    const docRef = await addDoc(clientsCollection, data);
+    // Remove undefined values as Firestore doesn't support them
+    const cleanData = Object.fromEntries(
+        Object.entries(data).filter(([_, value]) => value !== undefined)
+    );
+    const docRef = await addDoc(clientsCollection, cleanData);
     return { id: docRef.id, ...data };
 }
 

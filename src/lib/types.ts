@@ -7,12 +7,19 @@ export const ContractDocumentSchema = z.object({
     url: z.string().url(),
 });
 
+export const RevisionBaseIndexSchema = z.object({
+    code: z.string(),
+    value: z.number(),
+    description: z.string().optional(),
+});
+
 export const ActivityDetailSchema = z.object({
     activityId: z.string(),
     amount: z.number().optional(),
     termId: z.string().optional(),
     scheduleId: z.string().optional(),
     revisionFormula: z.string().optional(),
+    revisionBaseIndices: z.array(RevisionBaseIndexSchema).optional(),
     // P1 specific fields
     weatherStation: z.string().optional(),
     contractualTemperature: z.number().optional(),
@@ -44,7 +51,7 @@ export const ClientSchema = z.object({
     chorusServiceCode: z.string().optional(),
     chorusLegalCommitmentNumber: z.string().optional(),
     chorusMarketNumber: z.string().optional(),
-    invoicingType: z.enum(['multi-site', 'global'], { required_error: "Le type de facturation est requis." }),
+    invoicingType: z.enum(['multi-site', 'global'], { required_error: "Le type de facturation est requis." }).default('multi-site'),
     // Contract fields
     siteIds: z.array(z.string()).optional(),
     startDate: z.date().optional(),

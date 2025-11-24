@@ -13,8 +13,8 @@ import { PlusCircle, Trash2, Edit, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import type { User, Role } from "@/lib/types";
 import {
-  createUser, updateUser, deleteUser,
-  createRole, updateRole, deleteRole,
+    createUser, updateUser, deleteUser,
+    createRole, updateRole, deleteRole,
 } from "@/services/firestore";
 import { useData } from '@/context/data-context';
 
@@ -59,7 +59,7 @@ const RolesSection = () => {
             setIsSubmitting(false);
         }
     };
-    
+
     const handleDelete = async () => {
         if (!roleToDelete) return;
         try {
@@ -74,13 +74,13 @@ const RolesSection = () => {
 
     return (
         <Card>
-             <CardHeader>
+            <CardHeader>
                 <div className="flex justify-between items-center">
                     <div>
                         <CardTitle>Rôles</CardTitle>
                         <CardDescription>Gérez les rôles des utilisateurs.</CardDescription>
                     </div>
-                     <Button size="sm" className="gap-1" onClick={() => handleOpenDialog()}>
+                    <Button size="sm" className="gap-1" onClick={() => handleOpenDialog()}>
                         <PlusCircle className="h-4 w-4" /> Créer un Rôle
                     </Button>
                 </div>
@@ -90,8 +90,8 @@ const RolesSection = () => {
                     <Table>
                         <TableHeader><TableRow><TableHead>Nom du Rôle</TableHead><TableHead className="w-[100px] text-right">Actions</TableHead></TableRow></TableHeader>
                         <TableBody>
-                            {isLoading ? ( <TableRow><TableCell colSpan={2} className="text-center h-24"><Loader2 className="mx-auto h-8 w-8 animate-spin text-muted-foreground" /></TableCell></TableRow>
-                            ) : roles.length === 0 ? ( <TableRow><TableCell colSpan={2} className="text-center">Aucun rôle trouvé.</TableCell></TableRow>
+                            {isLoading ? (<TableRow><TableCell colSpan={2} className="text-center h-24"><Loader2 className="mx-auto h-8 w-8 animate-spin text-muted-foreground" /></TableCell></TableRow>
+                            ) : roles.length === 0 ? (<TableRow><TableCell colSpan={2} className="text-center">Aucun rôle trouvé.</TableCell></TableRow>
                             ) : (
                                 roles.map(role => (
                                     <TableRow key={role.id}>
@@ -136,9 +136,9 @@ const RolesSection = () => {
 
 // Section pour les Utilisateurs
 const UsersSection = () => {
-    const { users, roles, reloadData, isLoading } = useData();
+    const { users, roles, companies, agencies, sectors, reloadData, isLoading } = useData();
     const { toast } = useToast();
-    
+
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [dialogOpen, setDialogOpen] = useState(false);
     const [editingUser, setEditingUser] = useState<User | null>(null);
@@ -148,7 +148,28 @@ const UsersSection = () => {
     const [email, setEmail] = useState('');
     const [roleId, setRoleId] = useState('');
 
-    const resetForm = () => { setName(''); setEmail(''); setRoleId(''); setEditingUser(null); };
+    // Permissions
+    const [selectedModules, setSelectedModules] = useState<string[]>([]);
+    const [selectedCompanyIds, setSelectedCompanyIds] = useState<string[]>([]);
+    const [selectedAgencyIds, setSelectedAgencyIds] = useState<string[]>([]);
+    const [selectedSectorIds, setSelectedSectorIds] = useState<string[]>([]);
+
+    const availableModules = [
+        { id: 'billing', label: 'Facturation' },
+        { id: 'contracts', label: 'Contrathèque' },
+        { id: 'recovery', label: 'Recouvrement' },
+    ];
+
+    const resetForm = () => {
+        setName('');
+        setEmail('');
+        setRoleId('');
+        setSelectedModules([]);
+        setSelectedCompanyIds([]);
+        setSelectedAgencyIds([]);
+        setSelectedSectorIds([]);
+        setEditingUser(null);
+    };
 
     const handleOpenDialog = (user: User | null = null) => {
         setEditingUser(user);
@@ -156,6 +177,10 @@ const UsersSection = () => {
             setName(user.name);
             setEmail(user.email);
             setRoleId(user.roleId);
+            setSelectedModules(user.modules || []);
+            setSelectedCompanyIds(user.scope?.companyIds || []);
+            setSelectedAgencyIds(user.scope?.agencyIds || []);
+            setSelectedSectorIds(user.scope?.sectorIds || []);
         } else {
             resetForm();
         }
@@ -167,7 +192,17 @@ const UsersSection = () => {
         if (!name.trim() || !email.trim() || !roleId) return;
         setIsSubmitting(true);
         try {
-            const userData = { name, email, roleId };
+            const userData = {
+                name,
+                email,
+                roleId,
+                modules: selectedModules,
+                scope: {
+                    companyIds: selectedCompanyIds,
+                    agencyIds: selectedAgencyIds,
+                    sectorIds: selectedSectorIds
+                }
+            };
             if (editingUser) {
                 await updateUser(editingUser.id, userData);
                 toast({ title: "Succès", description: "Utilisateur mis à jour." });
@@ -196,7 +231,7 @@ const UsersSection = () => {
             toast({ title: "Erreur", description: "Impossible de supprimer l'utilisateur.", variant: "destructive" });
         }
     };
-    
+
     const usersWithDetails = useMemo(() => {
         const roleMap = new Map(roles.map(r => [r.id, r.name]));
         return users.map(user => ({
@@ -204,6 +239,17 @@ const UsersSection = () => {
             roleName: roleMap.get(user.roleId) || 'N/A'
         }));
     }, [users, roles]);
+
+    // Filtered lists for scope selection
+    const filteredAgencies = useMemo(() => {
+        if (selectedCompanyIds.length === 0) return [];
+        return agencies.filter(a => selectedCompanyIds.includes(a.companyId));
+    }, [agencies, selectedCompanyIds]);
+
+    const filteredSectors = useMemo(() => {
+        if (selectedAgencyIds.length === 0) return [];
+        return sectors.filter(s => selectedAgencyIds.includes(s.agencyId));
+    }, [sectors, selectedAgencyIds]);
 
     return (
         <Card>
@@ -213,7 +259,7 @@ const UsersSection = () => {
                         <CardTitle>Utilisateurs</CardTitle>
                         <CardDescription>Gérez les utilisateurs et leurs rôles.</CardDescription>
                     </div>
-                     <Button size="sm" className="gap-1" onClick={() => handleOpenDialog()}>
+                    <Button size="sm" className="gap-1" onClick={() => handleOpenDialog()}>
                         <PlusCircle className="h-4 w-4" /> Créer un Utilisateur
                     </Button>
                 </div>
@@ -230,8 +276,8 @@ const UsersSection = () => {
                             </TableRow>
                         </TableHeader>
                         <TableBody>
-                            {isLoading ? ( <TableRow><TableCell colSpan={4} className="text-center h-24"><Loader2 className="mx-auto h-8 w-8 animate-spin text-muted-foreground" /></TableCell></TableRow>
-                            ) : usersWithDetails.length === 0 ? ( <TableRow><TableCell colSpan={4} className="text-center">Aucun utilisateur.</TableCell></TableRow>
+                            {isLoading ? (<TableRow><TableCell colSpan={4} className="text-center h-24"><Loader2 className="mx-auto h-8 w-8 animate-spin text-muted-foreground" /></TableCell></TableRow>
+                            ) : usersWithDetails.length === 0 ? (<TableRow><TableCell colSpan={4} className="text-center">Aucun utilisateur.</TableCell></TableRow>
                             ) : (
                                 usersWithDetails.map(user => (
                                     <TableRow key={user.id}>
@@ -263,16 +309,18 @@ const UsersSection = () => {
                     </Table>
                 </div>
                 <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-                    <DialogContent>
+                    <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
                         <DialogHeader><DialogTitle>{editingUser ? "Modifier l'utilisateur" : "Nouvel utilisateur"}</DialogTitle></DialogHeader>
-                        <form onSubmit={handleSubmit} className="space-y-4">
-                            <div className="space-y-2">
-                                <Label htmlFor="userName">Nom</Label>
-                                <Input id="userName" value={name} onChange={e => setName(e.target.value)} required />
-                            </div>
-                            <div className="space-y-2">
-                                <Label htmlFor="userEmail">Email</Label>
-                                <Input id="userEmail" type="email" value={email} onChange={e => setEmail(e.target.value)} required />
+                        <form onSubmit={handleSubmit} className="space-y-6">
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className="space-y-2">
+                                    <Label htmlFor="userName">Nom</Label>
+                                    <Input id="userName" value={name} onChange={e => setName(e.target.value)} required />
+                                </div>
+                                <div className="space-y-2">
+                                    <Label htmlFor="userEmail">Email</Label>
+                                    <Input id="userEmail" type="email" value={email} onChange={e => setEmail(e.target.value)} required />
+                                </div>
                             </div>
                             <div className="space-y-2">
                                 <Label htmlFor="role">Rôle</Label>
@@ -283,6 +331,119 @@ const UsersSection = () => {
                                     </SelectContent>
                                 </Select>
                             </div>
+
+                            <div className="space-y-4 border-t pt-4">
+                                <h3 className="font-medium">Modules Accessibles</h3>
+                                <div className="flex flex-wrap gap-4">
+                                    {availableModules.map(module => (
+                                        <div key={module.id} className="flex items-center space-x-2">
+                                            <input
+                                                type="checkbox"
+                                                id={`module-${module.id}`}
+                                                checked={selectedModules.includes(module.id)}
+                                                onChange={(e) => {
+                                                    if (e.target.checked) {
+                                                        setSelectedModules([...selectedModules, module.id]);
+                                                    } else {
+                                                        setSelectedModules(selectedModules.filter(id => id !== module.id));
+                                                    }
+                                                }}
+                                                className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary"
+                                            />
+                                            <Label htmlFor={`module-${module.id}`} className="font-normal cursor-pointer">{module.label}</Label>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+
+                            <div className="space-y-4 border-t pt-4">
+                                <h3 className="font-medium">Périmètre (Scope)</h3>
+
+                                <div className="space-y-2">
+                                    <Label>Sociétés</Label>
+                                    <div className="grid grid-cols-2 gap-2 border p-2 rounded-md max-h-32 overflow-y-auto">
+                                        {companies.map(company => (
+                                            <div key={company.id} className="flex items-center space-x-2">
+                                                <input
+                                                    type="checkbox"
+                                                    id={`company-${company.id}`}
+                                                    checked={selectedCompanyIds.includes(company.id)}
+                                                    onChange={(e) => {
+                                                        const newIds = e.target.checked
+                                                            ? [...selectedCompanyIds, company.id]
+                                                            : selectedCompanyIds.filter(id => id !== company.id);
+                                                        setSelectedCompanyIds(newIds);
+                                                        // Reset dependent selections if parent is deselected
+                                                        if (!e.target.checked) {
+                                                            const relatedAgencyIds = agencies.filter(a => a.companyId === company.id).map(a => a.id);
+                                                            setSelectedAgencyIds(prev => prev.filter(id => !relatedAgencyIds.includes(id)));
+                                                            // Sectors will be filtered out by agency change logic if we were more granular, 
+                                                            // but here we just filter sectors based on remaining agencies
+                                                        }
+                                                    }}
+                                                    className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary"
+                                                />
+                                                <Label htmlFor={`company-${company.id}`} className="font-normal cursor-pointer text-sm">{company.name}</Label>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+
+                                {selectedCompanyIds.length > 0 && (
+                                    <div className="space-y-2">
+                                        <Label>Agences</Label>
+                                        <div className="grid grid-cols-2 gap-2 border p-2 rounded-md max-h-32 overflow-y-auto">
+                                            {filteredAgencies.map(agency => (
+                                                <div key={agency.id} className="flex items-center space-x-2">
+                                                    <input
+                                                        type="checkbox"
+                                                        id={`agency-${agency.id}`}
+                                                        checked={selectedAgencyIds.includes(agency.id)}
+                                                        onChange={(e) => {
+                                                            const newIds = e.target.checked
+                                                                ? [...selectedAgencyIds, agency.id]
+                                                                : selectedAgencyIds.filter(id => id !== agency.id);
+                                                            setSelectedAgencyIds(newIds);
+                                                            if (!e.target.checked) {
+                                                                const relatedSectorIds = sectors.filter(s => s.agencyId === agency.id).map(s => s.id);
+                                                                setSelectedSectorIds(prev => prev.filter(id => !relatedSectorIds.includes(id)));
+                                                            }
+                                                        }}
+                                                        className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary"
+                                                    />
+                                                    <Label htmlFor={`agency-${agency.id}`} className="font-normal cursor-pointer text-sm">{agency.name}</Label>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+
+                                {selectedAgencyIds.length > 0 && (
+                                    <div className="space-y-2">
+                                        <Label>Secteurs</Label>
+                                        <div className="grid grid-cols-2 gap-2 border p-2 rounded-md max-h-32 overflow-y-auto">
+                                            {filteredSectors.map(sector => (
+                                                <div key={sector.id} className="flex items-center space-x-2">
+                                                    <input
+                                                        type="checkbox"
+                                                        id={`sector-${sector.id}`}
+                                                        checked={selectedSectorIds.includes(sector.id)}
+                                                        onChange={(e) => {
+                                                            const newIds = e.target.checked
+                                                                ? [...selectedSectorIds, sector.id]
+                                                                : selectedSectorIds.filter(id => id !== sector.id);
+                                                            setSelectedSectorIds(newIds);
+                                                        }}
+                                                        className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary"
+                                                    />
+                                                    <Label htmlFor={`sector-${sector.id}`} className="font-normal cursor-pointer text-sm">{sector.name}</Label>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+
                             <DialogFooter>
                                 <DialogClose asChild><Button type="button" variant="outline">Annuler</Button></DialogClose>
                                 <Button type="submit" disabled={isSubmitting}>{isSubmitting ? "Enregistrement..." : "Enregistrer"}</Button>
@@ -297,26 +458,26 @@ const UsersSection = () => {
 
 
 export default function UsersPage() {
-  return (
-    <div className="space-y-6">
-       <div>
-        <h1 className="text-lg font-medium">Gestion des Utilisateurs</h1>
-        <p className="text-sm text-muted-foreground">
-          Gérez les utilisateurs et les rôles de votre organisation.
-        </p>
-      </div>
-      <Tabs defaultValue="users" className="w-full">
-        <TabsList>
-          <TabsTrigger value="users">Utilisateurs</TabsTrigger>
-          <TabsTrigger value="roles">Rôles</TabsTrigger>
-        </TabsList>
-        <TabsContent value="users">
-          <UsersSection />
-        </TabsContent>
-        <TabsContent value="roles">
-          <RolesSection />
-        </TabsContent>
-      </Tabs>
-    </div>
-  );
+    return (
+        <div className="space-y-6">
+            <div>
+                <h1 className="text-lg font-medium">Gestion des Utilisateurs</h1>
+                <p className="text-sm text-muted-foreground">
+                    Gérez les utilisateurs et les rôles de votre organisation.
+                </p>
+            </div>
+            <Tabs defaultValue="users" className="w-full">
+                <TabsList>
+                    <TabsTrigger value="users">Utilisateurs</TabsTrigger>
+                    <TabsTrigger value="roles">Rôles</TabsTrigger>
+                </TabsList>
+                <TabsContent value="users">
+                    <UsersSection />
+                </TabsContent>
+                <TabsContent value="roles">
+                    <RolesSection />
+                </TabsContent>
+            </Tabs>
+        </div>
+    );
 }
