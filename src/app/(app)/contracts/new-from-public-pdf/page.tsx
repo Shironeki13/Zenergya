@@ -155,7 +155,7 @@ export default function NewContractFromPublicPdfPage() {
     
     try {
         const documentDataUri = await fileToDataUrl(mainFile);
-        const result = await extractContractInfo({ documentDataUri, activities, prompt });
+        const result = await extractContractInfo({ documentDataUri, activities, prompt, typologies });
 
         const mappedData: Partial<ClientFormValues> = {
             ...result,
@@ -462,4 +462,3 @@ export default function NewContractFromPublicPdfPage() {
     </div>
   );
 }
-
