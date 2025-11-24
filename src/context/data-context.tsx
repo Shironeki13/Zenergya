@@ -36,8 +36,25 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     pricingRules: [] as PricingRule[],
     markets: [] as Market[],
     roles: [] as Role[],
+    roles: [] as Role[],
     users: [] as User[],
   });
+
+  // Mock Current User (Director by default)
+  const [currentUser, setCurrentUser] = useState<User | null>({
+    id: 'user-director',
+    name: 'Directeur Général',
+    email: 'director@zenergy.com',
+    roleId: 'role-admin',
+    roleName: 'Administrateur',
+    modules: ['contracts', 'billing', 'settings'],
+    scope: {
+      companyIds: ['*'],
+      agencyIds: ['*'],
+      sectorIds: ['*'],
+    }
+  });
+
   const [isLoading, setIsLoading] = useState(true);
   const { toast } = useToast();
 
@@ -123,7 +140,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   }, [loadAllData]);
 
   return (
-    <DataContext.Provider value={{ ...data, isLoading, reloadData: loadAllData }}>
+    <DataContext.Provider value={{ ...data, isLoading, reloadData: loadAllData, currentUser, setCurrentUser }}>
       {children}
     </DataContext.Provider>
   );

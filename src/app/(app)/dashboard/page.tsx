@@ -49,35 +49,35 @@ export default function Dashboard() {
       .reduce((sum, i) => sum + i.subtotal, 0);
 
     const invoicesPerContract = invoices.reduce((acc, inv) => {
-        if (inv.status !== 'proforma') {
-            if (!acc[inv.contractId]) acc[inv.contractId] = [];
-            acc[inv.contractId].push(inv);
-        }
-        return acc;
+      if (inv.status !== 'proforma') {
+        if (!acc[inv.contractId]) acc[inv.contractId] = [];
+        acc[inv.contractId].push(inv);
+      }
+      return acc;
     }, {} as Record<string, Invoice[]>);
 
     const invoicesToBeIssued = contracts.filter(contract => {
-        if (contract.status !== 'Actif') return false;
+      if (contract.status !== 'Actif') return false;
 
-        const contractInvoices = invoicesPerContract[contract.id] || [];
-        contractInvoices.sort((a, b) => new Date(b.periodEndDate!).getTime() - new Date(a.periodEndDate!).getTime());
+      const contractInvoices = invoicesPerContract[contract.id] || [];
+      contractInvoices.sort((a, b) => new Date(b.periodEndDate!).getTime() - new Date(a.periodEndDate!).getTime());
 
-        const lastInvoice = contractInvoices[0];
-        const contractStartDate = new Date(contract.startDate);
-        
-        let nextBillingDate = lastInvoice ? new Date(lastInvoice.periodEndDate!) : contractStartDate;
-        if(lastInvoice) nextBillingDate.setDate(nextBillingDate.getDate() + 1);
+      const lastInvoice = contractInvoices[0];
+      const contractStartDate = new Date(contract.startDate);
 
-        switch (contract.billingSchedule) {
-            case 'Mensuel': nextBillingDate.setMonth(nextBillingDate.getMonth() + 1); break;
-            case 'Trimestriel': nextBillingDate.setMonth(nextBillingDate.getMonth() + 3); break;
-            case 'Semestriel': nextBillingDate.setMonth(nextBillingDate.getMonth() + 6); break;
-            case 'Annuel': nextBillingDate.setFullYear(nextBillingDate.getFullYear() + 1); break;
-            default: break;
-        }
-        
-        const contractEndDate = new Date(contract.endDate);
-        return new Date() > nextBillingDate && nextBillingDate < contractEndDate;
+      let nextBillingDate = lastInvoice ? new Date(lastInvoice.periodEndDate!) : contractStartDate;
+      if (lastInvoice) nextBillingDate.setDate(nextBillingDate.getDate() + 1);
+
+      switch (contract.billingSchedule) {
+        case 'Mensuel': nextBillingDate.setMonth(nextBillingDate.getMonth() + 1); break;
+        case 'Trimestriel': nextBillingDate.setMonth(nextBillingDate.getMonth() + 3); break;
+        case 'Semestriel': nextBillingDate.setMonth(nextBillingDate.getMonth() + 6); break;
+        case 'Annuel': nextBillingDate.setFullYear(nextBillingDate.getFullYear() + 1); break;
+        default: break;
+      }
+
+      const contractEndDate = new Date(contract.endDate);
+      return new Date() > nextBillingDate && nextBillingDate < contractEndDate;
     }).length;
 
 
@@ -85,17 +85,17 @@ export default function Dashboard() {
     const monthlyRevenue: { month: string, total: number }[] = [];
     const now = new Date();
     for (let i = 11; i >= 0; i--) {
-        const date = new Date(now.getFullYear(), now.getMonth() - i, 1);
-        const monthStr = date.toLocaleString('fr-FR', { month: 'short', year: '2-digit' }).replace('.', '');
-        monthlyRevenue.push({ month: monthStr, total: 0 });
+      const date = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const monthStr = date.toLocaleString('fr-FR', { month: 'short', year: '2-digit' }).replace('.', '');
+      monthlyRevenue.push({ month: monthStr, total: 0 });
     }
 
     invoices.filter(i => i.status !== 'proforma').forEach(invoice => {
-        const invoiceDate = new Date(invoice.date);
-        const monthIndex = 11 - ((now.getFullYear() - invoiceDate.getFullYear()) * 12 + (now.getMonth() - invoiceDate.getMonth()));
-        if (monthIndex >= 0 && monthIndex < 12) {
-            monthlyRevenue[monthIndex].total += invoice.subtotal;
-        }
+      const invoiceDate = new Date(invoice.date);
+      const monthIndex = 11 - ((now.getFullYear() - invoiceDate.getFullYear()) * 12 + (now.getMonth() - invoiceDate.getMonth()));
+      if (monthIndex >= 0 && monthIndex < 12) {
+        monthlyRevenue[monthIndex].total += invoice.subtotal;
+      }
     });
 
     const contractStatusData = contracts.reduce((acc, contract) => {
@@ -104,7 +104,7 @@ export default function Dashboard() {
       if (existing) {
         existing.value++;
       } else {
-        acc.push({ name: status, value: 1, fill: `hsl(var(--chart-${acc.length + 1}))`});
+        acc.push({ name: status, value: 1, fill: `hsl(var(--chart-${acc.length + 1}))` });
       }
       return acc;
     }, [] as { name: string, value: number, fill: string }[]);
@@ -117,9 +117,9 @@ export default function Dashboard() {
 
   if (isLoading || !dashboardData) {
     return (
-        <div className="flex items-center justify-center h-full">
-            <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-        </div>
+      <div className="flex items-center justify-center h-full">
+        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      </div>
     )
   }
 
@@ -129,7 +129,7 @@ export default function Dashboard() {
   } as const;
 
   const contractChartConfig = Object.fromEntries(
-    contractStatusData.map((d, i) => [d.name, { label: d.name, color: `hsl(var(--chart-${i+1}))`}])
+    contractStatusData.map((d, i) => [d.name, { label: d.name, color: `hsl(var(--chart-${i + 1}))` }])
   );
 
   const translateStatus = (status: InvoiceStatus) => {
@@ -142,56 +142,81 @@ export default function Dashboard() {
   };
 
   return (
-    <>
+    <div className="flex flex-col gap-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight bg-gradient-to-r from-primary to-secondary bg-clip-text text-transparent">Tableau de bord</h1>
+          <p className="text-muted-foreground mt-1">Vue d'ensemble de votre activité énergétique.</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" className="hidden sm:flex">
+            <Clock className="mr-2 h-4 w-4" />
+            Dernière mise à jour: {new Date().toLocaleDateString()}
+          </Button>
+          <Button size="sm" className="bg-primary hover:bg-primary/90 shadow-lg shadow-primary/20">
+            <ArrowUpRight className="mr-2 h-4 w-4" />
+            Nouvelle Facture
+          </Button>
+        </div>
+      </div>
+
       <div className="grid gap-4 md:grid-cols-2 md:gap-8 lg:grid-cols-4">
-        <Card>
+        <Card className="border-none shadow-md bg-gradient-to-br from-card to-muted/50 hover:shadow-lg transition-all duration-200">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">
+            <CardTitle className="text-sm font-medium text-muted-foreground">
               Total HT Facturé
             </CardTitle>
-            <CircleDollarSign className="h-4 w-4 text-muted-foreground" />
+            <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center">
+              <CircleDollarSign className="h-4 w-4 text-primary" />
+            </div>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{totalBilledHT.toLocaleString('fr-FR', { style: 'currency', currency: 'EUR'})}</div>
-            <p className="text-xs text-muted-foreground">
+            <div className="text-2xl font-bold text-primary">{totalBilledHT.toLocaleString('fr-FR', { style: 'currency', currency: 'EUR' })}</div>
+            <p className="text-xs text-muted-foreground mt-1">
               Sur toutes les factures émises
             </p>
           </CardContent>
         </Card>
-        <Card>
+        <Card className="border-none shadow-md bg-gradient-to-br from-card to-muted/50 hover:shadow-lg transition-all duration-200">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">
+            <CardTitle className="text-sm font-medium text-muted-foreground">
               Contrats Actifs
             </CardTitle>
-            <FileSignature className="h-4 w-4 text-muted-foreground" />
+            <div className="h-8 w-8 rounded-full bg-secondary/10 flex items-center justify-center">
+              <FileSignature className="h-4 w-4 text-secondary" />
+            </div>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">+{activeContracts}</div>
-            <p className="text-xs text-muted-foreground">
+            <div className="text-2xl font-bold text-secondary">+{activeContracts}</div>
+            <p className="text-xs text-muted-foreground mt-1">
               sur un total de {contracts.length} contrats
             </p>
           </CardContent>
         </Card>
-        <Card>
+        <Card className="border-none shadow-md bg-gradient-to-br from-card to-muted/50 hover:shadow-lg transition-all duration-200">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Factures à Émettre</CardTitle>
-            <FileClock className="h-4 w-4 text-muted-foreground" />
+            <CardTitle className="text-sm font-medium text-muted-foreground">Factures à Émettre</CardTitle>
+            <div className="h-8 w-8 rounded-full bg-warning/10 flex items-center justify-center">
+              <FileClock className="h-4 w-4 text-warning" />
+            </div>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{invoicesToBeIssued}</div>
-            <p className="text-xs text-muted-foreground">
+            <div className="text-2xl font-bold text-warning">{invoicesToBeIssued}</div>
+            <p className="text-xs text-muted-foreground mt-1">
               Contrats nécessitant une facturation
             </p>
           </CardContent>
         </Card>
-        <Card>
+        <Card className="border-none shadow-md bg-gradient-to-br from-card to-muted/50 hover:shadow-lg transition-all duration-200">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Clients</CardTitle>
-            <Users className="h-4 w-4 text-muted-foreground" />
+            <CardTitle className="text-sm font-medium text-muted-foreground">Clients</CardTitle>
+            <div className="h-8 w-8 rounded-full bg-accent/10 flex items-center justify-center">
+              <Users className="h-4 w-4 text-foreground" />
+            </div>
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{totalClients}</div>
-            <p className="text-xs text-muted-foreground">
+            <p className="text-xs text-muted-foreground mt-1">
               Total des clients gérés
             </p>
           </CardContent>
@@ -199,75 +224,92 @@ export default function Dashboard() {
       </div>
 
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-7">
-        <Card className="lg:col-span-4">
-            <CardHeader>
-                <CardTitle>Chiffre d'Affaires Mensuel (HT)</CardTitle>
-                <CardDescription>Total facturé sur les 12 derniers mois.</CardDescription>
-            </CardHeader>
-            <CardContent>
-                 <ChartContainer config={chartConfig} className="h-[250px] w-full">
-                    <ResponsiveContainer width="100%" height="100%">
-                        <BarChart data={monthlyRevenue} margin={{ top: 20, right: 20, bottom: 5, left: 0 }}>
-                            <CartesianGrid vertical={false} />
-                            <XAxis
-                                dataKey="month"
-                                tickLine={false}
-                                axisLine={false}
-                                tickMargin={8}
-                                tickFormatter={(value) => value.charAt(0).toUpperCase() + value.slice(1)}
-                            />
-                             <YAxis
-                                tickLine={false}
-                                axisLine={false}
-                                tickMargin={8}
-                                tickFormatter={(value) => (value as number / 1000) + 'k'}
-                             />
-                            <Tooltip
-                              cursor={false}
-                              content={<ChartTooltipContent
-                                formatter={(value) => value.toLocaleString('fr-FR', { style: 'currency', currency: 'EUR' })}
-                                indicator="dot"
-                              />}
-                            />
-                            <Bar dataKey="total" fill="hsl(var(--primary))" radius={4} />
-                        </BarChart>
-                    </ResponsiveContainer>
-                </ChartContainer>
-            </CardContent>
+        <Card className="lg:col-span-4 border-none shadow-md">
+          <CardHeader>
+            <CardTitle>Chiffre d'Affaires Mensuel (HT)</CardTitle>
+            <CardDescription>Total facturé sur les 12 derniers mois.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <ChartContainer config={chartConfig} className="h-[300px] w-full">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={monthlyRevenue} margin={{ top: 20, right: 20, bottom: 5, left: 0 }}>
+                  <CartesianGrid vertical={false} strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                  <XAxis
+                    dataKey="month"
+                    tickLine={false}
+                    axisLine={false}
+                    tickMargin={10}
+                    tickFormatter={(value) => value.charAt(0).toUpperCase() + value.slice(1)}
+                    stroke="hsl(var(--muted-foreground))"
+                  />
+                  <YAxis
+                    tickLine={false}
+                    axisLine={false}
+                    tickMargin={10}
+                    tickFormatter={(value) => (value as number / 1000) + 'k'}
+                    stroke="hsl(var(--muted-foreground))"
+                  />
+                  <Tooltip
+                    cursor={{ fill: 'hsl(var(--muted)/0.2)' }}
+                    content={<ChartTooltipContent
+                      formatter={(value) => value.toLocaleString('fr-FR', { style: 'currency', currency: 'EUR' })}
+                      indicator="dot"
+                    />}
+                  />
+                  <Bar
+                    dataKey="total"
+                    fill="hsl(var(--primary))"
+                    radius={[4, 4, 0, 0]}
+                    barSize={32}
+                  />
+                </BarChart>
+              </ResponsiveContainer>
+            </ChartContainer>
+          </CardContent>
         </Card>
-        <Card className="lg:col-span-3">
-             <CardHeader>
-                <CardTitle>Répartition des Contrats</CardTitle>
-                <CardDescription>Statut de tous les contrats.</CardDescription>
-            </CardHeader>
-            <CardContent className="flex items-center justify-center">
-                <ChartContainer config={contractChartConfig} className="h-[250px] w-full max-w-[300px]">
-                    <ResponsiveContainer width="100%" height="100%">
-                        <PieChart>
-                             <Tooltip
-                                content={<ChartTooltipContent
-                                    nameKey="name"
-                                    hideIndicator
-                                />}
-                            />
-                            <Pie data={contractStatusData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={80} label>
-                                {contractStatusData.map((entry, index) => (
-                                    <Cell key={`cell-${index}`} fill={entry.fill} />
-                                ))}
-                            </Pie>
-                            <ChartLegend
-                                content={<ChartLegendContent />}
-                                nameKey="name"
-                             />
-                        </PieChart>
-                    </ResponsiveContainer>
-                </ChartContainer>
-            </CardContent>
+        <Card className="lg:col-span-3 border-none shadow-md">
+          <CardHeader>
+            <CardTitle>Répartition des Contrats</CardTitle>
+            <CardDescription>Statut de tous les contrats.</CardDescription>
+          </CardHeader>
+          <CardContent className="flex items-center justify-center">
+            <ChartContainer config={contractChartConfig} className="h-[300px] w-full max-w-[300px]">
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Tooltip
+                    content={<ChartTooltipContent
+                      nameKey="name"
+                      hideIndicator
+                    />}
+                  />
+                  <Pie
+                    data={contractStatusData}
+                    dataKey="value"
+                    nameKey="name"
+                    cx="50%"
+                    cy="50%"
+                    innerRadius={60}
+                    outerRadius={90}
+                    paddingAngle={2}
+                  >
+                    {contractStatusData.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={entry.fill} strokeWidth={0} />
+                    ))}
+                  </Pie>
+                  <ChartLegend
+                    content={<ChartLegendContent />}
+                    nameKey="name"
+                    className="-translate-y-2 flex-wrap gap-2 [&>*]:basis-1/4 [&>*]:justify-center"
+                  />
+                </PieChart>
+              </ResponsiveContainer>
+            </ChartContainer>
+          </CardContent>
         </Card>
       </div>
 
 
-      <Card>
+      <Card className="border-none shadow-md">
         <CardHeader className="flex flex-row items-center">
           <div className="grid gap-2">
             <CardTitle>Factures Récentes</CardTitle>
@@ -275,7 +317,7 @@ export default function Dashboard() {
               Liste des dernières factures créées.
             </CardDescription>
           </div>
-          <Button asChild size="sm" className="ml-auto gap-1">
+          <Button asChild size="sm" variant="ghost" className="ml-auto gap-1 text-primary hover:text-primary/80">
             <Link href="/invoices">
               Voir tout
               <ArrowUpRight className="h-4 w-4" />
@@ -285,33 +327,22 @@ export default function Dashboard() {
         <CardContent>
           <Table>
             <TableHeader>
-              <TableRow>
-                <TableHead>Client</TableHead>
-                <TableHead className="hidden md:table-cell">
+              <TableRow className="hover:bg-transparent border-b border-border/50">
+                <TableHead className="text-muted-foreground">Client</TableHead>
+                <TableHead className="hidden md:table-cell text-muted-foreground">
                   Statut
                 </TableHead>
-                <TableHead className="hidden md:table-cell">Date</TableHead>
-                <TableHead className="text-right">Montant</TableHead>
+                <TableHead className="hidden md:table-cell text-muted-foreground">Date</TableHead>
+                <TableHead className="text-right text-muted-foreground">Montant</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {recentInvoices.map((invoice) => (
-                <TableRow key={invoice.id}>
+                <TableRow key={invoice.id} className="hover:bg-muted/30 border-b border-border/50 last:border-0">
                   <TableCell>
                     <div className="font-medium">{invoice.clientName}</div>
-                    <div className="hidden text-sm text-muted-foreground md:inline">
-                      {invoice.invoiceNumber || invoice.id}
-                    </div>
                   </TableCell>
-                  <TableCell className="hidden md:table-cell">
-                    <Badge variant={invoice.status === 'paid' ? 'secondary' : invoice.status === 'due' ? 'outline' : 'destructive'}>
-                      {translateStatus(invoice.status)}
-                    </Badge>
-                  </TableCell>
-                  <TableCell className="hidden md:table-cell">
-                    {new Date(invoice.date).toLocaleDateString()}
-                  </TableCell>
-                  <TableCell className="text-right">
+                  <TableCell className="text-right font-medium">
                     {invoice.total.toFixed(2)} €
                   </TableCell>
                 </TableRow>
@@ -320,6 +351,6 @@ export default function Dashboard() {
           </Table>
         </CardContent>
       </Card>
-    </>
+    </div>
   );
 }

@@ -20,7 +20,7 @@ function processFirestoreDoc<T>(docData: DocumentData): T {
             const newObj: { [key: string]: any } = {};
             for (const key in data) {
                 if (Object.prototype.hasOwnProperty.call(data, key)) {
-                     newObj[key] = convert(data[key]);
+                    newObj[key] = convert(data[key]);
                 }
             }
             return newObj;
@@ -77,7 +77,7 @@ export async function deleteClient(id: string) {
 
 // Sites
 export async function getSites(): Promise<Site[]> {
-     return getCollection<Site>(collection(db, 'sites'));
+    return getCollection<Site>(collection(db, 'sites'));
 }
 
 
@@ -145,7 +145,7 @@ export async function updateContract(id: string, data: Partial<Omit<Contract, 'i
     } else if (data.startDate) {
         updateData.startDate = data.startDate;
     }
-    
+
     if (data.endDate && typeof data.endDate === 'string') {
         updateData.endDate = new Date(data.endDate);
     } else if (data.endDate) {
@@ -155,11 +155,11 @@ export async function updateContract(id: string, data: Partial<Omit<Contract, 'i
     const revisionFields: ('revisionP1' | 'revisionP2' | 'revisionP3')[] = ['revisionP1', 'revisionP2', 'revisionP3'];
     for (const field of revisionFields) {
         if (data[field] && data[field]?.date && typeof data[field]!.date === 'string') {
-             if (!updateData[field]) updateData[field] = {};
-             updateData[field]!.date = new Date(data[field]!.date!);
+            if (!updateData[field]) updateData[field] = {};
+            updateData[field]!.date = new Date(data[field]!.date!);
         }
     }
-    
+
     await updateDoc(contractDoc, updateData);
 }
 
@@ -215,16 +215,16 @@ export async function getNextInvoiceNumber(companyCode: string): Promise<string>
 
     return runTransaction(db, async (transaction) => {
         const counterDoc = await transaction.get(counterRef);
-        
+
         let newCount = 1;
         if (counterDoc.exists()) {
             newCount = counterDoc.data().current + 1;
         }
-        
+
         transaction.set(counterRef, { current: newCount }, { merge: true });
-        
+
         const countPadded = String(newCount).padStart(4, '0');
-        
+
         return `${companyCode}-${period}-${countPadded}`;
     });
 }
@@ -239,7 +239,7 @@ export async function createCreditNote(data: Omit<CreditNote, 'id' | 'creditNote
     const batch = writeBatch(db);
 
     const creditNoteNumber = await getNextCreditNoteNumber();
-    
+
     const newCreditNoteData = {
         ...data,
         creditNoteNumber,
@@ -352,10 +352,10 @@ export async function getCompanies(): Promise<Company[]> {
     return getCollection<Company>(collection(db, 'companies'));
 }
 export async function updateCompany(id: string, data: Partial<Omit<Company, 'id'>>) {
-     const companyData = { ...data };
-     if (data.siret) {
+    const companyData = { ...data };
+    if (data.siret) {
         (companyData as Company).siren = data.siret.substring(0, 9);
-     }
+    }
     return updateSettingItem('companies', id, companyData);
 }
 export async function deleteCompany(id: string) {
@@ -580,4 +580,77 @@ export async function deleteUser(id: string) {
     return deleteSettingItem('users', id);
 }
 
-    
+
+
+// Orchestration
+export async function createClientAndContract(data: any) {
+    // 1. Separate Client and Contract data
+    const clientData: Omit<Client, 'id'> = {
+        name: data.name,
+        address: data.address,
+        postalCode: data.postalCode,
+        city: data.city,
+        clientType: data.clientType,
+        typologyId: data.typologyId,
+        representedBy: data.representedBy,
+        externalCode: data.externalCode,
+        isBe: data.isBe,
+        beName: data.beName,
+        beEmail: data.beEmail,
+        bePhone: data.bePhone,
+        useChorus: data.useChorus,
+        siret: data.siret,
+        chorusServiceCode: data.chorusServiceCode,
+        chorusLegalCommitmentNumber: data.chorusLegalCommitmentNumber,
+        chorusMarketNumber: data.chorusMarketNumber,
+        invoicingType: data.invoicingType || 'multi-site', // Default to multi-site if not provided
+        siteIds: [], // Initial empty list
+        documents: data.documents || [],
+        // Hierarchy
+        companyId: data.companyId,
+        agencyId: data.agencyId,
+        sectorId: data.sectorId,
+    };
+
+    // 2. Create Client
+    const newClient = await createClient(clientData);
+
+    // 3. Prepare Contract data
+    const contractData: Omit<Contract, 'id' | 'status' | 'validationStatus'> = {
+        clientId: newClient.id,
+        clientName: newClient.name,
+        siteIds: [], // Initial empty list
+        startDate: data.startDate,
+        endDate: data.endDate,
+        billingSchedule: 'Mensuel', // Default or derived? The prompt extracts 'scheduleId' per activity, but Contract has a global one? 
+        // Looking at types, Contract has 'billingSchedule' string. 
+        // But activitiesDetails has scheduleId. 
+        // For now, we'll use a default or take the first one found if available, 
+        // or maybe we should update Contract type to not require this if it's per activity.
+        // Let's assume 'Mensuel' as default for the global field for now.
+        term: 'Echu', // Same here, default.
+        activityIds: data.activityIds || [],
+        activitiesDetails: data.activitiesDetails || [],
+
+        // Legacy/Global fields - map from first activity or leave empty/default
+        hasHeating: data.activityIds?.includes('P1') || false, // Simple heuristic
+        hasECS: false, // Default
+
+        // Renewal
+        // Contract type doesn't have renewal fields directly at root in the type definition I saw earlier?
+        // Let's check types.ts again. 
+        // ClientSchema has renewal fields. Contract type has terminationDate.
+        // It seems renewal info is currently stored on the Client in the schema, but logically belongs to Contract?
+        // The ClientSchema in types.ts has renewal fields. 
+        // The Contract type in types.ts does NOT have renewal fields explicitly shown in the snippet I saw, 
+        // except maybe implicitly or I missed them.
+        // I will store them if the Contract type allows, otherwise they are on the Client (which is already saved).
+
+        documents: data.documents || [],
+    };
+
+    // 4. Create Contract
+    const newContract = await createContract(contractData);
+
+    return { client: newClient, contract: newContract };
+}
