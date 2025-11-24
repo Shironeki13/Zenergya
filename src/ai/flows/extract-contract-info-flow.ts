@@ -23,12 +23,16 @@ const extractContractInfoFlow = ai.defineFlow(
   },
   async ({ documentDataUri, activities, prompt, typologies, schedules, terms }) => {
     
+    Handlebars.registerHelper('json', function(context) {
+        return JSON.stringify(context);
+    });
+
     const template = Handlebars.compile(prompt);
     const fullPrompt = template({
-        activities: JSON.stringify(activities.map(({ id, code, label }) => ({ id, code, label })), null, 2),
-        typologies: JSON.stringify(typologies.map(({ id, name }) => ({ id, name })), null, 2),
-        schedules: JSON.stringify(schedules.map(({ id, name }) => ({ id, name })), null, 2),
-        terms: JSON.stringify(terms.map(({ id, name }) => ({ id, name })), null, 2),
+        activities,
+        typologies,
+        schedules,
+        terms,
     });
     
     const { output } = await ai.generate({
@@ -54,4 +58,3 @@ const extractContractInfoFlow = ai.defineFlow(
     return output!;
   }
 );
-

@@ -152,7 +152,14 @@ export default function NewContractFromPdfPage() {
     
     try {
         const documentDataUri = await fileToDataUrl(file);
-        const result = await extractContractInfo({ documentDataUri, activities, prompt, typologies, schedules, terms });
+        const result = await extractContractInfo({ 
+            documentDataUri, 
+            activities: activities.map(({id, code, label}) => ({id, code, label})), 
+            prompt, 
+            typologies: typologies.map(({id, name}) => ({id, name})), 
+            schedules: schedules.map(({id, name}) => ({id, name})), 
+            terms: terms.map(({id, name}) => ({id, name}))
+        });
 
         const mappedData: Partial<ClientFormValues> = {
             ...result,
