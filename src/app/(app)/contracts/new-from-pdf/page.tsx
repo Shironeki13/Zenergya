@@ -31,7 +31,7 @@ import { fr } from 'date-fns/locale';
 import { Textarea } from '@/components/ui/textarea';
 import { Separator } from '@/components/ui/separator';
 
-const defaultPrompt = `Tu es un expert en analyse de documents contractuels. Analyse le TEXTE ci-dessous et extrais les informations suivantes de manière structurée. Si une information n'est pas trouvée, laisse le champ vide.
+const defaultPrompt = `Tu es un expert en analyse de documents contractuels. Analyse le document PDF fourni et extrais les informations suivantes de manière structurée. Si une information n'est pas trouvée, laisse le champ vide.
 
 Voici les informations à extraire:
 - Raison sociale du client (name): Le nom complet du client. Toujours en MAJUSCULES.
@@ -59,11 +59,6 @@ Voici les informations à extraire:
 - NB contractuels (contractualNB): Les besoins de chauffage contractuels (souvent en kWh).
 - Petit q ECS (ecsSmallQ): Les besoins en Eau Chaude Sanitaire (souvent en kWh/logement ou similaire).
 - NB ECS (ecsNB): Les besoins totaux en Eau Chaude Sanitaire.
-
-TEXTE DU CONTRAT A ANALYSER :
-"""
-COPIEZ ET COLLEZ LE CONTENU DE VOTRE CONTRAT ICI
-"""
 `;
 
 
@@ -246,7 +241,7 @@ export default function NewContractFromPdfPage() {
             <CardHeader>
                 <CardTitle>2. Personnaliser le Prompt</CardTitle>
                 <CardDescription>
-                    Modifiez le prompt ci-dessous pour affiner l'extraction de données si nécessaire. N'oubliez pas de copier-coller le texte de votre contrat dans la zone dédiée.
+                    Modifiez le prompt ci-dessous pour affiner l'extraction de données si nécessaire. L'IA lira le contenu du PDF directement.
                 </CardDescription>
             </CardHeader>
             <CardContent>

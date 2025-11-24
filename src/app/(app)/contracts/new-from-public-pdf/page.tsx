@@ -30,7 +30,7 @@ import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { Textarea } from '@/components/ui/textarea';
 
-const defaultPrompt = `Tu es un expert en analyse de documents contractuels de marchés publics. Analyse le contenu des fichiers TEXTE ci-dessous (Acte d'Engagement, CCAP, CCTP, etc.) et extrais les informations suivantes de manière structurée. Si une information n'est pas trouvée, laisse le champ vide.
+const defaultPrompt = `Tu es un expert en analyse de documents contractuels de marchés publics. Analyse le contenu des fichiers PDF fournis (Acte d'Engagement, CCAP, CCTP, etc.) et extrais les informations suivantes de manière structurée. Si une information n'est pas trouvée, laisse le champ vide.
 
 Voici les informations à extraire:
 - Raison sociale du client (name): Le nom complet du client. Toujours en MAJUSCULES.
@@ -52,11 +52,6 @@ Voici les informations à extraire:
 - SIRET (siret): Le SIRET de l'entité publique.
 - Code service Chorus (chorusServiceCode): Le code service pour la facturation Chorus Pro.
 - Numéro d'engagement juridique (chorusLegalCommitmentNumber): Le numéro EJ pour Chorus.
-
-TEXTE DES DOCUMENTS A ANALYSER :
-"""
-COPIEZ ET COLLEZ LE CONTENU DE TOUS VOS DOCUMENTS ICI (AE, CCAP, CCTP...)
-"""
 `;
 
 
@@ -137,14 +132,7 @@ export default function NewContractFromPublicPdfPage() {
   }
 
   const handleAnalyze = async () => {
-    if (prompt.includes('COPIEZ ET COLLEZ LE CONTENU DE VOS DOCUMENTS ICI')) {
-        toast({
-            title: "Prompt non modifié",
-            description: "Veuillez copier et coller le contenu de vos documents dans le prompt.",
-            variant: "destructive",
-        });
-        return;
-    }
+    
     const mainFile = files.acteEngagement || files.ccap || files.cctp;
     if (!mainFile) {
       toast({
@@ -253,7 +241,7 @@ export default function NewContractFromPublicPdfPage() {
             <CardHeader>
                 <CardTitle>2. Personnaliser le Prompt</CardTitle>
                 <CardDescription>
-                    Copiez et collez le contenu textuel des documents dans le champ ci-dessous pour que l'IA puisse les analyser.
+                    Modifiez le prompt ci-dessous si nécessaire. L'IA lira directement le contenu des PDF fournis.
                 </CardDescription>
             </CardHeader>
             <CardContent>
