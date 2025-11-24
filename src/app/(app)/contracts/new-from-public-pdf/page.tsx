@@ -39,6 +39,9 @@ Voici les informations à extraire:
 - Ville (city): La ville du client. Toujours en MAJUSCULES.
 - Type de client (clientType): 'public'.
 - Typologie du client (typologyId): Déduis la typologie du client. Ce doit être l'un des IDs de la liste suivante : {{{json typologies}}}.
+- Échéancier de facturation (billingSchedule): Trouve la périodicité de facturation. Choisis parmi : {{{json schedules}}}.
+- Terme de facturation (term): Trouve le terme. Choisis parmi : {{{json terms}}}.
+- Station météo (weatherStation): La station météo de référence.
 - activityIds: Trouve les prestations présentes dans le contrat (souvent dans le CCTP ou l'AE). Ce champ doit être un tableau contenant les IDs des prestations détectées. Les prestations à rechercher sont : Fourniture et gestion de l’énergie (P1), Maintenance préventive et petit entretien (P2), Garantie totale / gros entretien (P3). Choisis les IDs parmi cette liste: {{{json activities}}}.
 - amounts: Pour chaque prestation identifiée dans 'activityIds', extrais son montant annuel HT (souvent dans l'Acte d'Engagement). Retourne un tableau d'objets, chacun avec 'activityId' et 'amount'. Si aucun montant n'est trouvé pour une prestation, ne l'inclus pas dans ce tableau.
 - Date de démarrage (startDate): La date de début du contrat ou de notification, au format YYYY-MM-DD.
@@ -90,7 +93,7 @@ export default function NewContractFromPublicPdfPage() {
 
   const { toast } = useToast();
   const router = useRouter();
-  const { clients, typologies, activities } = useData();
+  const { clients, typologies, activities, schedules, terms } = useData();
 
   const form = useForm<ClientFormValues>({
     resolver: zodResolver(ClientSchema),
@@ -155,7 +158,7 @@ export default function NewContractFromPublicPdfPage() {
     
     try {
         const documentDataUri = await fileToDataUrl(mainFile);
-        const result = await extractContractInfo({ documentDataUri, activities, prompt, typologies });
+        const result = await extractContractInfo({ documentDataUri, activities, prompt, typologies, schedules, terms });
 
         const mappedData: Partial<ClientFormValues> = {
             ...result,

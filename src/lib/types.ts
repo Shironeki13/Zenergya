@@ -380,6 +380,14 @@ export const ExtractContractInfoInputSchema = z.object({
       id: z.string(),
       name: z.string(),
   })).describe('List of available typologies to choose from.'),
+  schedules: z.array(z.object({
+      id: z.string(),
+      name: z.string(),
+  })).describe('List of available billing schedules.'),
+  terms: z.array(z.object({
+      id: z.string(),
+      name: z.string(),
+  })).describe('List of available billing terms.'),
 });
 export type ExtractContractInfoInput = z.infer<typeof ExtractContractInfoInputSchema>;
 
@@ -408,6 +416,9 @@ export const ExtractContractInfoOutputSchema = z.object({
   renewalDuration: z.string().optional().describe("La durée de la reconduction (ex: '1 an', '2 ans')."),
   tacitRenewal: z.boolean().optional().describe("Indique si la reconduction est tacite."),
   // New fields
+  billingSchedule: z.string().optional().describe("L'échéancier de facturation, à choisir parmi la liste fournie."),
+  term: z.string().optional().describe("Le terme de facturation, à choisir parmi la liste fournie."),
+  weatherStation: z.string().optional().describe("La station météo de référence pour le contrat."),
   revisionP1: z.string().optional().describe("Formule de révision pour la prestation P1."),
   revisionP2: z.string().optional().describe("Formule de révision pour la prestation P2."),
   revisionP3: z.string().optional().describe("Formule de révision pour la prestation P3."),

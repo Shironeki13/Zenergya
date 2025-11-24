@@ -41,6 +41,9 @@ Voici les informations à extraire:
 - Type de client (clientType): Détermine si le client est 'private' (privé) ou 'public' (public).
 - Typologie du client (typologyId): Déduis la typologie du client. Ce doit être l'un des IDs de la liste suivante : {{{json typologies}}}.
 - Représenté par (representedBy): Le représentant légal, pertinent uniquement si la typologie est 'Copropriété'.
+- Échéancier de facturation (billingSchedule): Trouve la périodicité de facturation. Choisis parmi : {{{json schedules}}}.
+- Terme de facturation (term): Trouve le terme. Choisis parmi : {{{json terms}}}.
+- Station météo (weatherStation): La station météo de référence.
 - activityIds: Trouve les prestations présentes dans le contrat. Ce champ doit être un tableau contenant les IDs des prestations détectées. Les prestations à rechercher sont : Fourniture et gestion de l’énergie (P1), Maintenance préventive et petit entretien (P2), Garantie totale / gros entretien (P3). Choisis les IDs parmi cette liste: {{{json activities}}}.
 - amounts: Pour chaque prestation identifiée dans 'activityIds', extrais son montant annuel HT. Retourne un tableau d'objets, chacun avec 'activityId' et 'amount'. Si aucun montant n'est trouvé pour une prestation, ne l'inclus pas dans ce tableau.
 - Date de démarrage (startDate): La date de début du contrat, au format YYYY-MM-DD.
@@ -85,7 +88,7 @@ export default function NewContractFromPdfPage() {
 
   const { toast } = useToast();
   const router = useRouter();
-  const { clients, typologies, activities } = useData();
+  const { clients, typologies, activities, schedules, terms } = useData();
 
   const form = useForm<ClientFormValues>({
     resolver: zodResolver(ClientSchema),
@@ -162,7 +165,7 @@ export default function NewContractFromPdfPage() {
     
     try {
         const documentDataUri = await fileToDataUrl(file);
-        const result = await extractContractInfo({ documentDataUri, activities, prompt, typologies });
+        const result = await extractContractInfo({ documentDataUri, activities, prompt, typologies, schedules, terms });
 
         const mappedData: Partial<ClientFormValues> = {
             ...result,
@@ -347,6 +350,36 @@ export default function NewContractFromPdfPage() {
                                 </FormItem>
                             )}/>}
                             
+                             <FormField control={form.control} name="billingSchedule" render={({ field }) => (
+                                <FormItem>
+                                <FormLabel>Échéancier de facturation</FormLabel>
+                                 <Select onValueChange={field.onChange} value={field.value}>
+                                    <FormControl><SelectTrigger><SelectValue placeholder="Sélectionnez un échéancier" /></SelectTrigger></FormControl>
+                                    <SelectContent>{schedules.map(s => <SelectItem key={s.id} value={s.name}>{s.name}</SelectItem>)}</SelectContent>
+                                </Select>
+                                <FormMessage />
+                                </FormItem>
+                            )} />
+
+                             <FormField control={form.control} name="term" render={({ field }) => (
+                                <FormItem>
+                                <FormLabel>Terme de facturation</FormLabel>
+                                 <Select onValueChange={field.onChange} value={field.value}>
+                                    <FormControl><SelectTrigger><SelectValue placeholder="Sélectionnez un terme" /></SelectTrigger></FormControl>
+                                    <SelectContent>{terms.map(t => <SelectItem key={t.id} value={t.name}>{t.name}</SelectItem>)}</SelectContent>
+                                </Select>
+                                <FormMessage />
+                                </FormItem>
+                            )} />
+
+                            <FormField control={form.control} name="weatherStation" render={({ field }) => (
+                                <FormItem>
+                                <FormLabel>Station Météo</FormLabel>
+                                <FormControl><Input placeholder="Ex: Paris-Montsouris" {...field} /></FormControl>
+                                <FormMessage />
+                                </FormItem>
+                            )} />
+
                             <FormField
                                 control={form.control} name="activityIds" render={() => (
                                 <FormItem>

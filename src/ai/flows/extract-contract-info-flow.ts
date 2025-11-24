@@ -7,7 +7,7 @@
  */
 import { ai } from '@/ai/genkit';
 import { ExtractContractInfoInputSchema, ExtractContractInfoOutputSchema, type ExtractContractInfoInput, type ExtractContractInfoOutput } from '@/lib/types';
-import { getTypologies } from '@/services/firestore';
+import { getTypologies, getSchedules, getTerms, getActivities } from '@/services/firestore';
 import Handlebars from 'handlebars';
 
 
@@ -21,15 +21,14 @@ const extractContractInfoFlow = ai.defineFlow(
     inputSchema: ExtractContractInfoInputSchema,
     outputSchema: ExtractContractInfoOutputSchema,
   },
-  async ({ documentDataUri, activities, prompt }) => {
+  async ({ documentDataUri, activities, prompt, typologies, schedules, terms }) => {
     
-    // Fetch typologies to inject them into the prompt
-    const typologies = await getTypologies();
-
     const template = Handlebars.compile(prompt);
     const fullPrompt = template({
         activities: JSON.stringify(activities.map(({ id, code, label }) => ({ id, code, label })), null, 2),
         typologies: JSON.stringify(typologies.map(({ id, name }) => ({ id, name })), null, 2),
+        schedules: JSON.stringify(schedules.map(({ id, name }) => ({ id, name })), null, 2),
+        terms: JSON.stringify(terms.map(({ id, name }) => ({ id, name })), null, 2),
     });
     
     const { output } = await ai.generate({
