@@ -1,5 +1,3 @@
-
-
 'use client';
 
 import { useState, useMemo } from 'react';
@@ -33,43 +31,73 @@ import { fr } from 'date-fns/locale';
 import { downloadCSV } from '@/lib/utils';
 
 export default function ContractsPage() {
-  const { contracts, sites, clients, isLoading, reloadData, currentUser } = useData();
+  const { contracts, sites, clients, isLoading, reloadData, currentUser, companies, agencies, sectors } = useData();
   const { toast } = useToast();
   const router = useRouter();
 
+  // Navigation State
+  const [selectedCompanyId, setSelectedCompanyId] = useState<string | null>(null);
+  const [selectedAgencyId, setSelectedAgencyId] = useState<string | null>(null);
+  const [selectedSectorId, setSelectedSectorId] = useState<string | null>(null);
+
+  // Contract Action State
   const [contractToUpdate, setContractToUpdate] = useState<Contract | null>(null);
   const [newStatus, setNewStatus] = useState<"Résilié" | "Terminé" | null>(null);
   const [terminationDate, setTerminationDate] = useState<Date | undefined>(new Date());
-
   const [sitesToShow, setSitesToShow] = useState<Site[]>([]);
   const [isSitesDialogOpen, setIsSitesDialogOpen] = useState(false);
   const [selectedContractClient, setSelectedContractClient] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
 
+  // --- Derived Data for Navigation ---
+
+  // 1. Available Companies (Root Level)
+  const visibleCompanies = useMemo(() => {
+    if (!currentUser?.scope) return [];
+    const { companyIds } = currentUser.scope;
+    if (companyIds.includes('*')) return companies;
+    return companies.filter(c => companyIds.includes(c.id));
+  }, [companies, currentUser]);
+
+  // 2. Available Agencies (Level 2)
+  const visibleAgencies = useMemo(() => {
+    if (!selectedCompanyId) return [];
+    if (!currentUser?.scope) return [];
+    const { agencyIds } = currentUser.scope;
+
+    let filtered = agencies.filter(a => a.companyId === selectedCompanyId);
+
+    if (!agencyIds.includes('*')) {
+      filtered = filtered.filter(a => agencyIds.includes(a.id));
+    }
+    return filtered;
+  }, [agencies, currentUser, selectedCompanyId]);
+
+  // 3. Available Sectors (Level 3)
+  const visibleSectors = useMemo(() => {
+    if (!selectedAgencyId) return [];
+    if (!currentUser?.scope) return [];
+    const { sectorIds } = currentUser.scope;
+
+    let filtered = sectors.filter(s => s.agencyId === selectedAgencyId);
+
+    if (!sectorIds.includes('*')) {
+      filtered = filtered.filter(s => sectorIds.includes(s.id));
+    }
+    return filtered;
+  }, [sectors, currentUser, selectedAgencyId]);
+
+  // 4. Contracts (Leaf Level)
   const filteredContracts = useMemo(() => {
+    if (!selectedSectorId) return [];
+
     let baseContracts = contracts.filter(c => c.validationStatus === 'validated');
 
-    // Filter by User Scope
-    if (currentUser && currentUser.scope) {
-      const { companyIds, agencyIds, sectorIds } = currentUser.scope;
-
-      // If not super admin (has '*')
-      if (!companyIds.includes('*') || !agencyIds.includes('*') || !sectorIds.includes('*')) {
-        baseContracts = baseContracts.filter(contract => {
-          const client = clients.find(c => c.id === contract.clientId);
-          if (!client) return false; // Should not happen, but safe to hide
-
-          // Check Company
-          if (!companyIds.includes('*') && !companyIds.includes(client.companyId)) return false;
-          // Check Agency
-          if (!agencyIds.includes('*') && !agencyIds.includes(client.agencyId)) return false;
-          // Check Sector
-          if (!sectorIds.includes('*') && !sectorIds.includes(client.sectorId)) return false;
-
-          return true;
-        });
-      }
-    }
+    baseContracts = baseContracts.filter(contract => {
+      const client = clients.find(c => c.id === contract.clientId);
+      if (!client) return false;
+      return client.sectorId === selectedSectorId;
+    });
 
     if (!searchTerm) {
       return baseContracts;
@@ -77,8 +105,10 @@ export default function ContractsPage() {
     return baseContracts.filter(contract =>
       contract.clientName.toLowerCase().includes(searchTerm.toLowerCase())
     );
-  }, [contracts, clients, searchTerm, currentUser]);
+  }, [contracts, clients, searchTerm, selectedSectorId]);
 
+
+  // --- Helpers ---
   const handleExport = () => {
     const dataToExport = filteredContracts.map(({ id, ...rest }) => ({
       ...rest,
@@ -88,26 +118,19 @@ export default function ContractsPage() {
     downloadCSV(dataToExport, 'contrats.csv');
   };
 
-
   const getBadgeVariant = (status: Contract['status']): 'secondary' | 'destructive' | 'warning' | 'outline' => {
     switch (status) {
-      case 'Actif':
-        return 'secondary';
-      case 'Résilié':
-        return 'destructive';
-      case 'Terminé':
-        return 'warning';
-      default:
-        return 'outline';
+      case 'Actif': return 'secondary';
+      case 'Résilié': return 'destructive';
+      case 'Terminé': return 'warning';
+      default: return 'outline';
     }
   }
 
   const handleOpenStatusDialog = (contract: Contract, status: "Résilié" | "Terminé") => {
     setContractToUpdate(contract);
     setNewStatus(status);
-    if (status === 'Résilié') {
-      setTerminationDate(new Date());
-    }
+    if (status === 'Résilié') setTerminationDate(new Date());
   }
 
   const handleCloseStatusDialog = () => {
@@ -125,9 +148,7 @@ export default function ContractsPage() {
 
   const handleStatusUpdate = async () => {
     if (!contractToUpdate || !newStatus) return;
-
     let updateData: Partial<Contract> = { status: newStatus };
-
     if (newStatus === 'Résilié') {
       if (!terminationDate) {
         toast({ title: "Erreur", description: "Veuillez sélectionner une date de résiliation.", variant: "destructive" });
@@ -137,7 +158,6 @@ export default function ContractsPage() {
     } else if (newStatus === 'Terminé') {
       updateData.endDate = new Date().toISOString();
     }
-
 
     try {
       await updateContract(contractToUpdate.id, updateData);
@@ -150,15 +170,149 @@ export default function ContractsPage() {
     }
   };
 
+  // --- Render Logic ---
+
+  // Breadcrumbs
+  const renderBreadcrumbs = () => {
+    return (
+      <div className="flex items-center gap-2 text-sm text-muted-foreground mb-4">
+        <Button variant="link" className="p-0 h-auto font-normal" onClick={() => { setSelectedCompanyId(null); setSelectedAgencyId(null); setSelectedSectorId(null); }}>
+          Sociétés
+        </Button>
+        {selectedCompanyId && (
+          <>
+            <span>/</span>
+            <Button variant="link" className="p-0 h-auto font-normal" onClick={() => { setSelectedAgencyId(null); setSelectedSectorId(null); }}>
+              {companies.find(c => c.id === selectedCompanyId)?.name}
+            </Button>
+          </>
+        )}
+        {selectedAgencyId && (
+          <>
+            <span>/</span>
+            <Button variant="link" className="p-0 h-auto font-normal" onClick={() => { setSelectedSectorId(null); }}>
+              {agencies.find(a => a.id === selectedAgencyId)?.name}
+            </Button>
+          </>
+        )}
+        {selectedSectorId && (
+          <>
+            <span>/</span>
+            <span className="font-medium text-foreground">
+              {sectors.find(s => s.id === selectedSectorId)?.name}
+            </span>
+          </>
+        )}
+      </div>
+    );
+  };
+
+  // View 1: Companies List
+  if (!selectedCompanyId) {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <h1 className="text-2xl font-bold tracking-tight">Sélectionnez une Société</h1>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {visibleCompanies.map(company => (
+            <Card key={company.id} className="hover:bg-muted/50 cursor-pointer transition-colors" onClick={() => setSelectedCompanyId(company.id)}>
+              <CardHeader>
+                <CardTitle>{company.name}</CardTitle>
+                <CardDescription>{company.code}</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="text-sm text-muted-foreground">
+                  {agencies.filter(a => a.companyId === company.id).length} Agences
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+          {visibleCompanies.length === 0 && (
+            <div className="col-span-full text-center py-12 text-muted-foreground">
+              Aucune société accessible.
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  // View 2: Agencies List
+  if (!selectedAgencyId) {
+    return (
+      <div className="space-y-6">
+        {renderBreadcrumbs()}
+        <div className="flex items-center justify-between">
+          <h1 className="text-2xl font-bold tracking-tight">Sélectionnez une Agence</h1>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {visibleAgencies.map(agency => (
+            <Card key={agency.id} className="hover:bg-muted/50 cursor-pointer transition-colors" onClick={() => setSelectedAgencyId(agency.id)}>
+              <CardHeader>
+                <CardTitle>{agency.name}</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="text-sm text-muted-foreground">
+                  {sectors.filter(s => s.agencyId === agency.id).length} Secteurs
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+          {visibleAgencies.length === 0 && (
+            <div className="col-span-full text-center py-12 text-muted-foreground">
+              Aucune agence trouvée pour cette société.
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  // View 3: Sectors List
+  if (!selectedSectorId) {
+    return (
+      <div className="space-y-6">
+        {renderBreadcrumbs()}
+        <div className="flex items-center justify-between">
+          <h1 className="text-2xl font-bold tracking-tight">Sélectionnez un Secteur</h1>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {visibleSectors.map(sector => (
+            <Card key={sector.id} className="hover:bg-muted/50 cursor-pointer transition-colors" onClick={() => setSelectedSectorId(sector.id)}>
+              <CardHeader>
+                <CardTitle>{sector.name}</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="text-sm text-muted-foreground">
+                  {/* Could show contract count here if calculated efficiently */}
+                  Voir les contrats
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+          {visibleSectors.length === 0 && (
+            <div className="col-span-full text-center py-12 text-muted-foreground">
+              Aucun secteur trouvé pour cette agence.
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  // View 4: Contracts List (Leaf)
   return (
-    <>
+    <div className="space-y-6">
+      {renderBreadcrumbs()}
+
       <Card>
         <CardHeader>
           <div className="flex items-center justify-between gap-4">
             <div>
-              <CardTitle>Liste des Contrats</CardTitle>
+              <CardTitle>Contrats - {sectors.find(s => s.id === selectedSectorId)?.name}</CardTitle>
               <CardDescription>
-                Gérez tous les contrats de vos clients.
+                Gérez les contrats pour ce secteur.
               </CardDescription>
             </div>
             <div className="flex items-center gap-2">
@@ -265,7 +419,7 @@ export default function ContractsPage() {
                 ))
               ) : (
                 <TableRow>
-                  <TableCell colSpan={6} className="text-center h-24">Aucun contrat trouvé.</TableCell>
+                  <TableCell colSpan={6} className="text-center h-24">Aucun contrat trouvé dans ce secteur.</TableCell>
                 </TableRow>
               )}
             </TableBody>
@@ -358,6 +512,6 @@ export default function ContractsPage() {
           </div>
         </DialogContent>
       </Dialog>
-    </>
+    </div>
   );
 }

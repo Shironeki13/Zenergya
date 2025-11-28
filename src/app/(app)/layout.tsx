@@ -25,6 +25,7 @@ import {
   Calculator,
   ShieldAlert,
   Store,
+  Loader2
 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
@@ -38,15 +39,33 @@ import {
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
 import { UserNav } from '@/components/user-nav';
 import { Logo } from '@/components/logo';
-import { DataProvider, useData } from '@/context/data-context';
+import { useData } from '@/context/data-context';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { cn } from '@/lib/utils';
 
 
 function MainAppLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const { isLoading } = useData();
+  const { isLoading, currentUser } = useData();
+  const router = useRouter();
+
+  useEffect(() => {
+    if (!isLoading && !currentUser) {
+      router.push('/login');
+    }
+  }, [isLoading, currentUser, router]);
+
+  if (isLoading || !currentUser) {
+    return (
+      <div className="h-screen w-full flex items-center justify-center bg-muted/20">
+        <div className="flex flex-col items-center gap-2">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+          <p className="text-muted-foreground text-sm">Chargement...</p>
+        </div>
+      </div>
+    )
+  }
 
   const navItems = [
     { href: '/meters', icon: Gauge, label: 'Compteurs' },
@@ -62,6 +81,7 @@ function MainAppLayout({ children }: { children: React.ReactNode }) {
     { href: '/billing/batch', label: 'Facturation Groupée', icon: Copy },
     { href: '/clients', label: 'Clients', icon: Building },
     { href: '/sites', label: 'Sites', icon: MapPin },
+    { href: '/billing/indices', label: 'Indices', icon: CircleDollarSign },
   ];
 
   const contrathequeLinks = [
@@ -298,8 +318,6 @@ export default function AppLayout({
   children: React.ReactNode;
 }) {
   return (
-    <DataProvider>
-      <MainAppLayout>{children}</MainAppLayout>
-    </DataProvider>
+    <MainAppLayout>{children}</MainAppLayout>
   )
 }

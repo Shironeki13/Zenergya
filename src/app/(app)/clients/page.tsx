@@ -33,9 +33,24 @@ import { useState, useMemo } from 'react';
 import { downloadCSV } from '@/lib/utils';
 
 
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { deleteClient } from "@/services/firestore";
+import { useToast } from "@/hooks/use-toast";
+
 export default function ClientsPage() {
-  const { clients, typologies, isLoading } = useData();
+  const { clients, typologies, isLoading, reloadData } = useData();
   const [searchTerm, setSearchTerm] = useState('');
+  const [clientToDelete, setClientToDelete] = useState<string | null>(null);
+  const { toast } = useToast();
 
   const filteredClients = useMemo(() => {
     const typologyMap = new Map(typologies.map(t => [t.id, t.name]));
@@ -57,6 +72,27 @@ export default function ClientsPage() {
   const handleExport = () => {
     const dataToExport = filteredClients.map(({ id, ...rest }) => rest);
     downloadCSV(dataToExport, 'clients.csv');
+  };
+
+  const handleDeleteClient = async () => {
+    if (!clientToDelete) return;
+    try {
+      await deleteClient(clientToDelete);
+      toast({
+        title: "Client supprimé",
+        description: "Le client et toutes ses données associées ont été supprimés.",
+      });
+      await reloadData();
+    } catch (error) {
+      console.error("Failed to delete client:", error);
+      toast({
+        title: "Erreur",
+        description: "Impossible de supprimer le client.",
+        variant: "destructive",
+      });
+    } finally {
+      setClientToDelete(null);
+    }
   };
 
   return (
@@ -143,7 +179,10 @@ export default function ClientsPage() {
                           <DropdownMenuItem asChild className="cursor-pointer">
                             <Link href={`/clients/${client.id}/edit`}>Modifier</Link>
                           </DropdownMenuItem>
-                          <DropdownMenuItem className="text-destructive cursor-pointer focus:bg-destructive/10 focus:text-destructive">
+                          <DropdownMenuItem
+                            className="text-destructive cursor-pointer focus:bg-destructive/10 focus:text-destructive"
+                            onClick={() => setClientToDelete(client.id)}
+                          >
                             Supprimer
                           </DropdownMenuItem>
                         </DropdownMenuContent>
@@ -162,6 +201,23 @@ export default function ClientsPage() {
           </Table>
         </CardContent>
       </Card>
+
+      <AlertDialog open={!!clientToDelete} onOpenChange={() => setClientToDelete(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Êtes-vous absolument sûr ?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Cette action est irréversible. Elle supprimera définitivement ce client ainsi que tous les sites et contrats associés.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Annuler</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDeleteClient} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+              Supprimer
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

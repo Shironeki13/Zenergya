@@ -140,6 +140,7 @@ export type MonthlyBilling = {
 
 export type RevisionInfo = {
     formulaId?: string | null;
+    formula?: string; // Custom formula string
     date?: string; // ISO String date
 }
 
@@ -179,6 +180,14 @@ export type Contract = {
     activitiesDetails?: z.infer<typeof ActivityDetailSchema>[];
 
     monthlyBilling?: MonthlyBilling[];
+
+    // Revisions (Legacy/Global)
+    revisionP1?: RevisionInfo;
+    revisionP2?: RevisionInfo;
+    revisionP3?: RevisionInfo;
+    analyticP1?: string;
+    analyticP2?: string;
+    analyticP3?: string;
 
     // P1 Specific Fields (Legacy or kept for easy access?)
     // We might want to keep them for backward compatibility or ease of use if not using activitiesDetails everywhere yet
@@ -356,7 +365,8 @@ export type UserScope = {
 
 export type User = {
     id: string;
-    name: string;
+    name: string; // Last Name
+    firstName?: string; // First Name
     email: string;
     roleId: string;
     roleName?: string; // Optional for display
@@ -393,6 +403,84 @@ export const GenerateCreditNoteOutputSchema = z.object({
 });
 export type GenerateCreditNoteOutput = z.infer<typeof GenerateCreditNoteOutputSchema>;
 
+
+// Indices Types
+export type Index = {
+    id: string;
+    code: string;
+    label: string;
+    unit: string;
+    active: boolean;
+    description?: string;
+    type?: 'standard' | 'calculated';
+    formula?: string;
+    decimals?: number;
+}
+
+export type IndexValue = {
+    id: string;
+    indexId: string;
+    period: string; // YYYY-MM
+    value: number;
+    lastUpdated?: string; // ISO String
+    source?: string;
+    comment?: string;
+}
+
+
+
+export type RevisionRuleType = 'PONDERE_SIMPLE' | 'PONDERE_A_B' | 'MONO_MOIS' | 'FIXE';
+
+export type RevisionRuleIndex = {
+    indexId: string;
+    coefficient: number; // Weight of the index in the formula
+}
+
+export type RevisionRule = {
+    id: string;
+    code: string;
+    name: string;
+    type: RevisionRuleType;
+    nbMonths: number; // Number of months for the average (e.g., 3)
+    paramA?: number; // For PONDERE_A_B (e.g., 0.05)
+    paramB?: number; // For PONDERE_A_B (e.g., 0.95)
+    indices: RevisionRuleIndex[];
+    description?: string;
+}
+
+export type ServiceType = 'P1' | 'P2' | 'P3';
+
+export type ServiceMeterAssociation = {
+    meterId: string;
+    usage: string; // e.g., 'ECS', 'Chauffage'
+    distributionCoef: number; // e.g., 1.0 or 0.5
+}
+
+export type Service = {
+    id: string;
+    contractId: string;
+    siteId: string;
+    type: ServiceType; // P1, P2, P3
+    activityId: string; // Link to Activity (ECS, Chauffage, Maintenance...)
+
+    // Pricing & Revision
+    billingMode?: string; // e.g., 'M3', 'KWH', 'FORFAIT'
+    basePrice?: number; // Prix unitaire de base or Forfait amount
+    baseIndexDate?: string; // Date de référence pour C0 (ISO string)
+    baseIndexValue?: number; // Valeur C0 explicite (optional)
+
+    revisionRuleId?: string; // Link to RevisionRule
+
+    // P2/P3 Specifics
+    periodicity?: string; // e.g., 'Mensuel', 'Trimestriel', 'Annuel'
+    startDate?: string;
+    endDate?: string;
+
+    // P1 Specifics
+    associatedMeters?: ServiceMeterAssociation[];
+
+    description?: string;
+}
 
 export const ExtractContractInfoInputSchema = z.object({
     documentDataUri: z.string().describe("A contract document as a data URI that must include a MIME type and use Base64 encoding. Expected format: 'data:application/pdf;base64,<encoded_data>'."),
@@ -449,6 +537,8 @@ export type DataContextType = {
     contracts: Contract[];
     invoices: Invoice[];
     creditNotes: CreditNote[];
+    indices: Index[];
+    indexValues: IndexValue[];
     meters: Meter[];
     meterTypes: MeterType[];
     meterReadings: MeterReading[];
@@ -461,19 +551,19 @@ export type DataContextType = {
     typologies: Typology[];
     vatRates: VatRate[];
     revisionFormulas: RevisionFormula[];
+    revisionRules: RevisionRule[];
+    services: Service[];
     paymentTerms: PaymentTerm[];
     pricingRules: PricingRule[];
     markets: Market[];
     roles: Role[];
-    users: User[];
     currentUser: User | null;
     setCurrentUser: (user: User | null) => void;
     isLoading: boolean;
     reloadData: () => Promise<void>;
+    login: (email: string, password: string) => Promise<void>;
+    signup: (email: string, password: string) => Promise<void>;
+    loginWithGoogle: () => Promise<void>;
+    logout: () => Promise<void>;
 };
-
-
-
-
-
 

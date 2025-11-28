@@ -86,7 +86,7 @@ export default function ContractsValidationPage() {
               {pendingContracts.map((contract) => (
                 <TableRow key={contract.id}>
                   <TableCell className="font-medium">{contract.clientName}</TableCell>
-                  <TableCell>{new Date().toLocaleDateString()}</TableCell> {/* Placeholder */}
+                  <TableCell>{new Date().toLocaleDateString()}</TableCell>
                   <TableCell className="hidden md:table-cell">{new Date(contract.startDate).toLocaleDateString()}</TableCell>
                   <TableCell className="hidden md:table-cell">{new Date(contract.endDate).toLocaleDateString()}</TableCell>
                   <TableCell className="text-right">
@@ -96,6 +96,11 @@ export default function ContractsValidationPage() {
                       </Button>
                       <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleUpdateStatus(contract.id, 'refused')}>
                         <X className="h-4 w-4 text-destructive" />
+                      </Button>
+                      <Button variant="ghost" size="icon" className="h-8 w-8" asChild>
+                        <Link href={`/contracts/${contract.id}/ai-validation`}>
+                          <ShieldCheck className="h-4 w-4 text-blue-600" />
+                        </Link>
                       </Button>
                       <Button variant="ghost" size="icon" className="h-8 w-8" asChild>
                         <Link href={`/contracts/${contract.id}/edit`}>

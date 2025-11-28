@@ -145,6 +145,7 @@ const UsersSection = () => {
     const [userToDelete, setUserToDelete] = useState<User | null>(null);
 
     const [name, setName] = useState('');
+    const [firstName, setFirstName] = useState('');
     const [email, setEmail] = useState('');
     const [roleId, setRoleId] = useState('');
 
@@ -162,6 +163,7 @@ const UsersSection = () => {
 
     const resetForm = () => {
         setName('');
+        setFirstName('');
         setEmail('');
         setRoleId('');
         setSelectedModules([]);
@@ -175,6 +177,7 @@ const UsersSection = () => {
         setEditingUser(user);
         if (user) {
             setName(user.name);
+            setFirstName(user.firstName || '');
             setEmail(user.email);
             setRoleId(user.roleId);
             setSelectedModules(user.modules || []);
@@ -194,6 +197,7 @@ const UsersSection = () => {
         try {
             const userData = {
                 name,
+                firstName,
                 email,
                 roleId,
                 modules: selectedModules,
@@ -242,11 +246,16 @@ const UsersSection = () => {
 
     // Filtered lists for scope selection
     const filteredAgencies = useMemo(() => {
+        if (selectedCompanyIds.includes('*')) return agencies; // All agencies if all companies selected (or handle logic differently?)
+        // Actually if * companies, we probably want to allow selecting * agencies or specific agencies from all?
+        // Usually if * companies, it implies access to all agencies of all companies.
+        // But let's stick to the drill down. If * companies, show all agencies.
         if (selectedCompanyIds.length === 0) return [];
         return agencies.filter(a => selectedCompanyIds.includes(a.companyId));
     }, [agencies, selectedCompanyIds]);
 
     const filteredSectors = useMemo(() => {
+        if (selectedAgencyIds.includes('*')) return sectors;
         if (selectedAgencyIds.length === 0) return [];
         return sectors.filter(s => selectedAgencyIds.includes(s.agencyId));
     }, [sectors, selectedAgencyIds]);
@@ -270,18 +279,20 @@ const UsersSection = () => {
                         <TableHeader>
                             <TableRow>
                                 <TableHead>Nom</TableHead>
+                                <TableHead>Prénom</TableHead>
                                 <TableHead>Email</TableHead>
                                 <TableHead>Rôle</TableHead>
                                 <TableHead className="w-[100px] text-right">Actions</TableHead>
                             </TableRow>
                         </TableHeader>
                         <TableBody>
-                            {isLoading ? (<TableRow><TableCell colSpan={4} className="text-center h-24"><Loader2 className="mx-auto h-8 w-8 animate-spin text-muted-foreground" /></TableCell></TableRow>
-                            ) : usersWithDetails.length === 0 ? (<TableRow><TableCell colSpan={4} className="text-center">Aucun utilisateur.</TableCell></TableRow>
+                            {isLoading ? (<TableRow><TableCell colSpan={5} className="text-center h-24"><Loader2 className="mx-auto h-8 w-8 animate-spin text-muted-foreground" /></TableCell></TableRow>
+                            ) : usersWithDetails.length === 0 ? (<TableRow><TableCell colSpan={5} className="text-center">Aucun utilisateur.</TableCell></TableRow>
                             ) : (
                                 usersWithDetails.map(user => (
                                     <TableRow key={user.id}>
                                         <TableCell className="font-medium">{user.name}</TableCell>
+                                        <TableCell>{user.firstName || '-'}</TableCell>
                                         <TableCell>{user.email}</TableCell>
                                         <TableCell>{user.roleName}</TableCell>
                                         <TableCell className="text-right">
@@ -318,6 +329,10 @@ const UsersSection = () => {
                                     <Input id="userName" value={name} onChange={e => setName(e.target.value)} required />
                                 </div>
                                 <div className="space-y-2">
+                                    <Label htmlFor="userFirstName">Prénom</Label>
+                                    <Input id="userFirstName" value={firstName} onChange={e => setFirstName(e.target.value)} />
+                                </div>
+                                <div className="space-y-2 col-span-2">
                                     <Label htmlFor="userEmail">Email</Label>
                                     <Input id="userEmail" type="email" value={email} onChange={e => setEmail(e.target.value)} required />
                                 </div>
@@ -362,23 +377,42 @@ const UsersSection = () => {
                                 <div className="space-y-2">
                                     <Label>Sociétés</Label>
                                     <div className="grid grid-cols-2 gap-2 border p-2 rounded-md max-h-32 overflow-y-auto">
+                                        <div className="flex items-center space-x-2 col-span-2 pb-2 border-b mb-2">
+                                            <input
+                                                type="checkbox"
+                                                id="company-all"
+                                                checked={selectedCompanyIds.includes('*')}
+                                                onChange={(e) => {
+                                                    if (e.target.checked) {
+                                                        setSelectedCompanyIds(['*']);
+                                                        // If all companies, we might want to reset agencies/sectors or auto-select all?
+                                                        // For now, let's reset them to force explicit choice or assume * implies * everywhere?
+                                                        // Usually * companies means access to everything under them.
+                                                        // But the UI allows further refinement? 
+                                                        // If I select * companies, filteredAgencies will show ALL agencies.
+                                                    } else {
+                                                        setSelectedCompanyIds([]);
+                                                    }
+                                                }}
+                                                className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary"
+                                            />
+                                            <Label htmlFor="company-all" className="font-bold cursor-pointer text-sm">Tout(es)</Label>
+                                        </div>
                                         {companies.map(company => (
                                             <div key={company.id} className="flex items-center space-x-2">
                                                 <input
                                                     type="checkbox"
                                                     id={`company-${company.id}`}
-                                                    checked={selectedCompanyIds.includes(company.id)}
+                                                    checked={selectedCompanyIds.includes(company.id) || selectedCompanyIds.includes('*')}
+                                                    disabled={selectedCompanyIds.includes('*')}
                                                     onChange={(e) => {
                                                         const newIds = e.target.checked
                                                             ? [...selectedCompanyIds, company.id]
                                                             : selectedCompanyIds.filter(id => id !== company.id);
                                                         setSelectedCompanyIds(newIds);
-                                                        // Reset dependent selections if parent is deselected
                                                         if (!e.target.checked) {
                                                             const relatedAgencyIds = agencies.filter(a => a.companyId === company.id).map(a => a.id);
                                                             setSelectedAgencyIds(prev => prev.filter(id => !relatedAgencyIds.includes(id)));
-                                                            // Sectors will be filtered out by agency change logic if we were more granular, 
-                                                            // but here we just filter sectors based on remaining agencies
                                                         }
                                                     }}
                                                     className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary"
@@ -389,16 +423,33 @@ const UsersSection = () => {
                                     </div>
                                 </div>
 
-                                {selectedCompanyIds.length > 0 && (
+                                {(selectedCompanyIds.length > 0) && (
                                     <div className="space-y-2">
                                         <Label>Agences</Label>
                                         <div className="grid grid-cols-2 gap-2 border p-2 rounded-md max-h-32 overflow-y-auto">
+                                            <div className="flex items-center space-x-2 col-span-2 pb-2 border-b mb-2">
+                                                <input
+                                                    type="checkbox"
+                                                    id="agency-all"
+                                                    checked={selectedAgencyIds.includes('*')}
+                                                    onChange={(e) => {
+                                                        if (e.target.checked) {
+                                                            setSelectedAgencyIds(['*']);
+                                                        } else {
+                                                            setSelectedAgencyIds([]);
+                                                        }
+                                                    }}
+                                                    className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary"
+                                                />
+                                                <Label htmlFor="agency-all" className="font-bold cursor-pointer text-sm">Tout(es)</Label>
+                                            </div>
                                             {filteredAgencies.map(agency => (
                                                 <div key={agency.id} className="flex items-center space-x-2">
                                                     <input
                                                         type="checkbox"
                                                         id={`agency-${agency.id}`}
-                                                        checked={selectedAgencyIds.includes(agency.id)}
+                                                        checked={selectedAgencyIds.includes(agency.id) || selectedAgencyIds.includes('*')}
+                                                        disabled={selectedAgencyIds.includes('*')}
                                                         onChange={(e) => {
                                                             const newIds = e.target.checked
                                                                 ? [...selectedAgencyIds, agency.id]
@@ -418,16 +469,33 @@ const UsersSection = () => {
                                     </div>
                                 )}
 
-                                {selectedAgencyIds.length > 0 && (
+                                {(selectedAgencyIds.length > 0) && (
                                     <div className="space-y-2">
                                         <Label>Secteurs</Label>
                                         <div className="grid grid-cols-2 gap-2 border p-2 rounded-md max-h-32 overflow-y-auto">
+                                            <div className="flex items-center space-x-2 col-span-2 pb-2 border-b mb-2">
+                                                <input
+                                                    type="checkbox"
+                                                    id="sector-all"
+                                                    checked={selectedSectorIds.includes('*')}
+                                                    onChange={(e) => {
+                                                        if (e.target.checked) {
+                                                            setSelectedSectorIds(['*']);
+                                                        } else {
+                                                            setSelectedSectorIds([]);
+                                                        }
+                                                    }}
+                                                    className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary"
+                                                />
+                                                <Label htmlFor="sector-all" className="font-bold cursor-pointer text-sm">Tout(es)</Label>
+                                            </div>
                                             {filteredSectors.map(sector => (
                                                 <div key={sector.id} className="flex items-center space-x-2">
                                                     <input
                                                         type="checkbox"
                                                         id={`sector-${sector.id}`}
-                                                        checked={selectedSectorIds.includes(sector.id)}
+                                                        checked={selectedSectorIds.includes(sector.id) || selectedSectorIds.includes('*')}
+                                                        disabled={selectedSectorIds.includes('*')}
                                                         onChange={(e) => {
                                                             const newIds = e.target.checked
                                                                 ? [...selectedSectorIds, sector.id]

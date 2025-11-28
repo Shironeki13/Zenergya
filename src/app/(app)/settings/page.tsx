@@ -1,4 +1,3 @@
-
 'use client';
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import Image from 'next/image';
@@ -13,33 +12,33 @@ import { Label } from "@/components/ui/label";
 import { PlusCircle, Trash2, Edit, UploadCloud, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Textarea } from '@/components/ui/textarea';
-import type { Company, Agency, Sector, Activity, Schedule, Term, VatRate, Typology, RevisionFormula, PaymentTerm, PricingRule, Market, MeterType } from "@/lib/types";
-import { 
-  updateCompany, deleteCompany,
-  updateAgency, deleteAgency,
-  updateSector, deleteSector,
-  updateActivity, deleteActivity,
-  updateSchedule, deleteSchedule,
-  updateTerm, deleteTerm,
-  updateTypology, deleteTypology,
-  updateVatRate, deleteVatRate,
-  updateRevisionFormula, deleteRevisionFormula,
-  updatePaymentTerm, deletePaymentTerm,
-  updatePricingRule, deletePricingRule,
-  updateMarket, deleteMarket,
-  updateMeterType, deleteMeterType,
-  createCompany, createAgency, createSector, createActivity, createSchedule, createTerm, createTypology, createVatRate, createRevisionFormula, createPaymentTerm, createPricingRule, createMarket, createMeterType,
+import type { Company, Agency, Sector, Activity, Schedule, Term, VatRate, Typology, RevisionRule, PaymentTerm, PricingRule, Market, MeterType } from "@/lib/types";
+import {
+    updateCompany, deleteCompany,
+    updateAgency, deleteAgency,
+    updateSector, deleteSector,
+    updateActivity, deleteActivity,
+    updateSchedule, deleteSchedule,
+    updateTerm, deleteTerm,
+    updateTypology, deleteTypology,
+    updateVatRate, deleteVatRate,
+    createRevisionRule, updateRevisionRule, deleteRevisionRule,
+    updatePaymentTerm, deletePaymentTerm,
+    updatePricingRule, deletePricingRule,
+    updateMarket, deleteMarket,
+    updateMeterType, deleteMeterType,
+    createCompany, createAgency, createSector, createActivity, createSchedule, createTerm, createTypology, createVatRate, createPaymentTerm, createPricingRule, createMarket, createMeterType,
 } from "@/services/firestore";
 import { useData } from '@/context/data-context';
 
 
 const fileToDataUrl = (file: File): Promise<string> => {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(reader.result as string);
-    reader.onerror = reject;
-    reader.readAsDataURL(file);
-  });
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result as string);
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+    });
 };
 
 // Section pour les Sociétés
@@ -61,7 +60,7 @@ const CompaniesSection = ({ onCompaniesUpdate }: { onCompaniesUpdate: (companies
     const [vatNumber, setVatNumber] = useState('');
     const [logoFile, setLogoFile] = useState<File | null>(null);
     const [logoPreview, setLogoPreview] = useState<string | null>(null);
-    
+
     useEffect(() => {
         if (siret && siret.length >= 9) {
             setSiren(siret.substring(0, 9));
@@ -123,7 +122,7 @@ const CompaniesSection = ({ onCompaniesUpdate }: { onCompaniesUpdate: (companies
             }
 
             const companyData = { name, code, address, postalCode, city, siret, siren, vatNumber, logoUrl };
-            
+
             if (editingCompany) {
                 await updateCompany(editingCompany.id, companyData);
                 toast({ title: "Succès", description: "Société mise à jour." });
@@ -131,7 +130,7 @@ const CompaniesSection = ({ onCompaniesUpdate }: { onCompaniesUpdate: (companies
                 await createCompany(companyData as any);
                 toast({ title: "Succès", description: "Société créée." });
             }
-            
+
             await reloadData();
             setDialogOpen(false);
             resetForm();
@@ -153,153 +152,153 @@ const CompaniesSection = ({ onCompaniesUpdate }: { onCompaniesUpdate: (companies
             toast({ title: "Erreur", description: "Impossible de supprimer la société.", variant: "destructive" });
         }
     };
-    
-    return (
-    <Card>
-      <CardHeader>
-        <div className="flex justify-between items-center">
-            <div>
-                <CardTitle>Sociétés</CardTitle>
-                <CardDescription>Gérez vos sociétés, leurs logos et leurs adresses.</CardDescription>
-            </div>
-            <Button size="sm" className="gap-1" onClick={() => handleOpenDialog()}>
-                <PlusCircle className="h-4 w-4" /> Créer
-            </Button>
-        </div>
-      </CardHeader>
-      <CardContent>
-        <div className="border rounded-md">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead className="w-[80px]">Logo</TableHead>
-                <TableHead className="w-[100px]">Code</TableHead>
-                <TableHead>Nom</TableHead>
-                <TableHead>SIRET</TableHead>
-                <TableHead>TVA Intra.</TableHead>
-                <TableHead className="w-[100px] text-right">Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {isLoading ? (
-                <TableRow><TableCell colSpan={6} className="text-center h-24"><Loader2 className="mx-auto h-8 w-8 animate-spin text-muted-foreground" /></TableCell></TableRow>
-              ) : companies.length === 0 ? (
-                <TableRow><TableCell colSpan={6} className="text-center">Aucune société trouvée.</TableCell></TableRow>
-              ) : (
-                companies.map((company) => (
-                  <TableRow key={company.id}>
-                    <TableCell>
-                      {company.logoUrl ? (
-                         <Image src={company.logoUrl} alt={company.name} width={40} height={40} className="rounded-md object-contain" />
-                      ) : (
-                        <div className="h-10 w-10 bg-muted rounded-md flex items-center justify-center text-muted-foreground">?</div>
-                      )}
-                    </TableCell>
-                    <TableCell className="font-medium">{company.code}</TableCell>
-                    <TableCell className="font-medium">{company.name}</TableCell>
-                    <TableCell>{company.siret || 'N/A'}</TableCell>
-                    <TableCell>{company.vatNumber || 'N/A'}</TableCell>
-                    <TableCell className="text-right">
-                       <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleOpenDialog(company)}>
-                          <Edit className="h-4 w-4" />
-                       </Button>
-                       <Dialog open={!!companyToDelete && companyToDelete.id === company.id} onOpenChange={(isOpen) => !isOpen && setCompanyToDelete(null)}>
-                          <DialogTrigger asChild>
-                             <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive" onClick={() => setCompanyToDelete(company)}>
-                                <Trash2 className="h-4 w-4" />
-                             </Button>
-                          </DialogTrigger>
-                          <DialogContent>
-                              <DialogHeader>
-                                  <DialogTitle>Supprimer {companyToDelete?.name}</DialogTitle>
-                                  <DialogDescription>
-                                      Cette action est irréversible. La suppression de cette société entraînera la suppression de toutes les agences et secteurs associés.
-                                  </DialogDescription>
-                              </DialogHeader>
-                              <DialogFooter>
-                                  <Button variant="outline" onClick={() => setCompanyToDelete(null)}>Annuler</Button>
-                                  <Button variant="destructive" onClick={handleDelete}>Confirmer</Button>
-                              </DialogFooter>
-                          </DialogContent>
-                       </Dialog>
-                    </TableCell>
-                  </TableRow>
-                ))
-              )}
-            </TableBody>
-          </Table>
-        </div>
 
-        <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-            <DialogContent className="sm:max-w-[600px]">
-                <DialogHeader>
-                    <DialogTitle>{editingCompany ? 'Modifier la société' : 'Nouvelle société'}</DialogTitle>
-                </DialogHeader>
-                <form onSubmit={handleSubmit} className="space-y-4">
-                    <div className="grid grid-cols-3 gap-4">
-                      <div className="space-y-2 col-span-2">
-                          <Label htmlFor="name">Nom</Label>
-                          <Input id="name" value={name} onChange={(e) => setName(e.target.value)} required />
-                      </div>
-                       <div className="space-y-2">
-                          <Label htmlFor="code">Code Société</Label>
-                          <Input 
-                            id="code" 
-                            value={code} 
-                            onChange={(e) => setCode(e.target.value.toUpperCase().replace(/[^A-Z]/g, ''))}
-                            maxLength={3}
-                            placeholder="EX: ABC"
-                            required 
-                          />
-                      </div>
+    return (
+        <Card>
+            <CardHeader>
+                <div className="flex justify-between items-center">
+                    <div>
+                        <CardTitle>Sociétés</CardTitle>
+                        <CardDescription>Gérez vos sociétés, leurs logos et leurs adresses.</CardDescription>
                     </div>
-                     <div className="space-y-2">
-                        <Label htmlFor="address">Adresse</Label>
-                        <Input id="address" value={address} onChange={(e) => setAddress(e.target.value)} />
-                    </div>
-                    <div className="grid grid-cols-2 gap-4">
-                        <div className="space-y-2">
-                            <Label htmlFor="postalCode">Code Postal</Label>
-                            <Input id="postalCode" value={postalCode} onChange={(e) => setPostalCode(e.target.value)} />
-                        </div>
-                        <div className="space-y-2">
-                            <Label htmlFor="city">Ville</Label>
-                            <Input id="city" value={city} onChange={(e) => setCity(e.target.value)} />
-                        </div>
-                    </div>
-                     <div className="grid grid-cols-2 gap-4">
-                        <div className="space-y-2">
-                            <Label htmlFor="siret">SIRET</Label>
-                            <Input id="siret" value={siret} onChange={(e) => setSiret(e.target.value)} />
-                        </div>
-                        <div className="space-y-2">
-                            <Label htmlFor="siren">SIREN</Label>
-                            <Input id="siren" value={siren} readOnly className="bg-muted" />
-                        </div>
-                    </div>
-                    <div className="space-y-2">
-                        <Label htmlFor="vatNumber">N° TVA Intracommunautaire</Label>
-                        <Input id="vatNumber" value={vatNumber} onChange={(e) => setVatNumber(e.target.value)} />
-                    </div>
-                    <div className="space-y-2">
-                        <Label>Logo</Label>
-                        <div className="flex items-center gap-4">
-                            <div className="h-20 w-20 border rounded-md flex items-center justify-center bg-muted overflow-hidden">
-                                {logoPreview ? <Image src={logoPreview} alt="Aperçu" width={80} height={80} className="object-contain"/> : <UploadCloud className="h-8 w-8 text-muted-foreground" />}
+                    <Button size="sm" className="gap-1" onClick={() => handleOpenDialog()}>
+                        <PlusCircle className="h-4 w-4" /> Créer
+                    </Button>
+                </div>
+            </CardHeader>
+            <CardContent>
+                <div className="border rounded-md">
+                    <Table>
+                        <TableHeader>
+                            <TableRow>
+                                <TableHead className="w-[80px]">Logo</TableHead>
+                                <TableHead className="w-[100px]">Code</TableHead>
+                                <TableHead>Nom</TableHead>
+                                <TableHead>SIRET</TableHead>
+                                <TableHead>TVA Intra.</TableHead>
+                                <TableHead className="w-[100px] text-right">Actions</TableHead>
+                            </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                            {isLoading ? (
+                                <TableRow><TableCell colSpan={6} className="text-center h-24"><Loader2 className="mx-auto h-8 w-8 animate-spin text-muted-foreground" /></TableCell></TableRow>
+                            ) : companies.length === 0 ? (
+                                <TableRow><TableCell colSpan={6} className="text-center">Aucune société trouvée.</TableCell></TableRow>
+                            ) : (
+                                companies.map((company) => (
+                                    <TableRow key={company.id}>
+                                        <TableCell>
+                                            {company.logoUrl ? (
+                                                <Image src={company.logoUrl} alt={company.name} width={40} height={40} className="rounded-md object-contain" />
+                                            ) : (
+                                                <div className="h-10 w-10 bg-muted rounded-md flex items-center justify-center text-muted-foreground">?</div>
+                                            )}
+                                        </TableCell>
+                                        <TableCell className="font-medium">{company.code}</TableCell>
+                                        <TableCell className="font-medium">{company.name}</TableCell>
+                                        <TableCell>{company.siret || 'N/A'}</TableCell>
+                                        <TableCell>{company.vatNumber || 'N/A'}</TableCell>
+                                        <TableCell className="text-right">
+                                            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleOpenDialog(company)}>
+                                                <Edit className="h-4 w-4" />
+                                            </Button>
+                                            <Dialog open={!!companyToDelete && companyToDelete.id === company.id} onOpenChange={(isOpen) => !isOpen && setCompanyToDelete(null)}>
+                                                <DialogTrigger asChild>
+                                                    <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive" onClick={() => setCompanyToDelete(company)}>
+                                                        <Trash2 className="h-4 w-4" />
+                                                    </Button>
+                                                </DialogTrigger>
+                                                <DialogContent>
+                                                    <DialogHeader>
+                                                        <DialogTitle>Supprimer {companyToDelete?.name}</DialogTitle>
+                                                        <DialogDescription>
+                                                            Cette action est irréversible. La suppression de cette société entraînera la suppression de toutes les agences et secteurs associés.
+                                                        </DialogDescription>
+                                                    </DialogHeader>
+                                                    <DialogFooter>
+                                                        <Button variant="outline" onClick={() => setCompanyToDelete(null)}>Annuler</Button>
+                                                        <Button variant="destructive" onClick={handleDelete}>Confirmer</Button>
+                                                    </DialogFooter>
+                                                </DialogContent>
+                                            </Dialog>
+                                        </TableCell>
+                                    </TableRow>
+                                ))
+                            )}
+                        </TableBody>
+                    </Table>
+                </div>
+
+                <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+                    <DialogContent className="sm:max-w-[600px]">
+                        <DialogHeader>
+                            <DialogTitle>{editingCompany ? 'Modifier la société' : 'Nouvelle société'}</DialogTitle>
+                        </DialogHeader>
+                        <form onSubmit={handleSubmit} className="space-y-4">
+                            <div className="grid grid-cols-3 gap-4">
+                                <div className="space-y-2 col-span-2">
+                                    <Label htmlFor="name">Nom</Label>
+                                    <Input id="name" value={name} onChange={(e) => setName(e.target.value)} required />
+                                </div>
+                                <div className="space-y-2">
+                                    <Label htmlFor="code">Code Société</Label>
+                                    <Input
+                                        id="code"
+                                        value={code}
+                                        onChange={(e) => setCode(e.target.value.toUpperCase().replace(/[^A-Z]/g, ''))}
+                                        maxLength={3}
+                                        placeholder="EX: ABC"
+                                        required
+                                    />
+                                </div>
                             </div>
-                            <Input id="logo" type="file" accept="image/*" onChange={handleFileChange} className="flex-1" />
-                        </div>
-                    </div>
-                    <DialogFooter>
-                        <DialogClose asChild><Button type="button" variant="outline">Annuler</Button></DialogClose>
-                        <Button type="submit" disabled={isSubmitting}>{isSubmitting ? "Enregistrement..." : "Enregistrer"}</Button>
-                    </DialogFooter>
-                </form>
-            </DialogContent>
-        </Dialog>
-      </CardContent>
-    </Card>
-  );
+                            <div className="space-y-2">
+                                <Label htmlFor="address">Adresse</Label>
+                                <Input id="address" value={address} onChange={(e) => setAddress(e.target.value)} />
+                            </div>
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className="space-y-2">
+                                    <Label htmlFor="postalCode">Code Postal</Label>
+                                    <Input id="postalCode" value={postalCode} onChange={(e) => setPostalCode(e.target.value)} />
+                                </div>
+                                <div className="space-y-2">
+                                    <Label htmlFor="city">Ville</Label>
+                                    <Input id="city" value={city} onChange={(e) => setCity(e.target.value)} />
+                                </div>
+                            </div>
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className="space-y-2">
+                                    <Label htmlFor="siret">SIRET</Label>
+                                    <Input id="siret" value={siret} onChange={(e) => setSiret(e.target.value)} />
+                                </div>
+                                <div className="space-y-2">
+                                    <Label htmlFor="siren">SIREN</Label>
+                                    <Input id="siren" value={siren} readOnly className="bg-muted" />
+                                </div>
+                            </div>
+                            <div className="space-y-2">
+                                <Label htmlFor="vatNumber">N° TVA Intracommunautaire</Label>
+                                <Input id="vatNumber" value={vatNumber} onChange={(e) => setVatNumber(e.target.value)} />
+                            </div>
+                            <div className="space-y-2">
+                                <Label>Logo</Label>
+                                <div className="flex items-center gap-4">
+                                    <div className="h-20 w-20 border rounded-md flex items-center justify-center bg-muted overflow-hidden">
+                                        {logoPreview ? <Image src={logoPreview} alt="Aperçu" width={80} height={80} className="object-contain" /> : <UploadCloud className="h-8 w-8 text-muted-foreground" />}
+                                    </div>
+                                    <Input id="logo" type="file" accept="image/*" onChange={handleFileChange} className="flex-1" />
+                                </div>
+                            </div>
+                            <DialogFooter>
+                                <DialogClose asChild><Button type="button" variant="outline">Annuler</Button></DialogClose>
+                                <Button type="submit" disabled={isSubmitting}>{isSubmitting ? "Enregistrement..." : "Enregistrer"}</Button>
+                            </DialogFooter>
+                        </form>
+                    </DialogContent>
+                </Dialog>
+            </CardContent>
+        </Card>
+    );
 };
 
 
@@ -315,7 +314,7 @@ const AgenciesSection = ({ onAgenciesUpdate }: { onAgenciesUpdate: (agencies: Ag
 
     const [name, setName] = useState('');
     const [companyId, setCompanyId] = useState('');
-    
+
     const resetForm = () => { setName(''); setCompanyId(''); setEditingAgency(null); };
 
     const handleOpenDialog = (agency: Agency | null = null) => {
@@ -379,7 +378,7 @@ const AgenciesSection = ({ onAgenciesUpdate }: { onAgenciesUpdate: (agencies: Ag
                         <CardTitle>Agences</CardTitle>
                         <CardDescription>Gérez vos agences et leur rattachement aux sociétés.</CardDescription>
                     </div>
-                     <Button size="sm" className="gap-1" onClick={() => handleOpenDialog()}>
+                    <Button size="sm" className="gap-1" onClick={() => handleOpenDialog()}>
                         <PlusCircle className="h-4 w-4" /> Créer
                     </Button>
                 </div>
@@ -395,8 +394,8 @@ const AgenciesSection = ({ onAgenciesUpdate }: { onAgenciesUpdate: (agencies: Ag
                             </TableRow>
                         </TableHeader>
                         <TableBody>
-                            {isLoading ? ( <TableRow><TableCell colSpan={3} className="text-center h-24"><Loader2 className="mx-auto h-8 w-8 animate-spin text-muted-foreground" /></TableCell></TableRow>
-                            ) : agenciesWithDetails.length === 0 ? ( <TableRow><TableCell colSpan={3} className="text-center">Aucune agence.</TableCell></TableRow>
+                            {isLoading ? (<TableRow><TableCell colSpan={3} className="text-center h-24"><Loader2 className="mx-auto h-8 w-8 animate-spin text-muted-foreground" /></TableCell></TableRow>
+                            ) : agenciesWithDetails.length === 0 ? (<TableRow><TableCell colSpan={3} className="text-center">Aucune agence.</TableCell></TableRow>
                             ) : (
                                 agenciesWithDetails.map(agency => (
                                     <TableRow key={agency.id}>
@@ -503,7 +502,7 @@ const SectorsSection = () => {
             setIsSubmitting(false);
         }
     };
-    
+
     const handleDelete = async () => {
         if (!sectorToDelete) return;
         try {
@@ -528,12 +527,12 @@ const SectorsSection = () => {
     return (
         <Card>
             <CardHeader>
-                 <div className="flex justify-between items-center">
+                <div className="flex justify-between items-center">
                     <div>
                         <CardTitle>Secteurs</CardTitle>
                         <CardDescription>Gérez vos secteurs et leur rattachement aux agences.</CardDescription>
                     </div>
-                     <Button size="sm" className="gap-1" onClick={() => handleOpenDialog()}>
+                    <Button size="sm" className="gap-1" onClick={() => handleOpenDialog()}>
                         <PlusCircle className="h-4 w-4" /> Créer
                     </Button>
                 </div>
@@ -549,8 +548,8 @@ const SectorsSection = () => {
                             </TableRow>
                         </TableHeader>
                         <TableBody>
-                            {isLoading ? ( <TableRow><TableCell colSpan={3} className="text-center h-24"><Loader2 className="mx-auto h-8 w-8 animate-spin text-muted-foreground" /></TableCell></TableRow>
-                            ) : sectorsWithDetails.length === 0 ? ( <TableRow><TableCell colSpan={3} className="text-center">Aucun secteur.</TableCell></TableRow>
+                            {isLoading ? (<TableRow><TableCell colSpan={3} className="text-center h-24"><Loader2 className="mx-auto h-8 w-8 animate-spin text-muted-foreground" /></TableCell></TableRow>
+                            ) : sectorsWithDetails.length === 0 ? (<TableRow><TableCell colSpan={3} className="text-center">Aucun secteur.</TableCell></TableRow>
                             ) : (
                                 sectorsWithDetails.map(sector => (
                                     <TableRow key={sector.id}>
@@ -558,7 +557,7 @@ const SectorsSection = () => {
                                         <TableCell>{sector.agencyName}</TableCell>
                                         <TableCell className="text-right">
                                             <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleOpenDialog(sector)}><Edit className="h-4 w-4" /></Button>
-                                             <Dialog open={!!sectorToDelete && sectorToDelete.id === sector.id} onOpenChange={(isOpen) => !isOpen && setSectorToDelete(null)}>
+                                            <Dialog open={!!sectorToDelete && sectorToDelete.id === sector.id} onOpenChange={(isOpen) => !isOpen && setSectorToDelete(null)}>
                                                 <DialogTrigger asChild>
                                                     <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive" onClick={() => setSectorToDelete(sector)}><Trash2 className="h-4 w-4" /></Button>
                                                 </DialogTrigger>
@@ -642,7 +641,7 @@ const ActivitiesSection = () => {
             setIsSubmitting(false);
         }
     };
-    
+
     const handleDelete = async () => {
         if (!activityToDelete) return;
         try {
@@ -657,13 +656,13 @@ const ActivitiesSection = () => {
 
     return (
         <Card>
-             <CardHeader>
+            <CardHeader>
                 <div className="flex justify-between items-center">
                     <div>
                         <CardTitle>Activités</CardTitle>
                         <CardDescription>Gérez les activités ou prestations facturables.</CardDescription>
                     </div>
-                     <Button size="sm" className="gap-1" onClick={() => handleOpenDialog()}>
+                    <Button size="sm" className="gap-1" onClick={() => handleOpenDialog()}>
                         <PlusCircle className="h-4 w-4" /> Créer
                     </Button>
                 </div>
@@ -673,8 +672,8 @@ const ActivitiesSection = () => {
                     <Table>
                         <TableHeader><TableRow><TableHead className="w-[150px]">Code</TableHead><TableHead>Libellé</TableHead><TableHead className="w-[100px] text-right">Actions</TableHead></TableRow></TableHeader>
                         <TableBody>
-                            {isLoading ? ( <TableRow><TableCell colSpan={3} className="text-center h-24"><Loader2 className="mx-auto h-8 w-8 animate-spin text-muted-foreground" /></TableCell></TableRow>
-                            ) : activities.length === 0 ? ( <TableRow><TableCell colSpan={3} className="text-center">Aucune activité.</TableCell></TableRow>
+                            {isLoading ? (<TableRow><TableCell colSpan={3} className="text-center h-24"><Loader2 className="mx-auto h-8 w-8 animate-spin text-muted-foreground" /></TableCell></TableRow>
+                            ) : activities.length === 0 ? (<TableRow><TableCell colSpan={3} className="text-center">Aucune activité.</TableCell></TableRow>
                             ) : (
                                 activities.map(activity => (
                                     <TableRow key={activity.id}>
@@ -761,7 +760,8 @@ const MeterTypesSection = () => {
                 toast({ title: "Succès", description: "Type de compteur créé." });
             }
             await reloadData(); setDialogOpen(false); resetForm();
-        } catch (error) { toast({ title: "Erreur", description: "L'opération a échoué.", variant: "destructive" });
+        } catch (error) {
+            toast({ title: "Erreur", description: "L'opération a échoué.", variant: "destructive" });
         } finally { setIsSubmitting(false); }
     };
 
@@ -787,25 +787,25 @@ const MeterTypesSection = () => {
                     <Table>
                         <TableHeader><TableRow><TableHead>Code</TableHead><TableHead>Libellé</TableHead><TableHead>Unité</TableHead><TableHead className="w-[100px] text-right">Actions</TableHead></TableRow></TableHeader>
                         <TableBody>
-                            {isLoading ? (<TableRow><TableCell colSpan={4} className="text-center h-24"><Loader2 className="mx-auto h-8 w-8 animate-spin text-muted-foreground" /></TableCell></TableRow>) 
-                            : meterTypes.length === 0 ? (<TableRow><TableCell colSpan={4} className="text-center">Aucun type de compteur.</TableCell></TableRow>) 
-                            : (meterTypes.map(item => (
-                                <TableRow key={item.id}>
-                                    <TableCell className="font-medium">{item.code}</TableCell>
-                                    <TableCell>{item.label}</TableCell>
-                                    <TableCell>{item.unit}</TableCell>
-                                    <TableCell className="text-right">
-                                        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleOpenDialog(item)}><Edit className="h-4 w-4" /></Button>
-                                        <Dialog open={!!itemToDelete && itemToDelete.id === item.id} onOpenChange={(isOpen) => !isOpen && setItemToDelete(null)}>
-                                            <DialogTrigger asChild><Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive" onClick={() => setItemToDelete(item)}><Trash2 className="h-4 w-4" /></Button></DialogTrigger>
-                                            <DialogContent>
-                                                <DialogHeader><DialogTitle>Supprimer {itemToDelete?.code}</DialogTitle><DialogDescription>Cette action est irréversible.</DialogDescription></DialogHeader>
-                                                <DialogFooter><Button variant="outline" onClick={() => setItemToDelete(null)}>Annuler</Button><Button variant="destructive" onClick={handleDelete}>Confirmer</Button></DialogFooter>
-                                            </DialogContent>
-                                        </Dialog>
-                                    </TableCell>
-                                </TableRow>
-                            )))}
+                            {isLoading ? (<TableRow><TableCell colSpan={4} className="text-center h-24"><Loader2 className="mx-auto h-8 w-8 animate-spin text-muted-foreground" /></TableCell></TableRow>)
+                                : meterTypes.length === 0 ? (<TableRow><TableCell colSpan={4} className="text-center">Aucun type de compteur.</TableCell></TableRow>)
+                                    : (meterTypes.map(item => (
+                                        <TableRow key={item.id}>
+                                            <TableCell className="font-medium">{item.code}</TableCell>
+                                            <TableCell>{item.label}</TableCell>
+                                            <TableCell>{item.unit}</TableCell>
+                                            <TableCell className="text-right">
+                                                <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleOpenDialog(item)}><Edit className="h-4 w-4" /></Button>
+                                                <Dialog open={!!itemToDelete && itemToDelete.id === item.id} onOpenChange={(isOpen) => !isOpen && setItemToDelete(null)}>
+                                                    <DialogTrigger asChild><Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive" onClick={() => setItemToDelete(item)}><Trash2 className="h-4 w-4" /></Button></DialogTrigger>
+                                                    <DialogContent>
+                                                        <DialogHeader><DialogTitle>Supprimer {itemToDelete?.code}</DialogTitle><DialogDescription>Cette action est irréversible.</DialogDescription></DialogHeader>
+                                                        <DialogFooter><Button variant="outline" onClick={() => setItemToDelete(null)}>Annuler</Button><Button variant="destructive" onClick={handleDelete}>Confirmer</Button></DialogFooter>
+                                                    </DialogContent>
+                                                </Dialog>
+                                            </TableCell>
+                                        </TableRow>
+                                    )))}
                         </TableBody>
                     </Table>
                 </div>
@@ -814,8 +814,8 @@ const MeterTypesSection = () => {
                         <DialogHeader><DialogTitle>{editingItem ? "Modifier le type" : "Nouveau type de compteur"}</DialogTitle></DialogHeader>
                         <form onSubmit={handleSubmit} className="space-y-4">
                             <div className="space-y-2"><Label htmlFor="mtCode">Code</Label><Input id="mtCode" value={code} onChange={e => setCode(e.target.value.toUpperCase())} required placeholder="Ex: ECS" /></div>
-                            <div className="space-y-2"><Label htmlFor="mtLabel">Libellé</Label><Input id="mtLabel" value={label} onChange={e => setLabel(e.target.value)} required placeholder="Ex: Eau Chaude Sanitaire"/></div>
-                            <div className="space-y-2"><Label htmlFor="mtUnit">Unité</Label><Input id="mtUnit" value={unit} onChange={e => setUnit(e.target.value)} required placeholder="Ex: m³, kWh"/></div>
+                            <div className="space-y-2"><Label htmlFor="mtLabel">Libellé</Label><Input id="mtLabel" value={label} onChange={e => setLabel(e.target.value)} required placeholder="Ex: Eau Chaude Sanitaire" /></div>
+                            <div className="space-y-2"><Label htmlFor="mtUnit">Unité</Label><Input id="mtUnit" value={unit} onChange={e => setUnit(e.target.value)} required placeholder="Ex: m³, kWh" /></div>
                             <DialogFooter><DialogClose asChild><Button variant="outline">Annuler</Button></DialogClose><Button type="submit" disabled={isSubmitting}>{isSubmitting ? "Enregistrement..." : "Enregistrer"}</Button></DialogFooter>
                         </form>
                     </DialogContent>
@@ -889,7 +889,7 @@ const PricingRulesSection = () => {
     };
 
     const rulesWithDetails = useMemo(() => {
-        const activityMap = new Map(activities.map(a => [a.id, {code: a.code, label: a.label}]));
+        const activityMap = new Map(activities.map(a => [a.id, { code: a.code, label: a.label }]));
         return pricingRules.map(rule => ({
             ...rule,
             activityCode: activityMap.get(rule.activityId)?.code || 'N/A',
@@ -905,7 +905,7 @@ const PricingRulesSection = () => {
                         <CardTitle>Règles de Prix</CardTitle>
                         <CardDescription>Gérez les règles de tarification associées à chaque activité.</CardDescription>
                     </div>
-                     <Button size="sm" className="gap-1" onClick={() => handleOpenDialog()}>
+                    <Button size="sm" className="gap-1" onClick={() => handleOpenDialog()}>
                         <PlusCircle className="h-4 w-4" /> Créer
                     </Button>
                 </div>
@@ -922,8 +922,8 @@ const PricingRulesSection = () => {
                             </TableRow>
                         </TableHeader>
                         <TableBody>
-                            {isLoading ? ( <TableRow><TableCell colSpan={4} className="text-center h-24"><Loader2 className="mx-auto h-8 w-8 animate-spin text-muted-foreground" /></TableCell></TableRow>
-                            ) : rulesWithDetails.length === 0 ? ( <TableRow><TableCell colSpan={4} className="text-center">Aucune règle de prix.</TableCell></TableRow>
+                            {isLoading ? (<TableRow><TableCell colSpan={4} className="text-center h-24"><Loader2 className="mx-auto h-8 w-8 animate-spin text-muted-foreground" /></TableCell></TableRow>
+                            ) : rulesWithDetails.length === 0 ? (<TableRow><TableCell colSpan={4} className="text-center">Aucune règle de prix.</TableCell></TableRow>
                             ) : (
                                 rulesWithDetails.map(item => (
                                     <TableRow key={item.id}>
@@ -1028,7 +1028,7 @@ const MarketsSection = () => {
             setIsSubmitting(false);
         }
     };
-    
+
     const handleDelete = async () => {
         if (!itemToDelete) return;
         try {
@@ -1043,13 +1043,13 @@ const MarketsSection = () => {
 
     return (
         <Card>
-             <CardHeader>
+            <CardHeader>
                 <div className="flex justify-between items-center">
                     <div>
                         <CardTitle>Marchés</CardTitle>
                         <CardDescription>Gérez les types de marchés pour les contrats.</CardDescription>
                     </div>
-                     <Button size="sm" className="gap-1" onClick={() => handleOpenDialog()}>
+                    <Button size="sm" className="gap-1" onClick={() => handleOpenDialog()}>
                         <PlusCircle className="h-4 w-4" /> Créer
                     </Button>
                 </div>
@@ -1059,8 +1059,8 @@ const MarketsSection = () => {
                     <Table>
                         <TableHeader><TableRow><TableHead className="w-[150px]">Code</TableHead><TableHead>Libellé</TableHead><TableHead>Description</TableHead><TableHead className="w-[100px] text-right">Actions</TableHead></TableRow></TableHeader>
                         <TableBody>
-                            {isLoading ? ( <TableRow><TableCell colSpan={4} className="text-center h-24"><Loader2 className="mx-auto h-8 w-8 animate-spin text-muted-foreground" /></TableCell></TableRow>
-                            ) : markets.length === 0 ? ( <TableRow><TableCell colSpan={4} className="text-center">Aucun marché.</TableCell></TableRow>
+                            {isLoading ? (<TableRow><TableCell colSpan={4} className="text-center h-24"><Loader2 className="mx-auto h-8 w-8 animate-spin text-muted-foreground" /></TableCell></TableRow>
+                            ) : markets.length === 0 ? (<TableRow><TableCell colSpan={4} className="text-center">Aucun marché.</TableCell></TableRow>
                             ) : (
                                 markets.map(item => (
                                     <TableRow key={item.id}>
@@ -1159,7 +1159,7 @@ const VatRatesSection = () => {
             setIsSubmitting(false);
         }
     };
-    
+
     const handleDelete = async () => {
         if (!vatRateToDelete) return;
         try {
@@ -1174,13 +1174,13 @@ const VatRatesSection = () => {
 
     return (
         <Card>
-             <CardHeader>
+            <CardHeader>
                 <div className="flex justify-between items-center">
                     <div>
                         <CardTitle>Taux de TVA</CardTitle>
                         <CardDescription>Gérez les différents taux de TVA applicables.</CardDescription>
                     </div>
-                     <Button size="sm" className="gap-1" onClick={() => handleOpenDialog()}>
+                    <Button size="sm" className="gap-1" onClick={() => handleOpenDialog()}>
                         <PlusCircle className="h-4 w-4" /> Créer
                     </Button>
                 </div>
@@ -1189,15 +1189,15 @@ const VatRatesSection = () => {
                 <div className="border rounded-md">
                     <Table>
                         <TableHeader>
-                          <TableRow>
-                            <TableHead>Code</TableHead>
-                            <TableHead>Taux (%)</TableHead>
-                            <TableHead className="w-[100px] text-right">Actions</TableHead>
-                          </TableRow>
+                            <TableRow>
+                                <TableHead>Code</TableHead>
+                                <TableHead>Taux (%)</TableHead>
+                                <TableHead className="w-[100px] text-right">Actions</TableHead>
+                            </TableRow>
                         </TableHeader>
                         <TableBody>
-                            {isLoading ? ( <TableRow><TableCell colSpan={3} className="text-center h-24"><Loader2 className="mx-auto h-8 w-8 animate-spin text-muted-foreground" /></TableCell></TableRow>
-                            ) : vatRates.length === 0 ? ( <TableRow><TableCell colSpan={3} className="text-center">Aucun taux de TVA.</TableCell></TableRow>
+                            {isLoading ? (<TableRow><TableCell colSpan={3} className="text-center h-24"><Loader2 className="mx-auto h-8 w-8 animate-spin text-muted-foreground" /></TableCell></TableRow>
+                            ) : vatRates.length === 0 ? (<TableRow><TableCell colSpan={3} className="text-center">Aucun taux de TVA.</TableCell></TableRow>
                             ) : (
                                 vatRates.map(item => (
                                     <TableRow key={item.id}>
@@ -1248,115 +1248,249 @@ const VatRatesSection = () => {
     );
 };
 
-// Section Formules de révision
-const RevisionFormulasSection = () => {
+// Section Règles de Révision (P1)
+const RevisionRulesSection = () => {
     const { toast } = useToast();
-    const { revisionFormulas, activities, isLoading, reloadData } = useData();
+    const { revisionRules, indices, isLoading, reloadData } = useData();
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [dialogOpen, setDialogOpen] = useState(false);
-    const [editingItem, setEditingItem] = useState<RevisionFormula | null>(null);
-    const [itemToDelete, setItemToDelete] = useState<RevisionFormula | null>(null);
+    const [editingItem, setEditingItem] = useState<RevisionRule | null>(null);
+    const [itemToDelete, setItemToDelete] = useState<RevisionRule | null>(null);
+
+    // Form state
+    const [name, setName] = useState('');
     const [code, setCode] = useState('');
-    const [formula, setFormula] = useState('');
-    const [activityId, setActivityId] = useState('');
+    const [description, setDescription] = useState('');
+    const [ruleIndices, setRuleIndices] = useState<{ indexId: string; coefficient: number }[]>([]);
 
-    const resetForm = () => { setCode(''); setFormula(''); setActivityId(''); setEditingItem(null); };
+    const resetForm = () => {
+        setName('');
+        setCode('');
+        setDescription('');
+        setRuleIndices([]);
+        setEditingItem(null);
+    };
 
-    const handleOpenDialog = (item: RevisionFormula | null = null) => {
+    const handleOpenDialog = (item: RevisionRule | null = null) => {
         setEditingItem(item);
-        setCode(item ? item.code : '');
-        setFormula(item ? item.formula : '');
-        setActivityId(item ? item.activityId : '');
+        if (item) {
+            setName(item.name);
+            setCode(item.code);
+            setDescription(item.description || '');
+            setRuleIndices(item.indices || []);
+        } else {
+            resetForm();
+            // Add one empty row by default for convenience
+            setRuleIndices([{ indexId: '', coefficient: 0 }]);
+        }
         setDialogOpen(true);
+    };
+
+    const handleAddIndexRow = () => {
+        setRuleIndices([...ruleIndices, { indexId: '', coefficient: 0 }]);
+    };
+
+    const handleRemoveIndexRow = (index: number) => {
+        const newIndices = [...ruleIndices];
+        newIndices.splice(index, 1);
+        setRuleIndices(newIndices);
+    };
+
+    const handleIndexChange = (index: number, field: 'indexId' | 'coefficient', value: string | number) => {
+        const newIndices = [...ruleIndices];
+        if (field === 'indexId') {
+            newIndices[index].indexId = value as string;
+        } else {
+            newIndices[index].coefficient = Number(value);
+        }
+        setRuleIndices(newIndices);
     };
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!code.trim() || !formula.trim() || !activityId) return;
+        if (!name.trim() || !code.trim()) return;
+
+        // Filter out incomplete rows
+        const validIndices = ruleIndices.filter(i => i.indexId && i.coefficient !== 0);
+
         setIsSubmitting(true);
         try {
-            const data = { code, formula, activityId };
+            const data = { name, code, description, indices: validIndices };
             if (editingItem) {
-                await updateRevisionFormula(editingItem.id, data);
-                toast({ title: "Succès", description: "Formule mise à jour." });
+                await updateRevisionRule(editingItem.id, data);
+                toast({ title: "Succès", description: "Règle de révision mise à jour." });
             } else {
-                await createRevisionFormula(data);
-                toast({ title: "Succès", description: "Formule créée." });
+                await createRevisionRule(data);
+                toast({ title: "Succès", description: "Règle de révision créée." });
             }
-            await reloadData(); setDialogOpen(false); resetForm();
-        } catch (error) { toast({ title: "Erreur", description: "L'opération a échoué.", variant: "destructive" });
-        } finally { setIsSubmitting(false); }
+            await reloadData();
+            setDialogOpen(false);
+            resetForm();
+        } catch (error) {
+            toast({ title: "Erreur", description: "L'opération a échoué.", variant: "destructive" });
+        } finally {
+            setIsSubmitting(false);
+        }
     };
 
     const handleDelete = async () => {
         if (!itemToDelete) return;
         try {
-            await deleteRevisionFormula(itemToDelete.id);
-            toast({ title: "Succès", description: "Formule supprimée." });
-            await reloadData(); setItemToDelete(null);
-        } catch (error) { toast({ title: "Erreur", description: "Impossible de supprimer la formule.", variant: "destructive" }); }
+            await deleteRevisionRule(itemToDelete.id);
+            toast({ title: "Succès", description: "Règle de révision supprimée." });
+            await reloadData();
+            setItemToDelete(null);
+        } catch (error) {
+            toast({ title: "Erreur", description: "Impossible de supprimer la règle.", variant: "destructive" });
+        }
     };
-    
-    const formulasWithDetails = useMemo(() => {
-        const activityMap = new Map(activities.map(a => [a.id, { code: a.code, label: a.label }]));
-        return revisionFormulas.map(formula => ({
-            ...formula,
-            activityCode: activityMap.get(formula.activityId)?.code || 'N/A',
-            activityLabel: activityMap.get(formula.activityId)?.label || 'N/A',
-        }));
-    }, [revisionFormulas, activities]);
+
+    // Helper to get index code by ID
+    const getIndexCode = (id: string) => indices.find(i => i.id === id)?.code || id;
 
     return (
         <Card>
             <CardHeader>
                 <div className="flex justify-between items-center">
-                    <div><CardTitle>Formules de Révision</CardTitle><CardDescription>Gérez les formules de révision pour les contrats.</CardDescription></div>
-                    <Button size="sm" className="gap-1" onClick={() => handleOpenDialog()}><PlusCircle className="h-4 w-4" /> Créer</Button>
+                    <div>
+                        <CardTitle>Règles de Révision (P1)</CardTitle>
+                        <CardDescription>Définissez les formules de révision des prix P1 (P1 = P0 * (a + b*I/I0 + ...)).</CardDescription>
+                    </div>
+                    <Button size="sm" className="gap-1" onClick={() => handleOpenDialog()}>
+                        <PlusCircle className="h-4 w-4" /> Créer
+                    </Button>
                 </div>
             </CardHeader>
             <CardContent>
                 <div className="border rounded-md">
                     <Table>
-                        <TableHeader><TableRow><TableHead>Code</TableHead><TableHead>Activité</TableHead><TableHead>Formule</TableHead><TableHead className="w-[100px] text-right">Actions</TableHead></TableRow></TableHeader>
+                        <TableHeader>
+                            <TableRow>
+                                <TableHead>Code</TableHead>
+                                <TableHead>Nom</TableHead>
+                                <TableHead>Formule (Aperçu)</TableHead>
+                                <TableHead className="w-[100px] text-right">Actions</TableHead>
+                            </TableRow>
+                        </TableHeader>
                         <TableBody>
-                            {isLoading ? (<TableRow><TableCell colSpan={4} className="text-center h-24"><Loader2 className="mx-auto h-8 w-8 animate-spin text-muted-foreground" /></TableCell></TableRow>) 
-                            : formulasWithDetails.length === 0 ? (<TableRow><TableCell colSpan={4} className="text-center">Aucune formule.</TableCell></TableRow>) 
-                            : (formulasWithDetails.map(item => (
-                                <TableRow key={item.id}>
-                                    <TableCell className="font-medium">{item.code}</TableCell>
-                                    <TableCell>{item.activityCode} - {item.activityLabel}</TableCell>
-                                    <TableCell className="font-mono text-xs">{item.formula}</TableCell>
-                                    <TableCell className="text-right">
-                                        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleOpenDialog(item)}><Edit className="h-4 w-4" /></Button>
-                                        <Dialog open={!!itemToDelete && itemToDelete.id === item.id} onOpenChange={(isOpen) => !isOpen && setItemToDelete(null)}>
-                                            <DialogTrigger asChild><Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive" onClick={() => setItemToDelete(item)}><Trash2 className="h-4 w-4" /></Button></DialogTrigger>
-                                            <DialogContent>
-                                                <DialogHeader><DialogTitle>Supprimer {itemToDelete?.code}</DialogTitle><DialogDescription>Cette action est irréversible.</DialogDescription></DialogHeader>
-                                                <DialogFooter><Button variant="outline" onClick={() => setItemToDelete(null)}>Annuler</Button><Button variant="destructive" onClick={handleDelete}>Confirmer</Button></DialogFooter>
-                                            </DialogContent>
-                                        </Dialog>
-                                    </TableCell>
-                                </TableRow>
-                            )))}
+                            {isLoading ? (
+                                <TableRow><TableCell colSpan={4} className="text-center h-24"><Loader2 className="mx-auto h-8 w-8 animate-spin text-muted-foreground" /></TableCell></TableRow>
+                            ) : revisionRules.length === 0 ? (
+                                <TableRow><TableCell colSpan={4} className="text-center">Aucune règle de révision.</TableCell></TableRow>
+                            ) : (
+                                revisionRules.map(item => (
+                                    <TableRow key={item.id}>
+                                        <TableCell className="font-medium">{item.code}</TableCell>
+                                        <TableCell>{item.name}</TableCell>
+                                        <TableCell className="font-mono text-xs text-muted-foreground">
+                                            {item.indices && item.indices.length > 0
+                                                ? item.indices.map(i => `${i.coefficient} * (${getIndexCode(i.indexId)}/${getIndexCode(i.indexId)}0)`).join(' + ')
+                                                : 'Aucune formule définie'}
+                                        </TableCell>
+                                        <TableCell className="text-right">
+                                            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleOpenDialog(item)}>
+                                                <Edit className="h-4 w-4" />
+                                            </Button>
+                                            <Dialog open={!!itemToDelete && itemToDelete.id === item.id} onOpenChange={(isOpen) => !isOpen && setItemToDelete(null)}>
+                                                <DialogTrigger asChild>
+                                                    <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive" onClick={() => setItemToDelete(item)}>
+                                                        <Trash2 className="h-4 w-4" />
+                                                    </Button>
+                                                </DialogTrigger>
+                                                <DialogContent>
+                                                    <DialogHeader>
+                                                        <DialogTitle>Supprimer {itemToDelete?.code}</DialogTitle>
+                                                        <DialogDescription>Cette action est irréversible.</DialogDescription>
+                                                    </DialogHeader>
+                                                    <DialogFooter>
+                                                        <Button variant="outline" onClick={() => setItemToDelete(null)}>Annuler</Button>
+                                                        <Button variant="destructive" onClick={handleDelete}>Confirmer</Button>
+                                                    </DialogFooter>
+                                                </DialogContent>
+                                            </Dialog>
+                                        </TableCell>
+                                    </TableRow>
+                                ))
+                            )}
                         </TableBody>
                     </Table>
                 </div>
+
                 <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-                    <DialogContent>
-                        <DialogHeader><DialogTitle>{editingItem ? "Modifier la formule" : "Nouvelle formule"}</DialogTitle></DialogHeader>
+                    <DialogContent className="sm:max-w-[600px]">
+                        <DialogHeader>
+                            <DialogTitle>{editingItem ? "Modifier la règle" : "Nouvelle règle de révision"}</DialogTitle>
+                            <DialogDescription>
+                                Configurez les indices et leurs coefficients pondéraux. La somme des coefficients devrait idéalement être égale à 1.
+                            </DialogDescription>
+                        </DialogHeader>
                         <form onSubmit={handleSubmit} className="space-y-4">
-                             <div className="space-y-2">
-                                <Label htmlFor="activity">Activité</Label>
-                                <Select onValueChange={setActivityId} value={activityId}>
-                                    <SelectTrigger><SelectValue placeholder="Sélectionner une activité" /></SelectTrigger>
-                                    <SelectContent>
-                                        {activities.map(a => <SelectItem key={a.id} value={a.id}>{a.code} - {a.label}</SelectItem>)}
-                                    </SelectContent>
-                                </Select>
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className="space-y-2">
+                                    <Label htmlFor="ruleCode">Code</Label>
+                                    <Input id="ruleCode" value={code} onChange={e => setCode(e.target.value)} required placeholder="Ex: REV-GAZ" />
+                                </div>
+                                <div className="space-y-2">
+                                    <Label htmlFor="ruleName">Nom</Label>
+                                    <Input id="ruleName" value={name} onChange={e => setName(e.target.value)} required placeholder="Ex: Formule Gaz Standard" />
+                                </div>
                             </div>
-                            <div className="space-y-2"><Label htmlFor="revCode">Code Formule</Label><Input id="revCode" value={code} onChange={e => setCode(e.target.value)} required /></div>
-                            <div className="space-y-2"><Label htmlFor="revFormula">Formule</Label><Textarea id="revFormula" value={formula} onChange={e => setFormula(e.target.value)} required rows={4} className="font-mono"/></div>
-                            <DialogFooter><DialogClose asChild><Button variant="outline">Annuler</Button></DialogClose><Button type="submit" disabled={isSubmitting}>{isSubmitting ? "Enregistrement..." : "Enregistrer"}</Button></DialogFooter>
+                            <div className="space-y-2">
+                                <Label htmlFor="ruleDesc">Description</Label>
+                                <Input id="ruleDesc" value={description} onChange={e => setDescription(e.target.value)} placeholder="Description optionnelle" />
+                            </div>
+
+                            <div className="space-y-2">
+                                <div className="flex justify-between items-center">
+                                    <Label>Indices et Coefficients</Label>
+                                    <Button type="button" variant="outline" size="sm" onClick={handleAddIndexRow}>
+                                        <PlusCircle className="h-3 w-3 mr-1" /> Ajouter un indice
+                                    </Button>
+                                </div>
+                                <div className="border rounded-md p-2 space-y-2 max-h-[200px] overflow-y-auto">
+                                    {ruleIndices.map((row, index) => (
+                                        <div key={index} className="flex items-center gap-2">
+                                            <div className="flex-1">
+                                                <Select value={row.indexId} onValueChange={(val) => handleIndexChange(index, 'indexId', val)}>
+                                                    <SelectTrigger>
+                                                        <SelectValue placeholder="Choisir un indice" />
+                                                    </SelectTrigger>
+                                                    <SelectContent>
+                                                        {indices.map(idx => (
+                                                            <SelectItem key={idx.id} value={idx.id}>
+                                                                {idx.code} - {idx.label}
+                                                            </SelectItem>
+                                                        ))}
+                                                    </SelectContent>
+                                                </Select>
+                                            </div>
+                                            <div className="w-[100px]">
+                                                <Input
+                                                    type="number"
+                                                    step="0.0001"
+                                                    placeholder="Coeff."
+                                                    value={row.coefficient}
+                                                    onChange={(e) => handleIndexChange(index, 'coefficient', e.target.value)}
+                                                />
+                                            </div>
+                                            <Button type="button" variant="ghost" size="icon" className="text-destructive" onClick={() => handleRemoveIndexRow(index)}>
+                                                <Trash2 className="h-4 w-4" />
+                                            </Button>
+                                        </div>
+                                    ))}
+                                    {ruleIndices.length === 0 && (
+                                        <p className="text-sm text-muted-foreground text-center py-2">Aucun indice défini.</p>
+                                    )}
+                                </div>
+                                <p className="text-xs text-muted-foreground text-right">
+                                    Somme des coefficients : {ruleIndices.reduce((sum, row) => sum + (Number(row.coefficient) || 0), 0).toFixed(4)}
+                                </p>
+                            </div>
+
+                            <DialogFooter>
+                                <DialogClose asChild><Button variant="outline">Annuler</Button></DialogClose>
+                                <Button type="submit" disabled={isSubmitting}>{isSubmitting ? "Enregistrement..." : "Enregistrer"}</Button>
+                            </DialogFooter>
                         </form>
                     </DialogContent>
                 </Dialog>
@@ -1400,7 +1534,8 @@ const PaymentTermsSection = () => {
                 toast({ title: "Succès", description: "Règlement créé." });
             }
             await reloadData(); setDialogOpen(false); resetForm();
-        } catch (error) { toast({ title: "Erreur", description: "L'opération a échoué.", variant: "destructive" });
+        } catch (error) {
+            toast({ title: "Erreur", description: "L'opération a échoué.", variant: "destructive" });
         } finally { setIsSubmitting(false); }
     };
 
@@ -1426,24 +1561,24 @@ const PaymentTermsSection = () => {
                     <Table>
                         <TableHeader><TableRow><TableHead>Code</TableHead><TableHead>Échéance</TableHead><TableHead className="w-[100px] text-right">Actions</TableHead></TableRow></TableHeader>
                         <TableBody>
-                            {isLoading ? (<TableRow><TableCell colSpan={3} className="text-center h-24"><Loader2 className="mx-auto h-8 w-8 animate-spin text-muted-foreground" /></TableCell></TableRow>) 
-                            : paymentTerms.length === 0 ? (<TableRow><TableCell colSpan={3} className="text-center">Aucun règlement.</TableCell></TableRow>) 
-                            : (paymentTerms.map(item => (
-                                <TableRow key={item.id}>
-                                    <TableCell className="font-medium">{item.code}</TableCell>
-                                    <TableCell>{item.deadline}</TableCell>
-                                    <TableCell className="text-right">
-                                        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleOpenDialog(item)}><Edit className="h-4 w-4" /></Button>
-                                        <Dialog open={!!itemToDelete && itemToDelete.id === item.id} onOpenChange={(isOpen) => !isOpen && setItemToDelete(null)}>
-                                            <DialogTrigger asChild><Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive" onClick={() => setItemToDelete(item)}><Trash2 className="h-4 w-4" /></Button></DialogTrigger>
-                                            <DialogContent>
-                                                <DialogHeader><DialogTitle>Supprimer {itemToDelete?.code}</DialogTitle><DialogDescription>Cette action est irréversible.</DialogDescription></DialogHeader>
-                                                <DialogFooter><Button variant="outline" onClick={() => setItemToDelete(null)}>Annuler</Button><Button variant="destructive" onClick={handleDelete}>Confirmer</Button></DialogFooter>
-                                            </DialogContent>
-                                        </Dialog>
-                                    </TableCell>
-                                </TableRow>
-                            )))}
+                            {isLoading ? (<TableRow><TableCell colSpan={3} className="text-center h-24"><Loader2 className="mx-auto h-8 w-8 animate-spin text-muted-foreground" /></TableCell></TableRow>)
+                                : paymentTerms.length === 0 ? (<TableRow><TableCell colSpan={3} className="text-center">Aucun règlement.</TableCell></TableRow>)
+                                    : (paymentTerms.map(item => (
+                                        <TableRow key={item.id}>
+                                            <TableCell className="font-medium">{item.code}</TableCell>
+                                            <TableCell>{item.deadline}</TableCell>
+                                            <TableCell className="text-right">
+                                                <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleOpenDialog(item)}><Edit className="h-4 w-4" /></Button>
+                                                <Dialog open={!!itemToDelete && itemToDelete.id === item.id} onOpenChange={(isOpen) => !isOpen && setItemToDelete(null)}>
+                                                    <DialogTrigger asChild><Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive" onClick={() => setItemToDelete(item)}><Trash2 className="h-4 w-4" /></Button></DialogTrigger>
+                                                    <DialogContent>
+                                                        <DialogHeader><DialogTitle>Supprimer {itemToDelete?.code}</DialogTitle><DialogDescription>Cette action est irréversible.</DialogDescription></DialogHeader>
+                                                        <DialogFooter><Button variant="outline" onClick={() => setItemToDelete(null)}>Annuler</Button><Button variant="destructive" onClick={handleDelete}>Confirmer</Button></DialogFooter>
+                                                    </DialogContent>
+                                                </Dialog>
+                                            </TableCell>
+                                        </TableRow>
+                                    )))}
                         </TableBody>
                     </Table>
                 </div>
@@ -1452,7 +1587,7 @@ const PaymentTermsSection = () => {
                         <DialogHeader><DialogTitle>{editingItem ? "Modifier le règlement" : "Nouveau règlement"}</DialogTitle></DialogHeader>
                         <form onSubmit={handleSubmit} className="space-y-4">
                             <div className="space-y-2"><Label htmlFor="payCode">Code Règlement</Label><Input id="payCode" value={code} onChange={e => setCode(e.target.value)} required /></div>
-                            <div className="space-y-2"><Label htmlFor="payDeadline">Échéance</Label><Input id="payDeadline" value={deadline} onChange={e => setDeadline(e.target.value)} required placeholder="Ex: 30 jours net"/></div>
+                            <div className="space-y-2"><Label htmlFor="payDeadline">Échéance</Label><Input id="payDeadline" value={deadline} onChange={e => setDeadline(e.target.value)} required placeholder="Ex: 30 jours net" /></div>
                             <DialogFooter><DialogClose asChild><Button variant="outline">Annuler</Button></DialogClose><Button type="submit" disabled={isSubmitting}>{isSubmitting ? "Enregistrement..." : "Enregistrer"}</Button></DialogFooter>
                         </form>
                     </DialogContent>
@@ -1465,21 +1600,21 @@ const PaymentTermsSection = () => {
 
 // Generic CRUD Section for simple name-based entities
 const SimpleCrudSection = ({
-  title,
-  description,
-  dataType,
-  items,
-  createItem,
-  updateItem,
-  deleteItem,
+    title,
+    description,
+    dataType,
+    items,
+    createItem,
+    updateItem,
+    deleteItem,
 }: {
-  title: string;
-  description: string;
-  dataType: "schedule" | "term" | "typology";
-  items: {id: string; name: string}[];
-  createItem: (name: string) => Promise<any>;
-  updateItem: (id: string, name: string) => Promise<void>;
-  deleteItem: (id: string) => Promise<void>;
+    title: string;
+    description: string;
+    dataType: "schedule" | "term" | "typology";
+    items: { id: string; name: string }[];
+    createItem: (name: string) => Promise<any>;
+    updateItem: (id: string, name: string) => Promise<void>;
+    deleteItem: (id: string) => Promise<void>;
 }) => {
     const { toast } = useToast();
     const { isLoading, reloadData } = useData();
@@ -1518,7 +1653,7 @@ const SimpleCrudSection = ({
             setIsSubmitting(false);
         }
     };
-    
+
     const handleDelete = async () => {
         if (!itemToDelete) return;
         try {
@@ -1533,13 +1668,13 @@ const SimpleCrudSection = ({
 
     return (
         <Card>
-             <CardHeader>
+            <CardHeader>
                 <div className="flex justify-between items-center">
                     <div>
                         <CardTitle>{title}</CardTitle>
                         <CardDescription>{description}</CardDescription>
                     </div>
-                     <Button size="sm" className="gap-1" onClick={() => handleOpenDialog()}>
+                    <Button size="sm" className="gap-1" onClick={() => handleOpenDialog()}>
                         <PlusCircle className="h-4 w-4" /> Créer
                     </Button>
                 </div>
@@ -1549,8 +1684,8 @@ const SimpleCrudSection = ({
                     <Table>
                         <TableHeader><TableRow><TableHead>Nom</TableHead><TableHead className="w-[100px] text-right">Actions</TableHead></TableRow></TableHeader>
                         <TableBody>
-                            {isLoading ? ( <TableRow><TableCell colSpan={2} className="text-center h-24"><Loader2 className="mx-auto h-8 w-8 animate-spin text-muted-foreground" /></TableCell></TableRow>
-                            ) : items.length === 0 ? ( <TableRow><TableCell colSpan={2} className="text-center">Aucun élément.</TableCell></TableRow>
+                            {isLoading ? (<TableRow><TableCell colSpan={2} className="text-center h-24"><Loader2 className="mx-auto h-8 w-8 animate-spin text-muted-foreground" /></TableCell></TableRow>
+                            ) : items.length === 0 ? (<TableRow><TableCell colSpan={2} className="text-center">Aucun élément.</TableCell></TableRow>
                             ) : (
                                 items.map(item => (
                                     <TableRow key={item.id}>
@@ -1599,92 +1734,92 @@ export default function SettingsPage() {
 
     return (
         <div className="space-y-6">
-        <div>
-            <h1 className="text-lg font-medium">Paramétrage</h1>
-            <p className="text-sm text-muted-foreground">
-            Configurez les entités de votre organisation.
-            </p>
-        </div>
-        <Tabs defaultValue="companies" className="w-full">
-            <TabsList className="flex-wrap h-auto justify-start">
-                <TabsTrigger value="companies">Sociétés</TabsTrigger>
-                <TabsTrigger value="agencies">Agences</TabsTrigger>
-                <TabsTrigger value="sectors">Secteurs</TabsTrigger>
-                <TabsTrigger value="activities">Activités</TabsTrigger>
-                <TabsTrigger value="meterTypes">Types de Compteurs</TabsTrigger>
-                <TabsTrigger value="pricing_rules">Règles de prix</TabsTrigger>
-                <TabsTrigger value="markets">Marchés</TabsTrigger>
-                <TabsTrigger value="typologies">Typologies</TabsTrigger>
-                <TabsTrigger value="schedules">Échéanciers</TabsTrigger>
-                <TabsTrigger value="terms">Termes</TabsTrigger>
-                <TabsTrigger value="vat_rates">Taux TVA</TabsTrigger>
-                <TabsTrigger value="revisions">Révisions</TabsTrigger>
-                <TabsTrigger value="payment_terms">Règlements</TabsTrigger>
-            </TabsList>
-            <TabsContent value="companies">
-                <CompaniesSection onCompaniesUpdate={reloadData} />
-            </TabsContent>
-            <TabsContent value="agencies">
-                <AgenciesSection onAgenciesUpdate={reloadData} />
-            </TabsContent>
-            <TabsContent value="sectors">
-                <SectorsSection />
-            </TabsContent>
-            <TabsContent value="activities">
-                <ActivitiesSection />
-            </TabsContent>
-            <TabsContent value="meterTypes">
-                <MeterTypesSection />
-            </TabsContent>
-            <TabsContent value="pricing_rules">
-                <PricingRulesSection />
-            </TabsContent>
-            <TabsContent value="markets">
-                <MarketsSection />
-            </TabsContent>
-            <TabsContent value="typologies">
-                <SimpleCrudSection 
-                    title="Typologies"
-                    description="Gérez les typologies de clients."
-                    dataType="typology"
-                    items={typologies}
-                    createItem={createTypology}
-                    updateItem={updateTypology}
-                    deleteItem={deleteTypology}
-                />
-            </TabsContent>
-            <TabsContent value="schedules">
-                <SimpleCrudSection 
-                    title="Échéanciers"
-                    description="Gérez les échéanciers de facturation."
-                    dataType="schedule"
-                    items={schedules}
-                    createItem={createSchedule}
-                    updateItem={updateSchedule}
-                    deleteItem={deleteSchedule}
-                />
-            </TabsContent>
-            <TabsContent value="terms">
-                <SimpleCrudSection 
-                    title="Termes"
-                    description="Gérez les termes de paiement."
-                    dataType="term"
-                    items={terms}
-                    createItem={createTerm}
-                    updateItem={updateTerm}
-                    deleteItem={deleteTerm}
-                />
-            </TabsContent>
-            <TabsContent value="vat_rates">
-                <VatRatesSection />
-            </TabsContent>
-            <TabsContent value="revisions">
-                <RevisionFormulasSection />
-            </TabsContent>
-            <TabsContent value="payment_terms">
-                <PaymentTermsSection />
-            </TabsContent>
-        </Tabs>
+            <div>
+                <h1 className="text-lg font-medium">Paramétrage</h1>
+                <p className="text-sm text-muted-foreground">
+                    Configurez les entités de votre organisation.
+                </p>
+            </div>
+            <Tabs defaultValue="companies" className="w-full">
+                <TabsList className="flex-wrap h-auto justify-start">
+                    <TabsTrigger value="companies">Sociétés</TabsTrigger>
+                    <TabsTrigger value="agencies">Agences</TabsTrigger>
+                    <TabsTrigger value="sectors">Secteurs</TabsTrigger>
+                    <TabsTrigger value="activities">Activités</TabsTrigger>
+                    <TabsTrigger value="meterTypes">Types de Compteurs</TabsTrigger>
+                    <TabsTrigger value="pricing_rules">Règles de prix</TabsTrigger>
+                    <TabsTrigger value="markets">Marchés</TabsTrigger>
+                    <TabsTrigger value="typologies">Typologies</TabsTrigger>
+                    <TabsTrigger value="schedules">Échéanciers</TabsTrigger>
+                    <TabsTrigger value="terms">Termes</TabsTrigger>
+                    <TabsTrigger value="vat_rates">Taux TVA</TabsTrigger>
+                    <TabsTrigger value="revisions">Révisions</TabsTrigger>
+                    <TabsTrigger value="payment_terms">Règlements</TabsTrigger>
+                </TabsList>
+                <TabsContent value="companies">
+                    <CompaniesSection onCompaniesUpdate={reloadData} />
+                </TabsContent>
+                <TabsContent value="agencies">
+                    <AgenciesSection onAgenciesUpdate={reloadData} />
+                </TabsContent>
+                <TabsContent value="sectors">
+                    <SectorsSection />
+                </TabsContent>
+                <TabsContent value="activities">
+                    <ActivitiesSection />
+                </TabsContent>
+                <TabsContent value="meterTypes">
+                    <MeterTypesSection />
+                </TabsContent>
+                <TabsContent value="pricing_rules">
+                    <PricingRulesSection />
+                </TabsContent>
+                <TabsContent value="markets">
+                    <MarketsSection />
+                </TabsContent>
+                <TabsContent value="typologies">
+                    <SimpleCrudSection
+                        title="Typologies"
+                        description="Gérez les typologies de clients."
+                        dataType="typology"
+                        items={typologies}
+                        createItem={createTypology}
+                        updateItem={updateTypology}
+                        deleteItem={deleteTypology}
+                    />
+                </TabsContent>
+                <TabsContent value="schedules">
+                    <SimpleCrudSection
+                        title="Échéanciers"
+                        description="Gérez les échéanciers de facturation."
+                        dataType="schedule"
+                        items={schedules}
+                        createItem={createSchedule}
+                        updateItem={updateSchedule}
+                        deleteItem={deleteSchedule}
+                    />
+                </TabsContent>
+                <TabsContent value="terms">
+                    <SimpleCrudSection
+                        title="Termes"
+                        description="Gérez les termes de paiement."
+                        dataType="term"
+                        items={terms}
+                        createItem={createTerm}
+                        updateItem={updateTerm}
+                        deleteItem={deleteTerm}
+                    />
+                </TabsContent>
+                <TabsContent value="vat_rates">
+                    <VatRatesSection />
+                </TabsContent>
+                <TabsContent value="revisions">
+                    <RevisionRulesSection />
+                </TabsContent>
+                <TabsContent value="payment_terms">
+                    <PaymentTermsSection />
+                </TabsContent>
+            </Tabs>
         </div>
     );
 }

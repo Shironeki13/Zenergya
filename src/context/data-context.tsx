@@ -6,9 +6,11 @@ import {
   getClients, getSites, getContracts, getInvoices, getCreditNotes, getMeters, getMeterTypes, getMeterReadings,
   getCompanies, getAgencies, getSectors, getActivities, getSchedules, getTerms,
   getTypologies, getVatRates, getRevisionFormulas, getPaymentTerms, getPricingRules,
-  getMarkets, getRoles, getUsers
+  getMarkets, getRoles, getUsers, getIndices, getIndexValues, getRevisionRules, getServices
 } from '@/services/firestore';
-import type { DataContextType, Client, Site, Contract, Invoice, CreditNote, Meter, MeterType, MeterReading, Company, Agency, Sector, Activity, Schedule, Term, Typology, VatRate, RevisionFormula, PaymentTerm, PricingRule, Market, Role, User } from '@/lib/types';
+import { auth } from '@/lib/firebase';
+import { signInAnonymously } from 'firebase/auth';
+import type { DataContextType, Client, Site, Contract, Invoice, CreditNote, Meter, MeterType, MeterReading, Company, Agency, Sector, Activity, Schedule, Term, Typology, VatRate, RevisionFormula, PaymentTerm, PricingRule, Market, Role, User, Index, IndexValue, RevisionRule, Service } from '@/lib/types';
 import { useToast } from '@/hooks/use-toast';
 
 const DataContext = createContext<DataContextType | undefined>(undefined);
@@ -32,12 +34,15 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     typologies: [] as Typology[],
     vatRates: [] as VatRate[],
     revisionFormulas: [] as RevisionFormula[],
+    revisionRules: [] as RevisionRule[],
+    services: [] as Service[],
     paymentTerms: [] as PaymentTerm[],
     pricingRules: [] as PricingRule[],
     markets: [] as Market[],
     roles: [] as Role[],
-    roles: [] as Role[],
     users: [] as User[],
+    indices: [] as Index[],
+    indexValues: [] as IndexValue[],
   });
 
   // Mock Current User (Director by default)
@@ -65,14 +70,14 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         getClients(), getSites(), getContracts(), getInvoices(), getCreditNotes(), getMeters(), getMeterTypes(), getMeterReadings(),
         getCompanies(), getAgencies(), getSectors(), getActivities(), getSchedules(), getTerms(),
         getTypologies(), getVatRates(), getRevisionFormulas(), getPaymentTerms(), getPricingRules(),
-        getMarkets(), getRoles(), getUsers()
+        getMarkets(), getRoles(), getUsers(), getIndices(), getIndexValues(), getRevisionRules(), getServices()
       ]);
 
       const [
         clients, sites, contracts, invoices, creditNotes, meters, meterTypes, meterReadings,
         companies, agencies, sectors, activities, schedules, terms,
         typologies, vatRates, revisionFormulas, paymentTerms, pricingRules,
-        markets, roles, users
+        markets, roles, users, indices, indexValues, revisionRules, services
       ] = results;
 
       if (clients.status === 'rejected') console.error("Failed to load clients", clients.reason);
@@ -97,6 +102,10 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       if (markets.status === 'rejected') console.error("Failed to load markets", markets.reason);
       if (roles.status === 'rejected') console.error("Failed to load roles", roles.reason);
       if (users.status === 'rejected') console.error("Failed to load users", users.reason);
+      if (indices.status === 'rejected') console.error("Failed to load indices", indices.reason);
+      if (indexValues.status === 'rejected') console.error("Failed to load indexValues", indexValues.reason);
+      if (revisionRules.status === 'rejected') console.error("Failed to load revisionRules", revisionRules.reason);
+      if (services.status === 'rejected') console.error("Failed to load services", services.reason);
 
       setData({
         clients: clients.status === 'fulfilled' ? clients.value : [],
@@ -116,11 +125,15 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         typologies: typologies.status === 'fulfilled' ? typologies.value : [],
         vatRates: vatRates.status === 'fulfilled' ? vatRates.value : [],
         revisionFormulas: revisionFormulas.status === 'fulfilled' ? revisionFormulas.value : [],
+        revisionRules: revisionRules.status === 'fulfilled' ? revisionRules.value : [],
+        services: services.status === 'fulfilled' ? services.value : [],
         paymentTerms: paymentTerms.status === 'fulfilled' ? paymentTerms.value : [],
         pricingRules: pricingRules.status === 'fulfilled' ? pricingRules.value : [],
         markets: markets.status === 'fulfilled' ? markets.value : [],
         roles: roles.status === 'fulfilled' ? roles.value : [],
         users: users.status === 'fulfilled' ? users.value : [],
+        indices: indices.status === 'fulfilled' ? indices.value : [],
+        indexValues: indexValues.status === 'fulfilled' ? indexValues.value : [],
       });
 
     } catch (error) {
@@ -133,14 +146,85 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     } finally {
       setIsLoading(false);
     }
-  }, [toast]);
+  }, []); // Removed toast dependency to prevent infinite loops
+
+  // Authentication Methods
+  const login = async (email: string, password: string) => {
+    try {
+      await import('firebase/auth').then(({ signInWithEmailAndPassword }) =>
+        signInWithEmailAndPassword(auth, email, password)
+      );
+    } catch (error: any) {
+      console.error("Login failed:", error);
+      throw error;
+    }
+  };
+
+  const signup = async (email: string, password: string) => {
+    try {
+      await import('firebase/auth').then(({ createUserWithEmailAndPassword }) =>
+        createUserWithEmailAndPassword(auth, email, password)
+      );
+    } catch (error: any) {
+      console.error("Signup failed:", error);
+      throw error;
+    }
+  };
+
+  const loginWithGoogle = async () => {
+    try {
+      const { signInWithPopup, GoogleAuthProvider } = await import('firebase/auth');
+      const provider = new GoogleAuthProvider();
+      await signInWithPopup(auth, provider);
+    } catch (error: any) {
+      console.error("Google Login failed:", error);
+      throw error;
+    }
+  };
+
+  const logout = async () => {
+    try {
+      await import('firebase/auth').then(({ signOut }) => signOut(auth));
+      setCurrentUser(null);
+    } catch (error) {
+      console.error("Logout failed:", error);
+      throw error;
+    }
+  };
 
   useEffect(() => {
     loadAllData();
+
+    // Listen for auth state changes
+    const unsubscribe = import('firebase/auth').then(({ onAuthStateChanged }) =>
+      onAuthStateChanged(auth, async (firebaseUser) => {
+        if (firebaseUser) {
+          setCurrentUser({
+            id: firebaseUser.uid,
+            name: firebaseUser.displayName || 'Utilisateur',
+            email: firebaseUser.email || '',
+            roleId: 'role-admin', // Default to admin for now
+            roleName: 'Administrateur',
+            modules: ['contracts', 'billing', 'settings'],
+            scope: {
+              companyIds: ['*'],
+              agencyIds: ['*'],
+              sectorIds: ['*'],
+            }
+          });
+        } else {
+          setCurrentUser(null);
+        }
+      })
+    );
+
+    return () => {
+      unsubscribe.then(unsub => unsub());
+    };
   }, [loadAllData]);
 
   return (
-    <DataContext.Provider value={{ ...data, isLoading, reloadData: loadAllData, currentUser, setCurrentUser }}>
+    <DataContext.Provider value={{ ...data, isLoading, reloadData: loadAllData, currentUser, setCurrentUser, login, signup, loginWithGoogle, logout }}>
       {children}
     </DataContext.Provider>
   );

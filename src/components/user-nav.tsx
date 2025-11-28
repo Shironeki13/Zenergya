@@ -36,7 +36,7 @@ import { cn } from "@/lib/utils";
 
 export function UserNav() {
   const router = useRouter();
-  const { currentUser, setCurrentUser, users } = useData();
+  const { currentUser, setCurrentUser, users, logout } = useData();
   const [open, setOpen] = useState(false);
 
   // Default admin user (fallback)
@@ -115,7 +115,14 @@ export function UserNav() {
             )}
           </DropdownMenuGroup>
           <DropdownMenuSeparator />
-          <DropdownMenuItem onClick={() => router.push('/login')}>
+          <DropdownMenuItem onClick={async () => {
+            try {
+              await logout();
+              router.push('/login');
+            } catch (error) {
+              console.error("Logout failed", error);
+            }
+          }}>
             <LogOut className="mr-2 h-4 w-4" />
             <span>Se déconnecter</span>
           </DropdownMenuItem>

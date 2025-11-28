@@ -1,7 +1,7 @@
 
 'use server';
 import { db } from '@/lib/firebase';
-import type { Client, Site, Contract, Invoice, CreditNote, MeterReading, Company, Agency, Sector, Activity, User, Role, Schedule, Term, Typology, VatRate, RevisionFormula, PaymentTerm, PricingRule, Market, Meter, MeterType } from '@/lib/types';
+import type { Client, Site, Contract, Invoice, CreditNote, MeterReading, Company, Agency, Sector, Activity, User, Role, Schedule, Term, Typology, VatRate, RevisionFormula, PaymentTerm, PricingRule, Market, Meter, MeterType, Index, IndexValue, RevisionRule, Service, InvoiceStatus } from '@/lib/types';
 import { collection, getDocs, doc, getDoc, addDoc, updateDoc, deleteDoc, query, where, DocumentData, writeBatch, runTransaction, Timestamp } from 'firebase/firestore';
 
 function processFirestoreDoc<T>(docData: DocumentData): T {
@@ -74,6 +74,21 @@ export async function updateClient(id: string, data: Partial<Omit<Client, 'id'>>
 }
 
 export async function deleteClient(id: string) {
+    // 1. Get all associated sites
+    const sites = await getSitesByClient(id);
+    // 2. Delete all sites
+    for (const site of sites) {
+        await deleteSite(site.id);
+    }
+
+    // 3. Get all associated contracts
+    const contracts = await getContractsByClient(id);
+    // 4. Delete all contracts
+    for (const contract of contracts) {
+        await deleteContract(contract.id);
+    }
+
+    // 5. Delete the client
     const clientDoc = doc(db, 'clients', id);
     await deleteDoc(clientDoc);
 }
@@ -143,19 +158,6 @@ export async function createContract(data: Omit<Contract, 'id' | 'status' | 'val
 export async function updateContract(id: string, data: Partial<Omit<Contract, 'id' | 'clientName'>>) {
     const contractDoc = doc(db, 'contracts', id);
     const updateData: { [key: string]: any } = { ...data };
-
-    if (data.startDate && typeof data.startDate === 'string') {
-        updateData.startDate = new Date(data.startDate);
-    } else if (data.startDate) {
-        updateData.startDate = data.startDate;
-    }
-
-    if (data.endDate && typeof data.endDate === 'string') {
-        updateData.endDate = new Date(data.endDate);
-    } else if (data.endDate) {
-        updateData.endDate = data.endDate;
-    }
-
     const revisionFields: ('revisionP1' | 'revisionP2' | 'revisionP3')[] = ['revisionP1', 'revisionP2', 'revisionP3'];
     for (const field of revisionFields) {
         if (data[field] && data[field]?.date && typeof data[field]!.date === 'string') {
@@ -165,6 +167,11 @@ export async function updateContract(id: string, data: Partial<Omit<Contract, 'i
     }
 
     await updateDoc(contractDoc, updateData);
+}
+
+export async function deleteContract(id: string) {
+    const contractDoc = doc(db, 'contracts', id);
+    await deleteDoc(contractDoc);
 }
 
 
@@ -276,6 +283,64 @@ export async function getNextCreditNoteNumber(): Promise<string> {
         const countPadded = String(newCount).padStart(4, '0');
         return `AV${year}-${countPadded}`;
     });
+}
+
+
+
+// Indices
+export async function createIndex(data: Omit<Index, 'id'>) {
+    return createSettingItem('indices', data);
+}
+export async function getIndices(): Promise<Index[]> {
+    return getCollection<Index>(collection(db, 'indices'));
+}
+export async function updateIndex(id: string, data: Partial<Omit<Index, 'id'>>) {
+    return updateSettingItem('indices', id, data);
+}
+export async function deleteIndex(id: string) {
+    return deleteSettingItem('indices', id);
+}
+
+// Valeurs d'Indices
+export async function createIndexValue(data: Omit<IndexValue, 'id'>) {
+    // Check for existing value for this index and period
+    const q = query(
+        collection(db, 'indexValues'),
+        where("indexId", "==", data.indexId),
+        where("period", "==", data.period)
+    );
+    const existingDocs = await getDocs(q);
+
+    if (!existingDocs.empty) {
+        throw new Error(`Une valeur existe déjà pour l'indice ${data.indexId} sur la période ${data.period}`);
+    }
+
+    const valueData = {
+        ...data,
+        lastUpdated: new Date().toISOString(),
+    };
+    return createSettingItem('indexValues', valueData);
+}
+
+export async function getIndexValues(): Promise<IndexValue[]> {
+    return getCollection<IndexValue>(collection(db, 'indexValues'));
+}
+
+export async function getIndexValuesByIndex(indexId: string): Promise<IndexValue[]> {
+    const q = query(collection(db, 'indexValues'), where("indexId", "==", indexId));
+    return getCollection<IndexValue>(q);
+}
+
+export async function updateIndexValue(id: string, data: Partial<Omit<IndexValue, 'id'>>) {
+    const updateData = {
+        ...data,
+        lastUpdated: new Date().toISOString(),
+    };
+    return updateSettingItem('indexValues', id, updateData);
+}
+
+export async function deleteIndexValue(id: string) {
+    return deleteSettingItem('indexValues', id);
 }
 
 
@@ -553,6 +618,43 @@ export async function deleteMarket(id: string) {
     return deleteSettingItem('markets', id);
 }
 
+
+
+// Règles de révision
+export async function createRevisionRule(data: Omit<RevisionRule, 'id'>) {
+    return createSettingItem('revisionRules', data);
+}
+export async function getRevisionRules(): Promise<RevisionRule[]> {
+    return getCollection<RevisionRule>(collection(db, 'revisionRules'));
+}
+export async function updateRevisionRule(id: string, data: Partial<Omit<RevisionRule, 'id'>>) {
+    return updateSettingItem('revisionRules', id, data);
+}
+export async function deleteRevisionRule(id: string) {
+    return deleteSettingItem('revisionRules', id);
+}
+
+// Prestations (Services)
+export async function createService(data: Omit<Service, 'id'>) {
+    return createSettingItem('services', data);
+}
+export async function getServices(): Promise<Service[]> {
+    return getCollection<Service>(collection(db, 'services'));
+}
+export async function getServicesBySite(siteId: string): Promise<Service[]> {
+    const q = query(collection(db, 'services'), where("siteId", "==", siteId));
+    return getCollection<Service>(q);
+}
+export async function getServicesByContract(contractId: string): Promise<Service[]> {
+    const q = query(collection(db, 'services'), where("contractId", "==", contractId));
+    return getCollection<Service>(q);
+}
+export async function updateService(id: string, data: Partial<Omit<Service, 'id'>>) {
+    return updateSettingItem('services', id, data);
+}
+export async function deleteService(id: string) {
+    return deleteSettingItem('services', id);
+}
 
 // --- Fonctions de Gestion des Utilisateurs (Firestore) ---
 

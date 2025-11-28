@@ -26,6 +26,7 @@ import type { Client } from '@/lib/types';
 import { ClientSchema, type ExtractContractInfoOutput, ExtractContractInfoOutputSchema } from '@/lib/types';
 import { extractContractInfo } from '@/ai/flows/extract-contract-info-flow';
 import { createClientAndContract } from '@/services/firestore';
+import { uploadFile } from '@/services/storage';
 import { cn } from '@/lib/utils';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
@@ -95,7 +96,8 @@ export default function NewContractFromPdfPage() {
 
     const { toast } = useToast();
     const router = useRouter();
-    const { clients, typologies, activities, terms, schedules, companies, agencies, sectors } = useData();
+    const { clients, typologies, activities, terms, schedules, companies, agencies, sectors, currentUser } = useData();
+    const [showPrompt, setShowPrompt] = useState(false);
 
     const form = useForm<ClientFormValues>({
         resolver: zodResolver(ClientSchema),
@@ -228,7 +230,19 @@ export default function NewContractFromPdfPage() {
 
     async function onSubmit(data: ClientFormValues) {
         try {
-            await createClientAndContract(data);
+            let documentUrl = '';
+            if (file) {
+                const timestamp = Date.now();
+                const path = `contracts/${timestamp}_${file.name}`;
+                documentUrl = await uploadFile(file, path);
+            }
+
+            const finalData = {
+                ...data,
+                documents: documentUrl ? [documentUrl] : [],
+            };
+
+            await createClientAndContract(finalData);
             toast({
                 title: "Base Marché Créée",
                 description: "Le client et le contrat ont été enregistrés avec succès.",
@@ -245,30 +259,46 @@ export default function NewContractFromPdfPage() {
         }
     }
 
+    const isAdmin = currentUser?.roleId === 'role-admin';
+
     return (
         <div className="space-y-6">
-            <div className="flex items-center gap-4">
-                <Link href="/contracts/new-document">
-                    <Button variant="outline" size="icon" className="h-7 w-7">
-                        <ChevronLeft className="h-4 w-4" />
-                        <span className="sr-only">Retour</span>
+            <div className="flex items-center justify-between gap-4">
+                <div className="flex items-center gap-4">
+                    <Link href="/contracts/library">
+                        <Button variant="outline" size="icon" className="h-7 w-7">
+                            <ChevronLeft className="h-4 w-4" />
+                            <span className="sr-only">Retour</span>
+                        </Button>
+                    </Link>
+                    <div>
+                        <h1 className="text-2xl font-bold tracking-tight">Nouvelle Base Marché (Privé)</h1>
+                        <p className="text-muted-foreground">
+                            Déposez un contrat PDF et ajustez le prompt pour que l'IA en extraie les informations.
+                        </p>
+                    </div>
+                </div>
+                <Link href="/clients/new">
+                    <Button variant="secondary">
+                        Saisie Manuelle
                     </Button>
                 </Link>
-                <div>
-                    <h1 className="text-2xl font-bold tracking-tight">Nouvelle Base Marché (Privé)</h1>
-                    <p className="text-muted-foreground">
-                        Déposez un contrat PDF et ajustez le prompt pour que l'IA en extraie les informations.
-                    </p>
-                </div>
             </div>
 
             <div className="grid lg:grid-cols-2 gap-6">
                 <Card className="flex-1">
-                    <CardHeader>
-                        <CardTitle>1. Importer le contrat</CardTitle>
-                        <CardDescription>
-                            Sélectionnez le document PDF du contrat que vous souhaitez analyser.
-                        </CardDescription>
+                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                        <div className="space-y-1">
+                            <CardTitle>1. Importer le contrat</CardTitle>
+                            <CardDescription>
+                                Sélectionnez le document PDF du contrat que vous souhaitez analyser.
+                            </CardDescription>
+                        </div>
+                        {isAdmin && (
+                            <Button variant="ghost" size="sm" onClick={() => setShowPrompt(!showPrompt)}>
+                                {showPrompt ? "Masquer le prompt" : "Visualiser le prompt"}
+                            </Button>
+                        )}
                     </CardHeader>
                     <CardContent>
                         <div className="space-y-2">
@@ -281,21 +311,24 @@ export default function NewContractFromPdfPage() {
                         </div>
                     </CardContent>
                 </Card>
-                <Card className="flex-1">
-                    <CardHeader>
-                        <CardTitle>2. Personnaliser le Prompt</CardTitle>
-                        <CardDescription>
-                            Modifiez le prompt ci-dessous pour affiner l'extraction de données si nécessaire.
-                        </CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                        <Textarea
-                            value={prompt}
-                            onChange={(e) => setPrompt(e.target.value)}
-                            className="min-h-[150px] font-mono text-xs"
-                        />
-                    </CardContent>
-                </Card>
+
+                {showPrompt && isAdmin && (
+                    <Card className="flex-1 animate-in fade-in slide-in-from-top-4 duration-300">
+                        <CardHeader>
+                            <CardTitle>2. Personnaliser le Prompt</CardTitle>
+                            <CardDescription>
+                                Modifiez le prompt ci-dessous pour affiner l'extraction de données si nécessaire.
+                            </CardDescription>
+                        </CardHeader>
+                        <CardContent>
+                            <Textarea
+                                value={prompt}
+                                onChange={(e) => setPrompt(e.target.value)}
+                                className="min-h-[150px] font-mono text-xs"
+                            />
+                        </CardContent>
+                    </Card>
+                )}
             </div>
 
             <div className="flex justify-center">
