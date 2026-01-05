@@ -174,7 +174,7 @@ export default function ClientsPage() {
                         <DropdownMenuContent align="end" className="w-[160px]">
                           <DropdownMenuLabel>Actions</DropdownMenuLabel>
                           <DropdownMenuItem asChild className="cursor-pointer">
-                            <Link href={`/clients/${client.id}`}>Gérer les sites</Link>
+                            <Link href={`/clients/${client.id}`}>Voir les contrats</Link>
                           </DropdownMenuItem>
                           <DropdownMenuItem asChild className="cursor-pointer">
                             <Link href={`/clients/${client.id}/edit`}>Modifier</Link>

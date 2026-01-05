@@ -23,12 +23,14 @@ import {
 } from "@/components/ui/table";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Separator } from "@/components/ui/separator";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger, DialogClose } from "@/components/ui/dialog";
 import {
   ChevronLeft,
   Calendar,
   FileClock,
   CheckCircle,
-  Gauge,
   FileText,
   PlusCircle,
   ClipboardList,
@@ -39,12 +41,25 @@ import {
   Droplets,
   Clock,
   CalendarDays,
-  Paperclip
+  Paperclip,
+  Edit,
+  Trash2,
+  CreditCard
 } from "lucide-react";
-import { createMeterReading, getContract, getSitesByClient, getMeters, getMeterReadingsByContract, getInvoicesByContract, getActivities, getRevisionFormulas, getTerms, getSchedules } from "@/services/firestore";
-import type { Activity, Contract, Invoice, MeterReading, Site, Meter, RevisionFormula, Term, Schedule } from "@/lib/types";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  getContract, getSitesByContract, getMeters,
+  getInvoicesByContract, getActivities, getRevisionFormulas, getTerms, getSchedules,
+  createSite, updateSite, deleteSite,
+  getAmendmentsByContract, getTerminationsByContract, getRenewalsByContract, getTrusteeChangesByContract, getBeChangesByContract
+} from "@/services/firestore";
+import type { Activity, Contract, Invoice, Site, Meter, RevisionFormula, Term, Schedule, Amendment, Termination, Renewal, TrusteeChange, BeChange } from "@/lib/types";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
+import { AmendmentDialog } from "@/components/contracts/events/AmendmentDialog";
+import { TerminationDialog } from "@/components/contracts/events/TerminationDialog";
+import { RenewalDialog } from "@/components/contracts/events/RenewalDialog";
+import { TrusteeChangeDialog } from "@/components/contracts/events/TrusteeChangeDialog";
+import { BeChangeDialog } from "@/components/contracts/events/BeChangeDialog";
 
 export default function ContractDetailPage() {
   const params = useParams();
@@ -56,24 +71,48 @@ export default function ContractDetailPage() {
   const [contract, setContract] = useState<Contract | null>(null);
   const [sites, setSites] = useState<Site[]>([]);
   const [meters, setMeters] = useState<Meter[]>([]);
-  const [meterReadings, setMeterReadings] = useState<MeterReading[]>([]);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [activities, setActivities] = useState<Activity[]>([]);
   const [revisionFormulas, setRevisionFormulas] = useState<RevisionFormula[]>([]);
   const [terms, setTerms] = useState<Term[]>([]);
   const [schedules, setSchedules] = useState<Schedule[]>([]);
 
-  const [selectedMeterId, setSelectedMeterId] = useState<string | null>(null);
-  const [readingValue, setReadingValue] = useState('');
+  // Contract Events State
+  const [amendments, setAmendments] = useState<Amendment[]>([]);
+  const [terminations, setTerminations] = useState<Termination[]>([]);
+  const [renewals, setRenewals] = useState<Renewal[]>([]);
+  const [trusteeChanges, setTrusteeChanges] = useState<TrusteeChange[]>([]);
+  const [beChanges, setBeChanges] = useState<BeChange[]>([]);
 
-  const reloadReadings = useCallback(async () => {
+  // Event Dialogs State
+  const [amendmentDialogOpen, setAmendmentDialogOpen] = useState(false);
+  const [terminationDialogOpen, setTerminationDialogOpen] = useState(false);
+  const [renewalDialogOpen, setRenewalDialogOpen] = useState(false);
+  const [trusteeChangeDialogOpen, setTrusteeChangeDialogOpen] = useState(false);
+  const [beChangeDialogOpen, setBeChangeDialogOpen] = useState(false);
+
+  // Site Dialog State
+  const [siteDialogOpen, setSiteDialogOpen] = useState(false);
+  const [editingSite, setEditingSite] = useState<Site | null>(null);
+  const [siteToDelete, setSiteToDelete] = useState<Site | null>(null);
+
+  // Site Form State
+  const [siteName, setSiteName] = useState('');
+  const [siteNumber, setSiteNumber] = useState('');
+  const [siteAddress, setSiteAddress] = useState('');
+  const [sitePostalCode, setSitePostalCode] = useState('');
+  const [siteCity, setSiteCity] = useState('');
+  const [siteActivityIds, setSiteActivityIds] = useState<string[]>([]);
+  const [siteAmounts, setSiteAmounts] = useState<Record<string, number>>({});
+
+  const reloadData = useCallback(async () => {
     if (!id) return;
     try {
-      const readingsData = await getMeterReadingsByContract(id);
-      setMeterReadings(readingsData);
+      const sitesData = await getSitesByContract(id);
+      setSites(sitesData);
     } catch (error) {
-      console.error("Failed to reload meter readings", error);
-      toast({ title: "Erreur", description: "Impossible de rafraîchir les relevés.", variant: "destructive" });
+      console.error("Failed to reload data", error);
+      toast({ title: "Erreur", description: "Impossible de rafraîchir les données.", variant: "destructive" });
     }
   }, [id, toast]);
 
@@ -89,30 +128,58 @@ export default function ContractDetailPage() {
         }
         setContract(contractData);
 
-        const [sitesData, metersData, readingsData, invoicesData, activitiesData, formulasData, termsData, schedulesData] = await Promise.all([
-          getSitesByClient(contractData.clientId),
+        const [
+          sitesData,
+          metersData,
+          invoicesData,
+          activitiesData,
+          formulasData,
+          termsData,
+          schedulesData,
+          amendmentsData,
+          terminationsData,
+          renewalsData,
+          trusteeChangesData,
+          beChangesData
+        ] = await Promise.all([
+          getSitesByContract(id),
           getMeters(),
-          getMeterReadingsByContract(id),
           getInvoicesByContract(id),
           getActivities(),
           getRevisionFormulas(),
           getTerms(),
           getSchedules(),
+          getAmendmentsByContract(id),
+          getTerminationsByContract(id),
+          getRenewalsByContract(id),
+          getTrusteeChangesByContract(id),
+          getBeChangesByContract(id),
         ]);
 
-        const contractSites = sitesData.filter(site => contractData.siteIds.includes(site.id));
-        setSites(contractSites);
+        setSites(sitesData);
 
-        const contractSiteIds = contractSites.map(s => s.id);
-        const contractMeters = metersData.filter(meter => contractSiteIds.includes(meter.siteId));
+        const contractSiteIds = sitesData.map((s: Site) => s.id);
+        const contractMeters = metersData.filter((meter: Meter) => contractSiteIds.includes(meter.siteId));
         setMeters(contractMeters);
 
-        setMeterReadings(readingsData);
         setInvoices(invoicesData);
         setActivities(activitiesData);
         setRevisionFormulas(formulasData);
         setTerms(termsData);
         setSchedules(schedulesData);
+
+        setAmendments(amendmentsData);
+        setTerminations(terminationsData);
+        setRenewals(renewalsData);
+        setTrusteeChanges(trusteeChangesData);
+        setBeChanges(beChangesData);
+        // Let's fix the destructuring in the next chunk or here.
+        // Wait, I can't easily change the destructuring line in this chunk without including lines 109-117.
+        // I will rely on the fact that I added items to the Promise.all array.
+        // But I need to capture them.
+        // I will rewrite the destructuring line in a separate chunk or merge.
+        // Let's merge.
+
 
       } catch (error) {
         console.error("Failed to fetch contract details:", error);
@@ -125,34 +192,85 @@ export default function ContractDetailPage() {
   }, [id, toast]);
 
 
-  const handleSaveReading = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!selectedMeterId || !readingValue) {
-      toast({ title: "Erreur", description: "Veuillez sélectionner un compteur et saisir une valeur.", variant: "destructive" });
-      return;
+  // Site Management Handlers
+  const resetSiteForm = () => {
+    setSiteName('');
+    setSiteNumber('');
+    setSiteAddress('');
+    setSitePostalCode('');
+    setSiteCity('');
+    setSiteActivityIds([]);
+    setSiteAmounts({});
+    setEditingSite(null);
+  };
+
+  const handleOpenSiteDialog = (site: Site | null = null) => {
+    resetSiteForm();
+    if (site) {
+      setEditingSite(site);
+      setSiteName(site.name);
+      setSiteNumber(site.siteNumber || '');
+      setSiteAddress(site.address);
+      setSitePostalCode(site.postalCode || '');
+      setSiteCity(site.city || '');
+      setSiteActivityIds(site.activityIds || []);
+      const amounts = site.amounts?.reduce((acc, curr) => ({ ...acc, [curr.activityId]: curr.amount }), {}) || {};
+      setSiteAmounts(amounts);
     }
+    setSiteDialogOpen(true);
+  };
 
-    const selectedMeter = meters.find(m => m.id === selectedMeterId);
-    if (!selectedMeter) return;
+  const handleSubmitSite = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!siteName.trim() || !siteAddress.trim()) return;
 
-    const readingData = {
-      meterId: selectedMeterId,
-      contractId: id,
-      date: new Date().toISOString(),
-      reading: parseFloat(readingValue),
-      unit: selectedMeter.unit,
+    const siteData: Partial<Site> = {
+      name: siteName,
+      siteNumber,
+      address: siteAddress,
+      postalCode: sitePostalCode,
+      city: siteCity,
+      activityIds: siteActivityIds,
+      amounts: Object.entries(siteAmounts)
+        .filter(([activityId]) => siteActivityIds.includes(activityId))
+        .map(([activityId, amount]) => ({ activityId, amount: Number(amount) || 0 })),
     };
 
     try {
-      await createMeterReading(readingData);
-      toast({ title: "Relevé enregistré", description: "Le relevé a été enregistré avec succès." });
-      setSelectedMeterId(null);
-      setReadingValue('');
-      await reloadReadings();
+      if (editingSite) {
+        await updateSite(editingSite.id, siteData);
+        toast({ title: "Site mis à jour", description: "Le site a été mis à jour avec succès." });
+      } else {
+        await createSite({ ...siteData, contractId: id, clientId: contract?.clientId } as Omit<Site, 'id'>);
+        toast({ title: "Site créé", description: "Le nouveau site a été ajouté avec succès." });
+      }
+      await reloadData();
+      setSiteDialogOpen(false);
+      resetSiteForm();
     } catch (error) {
-      toast({ title: "Erreur", description: "Impossible d'enregistrer le relevé.", variant: "destructive" });
+      console.error(error);
+      toast({ title: "Erreur", description: "L'opération a échoué.", variant: "destructive" });
     }
-  }
+  };
+
+  const handleDeleteSite = async () => {
+    if (!siteToDelete) return;
+    try {
+      await deleteSite(siteToDelete.id);
+      toast({ title: "Succès", description: "Le site a été supprimé." });
+      await reloadData();
+      setSiteToDelete(null);
+    } catch (error) {
+      toast({ title: "Erreur", description: "Impossible de supprimer le site.", variant: "destructive" });
+    }
+  };
+
+  const handleSiteActivityChange = (activityId: string, checked: boolean) => {
+    setSiteActivityIds(prev =>
+      checked ? [...prev, activityId] : prev.filter(id => id !== activityId)
+    );
+  };
+
 
   const getBadgeVariant = (status: Contract['status']): 'secondary' | 'destructive' | 'warning' | 'outline' => {
     switch (status) {
@@ -262,16 +380,11 @@ export default function ContractDetailPage() {
                   Terme : {contract.term}
                 </span>
               </div>
-              <div className="flex items-start">
-                <MapPin className="mr-2 h-4 w-4 mt-1 text-muted-foreground" />
-                <div>
-                  <span className="font-medium">Sites ({sites.length}) :</span>
-                  <ul className="list-disc pl-5">
-                    {contract.siteIds.map((siteId) => (
-                      <li key={siteId} className="truncate">{siteMap.get(siteId) || siteId}</li>
-                    ))}
-                  </ul>
-                </div>
+              <div className="flex items-center">
+                <CreditCard className="mr-2 h-4 w-4 text-muted-foreground" />
+                <span>
+                  Facturation : {contract.invoicingType === 'global' ? 'Globale' : 'Détaillée par site'}
+                </span>
               </div>
               <div className="flex items-start">
                 <Paperclip className="mr-2 h-4 w-4 mt-1 text-muted-foreground" />
@@ -279,10 +392,10 @@ export default function ContractDetailPage() {
                   <span className="font-medium">Documents :</span>
                   {contract.documents && contract.documents.length > 0 ? (
                     <ul className="list-disc pl-5">
-                      {contract.documents.map((docUrl, index) => (
+                      {contract.documents.map((doc, index) => (
                         <li key={index} className="truncate">
-                          <a href={docUrl} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">
-                            Contrat PDF {index + 1}
+                          <a href={doc.url} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">
+                            {doc.name}
                           </a>
                         </li>
                       ))}
@@ -292,54 +405,87 @@ export default function ContractDetailPage() {
                   )}
                 </div>
               </div>
+              <div className="flex items-center">
+                <FileText className="mr-2 h-4 w-4 text-muted-foreground" />
+                <span>Libellé : {contract.label || 'N/A'}</span>
+              </div>
+              <div className="flex items-center">
+                <FileText className="mr-2 h-4 w-4 text-muted-foreground" />
+                <span>Réf. Externe : {contract.externalRef || 'N/A'}</span>
+              </div>
+              <Separator className="my-2" />
+              <div className="grid grid-cols-2 gap-2">
+                <div><span className="font-medium">Base P1:</span> {contract.baseAmountP1?.toFixed(2) || '-'} €</div>
+                <div><span className="font-medium">Base P2:</span> {contract.baseAmountP2?.toFixed(2) || '-'} €</div>
+                <div><span className="font-medium">Base P3:</span> {contract.baseAmountP3?.toFixed(2) || '-'} €</div>
+                <div><span className="font-medium">Base P3R:</span> {contract.baseAmountP3R?.toFixed(2) || '-'} €</div>
+              </div>
+              <Separator className="my-2" />
+              <div className="grid grid-cols-2 gap-2">
+                <div><span className="font-medium">Reconduction:</span> {contract.renewal ? 'Oui' : 'Non'}</div>
+                <div><span className="font-medium">Tacite:</span> {contract.tacitRenewal ? 'Oui' : 'Non'}</div>
+                <div><span className="font-medium">Durée:</span> {contract.renewalDuration || 'N/A'}</div>
+              </div>
+              <Separator className="my-2" />
+              <div className="grid grid-cols-2 gap-2">
+                <div><span className="font-medium">Signé Zenergya:</span> {contract.signedByCompany ? 'Oui' : 'Non'}</div>
+                <div><span className="font-medium">Signé Client:</span> {contract.signedByClient ? 'Oui' : 'Non'}</div>
+              </div>
             </div>
+
           </CardContent>
         </Card>
 
+        {/* Sites Management Card */}
         <Card>
           <CardHeader className="pb-4">
-            <CardTitle className="flex items-center gap-2">
-              <Gauge className="h-5 w-5" /> Relevés de Compteur
-            </CardTitle>
-            <CardDescription>
-              Saisissez les relevés pour les compteurs des sites de ce contrat.
-            </CardDescription>
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle className="flex items-center gap-2"><MapPin className="h-5 w-5" /> Sites</CardTitle>
+                <CardDescription>Sites rattachés à ce contrat.</CardDescription>
+              </div>
+              <Button size="sm" variant="ghost" className="h-8 w-8 p-0" onClick={() => handleOpenSiteDialog()}>
+                <PlusCircle className="h-5 w-5" />
+              </Button>
+            </div>
           </CardHeader>
           <CardContent>
-            <form onSubmit={handleSaveReading} className="flex flex-col gap-4">
-              <div className="grid gap-2">
-                <Label htmlFor="meter-select">Compteur</Label>
-                <Select onValueChange={setSelectedMeterId} value={selectedMeterId || ''}>
-                  <SelectTrigger id="meter-select">
-                    <SelectValue placeholder="Sélectionner un compteur..." />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {meters.map(m => (
-                      <SelectItem key={m.id} value={m.id}>{m.name} ({m.code}) - {sites.find(s => s.id === m.siteId)?.name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="flex items-end gap-2">
-                <div className="grid gap-2 flex-1">
-                  <Label htmlFor="reading" className="sr-only">Relevé</Label>
-                  <Input id="reading" type="number" placeholder="Saisir le relevé..." value={readingValue} onChange={e => setReadingValue(e.target.value)} />
-                </div>
-                <Button type="submit">Enregistrer</Button>
-              </div>
-            </form>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Nom</TableHead>
+                  <TableHead>Ville</TableHead>
+                  <TableHead className="text-right"></TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {sites.length > 0 ? (
+                  sites.map(site => (
+                    <TableRow key={site.id}>
+                      <TableCell className="font-medium">
+                        <Link href={`/sites/${site.id}`} className="hover:underline">{site.name}</Link>
+                      </TableCell>
+                      <TableCell>{site.city}</TableCell>
+                      <TableCell className="text-right">
+                        <div className="flex justify-end gap-1">
+                          <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => handleOpenSiteDialog(site)}>
+                            <Edit className="h-3 w-3" />
+                          </Button>
+                          <Button variant="ghost" size="icon" className="h-6 w-6 text-destructive" onClick={() => setSiteToDelete(site)}>
+                            <Trash2 className="h-3 w-3" />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))
+                ) : (
+                  <TableRow>
+                    <TableCell colSpan={3} className="text-center text-muted-foreground">Aucun site</TableCell>
+                  </TableRow>
+                )}
+              </TableBody>
+            </Table>
           </CardContent>
-          <CardFooter className="flex flex-col items-start gap-2 text-sm">
-            <div className="font-medium">Relevés précédents</div>
-            <ul className="w-full">
-              {meterReadings.map(r => (
-                <li key={r.id} className="flex justify-between py-1 border-b last:border-0">
-                  <span>{new Date(r.date).toLocaleDateString()} - {meterMap.get(r.meterId) || r.meterId}</span>
-                  <span>{r.reading} {r.unit}</span>
-                </li>
-              ))}
-            </ul>
-          </CardFooter>
         </Card>
 
         <Card>
@@ -467,6 +613,241 @@ export default function ContractDetailPage() {
         )}
       </div>
 
-    </div>
+      <Tabs defaultValue="amendments" className="w-full">
+        <TabsList>
+          <TabsTrigger value="amendments">Avenants ({amendments.length})</TabsTrigger>
+          <TabsTrigger value="terminations">Résiliations ({terminations.length})</TabsTrigger>
+          <TabsTrigger value="renewals">Reconductions ({renewals.length})</TabsTrigger>
+          <TabsTrigger value="trustee">Chgts Syndic ({trusteeChanges.length})</TabsTrigger>
+          <TabsTrigger value="be">Chgts BE ({beChanges.length})</TabsTrigger>
+        </TabsList>
+        <TabsContent value="amendments">
+          <Card>
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <div><CardTitle>Avenants</CardTitle><CardDescription>Historique des avenants au contrat.</CardDescription></div>
+                <Button size="sm" onClick={() => setAmendmentDialogOpen(true)}><PlusCircle className="mr-2 h-4 w-4" /> Nouvel Avenant</Button>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <Table>
+                <TableHeader><TableRow><TableHead>Date</TableHead><TableHead>Description</TableHead><TableHead>Montant</TableHead><TableHead>Signé</TableHead></TableRow></TableHeader>
+                <TableBody>
+                  {amendments.length > 0 ? amendments.map(a => (
+                    <TableRow key={a.id}>
+                      <TableCell>{new Date(a.effectiveDate).toLocaleDateString()}</TableCell>
+                      <TableCell>{a.description}</TableCell>
+                      <TableCell>{a.impactP1 ? `${a.impactP1} (P1)` : ''} {a.impactP2 ? `${a.impactP2} (P2)` : ''}</TableCell>
+                      <TableCell>{a.signed ? 'Oui' : 'Non'}</TableCell>
+                    </TableRow>
+                  )) : <TableRow><TableCell colSpan={4} className="text-center">Aucun avenant</TableCell></TableRow>}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+        </TabsContent>
+        <TabsContent value="terminations">
+          <Card>
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <div><CardTitle>Résiliations</CardTitle><CardDescription>Historique des résiliations.</CardDescription></div>
+                <Button size="sm" variant="destructive" onClick={() => setTerminationDialogOpen(true)}><PlusCircle className="mr-2 h-4 w-4" /> Résilier</Button>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <Table>
+                <TableHeader><TableRow><TableHead>Date Demande</TableHead><TableHead>Date Effective</TableHead><TableHead>Motif</TableHead></TableRow></TableHeader>
+                <TableBody>
+                  {terminations.length > 0 ? terminations.map(t => (
+                    <TableRow key={t.id}>
+                      <TableCell>{new Date(t.createdAt).toLocaleDateString()}</TableCell>
+                      <TableCell>{t.effectiveDate ? new Date(t.effectiveDate).toLocaleDateString() : '-'}</TableCell>
+                      <TableCell>{t.reason}</TableCell>
+                    </TableRow>
+                  )) : <TableRow><TableCell colSpan={3} className="text-center">Aucune résiliation</TableCell></TableRow>}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+        </TabsContent>
+        <TabsContent value="renewals">
+          <Card>
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <div><CardTitle>Reconductions</CardTitle><CardDescription>Historique des reconductions.</CardDescription></div>
+                <Button size="sm" onClick={() => setRenewalDialogOpen(true)}><PlusCircle className="mr-2 h-4 w-4" /> Reconduire</Button>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <Table>
+                <TableHeader><TableRow><TableHead>Date</TableHead><TableHead>Nouvelle Date Fin</TableHead><TableHead>Durée</TableHead></TableRow></TableHeader>
+                <TableBody>
+                  {renewals.length > 0 ? renewals.map(r => (
+                    <TableRow key={r.id}>
+                      <TableCell>{new Date(r.createdAt).toLocaleDateString()}</TableCell>
+                      <TableCell>{new Date(r.newEndDate).toLocaleDateString()}</TableCell>
+                      <TableCell>{r.duration}</TableCell>
+                    </TableRow>
+                  )) : <TableRow><TableCell colSpan={3} className="text-center">Aucune reconduction</TableCell></TableRow>}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+        </TabsContent>
+        <TabsContent value="trustee">
+          <Card>
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <div><CardTitle>Changements de Syndic</CardTitle><CardDescription>Historique des changements de syndic.</CardDescription></div>
+                <Button size="sm" onClick={() => setTrusteeChangeDialogOpen(true)}><PlusCircle className="mr-2 h-4 w-4" /> Changer Syndic</Button>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <Table>
+                <TableHeader><TableRow><TableHead>Date</TableHead><TableHead>Nouveau Syndic</TableHead><TableHead>Contact</TableHead></TableRow></TableHeader>
+                <TableBody>
+                  {trusteeChanges.length > 0 ? trusteeChanges.map(t => (
+                    <TableRow key={t.id}>
+                      <TableCell>{new Date(t.effectiveDate).toLocaleDateString()}</TableCell>
+                      <TableCell>{t.newRepresentative}</TableCell>
+                      <TableCell>{t.contactEmail}</TableCell>
+                    </TableRow>
+                  )) : <TableRow><TableCell colSpan={3} className="text-center">Aucun changement</TableCell></TableRow>}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+        </TabsContent>
+        <TabsContent value="be">
+          <Card>
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <div><CardTitle>Changements de BE</CardTitle><CardDescription>Historique des changements de Bureau d'Études.</CardDescription></div>
+                <Button size="sm" onClick={() => setBeChangeDialogOpen(true)}><PlusCircle className="mr-2 h-4 w-4" /> Changer BE</Button>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <Table>
+                <TableHeader><TableRow><TableHead>Date</TableHead><TableHead>Nouveau BE</TableHead><TableHead>Contact</TableHead></TableRow></TableHeader>
+                <TableBody>
+                  {beChanges.length > 0 ? beChanges.map(b => (
+                    <TableRow key={b.id}>
+                      <TableCell>{new Date(b.effectiveDate).toLocaleDateString()}</TableCell>
+                      <TableCell>{b.newBe}</TableCell>
+                      <TableCell>{b.contactEmail}</TableCell>
+                    </TableRow>
+                  )) : <TableRow><TableCell colSpan={3} className="text-center">Aucun changement</TableCell></TableRow>}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
+
+      {/* Event Dialogs */}
+      <AmendmentDialog contractId={id} open={amendmentDialogOpen} onOpenChange={setAmendmentDialogOpen} onSuccess={reloadData} />
+      <TerminationDialog contractId={id} open={terminationDialogOpen} onOpenChange={setTerminationDialogOpen} onSuccess={reloadData} />
+      <RenewalDialog contractId={id} open={renewalDialogOpen} onOpenChange={setRenewalDialogOpen} onSuccess={reloadData} />
+      <TrusteeChangeDialog contractId={id} open={trusteeChangeDialogOpen} onOpenChange={setTrusteeChangeDialogOpen} onSuccess={reloadData} />
+      <BeChangeDialog contractId={id} open={beChangeDialogOpen} onOpenChange={setBeChangeDialogOpen} onSuccess={reloadData} />
+
+      {/* Site Dialog */}
+      <Dialog open={siteDialogOpen} onOpenChange={setSiteDialogOpen}>
+        <DialogContent className="sm:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>{editingSite ? 'Modifier le site' : 'Nouveau site'}</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={handleSubmitSite} className="space-y-4 max-h-[70vh] overflow-y-auto pr-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="siteName">Nom du site</Label>
+                <Input id="siteName" value={siteName} onChange={(e) => setSiteName(e.target.value)} required />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="siteNumber">N° de site</Label>
+                <Input id="siteNumber" value={siteNumber} onChange={(e) => setSiteNumber(e.target.value)} />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="siteAddress">Adresse</Label>
+              <Input id="siteAddress" value={siteAddress} onChange={(e) => setSiteAddress(e.target.value)} required />
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="sitePostalCode">Code Postal</Label>
+                <Input id="sitePostalCode" value={sitePostalCode} onChange={(e) => setSitePostalCode(e.target.value)} />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="siteCity">Ville</Label>
+                <Input id="siteCity" value={siteCity} onChange={(e) => setSiteCity(e.target.value)} />
+              </div>
+            </div>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>Activités et Montants</CardTitle>
+                <CardDescription>Sélectionnez les activités et saisissez les montants annuels HT.</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="space-y-2">
+                  <Label>Activités</Label>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                    {activities.map(activity => (
+                      <div key={activity.id} className="flex items-center space-x-2">
+                        <Checkbox
+                          id={`activity-${activity.id}`}
+                          checked={siteActivityIds.includes(activity.id)}
+                          onCheckedChange={(checked) => handleSiteActivityChange(activity.id, !!checked)}
+                        />
+                        <label htmlFor={`activity-${activity.id}`} className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
+                          {activity.label} ({activity.code})
+                        </label>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {siteActivityIds.length > 0 && (
+                  <div className="space-y-4 pt-4 border-t">
+                    {activities.filter(a => siteActivityIds.includes(a.id)).map(activity => (
+                      <div key={activity.id} className="space-y-2">
+                        <Label htmlFor={`amount-${activity.id}`}>Montant Annuel HT pour {activity.label}</Label>
+                        <Input
+                          id={`amount-${activity.id}`}
+                          type="number"
+                          placeholder="Montant en €"
+                          value={siteAmounts[activity.id] || ''}
+                          onChange={(e) => setSiteAmounts(prev => ({ ...prev, [activity.id]: parseFloat(e.target.value) || 0 }))}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            <DialogFooter className="pt-4">
+              <DialogClose asChild><Button type="button" variant="outline">Annuler</Button></DialogClose>
+              <Button type="submit">Enregistrer</Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Site Dialog */}
+      <Dialog open={!!siteToDelete} onOpenChange={(isOpen) => !isOpen && setSiteToDelete(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Supprimer {siteToDelete?.name}?</DialogTitle>
+            <DialogDescription>Cette action est irréversible.</DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setSiteToDelete(null)}>Annuler</Button>
+            <Button variant="destructive" onClick={handleDeleteSite}>Confirmer</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+    </div >
   );
 }

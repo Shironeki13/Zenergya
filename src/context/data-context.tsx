@@ -6,11 +6,13 @@ import {
   getClients, getSites, getContracts, getInvoices, getCreditNotes, getMeters, getMeterTypes, getMeterReadings,
   getCompanies, getAgencies, getSectors, getActivities, getSchedules, getTerms,
   getTypologies, getVatRates, getRevisionFormulas, getPaymentTerms, getPricingRules,
-  getMarkets, getRoles, getUsers, getIndices, getIndexValues, getRevisionRules, getServices
+  getMarkets, getRoles, getUsers, getIndices, getIndexValues, getRevisionRules, getServices,
+  getAmendments, getTerminations, getRenewals, getTrusteeChanges, getBeChanges, getInterests, getSettlementRules,
+  initializeSettlementRules
 } from '@/services/firestore';
 import { auth } from '@/lib/firebase';
-import { signInAnonymously } from 'firebase/auth';
-import type { DataContextType, Client, Site, Contract, Invoice, CreditNote, Meter, MeterType, MeterReading, Company, Agency, Sector, Activity, Schedule, Term, Typology, VatRate, RevisionFormula, PaymentTerm, PricingRule, Market, Role, User, Index, IndexValue, RevisionRule, Service } from '@/lib/types';
+// import { signInAnonymously } from 'firebase/auth';
+import type { DataContextType, Client, Site, Contract, Invoice, CreditNote, Meter, MeterType, MeterReading, Company, Agency, Sector, Activity, Schedule, Term, Typology, VatRate, RevisionFormula, PaymentTerm, PricingRule, Market, Role, User, Index, IndexValue, RevisionRule, Service, Amendment, Termination, Renewal, TrusteeChange, BeChange, Interest, SettlementRule } from '@/lib/types';
 import { useToast } from '@/hooks/use-toast';
 
 const DataContext = createContext<DataContextType | undefined>(undefined);
@@ -43,6 +45,13 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     users: [] as User[],
     indices: [] as Index[],
     indexValues: [] as IndexValue[],
+    amendments: [] as Amendment[],
+    terminations: [] as Termination[],
+    renewals: [] as Renewal[],
+    trusteeChanges: [] as TrusteeChange[],
+    beChanges: [] as BeChange[],
+    interests: [] as Interest[], // New State
+    settlementRules: [] as SettlementRule[],
   });
 
   // Mock Current User (Director by default)
@@ -70,14 +79,16 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         getClients(), getSites(), getContracts(), getInvoices(), getCreditNotes(), getMeters(), getMeterTypes(), getMeterReadings(),
         getCompanies(), getAgencies(), getSectors(), getActivities(), getSchedules(), getTerms(),
         getTypologies(), getVatRates(), getRevisionFormulas(), getPaymentTerms(), getPricingRules(),
-        getMarkets(), getRoles(), getUsers(), getIndices(), getIndexValues(), getRevisionRules(), getServices()
+        getMarkets(), getRoles(), getUsers(), getIndices(), getIndexValues(), getRevisionRules(), getServices(),
+        getAmendments(), getTerminations(), getRenewals(), getTrusteeChanges(), getBeChanges(), getInterests(), getSettlementRules()
       ]);
 
       const [
         clients, sites, contracts, invoices, creditNotes, meters, meterTypes, meterReadings,
         companies, agencies, sectors, activities, schedules, terms,
         typologies, vatRates, revisionFormulas, paymentTerms, pricingRules,
-        markets, roles, users, indices, indexValues, revisionRules, services
+        markets, roles, users, indices, indexValues, revisionRules, services,
+        amendments, terminations, renewals, trusteeChanges, beChanges, interests, settlementRules
       ] = results;
 
       if (clients.status === 'rejected') console.error("Failed to load clients", clients.reason);
@@ -106,6 +117,13 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       if (indexValues.status === 'rejected') console.error("Failed to load indexValues", indexValues.reason);
       if (revisionRules.status === 'rejected') console.error("Failed to load revisionRules", revisionRules.reason);
       if (services.status === 'rejected') console.error("Failed to load services", services.reason);
+      if (amendments.status === 'rejected') console.error("Failed to load amendments", amendments.reason);
+      if (terminations.status === 'rejected') console.error("Failed to load terminations", terminations.reason);
+      if (renewals.status === 'rejected') console.error("Failed to load renewals", renewals.reason);
+      if (trusteeChanges.status === 'rejected') console.error("Failed to load trusteeChanges", trusteeChanges.reason);
+      if (beChanges.status === 'rejected') console.error("Failed to load beChanges", beChanges.reason);
+      if (interests.status === 'rejected') console.error("Failed to load interests", interests.reason);
+      if (settlementRules.status === 'rejected') console.error("Failed to load settlementRules", settlementRules.reason);
 
       setData({
         clients: clients.status === 'fulfilled' ? clients.value : [],
@@ -134,7 +152,25 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         users: users.status === 'fulfilled' ? users.value : [],
         indices: indices.status === 'fulfilled' ? indices.value : [],
         indexValues: indexValues.status === 'fulfilled' ? indexValues.value : [],
+        amendments: amendments.status === 'fulfilled' ? amendments.value : [],
+        terminations: terminations.status === 'fulfilled' ? terminations.value : [],
+        renewals: renewals.status === 'fulfilled' ? renewals.value : [],
+        trusteeChanges: trusteeChanges.status === 'fulfilled' ? trusteeChanges.value : [],
+        beChanges: beChanges.status === 'fulfilled' ? beChanges.value : [],
+        interests: interests.status === 'fulfilled' ? interests.value : [],
+        settlementRules: settlementRules.status === 'fulfilled' ? settlementRules.value : [],
       });
+
+      // Auto-init rules if empty (side effect, but ensures we exist)
+      if (settlementRules.status === 'fulfilled' && settlementRules.value.length === 0) {
+        await initializeSettlementRules();
+        // Re-fetch settlement rules after initialization to get the new data
+        const reFetchedSettlementRules = await getSettlementRules();
+        setData(prevData => ({
+          ...prevData,
+          settlementRules: reFetchedSettlementRules,
+        }));
+      }
 
     } catch (error) {
       console.error("A critical error occurred during data loading:", error);
@@ -146,7 +182,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     } finally {
       setIsLoading(false);
     }
-  }, []); // Removed toast dependency to prevent infinite loops
+  }, [toast]); // Added toast dependency
 
   // Authentication Methods
   const login = async (email: string, password: string) => {

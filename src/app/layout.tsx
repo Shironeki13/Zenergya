@@ -16,6 +16,8 @@ export const metadata: Metadata = {
   description: 'Gérez vos contrats et votre facturation avec facilité.',
 };
 
+import { ThemeProvider } from "@/components/theme-provider"
+
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -24,12 +26,19 @@ export default function RootLayout({
   return (
     <html lang="fr" className={inter.variable} suppressHydrationWarning>
       <body className="font-body antialiased">
-        <DataProvider>
-          <TooltipProvider>
-            {children}
-            <Toaster />
-          </TooltipProvider>
-        </DataProvider>
+        <ThemeProvider
+          attribute="class"
+          defaultTheme="system"
+          enableSystem
+          disableTransitionOnChange
+        >
+          <DataProvider>
+            <TooltipProvider>
+              {children}
+              <Toaster />
+            </TooltipProvider>
+          </DataProvider>
+        </ThemeProvider>
       </body>
     </html>
   );

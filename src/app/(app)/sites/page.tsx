@@ -140,7 +140,7 @@ export default function SitesPage() {
     const clientMap = new Map(clients.map(c => [c.id, c.name]));
     return sites.map(site => ({
       ...site,
-      clientName: clientMap.get(site.clientId) || 'N/A'
+      clientName: site.clientId ? clientMap.get(site.clientId) || 'N/A' : 'N/A'
     }));
   }, [sites, clients]);
 
@@ -266,8 +266,9 @@ export default function SitesPage() {
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
                         <DropdownMenuLabel>Actions</DropdownMenuLabel>
-                        <DropdownMenuItem onSelect={() => handleOpenEditDialog(site)}>
-                          Modifier
+
+                        <DropdownMenuItem asChild>
+                          <Link href={`/sites/${site.id}`}>Voir le site</Link>
                         </DropdownMenuItem>
                         <DropdownMenuItem asChild>
                           <Link href={`/clients/${site.clientId}`}>Voir le client</Link>

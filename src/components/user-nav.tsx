@@ -9,9 +9,13 @@ import {
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
+  DropdownMenuPortal,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { LogOut, User, Settings, Eye, Check } from "lucide-react";
+import { LogOut, User, Settings, Eye, Check, Moon, Sun, Monitor, Palette } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useData } from "@/context/data-context";
 import { Badge } from "@/components/ui/badge";
@@ -32,11 +36,13 @@ import {
   CommandList,
 } from "@/components/ui/command";
 import { useState } from "react";
+import { useTheme } from "next-themes";
 import { cn } from "@/lib/utils";
 
 export function UserNav() {
   const router = useRouter();
   const { currentUser, setCurrentUser, users, logout } = useData();
+  const { setTheme, theme } = useTheme();
   const [open, setOpen] = useState(false);
 
   // Default admin user (fallback)
@@ -101,12 +107,37 @@ export function UserNav() {
               <Settings className="mr-2 h-4 w-4" />
               <span>Paramètres</span>
             </DropdownMenuItem>
-            <DialogTrigger asChild>
-              <DropdownMenuItem onSelect={(e) => e.preventDefault()}>
-                <Eye className="mr-2 h-4 w-4" />
-                <span>Preview As...</span>
-              </DropdownMenuItem>
-            </DialogTrigger>
+            <DropdownMenuItem onSelect={() => setTimeout(() => setOpen(true), 50)}>
+              <Eye className="mr-2 h-4 w-4" />
+              <span>Preview As...</span>
+            </DropdownMenuItem>
+
+            <DropdownMenuSub>
+              <DropdownMenuSubTrigger>
+                <Palette className="mr-2 h-4 w-4" />
+                <span>Options d'affichage</span>
+              </DropdownMenuSubTrigger>
+              <DropdownMenuPortal>
+                <DropdownMenuSubContent>
+                  <DropdownMenuItem onClick={() => setTheme("light")}>
+                    <Sun className="mr-2 h-4 w-4" />
+                    <span>Clair</span>
+                    {theme === "light" && <Check className="ml-auto h-4 w-4" />}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setTheme("dark")}>
+                    <Moon className="mr-2 h-4 w-4" />
+                    <span>Sombre</span>
+                    {theme === "dark" && <Check className="ml-auto h-4 w-4" />}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setTheme("system")}>
+                    <Monitor className="mr-2 h-4 w-4" />
+                    <span>Système</span>
+                    {theme === "system" && <Check className="ml-auto h-4 w-4" />}
+                  </DropdownMenuItem>
+                </DropdownMenuSubContent>
+              </DropdownMenuPortal>
+            </DropdownMenuSub>
+
             {currentUser.id !== 'user-director' && (
               <DropdownMenuItem onClick={handleReset} className="text-orange-600 focus:text-orange-600">
                 <LogOut className="mr-2 h-4 w-4" />

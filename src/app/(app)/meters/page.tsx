@@ -1,7 +1,6 @@
-
 'use client';
 
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useMemo } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger, DialogClose } from "@/components/ui/dialog";
@@ -12,8 +11,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { PlusCircle, Edit, Trash2, BookOpen, Loader2, Search, Download } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import { createMeter, updateMeter, deleteMeter, getMeterReadingsByMeter } from '@/services/firestore';
-import type { Meter, MeterReading, MeterType } from '@/lib/types';
+import { createMeter, updateMeter, deleteMeter } from '@/services/firestore';
+import type { Meter } from '@/lib/types';
+import { MeterReadingsDialog } from '@/components/meter-readings-dialog';
 import { Badge } from '@/components/ui/badge';
 import { useData } from '@/context/data-context';
 import { downloadCSV } from '@/lib/utils';
@@ -31,20 +31,16 @@ export default function MetersPage() {
   // Form state
   const [code, setCode] = useState('');
   const [name, setName] = useState('');
+  const [reference, setReference] = useState('');
   const [siteId, setSiteId] = useState('');
   const [meterTypeId, setMeterTypeId] = useState<string | undefined>(undefined);
   const [location, setLocation] = useState('');
   const [status, setStatus] = useState<'on' | 'off'>('on');
-  
-  // Readings Dialog state
-  const [readingsDialogOpen, setReadingsDialogOpen] = useState(false);
-  const [selectedMeterForReadings, setSelectedMeterForReadings] = useState<Meter | null>(null);
-  const [meterReadings, setMeterReadings] = useState<MeterReading[]>([]);
-  const [isLoadingReadings, setIsLoadingReadings] = useState(false);
 
   const resetForm = () => {
     setCode('');
     setName('');
+    setReference('');
     setSiteId('');
     setMeterTypeId(undefined);
     setLocation('');
@@ -58,6 +54,7 @@ export default function MetersPage() {
       setEditingMeter(meter);
       setCode(meter.code);
       setName(meter.name);
+      setReference(meter.reference || '');
       setSiteId(meter.siteId);
       const foundMeterType = meterTypes.find(mt => mt.label === meter.type && mt.unit === meter.unit);
       setMeterTypeId(foundMeterType?.id);
@@ -66,33 +63,20 @@ export default function MetersPage() {
     }
     setDialogOpen(true);
   };
-  
-  const handleOpenReadingsDialog = async (meter: Meter) => {
-    setSelectedMeterForReadings(meter);
-    setReadingsDialogOpen(true);
-    setIsLoadingReadings(true);
-    try {
-        const readings = await getMeterReadingsByMeter(meter.id);
-        setMeterReadings(readings);
-    } catch (error) {
-        toast({ title: 'Erreur', description: 'Impossible de charger les relevés.', variant: 'destructive' });
-    } finally {
-        setIsLoadingReadings(false);
-    }
-  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const selectedMeterType = meterTypes.find(mt => mt.id === meterTypeId);
 
     if (!name.trim() || !siteId || !selectedMeterType) {
-        toast({ title: 'Erreur', description: 'Veuillez remplir tous les champs requis.', variant: 'destructive' });
-        return;
+      toast({ title: 'Erreur', description: 'Veuillez remplir tous les champs requis.', variant: 'destructive' });
+      return;
     }
 
     setIsSubmitting(true);
     const meterData: Partial<Omit<Meter, 'id' | 'code'>> = {
       name,
+      reference,
       siteId,
       type: selectedMeterType.label,
       unit: selectedMeterType.unit,
@@ -131,7 +115,7 @@ export default function MetersPage() {
       toast({ title: 'Erreur', description: 'Impossible de supprimer le compteur.', variant: 'destructive' });
     }
   };
-  
+
   const metersWithDetails = useMemo(() => {
     const siteMap = new Map(sites.map(s => [s.id, { name: s.name, clientName: s.clientName }]));
     return meters.map(meter => ({
@@ -143,13 +127,14 @@ export default function MetersPage() {
 
   const filteredMeters = useMemo(() => {
     if (!searchTerm) {
-        return metersWithDetails;
+      return metersWithDetails;
     }
     return metersWithDetails.filter(meter =>
-        meter.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        meter.code.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        meter.siteName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (meter.clientName && meter.clientName.toLowerCase().includes(searchTerm.toLowerCase()))
+      meter.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      meter.code.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (meter.reference && meter.reference.toLowerCase().includes(searchTerm.toLowerCase())) ||
+      meter.siteName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (meter.clientName && meter.clientName.toLowerCase().includes(searchTerm.toLowerCase()))
     );
   }, [metersWithDetails, searchTerm]);
 
@@ -194,6 +179,7 @@ export default function MetersPage() {
             <TableRow>
               <TableHead>Code</TableHead>
               <TableHead>Nom</TableHead>
+              <TableHead>Référence</TableHead>
               <TableHead>Site</TableHead>
               <TableHead>Client</TableHead>
               <TableHead>Type</TableHead>
@@ -204,29 +190,35 @@ export default function MetersPage() {
           </TableHeader>
           <TableBody>
             {isLoading ? (
-              <TableRow><TableCell colSpan={8} className="h-24 text-center">
+              <TableRow><TableCell colSpan={9} className="h-24 text-center">
                 <Loader2 className="mx-auto h-8 w-8 animate-spin text-muted-foreground" />
               </TableCell></TableRow>
             ) : filteredMeters.length === 0 ? (
-              <TableRow><TableCell colSpan={8} className="h-24 text-center">Aucun compteur trouvé.</TableCell></TableRow>
+              <TableRow><TableCell colSpan={9} className="h-24 text-center">Aucun compteur trouvé.</TableCell></TableRow>
             ) : (
               filteredMeters.map((meter) => (
                 <TableRow key={meter.id}>
                   <TableCell className="font-medium">{meter.code}</TableCell>
                   <TableCell>{meter.name}</TableCell>
+                  <TableCell>{meter.reference || '-'}</TableCell>
                   <TableCell>{meter.siteName}</TableCell>
                   <TableCell>{meter.clientName}</TableCell>
                   <TableCell>{meter.type}</TableCell>
                   <TableCell>{meter.unit}</TableCell>
                   <TableCell>
-                     <Badge variant={meter.status === 'on' ? 'secondary' : 'destructive'}>
-                        {meter.status === 'on' ? 'Allumé' : 'Éteint'}
+                    <Badge variant={meter.status === 'on' ? 'secondary' : 'destructive'}>
+                      {meter.status === 'on' ? 'Allumé' : 'Éteint'}
                     </Badge>
                   </TableCell>
-                  <TableCell className="text-right">
-                    <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleOpenReadingsDialog(meter)} title="Voir les relevés">
-                      <BookOpen className="h-4 w-4" />
-                    </Button>
+                  <TableCell className="text-right flex items-center justify-end gap-2">
+                    <MeterReadingsDialog
+                      meter={meter}
+                      trigger={
+                        <Button variant="ghost" size="icon" className="h-8 w-8" title="Gérer les relevés">
+                          <BookOpen className="h-4 w-4" />
+                        </Button>
+                      }
+                    />
                     <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleOpenDialog(meter)}>
                       <Edit className="h-4 w-4" />
                     </Button>
@@ -260,46 +252,50 @@ export default function MetersPage() {
               <DialogTitle>{editingMeter ? 'Modifier le compteur' : 'Nouveau compteur'}</DialogTitle>
             </DialogHeader>
             <form onSubmit={handleSubmit} className="space-y-4">
-               {editingMeter && (
+              {editingMeter && (
                 <div className="space-y-2">
-                    <Label htmlFor="code">Code Compteur</Label>
-                    <Input id="code" value={code} required disabled />
+                  <Label htmlFor="code">Code Compteur</Label>
+                  <Input id="code" value={code} required disabled />
                 </div>
-               )}
+              )}
               <div className="space-y-2">
-                  <Label htmlFor="name">Nom</Label>
-                  <Input id="name" value={name} onChange={(e) => setName(e.target.value)} required />
+                <Label htmlFor="name">Nom</Label>
+                <Input id="name" value={name} onChange={(e) => setName(e.target.value)} required />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="reference">Référence (PDL/PCE)</Label>
+                <Input id="reference" value={reference} onChange={(e) => setReference(e.target.value)} placeholder="Ex: 0123456789" />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="siteId">Site</Label>
                 <Select onValueChange={setSiteId} value={siteId} required>
-                    <SelectTrigger><SelectValue placeholder="Sélectionner un site..." /></SelectTrigger>
-                    <SelectContent>
-                        {sites.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
-                    </SelectContent>
-                </Select>
-              </div>
-              
-              <div className="space-y-2">
-                <Label htmlFor="meterTypeId">Type de Compteur</Label>
-                <Select onValueChange={setMeterTypeId} value={meterTypeId} required>
-                    <SelectTrigger><SelectValue placeholder="Sélectionner un type..." /></SelectTrigger>
-                    <SelectContent>
-                        {meterTypes.map(mt => <SelectItem key={mt.id} value={mt.id}>{mt.label} ({mt.code}) - {mt.unit}</SelectItem>)}
-                    </SelectContent>
+                  <SelectTrigger><SelectValue placeholder="Sélectionner un site..." /></SelectTrigger>
+                  <SelectContent>
+                    {sites.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
+                  </SelectContent>
                 </Select>
               </div>
 
               <div className="space-y-2">
-                    <Label htmlFor="location">Localisation</Label>
-                    <Input id="location" value={location} onChange={(e) => setLocation(e.target.value)} placeholder="Ex: Local technique RDC"/>
+                <Label htmlFor="meterTypeId">Type de Compteur</Label>
+                <Select onValueChange={setMeterTypeId} value={meterTypeId} required>
+                  <SelectTrigger><SelectValue placeholder="Sélectionner un type..." /></SelectTrigger>
+                  <SelectContent>
+                    {meterTypes.map(mt => <SelectItem key={mt.id} value={mt.id}>{mt.label} ({mt.code}) - {mt.unit}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="location">Localisation</Label>
+                <Input id="location" value={location} onChange={(e) => setLocation(e.target.value)} placeholder="Ex: Local technique RDC" />
               </div>
               <div className="space-y-2">
-                  <Label>Statut</Label>
-                  <RadioGroup onValueChange={(v) => setStatus(v as 'on' | 'off')} value={status} className="flex gap-4 pt-2">
-                      <div className="flex items-center space-x-2"><RadioGroupItem value="on" id="on" /><Label htmlFor="on" className="font-normal">Allumé</Label></div>
-                      <div className="flex items-center space-x-2"><RadioGroupItem value="off" id="off" /><Label htmlFor="off" className="font-normal">Éteint</Label></div>
-                  </RadioGroup>
+                <Label>Statut</Label>
+                <RadioGroup onValueChange={(v) => setStatus(v as 'on' | 'off')} value={status} className="flex gap-4 pt-2">
+                  <div className="flex items-center space-x-2"><RadioGroupItem value="on" id="on" /><Label htmlFor="on" className="font-normal">Allumé</Label></div>
+                  <div className="flex items-center space-x-2"><RadioGroupItem value="off" id="off" /><Label htmlFor="off" className="font-normal">Éteint</Label></div>
+                </RadioGroup>
               </div>
 
               <DialogFooter>
@@ -308,39 +304,6 @@ export default function MetersPage() {
               </DialogFooter>
             </form>
           </DialogContent>
-        </Dialog>
-        
-        <Dialog open={readingsDialogOpen} onOpenChange={setReadingsDialogOpen}>
-            <DialogContent>
-                <DialogHeader>
-                    <DialogTitle>Relevés pour {selectedMeterForReadings?.name}</DialogTitle>
-                    <DialogDescription>Historique des relevés enregistrés pour ce compteur.</DialogDescription>
-                </DialogHeader>
-                <div className="max-h-96 overflow-y-auto">
-                    <Table>
-                        <TableHeader>
-                            <TableRow>
-                                <TableHead>Date</TableHead>
-                                <TableHead className="text-right">Relevé</TableHead>
-                            </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                            {isLoadingReadings ? (
-                                <TableRow><TableCell colSpan={2} className="h-24 text-center">Chargement des relevés...</TableCell></TableRow>
-                            ) : meterReadings.length === 0 ? (
-                                <TableRow><TableCell colSpan={2} className="h-24 text-center">Aucun relevé pour ce compteur.</TableCell></TableRow>
-                            ) : (
-                                meterReadings.map(reading => (
-                                    <TableRow key={reading.id}>
-                                        <TableCell>{new Date(reading.date).toLocaleDateString()}</TableCell>
-                                        <TableCell className="text-right">{reading.reading} {reading.unit}</TableCell>
-                                    </TableRow>
-                                ))
-                            )}
-                        </TableBody>
-                    </Table>
-                </div>
-            </DialogContent>
         </Dialog>
       </CardContent>
     </Card>

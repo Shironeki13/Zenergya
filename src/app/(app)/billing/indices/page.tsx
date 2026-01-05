@@ -60,7 +60,9 @@ export default function IndicesPage() {
     const [valuePeriod, setValuePeriod] = useState('');
     const [valueAmount, setValueAmount] = useState('');
     const [valueSource, setValueSource] = useState('');
+
     const [valueComment, setValueComment] = useState('');
+    const [valuePublicationDate, setValuePublicationDate] = useState('');
 
     const resetIndexForm = () => {
         setIndexCode('');
@@ -79,7 +81,9 @@ export default function IndicesPage() {
         setValueAmount('');
         setValueSource('');
         setValueComment('');
+        setValuePublicationDate('');
         setEditingValue(null);
+        setIsValueDialogOpen(true);
     };
 
     const handleEditIndex = (index: Index) => {
@@ -101,6 +105,7 @@ export default function IndicesPage() {
         setValueAmount(value.value.toString());
         setValueSource(value.source || '');
         setValueComment(value.comment || '');
+        setValuePublicationDate(value.publicationDate || '');
         setIsValueDialogOpen(true);
     };
 
@@ -140,7 +145,9 @@ export default function IndicesPage() {
                 period: valuePeriod,
                 value: parseFloat(valueAmount),
                 source: valueSource,
+
                 comment: valueComment,
+                publicationDate: valuePublicationDate,
             };
 
             if (editingValue) {
@@ -783,6 +790,10 @@ export default function IndicesPage() {
                                                 <Label htmlFor="comment" className="text-right">Commentaire</Label>
                                                 <Input id="comment" value={valueComment} onChange={(e) => setValueComment(e.target.value)} className="col-span-3" />
                                             </div>
+                                            <div className="grid grid-cols-4 items-center gap-4">
+                                                <Label htmlFor="pubDate" className="text-right">Date publication</Label>
+                                                <Input id="pubDate" type="date" value={valuePublicationDate} onChange={(e) => setValuePublicationDate(e.target.value)} className="col-span-3" />
+                                            </div>
                                         </div>
                                         <DialogFooter>
                                             <Button onClick={handleSaveValue}>Enregistrer</Button>
@@ -798,6 +809,7 @@ export default function IndicesPage() {
                                         {!selectedIndexId && <TableHead>Indice</TableHead>}
                                         <TableHead>Période</TableHead>
                                         <TableHead>Valeur</TableHead>
+                                        <TableHead>Date Publication</TableHead>
                                         <TableHead>Source</TableHead>
                                         <TableHead className="text-right">Actions</TableHead>
                                     </TableRow>
@@ -810,6 +822,7 @@ export default function IndicesPage() {
                                                 {!selectedIndexId && <TableCell className="font-medium">{idx?.code}</TableCell>}
                                                 <TableCell>{val.period}</TableCell>
                                                 <TableCell className="font-bold">{val.value.toFixed(idx?.decimals ?? 4)} {idx?.unit}</TableCell>
+                                                <TableCell>{val.publicationDate ? format(new Date(val.publicationDate), 'dd/MM/yyyy') : '-'}</TableCell>
                                                 <TableCell className="text-muted-foreground text-sm">{val.source}</TableCell>
                                                 <TableCell className="text-right">
                                                     {(!selectedIndexId || indices.find(i => i.id === selectedIndexId)?.type !== 'calculated') && (
@@ -833,7 +846,7 @@ export default function IndicesPage() {
                         </CardContent>
                     </Card>
                 </div>
-            </div>
-        </div>
+            </div >
+        </div >
     );
 }

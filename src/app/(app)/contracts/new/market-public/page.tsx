@@ -1,48 +1,65 @@
-'use client';
+"use client";
 
-import { useState, useMemo } from 'react';
-import Link from 'next/link';
-import { useRouter } from 'next/navigation';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { ChevronLeft, Loader2, Wand2, X, FileText, CalendarIcon } from 'lucide-react';
-import { useToast } from '@/hooks/use-toast';
-import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
-import { useForm } from 'react-hook-form';
-import { zodResolver } from '@hookform/resolvers/zod';
-import * as z from 'zod';
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Checkbox } from '@/components/ui/checkbox';
-import { Switch } from '@/components/ui/switch';
-import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
-import { Calendar } from '@/components/ui/calendar';
-import { useData } from '@/context/data-context';
-import { ClientSchema, ExtractContractInfoOutputSchema } from '@/lib/types';
-import { extractContractInfo } from '@/ai/flows/extract-contract-info-flow';
-import { createClientAndContract } from '@/services/firestore';
-import { cn } from '@/lib/utils';
-import { format } from 'date-fns';
-import { fr } from 'date-fns/locale';
-import { Textarea } from '@/components/ui/textarea';
-import { Separator } from '@/components/ui/separator';
+import { useState, useMemo } from "react";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
+import { useRouter } from "next/navigation";
+import { format } from "date-fns";
+import { fr } from "date-fns/locale";
+import {
+    Loader2, Upload, FileText, CheckCircle2, AlertCircle,
+    Calendar as CalendarIcon, X, Sparkles, ArrowLeft, Trash2
+} from "lucide-react";
 
-const defaultPrompt = `Tu es un expert en analyse de documents contractuels de marchés publics. Analyse le contenu des fichiers PDF fournis (Acte d'Engagement, CCAP, CCTP, etc.) et extrais les informations suivantes de manière structurée. Si une information n'est pas trouvée, laisse le champ vide.
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import {
+    Card, CardContent, CardDescription, CardHeader, CardTitle,
+} from "@/components/ui/card";
+import {
+    Form, FormControl, FormField, FormItem, FormLabel, FormMessage,
+} from "@/components/ui/form";
+import {
+    Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from "@/components/ui/select";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Switch } from "@/components/ui/switch";
+import {
+    Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle,
+} from "@/components/ui/sheet";
+import { Calendar } from "@/components/ui/calendar";
+import {
+    Popover, PopoverContent, PopoverTrigger,
+} from "@/components/ui/popover";
+import { Separator } from "@/components/ui/separator";
+import { useToast } from "@/hooks/use-toast";
 
-Voici les informations à extraire:
-- Raison sociale du client (name): Le nom complet du client. Toujours en MAJUSCULES.
-- Adresse (address): L'adresse complète du client (numéro, rue, etc.).
-- Code Postal (postalCode): Le code postal du client.
-- Ville (city): La ville du client. Toujours en MAJUSCULES.
-- Type de client (clientType): 'public'.
-- Typologie du client (typologyId): Déduis la typologie du client. Ce doit être l'un des IDs de la liste suivante : {{{json typologies}}}.
-- Échéancier de facturation (billingSchedule): Trouve la périodicité de facturation. Choisis parmi : {{{json schedules}}}.
-- Terme de facturation (term): Trouve le terme. Choisis parmi : {{{json terms}}}.
-- Station météo (weatherStation): La station météo de référence.
-- activityIds: Trouve les prestations présentes dans le contrat (souvent dans le CCTP ou l'AE). Ce champ doit être un tableau contenant les IDs des prestations détectées. Les prestations à rechercher sont : Fourniture et gestion de l’énergie (P1), Maintenance préventive et petit entretien (P2), Garantie totale / gros entretien (P3). Choisis les IDs parmi cette liste: {{{json activities}}}.
-- activitiesDetails: Pour chaque prestation identifiée dans 'activityIds', extrais les détails suivants. Retourne un tableau d'objets.
+import { useData } from "@/context/data-context";
+import { extractContractInfo } from "@/ai/flows/extract-contract-info-flow";
+import { createClientAndContract } from "@/services/firestore";
+import { uploadFile } from "@/services/storage";
+import { ClientSchema } from "@/lib/types";
+import Link from "next/link";
+import { cn } from "@/lib/utils";
+
+const defaultPrompt = `
+Analyse ce contrat de marché public (CCTP, AE ou CCAP) et extrais les informations suivantes au format JSON.
+Si une information est introuvable, laisse le champ vide ou null.
+
+- Nom du client (name): Le nom de l'entité publique (ex: "Mairie de...", "Communauté de communes...").
+- Adresse (address): L'adresse postale complète.
+- Code postal (postalCode): Le code postal.
+- Ville (city): La ville.
+- SIRET (siret): Le numéro SIRET du client.
+- Type de client (clientType): Toujours "public".
+
+- Activités (activityIds): Liste les IDs des prestations identifiées parmi la liste suivante : {{{json activities}}}.
+    - Cherche des mots-clés comme "Fourniture de gaz", "Exploitation CVC", "Maintenance multi-technique", etc.
+
+- Détails des activités (activitiesDetails): Pour chaque prestation identifiée dans 'activityIds', extrais les détails suivants. Retourne un tableau d'objets.
     - activityId: L'ID de l'activité.
     - amount: Le montant annuel HT.
     - termId: Le terme de facturation (ex: échu, à échoir). Retourne l'ID correspondant dans la liste : {{{json terms}}}.
@@ -89,7 +106,7 @@ const documentFields: { id: DocumentType; label: string; required: boolean }[] =
     { id: 'dpgf', label: "DPGF", required: false },
 ];
 
-export default function NewContractFromPublicPdfPage() {
+export default function PublicMarketAIPage() {
     const [files, setFiles] = useState<Record<DocumentType, File | null>>({
         acteEngagement: null, ccap: null, cctp: null, notification: null, bpu: null, dpgf: null
     });
@@ -134,6 +151,8 @@ export default function NewContractFromPublicPdfPage() {
 
     const watchCompanyId = form.watch("companyId");
     const watchAgencyId = form.watch("agencyId");
+    const watchRenewal = form.watch("renewal");
+    const watchActivityIds = form.watch("activityIds") || [];
 
     const filteredAgencies = useMemo(() =>
         agencies.filter(a => a.companyId === watchCompanyId),
@@ -144,10 +163,6 @@ export default function NewContractFromPublicPdfPage() {
         sectors.filter(s => s.agencyId === watchAgencyId),
         [sectors, watchAgencyId]
     );
-
-    const watchTypologyId = form.watch("typologyId");
-    const watchRenewal = form.watch("renewal");
-    const watchActivityIds = form.watch("activityIds") || [];
 
     const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>, type: DocumentType) => {
         if (e.target.files && e.target.files[0]) {
@@ -225,7 +240,24 @@ export default function NewContractFromPublicPdfPage() {
 
     async function onSubmit(data: ClientFormValues) {
         try {
-            await createClientAndContract(data);
+            // Upload all files
+            const uploadedDocs: string[] = [];
+            const timestamp = Date.now();
+
+            for (const [type, file] of Object.entries(files)) {
+                if (file) {
+                    const path = `contracts/${timestamp}_${type}_${file.name}`;
+                    const url = await uploadFile(file, path);
+                    uploadedDocs.push(url);
+                }
+            }
+
+            const finalData = {
+                ...data,
+                documents: uploadedDocs,
+            };
+
+            await createClientAndContract(finalData);
             toast({
                 title: "Marché Public Créé",
                 description: "Le client et le contrat ont été enregistrés avec succès.",
@@ -244,19 +276,23 @@ export default function NewContractFromPublicPdfPage() {
 
     return (
         <div className="space-y-6">
-            <div className="flex items-center gap-4">
-                <Link href="/contracts/new">
-                    <Button variant="outline" size="icon" className="h-7 w-7">
-                        <ChevronLeft className="h-4 w-4" />
-                        <span className="sr-only">Retour</span>
+            <div className="flex items-center justify-between">
+                <div className="flex items-center gap-4">
+                    <Button variant="outline" size="icon" onClick={() => router.back()}>
+                        <ArrowLeft className="h-4 w-4" />
                     </Button>
-                </Link>
-                <div>
-                    <h1 className="text-2xl font-bold tracking-tight">Nouveau Marché Public</h1>
-                    <p className="text-muted-foreground">
-                        Déposez les documents du marché (AE, CCAP, CCTP...) et lancez l'analyse.
-                    </p>
+                    <div>
+                        <h1 className="text-2xl font-bold tracking-tight">Nouveau Marché Public</h1>
+                        <p className="text-muted-foreground">
+                            Déposez les documents du marché (AE, CCAP, CCTP...) et lancez l'analyse.
+                        </p>
+                    </div>
                 </div>
+                <Button asChild variant="default" className="bg-emerald-500 hover:bg-emerald-600">
+                    <Link href="/contracts/create">
+                        Saisie Manuelle
+                    </Link>
+                </Button>
             </div>
 
             <div className="grid lg:grid-cols-2 gap-6">
@@ -279,13 +315,13 @@ export default function NewContractFromPublicPdfPage() {
                                         <Input
                                             id={doc.id}
                                             type="file"
-                                            accept="application/pdf"
+                                            accept=".pdf"
                                             onChange={(e) => handleFileChange(e, doc.id)}
-                                            className="flex-1"
+                                            className="flex-1 cursor-pointer"
                                         />
                                         {files[doc.id] && (
                                             <Button variant="ghost" size="icon" onClick={() => removeFile(doc.id)}>
-                                                <X className="h-4 w-4" />
+                                                <Trash2 className="h-4 w-4" />
                                             </Button>
                                         )}
                                     </div>
@@ -312,8 +348,8 @@ export default function NewContractFromPublicPdfPage() {
                 </Card>
             </div>
 
-            <div className="flex justify-center">
-                <Button onClick={handleAnalyze} disabled={isAnalyzing || !Object.values(files).some(f => f !== null)} size="lg">
+            <div className="flex justify-center pt-4">
+                <Button onClick={handleAnalyze} disabled={isAnalyzing || !Object.values(files).some(f => f !== null)} size="lg" className="gap-2 bg-indigo-600 hover:bg-indigo-700 text-white">
                     {isAnalyzing ? (
                         <>
                             <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -321,7 +357,7 @@ export default function NewContractFromPublicPdfPage() {
                         </>
                     ) : (
                         <>
-                            <Wand2 className="mr-2 h-4 w-4" />
+                            <Sparkles className="h-4 w-4" />
                             Lancer l'analyse
                         </>
                     )}
@@ -446,8 +482,10 @@ export default function NewContractFromPublicPdfPage() {
                                                                                     // Update activitiesDetails when checkbox changes
                                                                                     const currentDetails = form.getValues('activitiesDetails') || [];
                                                                                     if (checked) {
-                                                                                        // Add empty detail
-                                                                                        form.setValue('activitiesDetails', [...currentDetails, { activityId: item.id }]);
+                                                                                        // Add default detail if not exists
+                                                                                        if (!currentDetails.find(d => d.activityId === item.id)) {
+                                                                                            form.setValue('activitiesDetails', [...currentDetails, { activityId: item.id, volume: 0, amount: 0 }]);
+                                                                                        }
                                                                                     } else {
                                                                                         // Remove detail
                                                                                         form.setValue('activitiesDetails', currentDetails.filter(d => d.activityId !== item.id));
@@ -455,15 +493,19 @@ export default function NewContractFromPublicPdfPage() {
                                                                                 }}
                                                                             />
                                                                         </FormControl>
-                                                                        <FormLabel className="font-normal">{item.code}</FormLabel>
+                                                                        <FormLabel className="font-normal">
+                                                                            {item.label}
+                                                                        </FormLabel>
                                                                     </FormItem>
                                                                 )
                                                             }}
                                                         />
                                                     ))}
-                                                </div><FormMessage />
+                                                </div>
+                                                <FormMessage />
                                             </FormItem>
-                                        )} />
+                                        )}
+                                    />
 
                                     {watchActivityIds.length > 0 && (
                                         <div className="space-y-6">
@@ -677,6 +719,6 @@ export default function NewContractFromPublicPdfPage() {
                     </div>
                 </SheetContent>
             </Sheet>
-        </div >
+        </div>
     );
 }

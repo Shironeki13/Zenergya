@@ -15,9 +15,11 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
         }
 
-        const bucket = 'zenergy-f8276.firebasestorage.app';
+        const bucket = 'zenergy-f8276.appspot.com';
         const encodedPath = encodeURIComponent(path);
         const url = `https://firebasestorage.googleapis.com/v0/b/${bucket}/o?name=${encodedPath}`;
+
+        const arrayBuffer = await file.arrayBuffer();
 
         const response = await fetch(url, {
             method: 'POST',
@@ -25,7 +27,7 @@ export async function POST(req: NextRequest) {
                 'Authorization': authHeader,
                 'Content-Type': file.type,
             },
-            body: file,
+            body: arrayBuffer,
         });
 
         if (!response.ok) {

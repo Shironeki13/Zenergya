@@ -12,7 +12,7 @@ import { Label } from "@/components/ui/label";
 import { PlusCircle, Trash2, Edit, UploadCloud, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Textarea } from '@/components/ui/textarea';
-import type { Company, Agency, Sector, Activity, Schedule, Term, VatRate, Typology, RevisionRule, PaymentTerm, PricingRule, Market, MeterType } from "@/lib/types";
+import type { Company, Agency, Sector, Activity, Schedule, Term, VatRate, Typology, RevisionRule, RevisionRuleType, PaymentTerm, PricingRule, Market, MeterType } from "@/lib/types";
 import {
     updateCompany, deleteCompany,
     updateAgency, deleteAgency,
@@ -601,6 +601,7 @@ const SectorsSection = () => {
 
 
 // Section pour les Activités
+// Section pour les Activités
 const ActivitiesSection = () => {
     const { toast } = useToast();
     const { activities, isLoading, reloadData } = useData();
@@ -610,13 +611,15 @@ const ActivitiesSection = () => {
     const [activityToDelete, setActivityToDelete] = useState<Activity | null>(null);
     const [code, setCode] = useState('');
     const [label, setLabel] = useState('');
+    const [type, setType] = useState<'P1' | 'P2' | 'P3'>('P1');
 
-    const resetForm = () => { setCode(''); setLabel(''); setEditingActivity(null); };
+    const resetForm = () => { setCode(''); setLabel(''); setType('P1'); setEditingActivity(null); };
 
     const handleOpenDialog = (activity: Activity | null = null) => {
         setEditingActivity(activity);
         setCode(activity ? activity.code : '');
         setLabel(activity ? activity.label : '');
+        setType(activity ? activity.type : 'P1');
         setDialogOpen(true);
     };
 
@@ -626,10 +629,10 @@ const ActivitiesSection = () => {
         setIsSubmitting(true);
         try {
             if (editingActivity) {
-                await updateActivity(editingActivity.id, { code, label });
+                await updateActivity(editingActivity.id, { code, label, type });
                 toast({ title: "Succès", description: "Activité mise à jour." });
             } else {
-                await createActivity({ code, label });
+                await createActivity({ code, label, type });
                 toast({ title: "Succès", description: "Activité créée." });
             }
             await reloadData();
@@ -670,15 +673,16 @@ const ActivitiesSection = () => {
             <CardContent>
                 <div className="border rounded-md">
                     <Table>
-                        <TableHeader><TableRow><TableHead className="w-[150px]">Code</TableHead><TableHead>Libellé</TableHead><TableHead className="w-[100px] text-right">Actions</TableHead></TableRow></TableHeader>
+                        <TableHeader><TableRow><TableHead className="w-[150px]">Code</TableHead><TableHead>Libellé</TableHead><TableHead>Type</TableHead><TableHead className="w-[100px] text-right">Actions</TableHead></TableRow></TableHeader>
                         <TableBody>
-                            {isLoading ? (<TableRow><TableCell colSpan={3} className="text-center h-24"><Loader2 className="mx-auto h-8 w-8 animate-spin text-muted-foreground" /></TableCell></TableRow>
-                            ) : activities.length === 0 ? (<TableRow><TableCell colSpan={3} className="text-center">Aucune activité.</TableCell></TableRow>
+                            {isLoading ? (<TableRow><TableCell colSpan={4} className="text-center h-24"><Loader2 className="mx-auto h-8 w-8 animate-spin text-muted-foreground" /></TableCell></TableRow>
+                            ) : activities.length === 0 ? (<TableRow><TableCell colSpan={4} className="text-center">Aucune activité.</TableCell></TableRow>
                             ) : (
                                 activities.map(activity => (
                                     <TableRow key={activity.id}>
                                         <TableCell className="font-medium">{activity.code}</TableCell>
                                         <TableCell>{activity.label}</TableCell>
+                                        <TableCell>{activity.type}</TableCell>
                                         <TableCell className="text-right">
                                             <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleOpenDialog(activity)}><Edit className="h-4 w-4" /></Button>
                                             <Dialog open={!!activityToDelete && activityToDelete.id === activity.id} onOpenChange={(isOpen) => !isOpen && setActivityToDelete(null)}>
@@ -711,6 +715,17 @@ const ActivitiesSection = () => {
                             <div className="space-y-2">
                                 <Label htmlFor="activityLabel">Libellé</Label>
                                 <Input id="activityLabel" value={label} onChange={e => setLabel(e.target.value)} required />
+                            </div>
+                            <div className="space-y-2">
+                                <Label htmlFor="activityType">Type</Label>
+                                <Select onValueChange={(v: 'P1' | 'P2' | 'P3') => setType(v)} value={type}>
+                                    <SelectTrigger><SelectValue placeholder="Sélectionner un type" /></SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="P1">P1 (Énergie)</SelectItem>
+                                        <SelectItem value="P2">P2 (Maintenance)</SelectItem>
+                                        <SelectItem value="P3">P3 (Gros Entretien)</SelectItem>
+                                    </SelectContent>
+                                </Select>
                             </div>
                             <DialogFooter>
                                 <DialogClose asChild><Button variant="outline">Annuler</Button></DialogClose>
@@ -1251,7 +1266,7 @@ const VatRatesSection = () => {
 // Section Règles de Révision (P1)
 const RevisionRulesSection = () => {
     const { toast } = useToast();
-    const { revisionRules, indices, isLoading, reloadData } = useData();
+    const { revisionRules, indices, activities, isLoading, reloadData } = useData();
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [dialogOpen, setDialogOpen] = useState(false);
     const [editingItem, setEditingItem] = useState<RevisionRule | null>(null);
@@ -1261,13 +1276,21 @@ const RevisionRulesSection = () => {
     const [name, setName] = useState('');
     const [code, setCode] = useState('');
     const [description, setDescription] = useState('');
+    const [type, setType] = useState<RevisionRuleType>('PONDERE_SIMPLE');
+    const [nbMonths, setNbMonths] = useState(3);
     const [ruleIndices, setRuleIndices] = useState<{ indexId: string; coefficient: number }[]>([]);
+    const [activityId, setActivityId] = useState<string>('');
+    const [p1Type, setP1Type] = useState<string>('');
 
     const resetForm = () => {
         setName('');
         setCode('');
         setDescription('');
+        setType('PONDERE_SIMPLE');
+        setNbMonths(3);
         setRuleIndices([]);
+        setActivityId('');
+        setP1Type('');
         setEditingItem(null);
     };
 
@@ -1277,7 +1300,11 @@ const RevisionRulesSection = () => {
             setName(item.name);
             setCode(item.code);
             setDescription(item.description || '');
+            setType(item.type);
+            setNbMonths(item.nbMonths);
             setRuleIndices(item.indices || []);
+            setActivityId(item.activityId || '');
+            setP1Type(item.p1Type || '');
         } else {
             resetForm();
             // Add one empty row by default for convenience
@@ -1315,7 +1342,7 @@ const RevisionRulesSection = () => {
 
         setIsSubmitting(true);
         try {
-            const data = { name, code, description, indices: validIndices };
+            const data = { name, code, description, type, nbMonths, indices: validIndices, activityId, p1Type };
             if (editingItem) {
                 await updateRevisionRule(editingItem.id, data);
                 toast({ title: "Succès", description: "Règle de révision mise à jour." });
@@ -1369,6 +1396,7 @@ const RevisionRulesSection = () => {
                                 <TableHead>Code</TableHead>
                                 <TableHead>Nom</TableHead>
                                 <TableHead>Formule (Aperçu)</TableHead>
+                                <TableHead>Activité / Type</TableHead>
                                 <TableHead className="w-[100px] text-right">Actions</TableHead>
                             </TableRow>
                         </TableHeader>
@@ -1386,6 +1414,13 @@ const RevisionRulesSection = () => {
                                             {item.indices && item.indices.length > 0
                                                 ? item.indices.map(i => `${i.coefficient} * (${getIndexCode(i.indexId)}/${getIndexCode(i.indexId)}0)`).join(' + ')
                                                 : 'Aucune formule définie'}
+                                        </TableCell>
+                                        <TableCell className="text-sm text-muted-foreground">
+                                            {item.activityId ? (() => {
+                                                const act = activities.find(a => a.id === item.activityId);
+                                                return act ? `${act.code} - ${act.label}` : '-';
+                                            })() : '-'}
+                                            {item.p1Type ? ` / ${item.p1Type}` : ''}
                                         </TableCell>
                                         <TableCell className="text-right">
                                             <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleOpenDialog(item)}>
@@ -1438,6 +1473,36 @@ const RevisionRulesSection = () => {
                             <div className="space-y-2">
                                 <Label htmlFor="ruleDesc">Description</Label>
                                 <Input id="ruleDesc" value={description} onChange={e => setDescription(e.target.value)} placeholder="Description optionnelle" />
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className="space-y-2">
+                                    <Label>Activité associée</Label>
+                                    <Select value={activityId} onValueChange={setActivityId}>
+                                        <SelectTrigger><SelectValue placeholder="Aucune (Générique)" /></SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="none">Aucune (Générique)</SelectItem>
+                                            {activities.map(a => (
+                                                <SelectItem key={a.id} value={a.id}>{a.code} - {a.label}</SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+                                {activityId && activityId !== 'none' && activities.find(a => a.id === activityId)?.code.toUpperCase().startsWith('P1') && (
+                                    <div className="space-y-2">
+                                        <Label>Type P1</Label>
+                                        <Select value={p1Type} onValueChange={setP1Type}>
+                                            <SelectTrigger><SelectValue placeholder="Aucun" /></SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="none">Aucun</SelectItem>
+                                                <SelectItem value="CHAUFFAGE">Chauffage</SelectItem>
+                                                <SelectItem value="ECS">ECS</SelectItem>
+                                                <SelectItem value="EAU_FROIDE">Eau Froide</SelectItem>
+                                                <SelectItem value="AUTRE">Autre</SelectItem>
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
+                                )}
                             </div>
 
                             <div className="space-y-2">

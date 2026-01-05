@@ -29,7 +29,7 @@ export const ActivityDetailSchema = z.object({
     ecsNB: z.number().optional(),
 });
 
-export const ClientSchema = z.object({
+export const ClientBaseSchema = z.object({
     name: z.string().min(2, "La raison sociale est requise."),
     address: z.string().optional(),
     postalCode: z.string().optional(),
@@ -46,35 +46,32 @@ export const ClientSchema = z.object({
     beName: z.string().optional(),
     beEmail: z.string().email({ message: "Email BE invalide." }).optional().or(z.literal('')),
     bePhone: z.string().optional(),
+    technicalContactName: z.string().optional(),
+    technicalContactEmail: z.string().email({ message: "Email invalide." }).optional().or(z.literal('')),
+    technicalContactPhone: z.string().optional(),
+    billingContactName: z.string().optional(),
+    billingContactEmail: z.string().email({ message: "Email invalide." }).optional().or(z.literal('')),
+    billingContactPhone: z.string().optional(),
     useChorus: z.boolean().default(false),
+    renewal: z.boolean().default(false),
+    tacitRenewal: z.boolean().default(false),
+    renewalDuration: z.string().optional(),
+    noticePeriod: z.string().optional(),
     siret: z.string().optional(),
     chorusServiceCode: z.string().optional(),
     chorusLegalCommitmentNumber: z.string().optional(),
     chorusMarketNumber: z.string().optional(),
-    invoicingType: z.enum(['multi-site', 'global'], { required_error: "Le type de facturation est requis." }).default('multi-site'),
-    // Contract fields
-    siteIds: z.array(z.string()).optional(),
-    startDate: z.date().optional(),
-    endDate: z.date().optional(),
-    renewal: z.boolean().default(false),
-    renewalDuration: z.string().optional(),
-    tacitRenewal: z.boolean().default(false),
-    activityIds: z.array(z.string()).optional(),
-    activitiesDetails: z.array(ActivityDetailSchema).optional(),
-    documents: z.array(ContractDocumentSchema).optional(), // Champ pour la GED
-}).superRefine((data, ctx) => {
+    // invoicingType moved to Contract
+    // Contract fields moved to Contract
+    // documents moved to Contract (mostly) but maybe keep generic client docs? Let's keep it simple and move contract docs to Contract.
+});
+
+export const ClientSchema = ClientBaseSchema.superRefine((data, ctx) => {
     if (data.useChorus && (!data.siret || data.siret.length === 0)) {
         ctx.addIssue({
             code: z.ZodIssueCode.custom,
             message: "Le SIRET est obligatoire si le dépôt Chorus est activé.",
             path: ["siret"],
-        });
-    }
-    if (data.renewal && !data.renewalDuration) {
-        ctx.addIssue({
-            code: z.ZodIssueCode.custom,
-            message: "La durée de reconduction est requise.",
-            path: ["renewalDuration"],
         });
     }
 });
@@ -84,12 +81,21 @@ export type Client = z.infer<typeof ClientSchema> & {
     id: string;
     typologyName?: string; // denormalized for display
     contactEmail?: string;
+    // New fields
+    clientNumber?: string; // N° Chrono
+    createdAt?: string; // Timestamp
+    createdBy?: string; // User ID/Name
+    technicalContactEmail?: string;
+    technicalContactPhone?: string;
+    billingContactEmail?: string;
+    billingContactPhone?: string;
 };
 
 
 export type Site = {
     id: string;
-    clientId: string;
+    contractId: string; // Link to Contract
+    clientId?: string; // Optional, can be derived or kept for easier querying
     clientName?: string; // Denormalized for display
     name: string;
     siteNumber?: string;
@@ -111,6 +117,7 @@ export type Meter = {
     id: string;
     code: string; // unique code, auto-generated from document ID
     name: string;
+    reference?: string; // PDL / PCE
     siteId: string;
     siteName?: string; // denormalized
     clientName?: string; // denormalized from site
@@ -125,10 +132,13 @@ export type Meter = {
 export type MeterReading = {
     id: string;
     meterId: string;
-    contractId: string; // To know which contract the reading applies to for billing
+    contractId?: string; // Optional, can be inferred from date/site
     date: string; // ISO String date
-    reading: number;
-    unit: string; // Copied from meter for convenience
+    value: number;
+    type: 'REEL' | 'ESTIME' | 'CORRIGE' | 'AUTO';
+    source: 'MANUEL' | 'IMPORT' | 'API';
+    comment?: string;
+    unit?: string; // Copied from meter for convenience
 };
 
 
@@ -177,6 +187,27 @@ export type Contract = {
     terminationDate?: string; // ISO String for cancellation date
     documents?: ContractDocument[]; // Champ pour la GED
 
+    // New fields
+    contractNumber?: string; // N° Contrat (CTR-ANNÉE-N° Client-001)
+    createdAt?: string; // Timestamp
+    createdBy?: string; // User ID/Name
+    label?: string; // Libellé (= Localité / Spécificité)
+    name?: string; // Nom Contrat (= Nom Client + ‘-’ + Libellé Contrat)
+    externalRef?: string;
+    baseAmountP1?: number; // Montant global base marché P1 HT/AN
+    baseAmountP2?: number; // Montant global base marché P2 HT/AN
+    baseAmountP3?: number; // Montant global base marché P3 HT/AN
+    baseAmountP3R?: number; // Montant global base marché P3R HT/AN
+    signedByCompany?: boolean;
+    signedByClient?: boolean;
+
+    // Moved from Client
+    invoicingType: 'multi-site' | 'global';
+    renewal: boolean;
+    renewalDuration?: string;
+    tacitRenewal: boolean;
+    noticePeriod?: string;
+
     activitiesDetails?: z.infer<typeof ActivityDetailSchema>[];
 
     monthlyBilling?: MonthlyBilling[];
@@ -218,6 +249,180 @@ export type Contract = {
     managementFees?: number; // Frais de gestion (CP, PF)
     unitPriceUsefulMWh?: number; // Prix €/MWh utile (MC)
     unitPricePrimaryMWh?: number; // Prix €/MWh primaire (CP)
+};
+
+// --- New Contract Event Types ---
+
+export type Amendment = {
+    id: string;
+    contractId: string;
+    contractNumber?: string; // Denormalized
+    createdAt: string;
+    createdBy: string;
+    impactsDuration: boolean;
+    newEndDate?: string;
+    impactsServices: boolean;
+    impactedServices?: string[]; // Activity IDs
+    impactP1?: number; // +/- value
+    impactP2?: number; // +/- value
+    impactP3?: number; // +/- value
+    impactP3R?: number; // +/- value
+    effectiveDate: string;
+    description: string;
+    signed: boolean;
+    documentUrl?: string; // Avenant PDF
+    dpgfUrl?: string; // DPGF
+};
+
+export type Termination = {
+    id: string;
+    contractId: string;
+    contractNumber?: string; // Denormalized
+    createdAt: string;
+    createdBy: string;
+    effectiveDate: string;
+    reason: string;
+    documentUrl?: string;
+};
+
+export type Renewal = {
+    id: string;
+    contractId: string;
+    contractNumber?: string; // Denormalized
+    createdAt: string;
+    createdBy: string;
+    newEndDate: string;
+    duration: string;
+    documentUrl?: string;
+};
+
+export type TrusteeChange = {
+    id: string;
+    contractId: string;
+    contractNumber?: string; // Denormalized
+    createdAt: string;
+    createdBy: string;
+    currentRepresentative?: string;
+    newRepresentative: string;
+    contactEmail?: string;
+    effectiveDate: string;
+    documentUrl?: string;
+};
+
+export type BeChange = {
+    id: string;
+    contractId: string;
+    contractNumber?: string; // Denormalized
+    createdAt: string;
+    createdBy: string;
+    currentBe?: string;
+    newBe: string;
+    contactEmail?: string;
+    effectiveDate: string;
+    documentUrl?: string;
+};
+
+export type Interest = {
+    id: string;
+    serviceId: string; // P1 Heating Service
+    meterId?: string; // Main Heating Meter
+    seasonLabel: string; // e.g., '2024-2025'
+
+    // Period
+    startDate: string; // date_allumage
+    endDate: string; // date_arret
+
+    // Readings (Snapshots)
+    startReadingId?: string;
+    endReadingId?: string;
+    startIndex: number;
+    endIndex: number;
+
+    // Reference Data (Snapshot from Service)
+    referenceDju: number;
+    referenceNb: number; // MWh
+    conversionCoefficient: number; // Snapshot from meter/service
+
+    // Calculated Results
+    ncMwh: number; // (Index Fin - Index Début) * Coeff
+    measuredDju: number; // Sum of daily DJU
+    correctedNb: number; // NB * (DJU Mesure / DJU Ref)
+    deviationPercentage: number; // (NC - NB Corr) / NB Corr
+    sharingPercentage?: number; // Snapshot of % partagé
+    sharingQuantity: number; // MWh subject to sharing
+    unitPrice: number; // Snapshot
+    interestAmount: number;
+    gainLoss: number; // Numeric value of gain/loss
+
+    calculationDate: string;
+    comment?: string;
+};
+
+// --- Settlement System Types ---
+
+export type SettlementTargetType = 'P1' | 'P2' | 'P3' | null;
+export type SettlementMethodType = 'PRORATA_JOURS' | 'PRORATA_MOIS' | 'FORFAIT_FIXE' | 'CONSO_REELLE' | 'ECHEANCIER';
+
+export type SettlementRule = {
+    id: string;
+    code: SettlementMethodType;
+    label: string;
+    description?: string;
+    targetType: SettlementTargetType;
+    isActive: boolean;
+};
+
+export type SettlementReason = 'RESILIATION' | 'FIN_ANNEE' | 'AVENANT' | 'CHANGEMENT_SYNDIC' | 'AUTRE';
+
+export type ServiceSettlement = {
+    id: string;
+    serviceId: string;
+    ruleId: string; // FK to SettlementRule
+
+    startDate: string; // Period start
+    endDate: string; // Period end
+    reason: SettlementReason;
+
+    // Snapshots
+    ruleSnapshot?: SettlementRule; // Snapshot of the rule used
+
+    // P1 Details (Real Consumption)
+    p1Detail?: {
+        meterId?: string;
+        startReadingId?: string;
+        endReadingId?: string;
+        startIndex: number;
+        endIndex: number;
+        consumption: number;
+        conversionCoefficient: number;
+    };
+
+    // P2/P3 Details (Prorata/Flat Fee)
+    fixedDetail?: {
+        annualAmountReference: number; // Montant de base (Snapshot)
+        prorataMode: 'JOURS' | 'MOIS' | 'ECHEANCES';
+        daysInPeriod?: number; // Nb jours dans la période de décompte (numérateur)
+        daysInBase?: number; // Nb jours dans l'année de référence (dénominateur)
+        monthsInPeriod?: number;
+        totalInstallments?: number; // Nb échéances total
+        billedInstallments?: number; // Nb échéances déjà facturées
+    };
+
+    // Financial Results
+    amountHt: number;
+    vatRate: number; // Snapshot from service
+    amountTtc: number;
+
+    calculationDate: string;
+    comment?: string;
+};
+
+export type Dju = {
+    id: string;
+    stationCode: string;
+    stationName: string;
+    date: string; // YYYY-MM-DD
+    value: number;
 };
 
 export type InvoiceStatus = "paid" | "due" | "overdue" | "proforma" | "cancelled";
@@ -296,6 +501,7 @@ export type Activity = {
     id: string;
     code: string;
     label: string;
+    type: 'P1' | 'P2' | 'P3';
 }
 
 export type Schedule = {
@@ -425,6 +631,7 @@ export type IndexValue = {
     lastUpdated?: string; // ISO String
     source?: string;
     comment?: string;
+    publicationDate?: string; // DD/MM/YYYY
 }
 
 
@@ -446,41 +653,77 @@ export type RevisionRule = {
     paramB?: number; // For PONDERE_A_B (e.g., 0.95)
     indices: RevisionRuleIndex[];
     description?: string;
+    activityId?: string;
+    p1Type?: string; // 'CHAUFFAGE', 'ECS', etc.
 }
 
 export type ServiceType = 'P1' | 'P2' | 'P3';
-
-export type ServiceMeterAssociation = {
-    meterId: string;
-    usage: string; // e.g., 'ECS', 'Chauffage'
-    distributionCoef: number; // e.g., 1.0 or 0.5
-}
 
 export type Service = {
     id: string;
     contractId: string;
     siteId: string;
-    type: ServiceType; // P1, P2, P3
     activityId: string; // Link to Activity (ECS, Chauffage, Maintenance...)
+    type: ServiceType; // P1, P2, P3 (Derived from Activity)
 
-    // Pricing & Revision
-    billingMode?: string; // e.g., 'M3', 'KWH', 'FORFAIT'
-    basePrice?: number; // Prix unitaire de base or Forfait amount
-    baseIndexDate?: string; // Date de référence pour C0 (ISO string)
-    baseIndexValue?: number; // Valeur C0 explicite (optional)
-
+    // Settings Links
+    billingTermId?: string; // Link to Term (Trimestriel, Mensuel...)
+    scheduleId?: string; // Link to Schedule (Echéancier)
+    pricingRuleId?: string; // Link to PricingRule
     revisionRuleId?: string; // Link to RevisionRule
 
-    // P2/P3 Specifics
-    periodicity?: string; // e.g., 'Mensuel', 'Trimestriel', 'Annuel'
-    startDate?: string;
-    endDate?: string;
+    // Financials
+    price: number; // Base price or Flat rate
 
-    // P1 Specifics
-    associatedMeters?: ServiceMeterAssociation[];
+    // P1 Specific
+    meterId?: string; // Link to Meter (if P1)
 
-    description?: string;
+    // Validity
+    startDate: string; // ISO String
+    endDate: string; // ISO String
+
+    // Identification
+    code?: string; // code_prestation
+    label?: string; // libelle
+
+    // Typage
+    energyType?: 'GAZ' | 'ELEC' | 'EAU' | 'AUTRE' | 'Gaz' | 'Electricité' | 'Réseau de chaleur' | 'Fioul' | 'Biomasse'; // type_energie
+    p1Type?: 'ECS' | 'CHAUFFAGE' | 'EAU_FROIDE' | 'AUTRE'; // type_p1 (si P1)
+
+    // Tarification
+    unitPrice?: number; // prix_base / unit_price
+    unit?: string; // unite_prix ('m3', 'MWh', '€/an', ...)
+    vatRateId?: string; // id_tva
+    isFixedPrice?: boolean; // Prix fixe (Oui/Non)
+    moleculePrice?: number; // Prix Molécule base (si P1 et Prix fixe = oui)
+
+    // Interest Parameters (P1 Heating)
+    referenceNb?: number; // NB en MWh
+    referenceDju?: number; // DJU de référence
+    heatingContractType?: string; // MCI, MTI, etc.
+    heatingWeatherStation?: string; // Station météo de référence
+    sharingPercentage?: number; // % partagé
+    interestUnitPrice?: number; // PU HT Intéressement
+    settlementRuleId?: string; // Link to SettlementRule
+
+    // Périodicité & validité
+    // billingTermId already exists -> periodicite
+    // startDate already exists -> date_debut
+    // endDate already exists -> date_fin
+
+    // Divers
+    isActive: boolean; // actif
+    comment?: string; // commentaire (alias for description)
+    description?: string; // kept for backward compatibility or mapped to comment
+    initialIndexValues?: ServiceInitialIndexValue[];
 }
+
+export type ServiceInitialIndexValue = {
+    indexId: string;
+    valueId?: string; // ID of the selected IndexValue (optional if manually entered)
+    value: number; // Snapshot of the value
+    period: string; // Snapshot of the period
+};
 
 export const ExtractContractInfoInputSchema = z.object({
     documentDataUri: z.string().describe("A contract document as a data URI that must include a MIME type and use Base64 encoding. Expected format: 'data:application/pdf;base64,<encoded_data>'."),
@@ -506,26 +749,54 @@ export const ExtractContractInfoInputSchema = z.object({
 export type ExtractContractInfoInput = z.infer<typeof ExtractContractInfoInputSchema>;
 
 export const ExtractContractInfoOutputSchema = z.object({
-    name: z.string().optional().describe("Raison sociale du client. Toujours en MAJUSCULES."),
-    address: z.string().optional().describe("Adresse complète du client (numéro, rue, etc.)."),
-    postalCode: z.string().optional().describe("Code postal du client."),
-    city: z.string().optional().describe("Ville du client. Toujours en MAJUSCULES."),
-    clientType: z.enum(["private", "public"]).optional().describe("Le type de client, 'private' (privé) ou 'public' (public)."),
-    typologyId: z.string().optional().describe("L'ID de la typologie client. Ex: 'Copropriété', 'Industrie', 'Tertiaire'."),
-    representedBy: z.string().optional().describe("Le représentant légal, pertinent seulement si la typologie est 'Copropriété'."),
-    useChorus: z.boolean().optional().describe("Indique si le client utilise la facturation via Chorus Pro. Déduire si un SIRET est présent pour un client public."),
-    siret: z.string().optional().describe("Le numéro de SIRET du client, si disponible."),
-    chorusServiceCode: z.string().optional().describe("Le code service Chorus, si disponible."),
-    chorusLegalCommitmentNumber: z.string().optional().describe("Le numéro d'engagement juridique (EJ) pour Chorus, si disponible."),
-    chorusMarketNumber: z.string().optional().describe("Le numéro de marché Chorus, si disponible."),
-    startDate: z.string().optional().describe("Date de démarrage du contrat au format ISO 8601 (YYYY-MM-DD)."),
-    endDate: z.string().optional().describe("Date de fin du contrat au format ISO 8601 (YYYY-MM-DD)."),
-    renewal: z.boolean().optional().describe("Indique si le contrat est à reconduction."),
-    renewalDuration: z.string().optional().describe("La durée de la reconduction (ex: '1 an', '2 ans')."),
-    tacitRenewal: z.boolean().optional().describe("Indique si la reconduction est tacite."),
-
-    activityIds: z.array(z.string()).optional().describe("Un tableau des IDs des prestations (activités) trouvées dans le document. Choisir parmi la liste fournie."),
-    activitiesDetails: z.array(ActivityDetailSchema).optional().describe("Détails par activité (montant, terme, échéance, révision, etc.)."),
+    client: z.object({
+        name: z.string().optional().describe("Nom du client final (ex: Copropriété Le Bastion)."),
+        representativeName: z.string().optional().describe("Nom du représentant/Syndic si applicable (sinon null)."),
+        address: z.string().optional().describe("Adresse du site/immeuble concerné."),
+        postalCode: z.string().optional().describe("Code postal."),
+        city: z.string().optional().describe("Ville."),
+        clientType: z.enum(["private", "public"]).optional().describe("Type de client."),
+        typologyName: z.string().optional().describe("Copropriété, Tertiaire, Industrie ou Collectivité."),
+        siret: z.string().optional().describe("SIRET du client (ou du représentant si copropriété)."),
+        isBe: z.boolean().optional().default(false),
+        useChorus: z.boolean().optional().describe("True UNIQUEMENT si le client est une entité publique."),
+        contactTechnique: z.object({
+            name: z.string().optional(),
+            email: z.string().optional(),
+            phone: z.string().optional(),
+        }).optional(),
+        contactFacturation: z.object({
+            name: z.string().optional(),
+            email: z.string().optional(),
+            phone: z.string().optional(),
+        }).optional(),
+    }),
+    contrat: z.object({
+        objet: z.string().optional().describe("Objet du contrat."),
+        name: z.string().optional().describe("Nom du contrat (ex: Contrat Maintenance - Le Bastion)."),
+        label: z.string().optional().describe("Libellé (ex: Chauffage & ECS)."),
+        startDate: z.string().optional().describe("Date de début (YYYY-MM-DD)."),
+        durationStr: z.string().optional().describe("Durée telle qu'écrite (ex: 2 ans)."),
+        endDate: z.string().optional().describe("Date de fin (YYYY-MM-DD)."),
+        term: z.string().optional().describe("Périodicité de facturation (ex: Trimestriel)."),
+        tacitRenewal: z.boolean().optional(),
+        noticePeriod: z.string().optional().describe("Préavis de résiliation."),
+        baseAmountP1: z.number().optional().describe("Montant P1 HT annuel."),
+        baseAmountP2: z.number().optional().describe("Montant P2 HT annuel."),
+        baseAmountP3: z.number().optional().describe("Montant P3 HT annuel."),
+        baseAmountP3R: z.number().optional().describe("Montant P3R HT annuel."),
+        revisionP1: z.string().optional().describe("Formule de révision P1."),
+        revisionP2: z.string().optional().describe("Formule de révision P2."),
+        revisionP3: z.string().optional().describe("Formule de révision P3."),
+        heatingReferenceDju: z.number().optional().describe("DJU de référence."),
+        heatingWeatherStation: z.string().optional().describe("Station météo."),
+        hasInterest: z.boolean().optional().describe("Avec intéressement ?"),
+        hasHeating: z.boolean().optional().describe("Chauffage inclus ?"),
+        hasECS: z.boolean().optional().describe("ECS inclus ?"),
+    }),
+    // Legacy fields kept optional for compatibility if needed, but main logic should use nested
+    activityIds: z.array(z.string()).optional(),
+    activitiesDetails: z.array(ActivityDetailSchema).optional(),
 });
 export type ExtractContractInfoOutput = z.infer<typeof ExtractContractInfoOutputSchema>;
 
@@ -557,6 +828,14 @@ export type DataContextType = {
     pricingRules: PricingRule[];
     markets: Market[];
     roles: Role[];
+    // Contract Events
+    amendments: Amendment[];
+    terminations: Termination[];
+    renewals: Renewal[];
+    trusteeChanges: TrusteeChange[];
+    beChanges: BeChange[];
+    interests: Interest[];
+    settlementRules: SettlementRule[];
     currentUser: User | null;
     setCurrentUser: (user: User | null) => void;
     isLoading: boolean;

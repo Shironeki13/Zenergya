@@ -2,7 +2,7 @@
 'use client';
 
 import Link from 'next/link';
-import { UploadCloud, FileSignature } from 'lucide-react';
+import { Cloud, File } from 'lucide-react';
 import {
     Card,
     CardContent,
@@ -27,7 +27,7 @@ export default function ContractLibraryPage() {
                         <CardHeader>
                             <div className="flex items-center gap-4">
                                 <div className="bg-primary text-primary-foreground p-3 rounded-lg">
-                                    <FileSignature className="h-6 w-6" />
+                                    <File className="h-6 w-6" />
                                 </div>
                                 <CardTitle>Liste des Contrats</CardTitle>
                             </div>
@@ -40,12 +40,12 @@ export default function ContractLibraryPage() {
                     </Card>
                 </Link>
 
-                <Link href="/contracts/new-document" className="block hover:scale-105 transition-transform duration-200">
+                <Link href="/contracts/new" className="block hover:scale-105 transition-transform duration-200">
                     <Card className="h-full flex flex-col">
                         <CardHeader>
                             <div className="flex items-center gap-4">
                                 <div className="bg-secondary text-secondary-foreground p-3 rounded-lg">
-                                    <UploadCloud className="h-6 w-6" />
+                                    <Cloud className="h-6 w-6" />
                                 </div>
                                 <CardTitle>Ajouter un/des document(s)</CardTitle>
                             </div>

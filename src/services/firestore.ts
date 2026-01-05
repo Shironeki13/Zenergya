@@ -1,7 +1,6 @@
-
 'use server';
 import { db } from '@/lib/firebase';
-import type { Client, Site, Contract, Invoice, CreditNote, MeterReading, Company, Agency, Sector, Activity, User, Role, Schedule, Term, Typology, VatRate, RevisionFormula, PaymentTerm, PricingRule, Market, Meter, MeterType, Index, IndexValue, RevisionRule, Service, InvoiceStatus } from '@/lib/types';
+import type { Client, Site, Contract, Invoice, CreditNote, MeterReading, Company, Agency, Sector, Activity, User, Role, Schedule, Term, Typology, VatRate, RevisionFormula, PaymentTerm, PricingRule, Market, Meter, MeterType, Index, IndexValue, RevisionRule, Service, InvoiceStatus, Amendment, Termination, Renewal, TrusteeChange, BeChange, Interest, Dju, SettlementRule, ServiceSettlement, SettlementMethodType, SettlementTargetType } from '@/lib/types';
 import { collection, getDocs, doc, getDoc, addDoc, updateDoc, deleteDoc, query, where, DocumentData, writeBatch, runTransaction, Timestamp } from 'firebase/firestore';
 
 function processFirestoreDoc<T>(docData: DocumentData): T {
@@ -36,13 +35,13 @@ async function getDocument<T>(ref: any): Promise<T | null> {
     if (!docSnap.exists()) {
         return null;
     }
-    const data = { id: docSnap.id, ...docSnap.data() };
+    const data = { id: docSnap.id, ...docSnap.data() as Record<string, any> };
     return processFirestoreDoc<T>(data);
 }
 
 async function getCollection<T>(q: any): Promise<T[]> {
     const querySnapshot = await getDocs(q);
-    return querySnapshot.docs.map(doc => processFirestoreDoc<T>({ id: doc.id, ...doc.data() }));
+    return querySnapshot.docs.map(doc => processFirestoreDoc<T>({ id: doc.id, ...doc.data() as Record<string, any> }));
 }
 
 
@@ -102,6 +101,10 @@ export async function getSites(): Promise<Site[]> {
 
 export async function getSitesByClient(clientId: string): Promise<Site[]> {
     const q = query(collection(db, 'sites'), where("clientId", "==", clientId));
+    return getCollection<Site>(q);
+}
+export async function getSitesByContract(contractId: string): Promise<Site[]> {
+    const q = query(collection(db, 'sites'), where("contractId", "==", contractId));
     return getCollection<Site>(q);
 }
 
@@ -266,7 +269,11 @@ export async function createCreditNote(data: Omit<CreditNote, 'id' | 'creditNote
     }
 
     await batch.commit();
-    return { id: creditNoteRef.id, ...newCreditNoteData };
+    // Date property in CreditNote type is string (ISO 8601)
+    const returnedCreditNote: any = { id: creditNoteRef.id, ...newCreditNoteData };
+    returnedCreditNote.date = newCreditNoteData.date.toISOString();
+
+    return returnedCreditNote as CreditNote;
 }
 
 export async function getNextCreditNoteNumber(): Promise<string> {
@@ -688,8 +695,164 @@ export async function deleteUser(id: string) {
 
 
 
+
+
+// Avenants
+export async function createAmendment(data: Omit<Amendment, 'id'>) {
+    return createSettingItem('amendments', data);
+}
+export async function getAmendments(): Promise<Amendment[]> {
+    return getCollection<Amendment>(collection(db, 'amendments'));
+}
+export async function getAmendmentsByContract(contractId: string): Promise<Amendment[]> {
+    const q = query(collection(db, 'amendments'), where("contractId", "==", contractId));
+    return getCollection<Amendment>(q);
+}
+export async function updateAmendment(id: string, data: Partial<Omit<Amendment, 'id'>>) {
+    return updateSettingItem('amendments', id, data);
+}
+export async function deleteAmendment(id: string) {
+    return deleteSettingItem('amendments', id);
+}
+
+// Résiliations
+export async function createTermination(data: Omit<Termination, 'id'>) {
+    return createSettingItem('terminations', data);
+}
+export async function getTerminations(): Promise<Termination[]> {
+    return getCollection<Termination>(collection(db, 'terminations'));
+}
+export async function getTerminationsByContract(contractId: string): Promise<Termination[]> {
+    const q = query(collection(db, 'terminations'), where("contractId", "==", contractId));
+    return getCollection<Termination>(q);
+}
+export async function updateTermination(id: string, data: Partial<Omit<Termination, 'id'>>) {
+    return updateSettingItem('terminations', id, data);
+}
+export async function deleteTermination(id: string) {
+    return deleteSettingItem('terminations', id);
+}
+
+// Reconductions
+export async function createRenewal(data: Omit<Renewal, 'id'>) {
+    return createSettingItem('renewals', data);
+}
+export async function getRenewals(): Promise<Renewal[]> {
+    return getCollection<Renewal>(collection(db, 'renewals'));
+}
+export async function getRenewalsByContract(contractId: string): Promise<Renewal[]> {
+    const q = query(collection(db, 'renewals'), where("contractId", "==", contractId));
+    return getCollection<Renewal>(q);
+}
+export async function updateRenewal(id: string, data: Partial<Omit<Renewal, 'id'>>) {
+    return updateSettingItem('renewals', id, data);
+}
+export async function deleteRenewal(id: string) {
+    return deleteSettingItem('renewals', id);
+}
+
+// Changements de Syndic
+export async function createTrusteeChange(data: Omit<TrusteeChange, 'id'>) {
+    return createSettingItem('trusteeChanges', data);
+}
+export async function getTrusteeChanges(): Promise<TrusteeChange[]> {
+    return getCollection<TrusteeChange>(collection(db, 'trusteeChanges'));
+}
+export async function getTrusteeChangesByContract(contractId: string): Promise<TrusteeChange[]> {
+    const q = query(collection(db, 'trusteeChanges'), where("contractId", "==", contractId));
+    return getCollection<TrusteeChange>(q);
+}
+export async function updateTrusteeChange(id: string, data: Partial<Omit<TrusteeChange, 'id'>>) {
+    return updateSettingItem('trusteeChanges', id, data);
+}
+export async function deleteTrusteeChange(id: string) {
+    return deleteSettingItem('trusteeChanges', id);
+}
+
+// Changements de BE
+export async function createBeChange(data: Omit<BeChange, 'id'>) {
+    return createSettingItem('beChanges', data);
+}
+export async function getBeChanges(): Promise<BeChange[]> {
+    return getCollection<BeChange>(collection(db, 'beChanges'));
+}
+export async function getBeChangesByContract(contractId: string): Promise<BeChange[]> {
+    const q = query(collection(db, 'beChanges'), where("contractId", "==", contractId));
+    return getCollection<BeChange>(q);
+}
+
+// Interest
+export async function getInterests(): Promise<Interest[]> {
+    return getCollection<Interest>(collection(db, 'interests'));
+}
+
+export async function getInterestsByService(serviceId: string): Promise<Interest[]> {
+    const q = query(collection(db, 'interests'), where("serviceId", "==", serviceId));
+    return getCollection<Interest>(q);
+}
+
+export async function createInterest(data: Omit<Interest, 'id'>): Promise<any> {
+    const docRef = await addDoc(collection(db, 'interests'), data);
+    return { id: docRef.id, ...data };
+}
+
+export async function updateInterest(id: string, data: Partial<Omit<Interest, 'id'>>) {
+    await updateDoc(doc(db, 'interests', id), data);
+}
+
+export async function deleteInterest(id: string) {
+    await deleteDoc(doc(db, 'interests', id));
+}
+
+// DJU
+export async function getDjus(): Promise<Dju[]> {
+    return getCollection<Dju>(collection(db, 'djus'));
+}
+
+export async function getWeatherStations(): Promise<{ code: string, name: string }[]> {
+    const djus = await getDjus();
+    const stations = new Map<string, string>(); // code -> name
+    djus.forEach(d => {
+        if (!stations.has(d.stationCode)) {
+            stations.set(d.stationCode, d.stationName);
+        }
+    });
+    return Array.from(stations.entries()).map(([code, name]) => ({ code, name }));
+}
+
+export async function getDjuTotal(stationCode: string, startDate: string, endDate: string): Promise<number> {
+    const q = query(
+        collection(db, 'djus'),
+        where("stationCode", "==", stationCode),
+        where("date", ">=", startDate),
+        where("date", "<=", endDate)
+    );
+    // Note: This query assumes simple date string comparison works (true for YYYY-MM-DD)
+    const snapshot = await getDocs(q);
+    let total = 0;
+    snapshot.forEach(doc => {
+        const d = processFirestoreDoc<Dju>(doc.data());
+        total += d.value;
+    });
+    return total;
+}
+
+export async function createDju(data: Omit<Dju, 'id'>): Promise<any> {
+    const docRef = await addDoc(collection(db, 'djus'), data);
+    return { id: docRef.id, ...data };
+}
+
+// Relevés de Compteurs (Suite)
+export async function updateBeChange(id: string, data: Partial<Omit<BeChange, 'id'>>) {
+    return updateSettingItem('beChanges', id, data);
+}
+export async function deleteBeChange(id: string) {
+    return deleteSettingItem('beChanges', id);
+}
+
 // Orchestration
 export async function createClientAndContract(data: any) {
+
     // 1. Separate Client and Contract data
     const clientData: Omit<Client, 'id'> = {
         name: data.name,
@@ -709,13 +872,24 @@ export async function createClientAndContract(data: any) {
         chorusServiceCode: data.chorusServiceCode,
         chorusLegalCommitmentNumber: data.chorusLegalCommitmentNumber,
         chorusMarketNumber: data.chorusMarketNumber,
-        invoicingType: data.invoicingType || 'multi-site', // Default to multi-site if not provided
-        siteIds: [], // Initial empty list
-        documents: data.documents || [],
+        // invoicingType moved to Contract
+        // documents moved to Contract
+
         // Hierarchy
         companyId: data.companyId,
         agencyId: data.agencyId,
         sectorId: data.sectorId,
+        // Contacts
+        technicalContactName: data.technicalContactName,
+        technicalContactEmail: data.technicalContactEmail,
+        technicalContactPhone: data.technicalContactPhone,
+        billingContactName: data.billingContactName,
+        billingContactEmail: data.billingContactEmail,
+        billingContactPhone: data.billingContactPhone,
+        renewal: data.renewal,
+        tacitRenewal: data.tacitRenewal,
+        renewalDuration: data.renewalDuration,
+        noticePeriod: data.noticePeriod,
     };
 
     // 2. Create Client
@@ -728,29 +902,34 @@ export async function createClientAndContract(data: any) {
         siteIds: [], // Initial empty list
         startDate: data.startDate,
         endDate: data.endDate,
-        billingSchedule: 'Mensuel', // Default or derived? The prompt extracts 'scheduleId' per activity, but Contract has a global one? 
-        // Looking at types, Contract has 'billingSchedule' string. 
-        // But activitiesDetails has scheduleId. 
-        // For now, we'll use a default or take the first one found if available, 
-        // or maybe we should update Contract type to not require this if it's per activity.
-        // Let's assume 'Mensuel' as default for the global field for now.
-        term: 'Echu', // Same here, default.
+        billingSchedule: 'Mensuel', // Default
+        term: data.term || 'Echu',
         activityIds: data.activityIds || [],
         activitiesDetails: data.activitiesDetails || [],
+        invoicingType: data.invoicingType || 'multi-site',
 
-        // Legacy/Global fields - map from first activity or leave empty/default
-        hasHeating: data.activityIds?.includes('P1') || false, // Simple heuristic
-        hasECS: false, // Default
+        // New Contract Fields
+        name: data.contractName, // Contract Name
+        label: data.label,
+        contractNumber: data.contractNumber,
+        baseAmountP1: data.baseAmountP1,
+        baseAmountP2: data.baseAmountP2,
+        baseAmountP3: data.baseAmountP3,
+        baseAmountP3R: data.baseAmountP3R,
+        revisionP1: data.revisionP1 ? { formula: data.revisionP1 } : undefined,
+        revisionP2: data.revisionP2 ? { formula: data.revisionP2 } : undefined,
+        revisionP3: data.revisionP3 ? { formula: data.revisionP3 } : undefined,
+        heatingReferenceDju: data.heatingReferenceDju,
+        heatingWeatherStation: data.heatingWeatherStation,
+        hasInterest: data.hasInterest || false,
+        hasHeating: data.hasHeating || false,
+        hasECS: data.hasECS || false,
 
-        // Renewal
-        // Contract type doesn't have renewal fields directly at root in the type definition I saw earlier?
-        // Let's check types.ts again. 
-        // ClientSchema has renewal fields. Contract type has terminationDate.
-        // It seems renewal info is currently stored on the Client in the schema, but logically belongs to Contract?
-        // The ClientSchema in types.ts has renewal fields. 
-        // The Contract type in types.ts does NOT have renewal fields explicitly shown in the snippet I saw, 
-        // except maybe implicitly or I missed them.
-        // I will store them if the Contract type allows, otherwise they are on the Client (which is already saved).
+        // Renewal (also on Client, but good to have on Contract if needed in future)
+        renewal: data.renewal || false,
+        tacitRenewal: data.tacitRenewal || false,
+        renewalDuration: data.renewalDuration,
+        noticePeriod: data.noticePeriod,
 
         documents: data.documents || [],
     };
@@ -759,4 +938,60 @@ export async function createClientAndContract(data: any) {
     const newContract = await createContract(contractData);
 
     return { client: newClient, contract: newContract };
+}
+
+// Relevés de Compteurs (Suite)
+export async function updateMeterReading(id: string, data: Partial<Omit<MeterReading, 'id'>>) {
+    return updateSettingItem('meterReadings', id, data);
+}
+export async function deleteMeterReading(id: string) {
+    return deleteSettingItem('meterReadings', id);
+}
+
+// --- Settlement System Functions ---
+
+export async function getSettlementRules(): Promise<SettlementRule[]> {
+    return getCollection<SettlementRule>(collection(db, 'settlement_rules'));
+}
+
+export async function createSettlementRule(data: Omit<SettlementRule, 'id'>): Promise<any> {
+    const docRef = await addDoc(collection(db, 'settlement_rules'), data);
+    return { id: docRef.id, ...data };
+}
+
+export async function getSettlementsByService(serviceId: string): Promise<ServiceSettlement[]> {
+    const q = query(collection(db, 'service_settlements'), where("serviceId", "==", serviceId));
+    // Since service_settlements can be complex, ensure processFirestoreDoc handles strictly
+    const snapshot = await getDocs(q);
+    return snapshot.docs.map(doc => processFirestoreDoc<ServiceSettlement>({ id: doc.id, ...doc.data() as Record<string, any> }));
+}
+
+export async function createSettlement(data: Omit<ServiceSettlement, 'id'>): Promise<any> {
+    const docRef = await addDoc(collection(db, 'service_settlements'), data);
+    return { id: docRef.id, ...data };
+}
+
+export async function updateSettlement(id: string, data: Partial<Omit<ServiceSettlement, 'id'>>) {
+    await updateDoc(doc(db, 'service_settlements', id), data);
+}
+
+export async function deleteSettlement(id: string): Promise<void> {
+    await deleteDoc(doc(db, 'service_settlements', id));
+}
+
+export async function initializeSettlementRules() {
+    const existing = await getSettlementRules();
+    if (existing.length > 0) return;
+
+    const defaults: Omit<SettlementRule, 'id'>[] = [
+        { code: 'CONSO_REELLE', label: 'Consommation Réelle (P1)', description: 'Basé sur index compteur début/fin x Coeff en vigueur. Facture = (Conso x PU).', targetType: 'P1', isActive: true },
+        { code: 'PRORATA_JOURS', label: 'Prorata Temporis (Jours)', description: 'Montant Ref x (Jours Période / Jours Année)', targetType: null, isActive: true },
+        { code: 'PRORATA_MOIS', label: 'Prorata Temporis (Mois)', description: 'Montant Ref x (Mois Période / 12)', targetType: null, isActive: true },
+        { code: 'FORFAIT_FIXE', label: 'Forfait Fixe / Solde', description: 'Montant libre saisi manuellement à la fin.', targetType: null, isActive: true },
+        { code: 'ECHEANCIER', label: 'Solde Echéancier', description: 'Total Annuel - Somme des échéances facturées', targetType: 'P3', isActive: true },
+    ];
+
+    for (const d of defaults) {
+        await createSettlementRule(d);
+    }
 }

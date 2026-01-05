@@ -1,35 +1,25 @@
-import { auth } from '@/lib/firebase';
+import { storage } from '@/lib/firebase';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 
 /**
- * Uploads a file to Firebase Storage via a server-side proxy to bypass CORS.
+ * Uploads a file to Firebase Storage directly using the Client SDK.
  * @param file The file to upload.
  * @param path The path in storage where the file should be saved.
  * @returns The download URL of the uploaded file.
  */
 export async function uploadFile(file: File, path: string): Promise<string> {
-    const user = auth.currentUser;
-    if (!user) {
-        throw new Error("User must be authenticated to upload files.");
+    if (!storage) {
+        throw new Error("Firebase Storage is not initialized.");
     }
 
-    const token = await user.getIdToken();
-    const formData = new FormData();
-    formData.append('file', file);
-    formData.append('path', path);
+    const storageRef = ref(storage, path);
 
-    const response = await fetch('/api/upload', {
-        method: 'POST',
-        headers: {
-            'Authorization': `Bearer ${token}`,
-        },
-        body: formData,
-    });
-
-    if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Upload failed');
+    try {
+        const snapshot = await uploadBytes(storageRef, file);
+        const downloadUrl = await getDownloadURL(snapshot.ref);
+        return downloadUrl;
+    } catch (error: any) {
+        console.error("Upload failed:", error);
+        throw new Error(error.message || "Upload failed");
     }
-
-    const data = await response.json();
-    return data.downloadUrl;
 }
