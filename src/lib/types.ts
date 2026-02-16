@@ -37,9 +37,9 @@ export const ClientBaseSchema = z.object({
     clientType: z.enum(["private", "public"], { required_error: "Le type de client est requis." }),
     typologyId: z.string({ required_error: "La typologie est requise." }),
     // Hierarchy fields
-    companyId: z.string({ required_error: "La société est requise." }),
-    agencyId: z.string({ required_error: "L'agence est requise." }),
-    sectorId: z.string({ required_error: "Le secteur est requis." }),
+    companyId: z.string({ required_error: "La société est requise." }).min(1, "La société est requise."),
+    agencyId: z.string({ required_error: "L'agence est requise." }).min(1, "L'agence est requise."),
+    sectorId: z.string({ required_error: "Le secteur est requis." }).min(1, "Le secteur est requis."),
     representedBy: z.string().optional(),
     externalCode: z.string().optional(),
     isBe: z.boolean().default(false),
@@ -191,6 +191,8 @@ export type Contract = {
     contractNumber?: string; // N° Contrat (CTR-ANNÉE-N° Client-001)
     createdAt?: string; // Timestamp
     createdBy?: string; // User ID/Name
+    requesterEmail?: string; // Email of the user who created the contract
+    refusalReason?: string; // Reason for refusal by admin
     label?: string; // Libellé (= Localité / Spécificité)
     name?: string; // Nom Contrat (= Nom Client + ‘-’ + Libellé Contrat)
     externalRef?: string;
@@ -236,6 +238,10 @@ export type Contract = {
     ecsFlatRateHT?: number; // Forfait P1 ECS HT (€/an)
     ecsUnitPriceM3?: number; // PU m3 ECS
     ecsRevisionIndices?: EcsRevisionIndices;
+
+    // P1 Factors
+    contractualNB?: number; // NB (Nombre de Base)
+    smallQ?: number; // Petit q (Quantité/Coeff)
 
 
     // Conditional fields (legacy, to be reviewed if they overlap)
@@ -793,6 +799,8 @@ export const ExtractContractInfoOutputSchema = z.object({
         hasInterest: z.boolean().optional().describe("Avec intéressement ?"),
         hasHeating: z.boolean().optional().describe("Chauffage inclus ?"),
         hasECS: z.boolean().optional().describe("ECS inclus ?"),
+        contractualNB: z.number().optional().describe("Valeur du NB (Nombre de Base)."),
+        smallQ: z.number().optional().describe("Valeur du petit q."),
     }),
     // Legacy fields kept optional for compatibility if needed, but main logic should use nested
     activityIds: z.array(z.string()).optional(),

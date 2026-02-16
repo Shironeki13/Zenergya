@@ -37,38 +37,40 @@ import { Input } from '@/components/ui/input';
 import { downloadCSV } from '@/lib/utils';
 
 
+import { deleteInvoice } from '@/services/firestore';
+
 export default function InvoicesPage() {
-  const { invoices, isLoading, reloadData } = useData();
+  const { invoices, isLoading, reloadData, currentUser } = useData();
   const { toast } = useToast();
   const [selectedInvoiceIds, setSelectedInvoiceIds] = useState<string[]>([]);
   const [isGenerating, setIsGenerating] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
 
-  const sortedInvoices = useMemo(() => 
+  const sortedInvoices = useMemo(() =>
     [...invoices].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()),
     [invoices]
   );
-  
+
   const filteredInvoices = useMemo(() => {
     if (!searchTerm) {
       return sortedInvoices;
     }
-    return sortedInvoices.filter(invoice => 
+    return sortedInvoices.filter(invoice =>
       (invoice.invoiceNumber && invoice.invoiceNumber.toLowerCase().includes(searchTerm.toLowerCase())) ||
       invoice.clientName.toLowerCase().includes(searchTerm.toLowerCase()) ||
       invoice.id.toLowerCase().includes(searchTerm.toLowerCase())
     );
   }, [sortedInvoices, searchTerm]);
-  
-  const cancellableInvoices = useMemo(() => 
+
+  const cancellableInvoices = useMemo(() =>
     filteredInvoices.filter(inv => inv.status !== 'proforma' && inv.status !== 'cancelled'),
     [filteredInvoices]
   );
 
   const handleExport = () => {
     const dataToExport = filteredInvoices.map(({ lineItems, ...rest }) => ({
-        ...rest,
-        lineItems: lineItems.map(li => `[${li.description}:${li.total}]`).join('; ')
+      ...rest,
+      lineItems: lineItems.map(li => `[${li.description}:${li.total}]`).join('; ')
     }));
     downloadCSV(dataToExport, 'factures.csv');
   };
@@ -79,39 +81,39 @@ export default function InvoicesPage() {
       checked ? [...prev, invoiceId] : prev.filter(id => id !== invoiceId)
     );
   };
-  
+
   const handleSelectAll = (checked: boolean) => {
-      if (checked) {
-          setSelectedInvoiceIds(cancellableInvoices.map(inv => inv.id));
-      } else {
-          setSelectedInvoiceIds([]);
-      }
+    if (checked) {
+      setSelectedInvoiceIds(cancellableInvoices.map(inv => inv.id));
+    } else {
+      setSelectedInvoiceIds([]);
+    }
   };
 
   const handleGenerateCreditNote = async () => {
-      if (selectedInvoiceIds.length === 0) {
-          toast({ title: "Aucune facture sélectionnée", description: "Veuillez sélectionner au moins une facture à annuler.", variant: 'destructive' });
-          return;
+    if (selectedInvoiceIds.length === 0) {
+      toast({ title: "Aucune facture sélectionnée", description: "Veuillez sélectionner au moins une facture à annuler.", variant: 'destructive' });
+      return;
+    }
+    setIsGenerating(true);
+    try {
+      const result = await generateCreditNote({
+        invoiceIds: selectedInvoiceIds,
+        reason: 'Annulation demandée par l\'utilisateur.', // Placeholder reason
+        creditNoteDate: new Date().toISOString(),
+      });
+      if (result.success && result.creditNoteId) {
+        toast({ title: "Avoir généré", description: `L'avoir ${result.creditNoteId} a été créé.` });
+        setSelectedInvoiceIds([]);
+        await reloadData();
+      } else {
+        throw new Error(result.error || "Une erreur inconnue est survenue lors de la création de l'avoir.");
       }
-      setIsGenerating(true);
-      try {
-          const result = await generateCreditNote({
-              invoiceIds: selectedInvoiceIds,
-              reason: 'Annulation demandée par l\'utilisateur.', // Placeholder reason
-              creditNoteDate: new Date().toISOString(),
-          });
-          if (result.success && result.creditNoteId) {
-              toast({ title: "Avoir généré", description: `L'avoir ${result.creditNoteId} a été créé.` });
-              setSelectedInvoiceIds([]);
-              await reloadData();
-          } else {
-              throw new Error(result.error || "Une erreur inconnue est survenue lors de la création de l'avoir.");
-          }
-      } catch (error) {
-          toast({ title: "Erreur de génération", description: error instanceof Error ? error.message : String(error), variant: 'destructive', duration: 10000});
-      } finally {
-          setIsGenerating(false);
-      }
+    } catch (error) {
+      toast({ title: "Erreur de génération", description: error instanceof Error ? error.message : String(error), variant: 'destructive', duration: 10000 });
+    } finally {
+      setIsGenerating(false);
+    }
   };
 
 
@@ -126,12 +128,12 @@ export default function InvoicesPage() {
       case 'cancelled':
         return 'warning';
       case 'proforma':
-          return 'default';
+        return 'default';
       default:
         return 'default';
     }
   };
-  
+
   const translateStatus = (status: InvoiceStatus) => {
     switch (status) {
       case 'paid':
@@ -161,7 +163,7 @@ export default function InvoicesPage() {
             </CardDescription>
           </div>
           <div className="flex items-center gap-2">
-             <div className="relative">
+            <div className="relative">
               <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
               <Input
                 type="search"
@@ -173,8 +175,8 @@ export default function InvoicesPage() {
             </div>
             {selectedInvoiceIds.length > 0 ? (
               <Button size="sm" className="gap-1" onClick={handleGenerateCreditNote} disabled={isGenerating}>
-                  {isGenerating ? <Loader2 className="h-4 w-4 animate-spin" /> : <MinusCircle className="h-4 w-4" />}
-                  Générer un Avoir ({selectedInvoiceIds.length})
+                {isGenerating ? <Loader2 className="h-4 w-4 animate-spin" /> : <MinusCircle className="h-4 w-4" />}
+                Générer un Avoir ({selectedInvoiceIds.length})
               </Button>
             ) : (
               <Button size="sm" variant="outline" className="gap-1" onClick={handleExport}>
@@ -209,62 +211,76 @@ export default function InvoicesPage() {
           </TableHeader>
           <TableBody>
             {isLoading ? (
-                <TableRow>
-                    <TableCell colSpan={7} className="text-center h-24">
-                       <Loader2 className="mx-auto h-8 w-8 animate-spin text-muted-foreground" />
-                    </TableCell>
-                </TableRow>
+              <TableRow>
+                <TableCell colSpan={7} className="text-center h-24">
+                  <Loader2 className="mx-auto h-8 w-8 animate-spin text-muted-foreground" />
+                </TableCell>
+              </TableRow>
             ) : filteredInvoices.length > 0 ? (
-                filteredInvoices.map((invoice) => (
+              filteredInvoices.map((invoice) => (
                 <TableRow key={invoice.id}>
-                    <TableCell>
-                      {invoice.status !== 'proforma' && invoice.status !== 'cancelled' && (
-                        <Checkbox
-                          checked={selectedInvoiceIds.includes(invoice.id)}
-                          onCheckedChange={(checked) => handleSelectionChange(invoice.id, !!checked)}
-                        />
-                      )}
-                    </TableCell>
-                    <TableCell className="font-medium">
-                      {invoice.invoiceNumber || `Proforma ${invoice.id.substring(0,6)}`}
-                    </TableCell>
-                    <TableCell>{invoice.clientName}</TableCell>
-                    <TableCell>
-                       <Badge variant={getBadgeVariant(invoice.status)}>
-                           {translateStatus(invoice.status)}
-                       </Badge>
-                    </TableCell>
-                    <TableCell className="hidden md:table-cell">
-                      {new Date(invoice.date).toLocaleDateString()}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      {invoice.total.toFixed(2)} €
-                    </TableCell>
-                    <TableCell>
+                  <TableCell>
+                    {invoice.status !== 'proforma' && invoice.status !== 'cancelled' && (
+                      <Checkbox
+                        checked={selectedInvoiceIds.includes(invoice.id)}
+                        onCheckedChange={(checked) => handleSelectionChange(invoice.id, !!checked)}
+                      />
+                    )}
+                  </TableCell>
+                  <TableCell className="font-medium">
+                    {invoice.invoiceNumber || `Proforma ${invoice.id.substring(0, 6)}`}
+                  </TableCell>
+                  <TableCell>{invoice.clientName}</TableCell>
+                  <TableCell>
+                    <Badge variant={getBadgeVariant(invoice.status)}>
+                      {translateStatus(invoice.status)}
+                    </Badge>
+                  </TableCell>
+                  <TableCell className="hidden md:table-cell">
+                    {new Date(invoice.date).toLocaleDateString()}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    {invoice.total.toFixed(2)} €
+                  </TableCell>
+                  <TableCell>
                     <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
+                      <DropdownMenuTrigger asChild>
                         <Button aria-haspopup="true" size="icon" variant="ghost">
-                            <MoreHorizontal className="h-4 w-4" />
-                            <span className="sr-only">Ouvrir le menu</span>
+                          <MoreHorizontal className="h-4 w-4" />
+                          <span className="sr-only">Ouvrir le menu</span>
                         </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
                         <DropdownMenuLabel>Actions</DropdownMenuLabel>
                         <DropdownMenuItem asChild>
-                            <Link href={`/invoices/${invoice.id}`}>Voir les détails</Link>
+                          <Link href={`/invoices/${invoice.id}`}>Voir les détails</Link>
                         </DropdownMenuItem>
                         {invoice.status === 'due' && <DropdownMenuItem>Marquer comme payée</DropdownMenuItem>}
                         {invoice.status === 'due' && <DropdownMenuItem>Envoyer un rappel</DropdownMenuItem>}
                         {invoice.status === 'proforma' && <DropdownMenuItem>Convertir en facture</DropdownMenuItem>}
-                        </DropdownMenuContent>
+                        {currentUser?.email === 'jeremy.bani.fernandez@gmail.com' && (
+                          <DropdownMenuItem
+                            className="text-destructive focus:text-destructive"
+                            onClick={async () => {
+                              if (confirm('Êtes-vous sûr de vouloir SUPPRIMER DÉFINITIVEMENT cette facture ? Cela est irréversible.')) {
+                                await deleteInvoice(invoice.id);
+                                toast({ title: "Facture supprimée", description: "La facture a été supprimée définitivement." });
+                                await reloadData();
+                              }
+                            }}
+                          >
+                            Supprimer (Admin)
+                          </DropdownMenuItem>
+                        )}
+                      </DropdownMenuContent>
                     </DropdownMenu>
-                    </TableCell>
+                  </TableCell>
                 </TableRow>
-                ))
+              ))
             ) : (
-                <TableRow>
-                    <TableCell colSpan={7} className="text-center h-24">Aucune facture trouvée.</TableCell>
-                </TableRow>
+              <TableRow>
+                <TableCell colSpan={7} className="text-center h-24">Aucune facture trouvée.</TableCell>
+              </TableRow>
             )}
           </TableBody>
         </Table>

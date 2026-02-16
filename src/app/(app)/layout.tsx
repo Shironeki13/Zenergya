@@ -86,12 +86,8 @@ function MainAppLayout({ children }: { children: React.ReactNode }) {
 
   const contrathequeLinks = [
     { href: '/contracts/library', label: 'Accueil', icon: Home },
-    { href: '/contracts/validation', label: 'Admin', icon: ShieldCheck },
-    { href: '/contracts', label: 'Liste des contrats', icon: FileSignature },
-    { href: '#', label: 'ADV', icon: Briefcase },
-    { href: '#', label: 'CDG', icon: Calculator },
-    { href: '#', label: 'DPO', icon: ShieldAlert },
-    { href: '#', label: 'Commerce', icon: Store },
+    { href: '/contracts/commerce', label: 'Commerce', icon: Store },
+    { href: '/admin/validations', label: 'Admin', icon: ShieldCheck },
   ];
 
   return (

@@ -455,7 +455,7 @@ export default function SiteDetailsPage() {
                             </Link>
                             <span className="mx-2">›</span>
                             <Link href={`/contracts/${contract.id}`} className="hover:underline hover:text-foreground">
-                                {contract.id}
+                                {contract.label || contract.name || contract.id}
                             </Link>
                             <span className="mx-2">›</span>
                         </>

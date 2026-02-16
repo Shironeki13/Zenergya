@@ -249,7 +249,24 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             }
           });
         } else {
-          setCurrentUser(null);
+          // Fallback to mock user ONLY in development
+          if (process.env.NODE_ENV === 'development') {
+            setCurrentUser({
+              id: 'user-director',
+              name: 'Directeur Général',
+              email: 'director@zenergy.com',
+              roleId: 'role-admin',
+              roleName: 'Administrateur',
+              modules: ['contracts', 'billing', 'settings'],
+              scope: {
+                companyIds: ['*'],
+                agencyIds: ['*'],
+                sectorIds: ['*'],
+              }
+            });
+          } else {
+            setCurrentUser(null);
+          }
         }
       })
     );

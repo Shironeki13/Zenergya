@@ -1,5 +1,5 @@
 import { storage } from '@/lib/firebase';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
 
 /**
  * Uploads a file to Firebase Storage directly using the Client SDK.
@@ -21,5 +21,24 @@ export async function uploadFile(file: File, path: string): Promise<string> {
     } catch (error: any) {
         console.error("Upload failed:", error);
         throw new Error(error.message || "Upload failed");
+    }
+}
+
+/**
+ * Deletes a file from Firebase Storage using its download URL.
+ * @param url The download URL of the file to delete.
+ */
+export async function deleteFileFromUrl(url: string): Promise<void> {
+    if (!storage) {
+        throw new Error("Firebase Storage is not initialized.");
+    }
+
+    try {
+        const fileRef = ref(storage, url);
+        await deleteObject(fileRef);
+    } catch (error: any) {
+        console.error("Delete failed:", error);
+        // We log but don't throw to avoid blocking the main deletion flow
+        // throw new Error(error.message || "Delete failed");
     }
 }

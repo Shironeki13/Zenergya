@@ -108,8 +108,11 @@ const defaultPrompt = `Agis comme un expert en saisie de données juridiques. An
      "heatingReferenceDju": number,
      "heatingWeatherStation": "Station...",
      "hasInterest": boolean,
+     "hasInterest": boolean,
      "hasHeating": boolean,
-     "hasECS": boolean
+     "hasECS": boolean,
+     "contractualNB": number,
+     "smallQ": number
   }
 }`;
 
@@ -133,6 +136,8 @@ const ExtendedClientSchema = ClientBaseSchema.extend({
     hasInterest: z.boolean().default(false),
     hasHeating: z.boolean().default(false),
     hasECS: z.boolean().default(false),
+    contractualNB: z.number().optional(),
+    smallQ: z.number().optional(),
 });
 
 type ClientFormValues = z.infer<typeof ExtendedClientSchema>;
@@ -140,7 +145,7 @@ type ClientFormValues = z.infer<typeof ExtendedClientSchema>;
 export default function MarketPrivatePage() {
     const router = useRouter();
     const { toast } = useToast();
-    const { reloadData, typologies } = useData();
+    const { reloadData, typologies, companies, agencies, sectors, currentUser } = useData();
     const [file, setFile] = useState<File | null>(null);
     const [prompt, setPrompt] = useState(defaultPrompt);
     const [isAnalyzing, setIsAnalyzing] = useState(false);
@@ -162,13 +167,12 @@ export default function MarketPrivatePage() {
             bePhone: "",
             useChorus: false,
             siret: "",
-            invoicingType: "multi-site",
+
             renewal: false,
             tacitRenewal: false,
             renewalDuration: "",
             noticePeriod: "",
-            activityIds: [],
-            activitiesDetails: [],
+
             companyId: "",
             agencyId: "",
             sectorId: "",
@@ -180,6 +184,9 @@ export default function MarketPrivatePage() {
             billingContactPhone: "",
             baseAmountP1: undefined,
             baseAmountP2: undefined,
+            contractualNB: undefined,
+            smallQ: undefined,
+            typologyId: "",
         },
     });
 
@@ -268,6 +275,13 @@ export default function MarketPrivatePage() {
                         hasInterest: result.contrat?.hasInterest || false,
                         hasHeating: result.contrat?.hasHeating || false,
                         hasECS: result.contrat?.hasECS || false,
+                        contractualNB: result.contrat?.contractualNB,
+                        smallQ: result.contrat?.smallQ,
+
+                        // Preserve or default hierarchy fields to avoid validation errors
+                        companyId: form.getValues("companyId") || companies[0]?.id || "",
+                        agencyId: form.getValues("agencyId") || agencies[0]?.id || "",
+                        sectorId: form.getValues("sectorId") || sectors[0]?.id || "",
                     };
 
                     form.reset(mappedData);
@@ -304,7 +318,7 @@ export default function MarketPrivatePage() {
         try {
             let downloadUrl = "";
             if (file) {
-                const path = `contracts/${Date.now()}_${file.name}`;
+                const path = `BASE_MARCHE/${Date.now()}_${file.name}`;
                 downloadUrl = await uploadFile(file, path);
             }
 
@@ -314,8 +328,14 @@ export default function MarketPrivatePage() {
             const contractData = {
                 ...clientData,
                 clientType: 'private',
+                validationStatus: 'pending_validation',
+                requesterEmail: currentUser?.email,
 
-                documents: downloadUrl ? [downloadUrl] : [],
+                documents: downloadUrl ? [{
+                    name: file?.name || 'Contrat.pdf',
+                    type: 'application/pdf',
+                    url: downloadUrl
+                }] : [],
                 baseAmountP1,
                 baseAmountP2,
                 baseAmountP3: data.baseAmountP3,
@@ -331,6 +351,8 @@ export default function MarketPrivatePage() {
                 hasInterest: data.hasInterest,
                 hasHeating: data.hasHeating,
                 hasECS: data.hasECS,
+                contractualNB: data.contractualNB,
+                smallQ: data.smallQ,
             };
 
             await createClientAndContract(contractData);
@@ -460,7 +482,81 @@ export default function MarketPrivatePage() {
                     </SheetHeader>
                     <div className="py-6">
                         <Form {...form}>
-                            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-8">
+                            <form onSubmit={form.handleSubmit(onSubmit, (errors) => {
+                                console.error("Form Validation Errors:", errors);
+                                const errorMessages = Object.entries(errors)
+                                    .map(([key, error]) => `${key}: ${(error as any).message}`)
+                                    .join(', ');
+                                toast({
+                                    title: "Erreur de validation",
+                                    description: `Champs invalides: ${errorMessages}`,
+                                    variant: "destructive",
+                                });
+                            })} className="space-y-8">
+
+                                {/* Section Hiérarchie */}
+                                <div className="space-y-4">
+                                    <div className="flex items-center gap-2 pb-2 border-b">
+                                        <Building className="h-5 w-5 text-primary" />
+                                        <h3 className="font-semibold text-lg">Hiérarchie (Obligatoire)</h3>
+                                    </div>
+                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                        <FormField control={form.control} name="companyId" render={({ field }) => (
+                                            <FormItem>
+                                                <FormLabel>Société</FormLabel>
+                                                <Select onValueChange={field.onChange} defaultValue={field.value}>
+                                                    <FormControl>
+                                                        <SelectTrigger>
+                                                            <SelectValue placeholder="Sélectionner" />
+                                                        </SelectTrigger>
+                                                    </FormControl>
+                                                    <SelectContent>
+                                                        {companies.map((c) => (
+                                                            <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                                                        ))}
+                                                    </SelectContent>
+                                                </Select>
+                                                <FormMessage />
+                                            </FormItem>
+                                        )} />
+                                        <FormField control={form.control} name="agencyId" render={({ field }) => (
+                                            <FormItem>
+                                                <FormLabel>Agence</FormLabel>
+                                                <Select onValueChange={field.onChange} defaultValue={field.value} disabled={!form.watch('companyId')}>
+                                                    <FormControl>
+                                                        <SelectTrigger>
+                                                            <SelectValue placeholder="Sélectionner" />
+                                                        </SelectTrigger>
+                                                    </FormControl>
+                                                    <SelectContent>
+                                                        {agencies.filter(a => a.companyId === form.watch('companyId')).map((a) => (
+                                                            <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>
+                                                        ))}
+                                                    </SelectContent>
+                                                </Select>
+                                                <FormMessage />
+                                            </FormItem>
+                                        )} />
+                                        <FormField control={form.control} name="sectorId" render={({ field }) => (
+                                            <FormItem>
+                                                <FormLabel>Secteur</FormLabel>
+                                                <Select onValueChange={field.onChange} defaultValue={field.value} disabled={!form.watch('agencyId')}>
+                                                    <FormControl>
+                                                        <SelectTrigger>
+                                                            <SelectValue placeholder="Sélectionner" />
+                                                        </SelectTrigger>
+                                                    </FormControl>
+                                                    <SelectContent>
+                                                        {sectors.filter(s => s.agencyId === form.watch('agencyId')).map((s) => (
+                                                            <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
+                                                        ))}
+                                                    </SelectContent>
+                                                </Select>
+                                                <FormMessage />
+                                            </FormItem>
+                                        )} />
+                                    </div>
+                                </div>
 
                                 {/* Section Client */}
                                 <div className="space-y-4">
@@ -658,7 +754,7 @@ export default function MarketPrivatePage() {
                                                 <FormControl>
                                                     <div className="relative">
                                                         <Euro className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
-                                                        <Input type="number" className="pl-8" {...field} onChange={e => field.onChange(e.target.valueAsNumber)} />
+                                                        <Input type="number" className="pl-8" {...field} onChange={e => field.onChange(e.target.value === '' ? undefined : e.target.valueAsNumber)} />
                                                     </div>
                                                 </FormControl>
                                                 <FormMessage />
@@ -670,7 +766,7 @@ export default function MarketPrivatePage() {
                                                 <FormControl>
                                                     <div className="relative">
                                                         <Euro className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
-                                                        <Input type="number" className="pl-8" {...field} onChange={e => field.onChange(e.target.valueAsNumber)} />
+                                                        <Input type="number" className="pl-8" {...field} onChange={e => field.onChange(e.target.value === '' ? undefined : e.target.valueAsNumber)} />
                                                     </div>
                                                 </FormControl>
                                                 <FormMessage />
@@ -685,7 +781,7 @@ export default function MarketPrivatePage() {
                                                 <FormControl>
                                                     <div className="relative">
                                                         <Euro className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
-                                                        <Input type="number" className="pl-8" {...field} onChange={e => field.onChange(e.target.valueAsNumber)} />
+                                                        <Input type="number" className="pl-8" {...field} onChange={e => field.onChange(e.target.value === '' ? undefined : e.target.valueAsNumber)} />
                                                     </div>
                                                 </FormControl>
                                                 <FormMessage />
@@ -697,7 +793,7 @@ export default function MarketPrivatePage() {
                                                 <FormControl>
                                                     <div className="relative">
                                                         <Euro className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
-                                                        <Input type="number" className="pl-8" {...field} onChange={e => field.onChange(e.target.valueAsNumber)} />
+                                                        <Input type="number" className="pl-8" {...field} onChange={e => field.onChange(e.target.value === '' ? undefined : e.target.valueAsNumber)} />
                                                     </div>
                                                 </FormControl>
                                                 <FormMessage />
@@ -747,7 +843,7 @@ export default function MarketPrivatePage() {
                                         <FormField control={form.control} name="heatingReferenceDju" render={({ field }) => (
                                             <FormItem>
                                                 <FormLabel>DJU Référence</FormLabel>
-                                                <FormControl><Input type="number" {...field} onChange={e => field.onChange(e.target.valueAsNumber)} /></FormControl>
+                                                <FormControl><Input type="number" {...field} onChange={e => field.onChange(e.target.value === '' ? undefined : e.target.valueAsNumber)} /></FormControl>
                                                 <FormMessage />
                                             </FormItem>
                                         )} />
@@ -755,6 +851,23 @@ export default function MarketPrivatePage() {
                                             <FormItem>
                                                 <FormLabel>Station Météo</FormLabel>
                                                 <FormControl><Input {...field} /></FormControl>
+                                                <FormMessage />
+                                            </FormItem>
+                                        )} />
+                                    </div>
+
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <FormField control={form.control} name="contractualNB" render={({ field }) => (
+                                            <FormItem>
+                                                <FormLabel>NB (Nombre de Base)</FormLabel>
+                                                <FormControl><Input type="number" {...field} onChange={e => field.onChange(e.target.value === '' ? undefined : e.target.valueAsNumber)} /></FormControl>
+                                                <FormMessage />
+                                            </FormItem>
+                                        )} />
+                                        <FormField control={form.control} name="smallQ" render={({ field }) => (
+                                            <FormItem>
+                                                <FormLabel>Petit q</FormLabel>
+                                                <FormControl><Input type="number" {...field} onChange={e => field.onChange(e.target.value === '' ? undefined : e.target.valueAsNumber)} /></FormControl>
                                                 <FormMessage />
                                             </FormItem>
                                         )} />

@@ -1,7 +1,8 @@
-'use server';
 import { db } from '@/lib/firebase';
 import type { Client, Site, Contract, Invoice, CreditNote, MeterReading, Company, Agency, Sector, Activity, User, Role, Schedule, Term, Typology, VatRate, RevisionFormula, PaymentTerm, PricingRule, Market, Meter, MeterType, Index, IndexValue, RevisionRule, Service, InvoiceStatus, Amendment, Termination, Renewal, TrusteeChange, BeChange, Interest, Dju, SettlementRule, ServiceSettlement, SettlementMethodType, SettlementTargetType } from '@/lib/types';
 import { collection, getDocs, doc, getDoc, addDoc, updateDoc, deleteDoc, query, where, DocumentData, writeBatch, runTransaction, Timestamp } from 'firebase/firestore';
+import { deleteFileFromUrl } from './storage';
+
 
 function processFirestoreDoc<T>(docData: DocumentData): T {
     function convert(data: any): any {
@@ -44,6 +45,42 @@ async function getCollection<T>(q: any): Promise<T[]> {
     return querySnapshot.docs.map(doc => processFirestoreDoc<T>({ id: doc.id, ...doc.data() as Record<string, any> }));
 }
 
+// --- Sequence Generation ---
+
+/**
+ * Gets the next sequence number for a given counter.
+ * format: PREFIX-00000 (e.g., CTN-00123)
+ */
+async function getNextSequence(counterName: string): Promise<number> {
+    const counterRef = doc(db, 'config', 'sequences');
+
+    try {
+        const newCount = await runTransaction(db, async (transaction) => {
+            const counterDoc = await transaction.get(counterRef);
+            let currentCount = 0;
+
+            if (counterDoc.exists()) {
+                currentCount = counterDoc.data()[counterName] || 0;
+            }
+
+            const nextCount = currentCount + 1;
+
+            transaction.set(counterRef, { [counterName]: nextCount }, { merge: true });
+
+            return nextCount;
+        });
+
+        return newCount;
+    } catch (e) {
+        console.error(`Error getting next sequence for ${counterName}:`, e);
+        throw e; // Re-throw to handle in calling function
+    }
+}
+
+export function formatId(prefix: string, number: number): string {
+    return `${prefix}-${number.toString().padStart(5, '0')}`;
+}
+
 
 // --- Fonctions de Service (Firestore) ---
 
@@ -58,9 +95,19 @@ export async function getClient(id: string): Promise<Client | null> {
 
 export async function createClient(data: Omit<Client, 'id'>): Promise<any> {
     const clientsCollection = collection(db, 'clients');
+
+    // Generate incremental Client Number (CLI-XXXXX)
+    const seq = await getNextSequence('client');
+    const clientNumber = formatId('CLI', seq);
+
+    const dataWithId = {
+        ...data,
+        externalCode: clientNumber, // Force the generated ID as externalCode
+    };
+
     // Remove undefined values as Firestore doesn't support them
     const cleanData = Object.fromEntries(
-        Object.entries(data).filter(([_, value]) => value !== undefined)
+        Object.entries(dataWithId).filter(([_, value]) => value !== undefined)
     );
     const docRef = await addDoc(clientsCollection, cleanData);
     return { id: docRef.id, ...data };
@@ -141,11 +188,19 @@ export async function getContract(id: string): Promise<Contract | null> {
 }
 
 export async function createContract(data: Omit<Contract, 'id' | 'status' | 'validationStatus'>) {
+    // Generate incremental Contract Number (CTN-XXXXX)
+    const seq = await getNextSequence('contract');
+    const contractNumber = formatId('CTN', seq);
+
     const newContractData: DocumentData = {
         ...data,
+        contractNumber: contractNumber, // Force the generated ID
         status: 'Brouillon',
         validationStatus: 'pending_validation',
     };
+
+    // Remove undefined values
+    Object.keys(newContractData).forEach(key => newContractData[key] === undefined && delete newContractData[key]);
     // Convert all date strings to Date objects for Firestore
     if (data.startDate) newContractData.startDate = new Date(data.startDate);
     if (data.endDate) newContractData.endDate = new Date(data.endDate);
@@ -173,6 +228,17 @@ export async function updateContract(id: string, data: Partial<Omit<Contract, 'i
 }
 
 export async function deleteContract(id: string) {
+    // 1. Get contract to find documents
+    const contract = await getContract(id);
+    if (contract && contract.documents) {
+        // Delete each document
+        for (const doc of contract.documents) {
+            if (doc.url) {
+                await deleteFileFromUrl(doc.url);
+            }
+        }
+    }
+
     const contractDoc = doc(db, 'contracts', id);
     await deleteDoc(contractDoc);
 }
@@ -216,6 +282,11 @@ export async function createInvoice(data: Omit<Invoice, 'id'>) {
 export async function updateInvoiceStatus(id: string, status: InvoiceStatus) {
     const invoiceDoc = doc(db, 'invoices', id);
     await updateDoc(invoiceDoc, { status });
+}
+
+export async function deleteInvoice(id: string) {
+    const invoiceDoc = doc(db, 'invoices', id);
+    await deleteDoc(invoiceDoc);
 }
 
 
@@ -924,6 +995,8 @@ export async function createClientAndContract(data: any) {
         hasInterest: data.hasInterest || false,
         hasHeating: data.hasHeating || false,
         hasECS: data.hasECS || false,
+        contractualNB: data.contractualNB,
+        smallQ: data.smallQ,
 
         // Renewal (also on Client, but good to have on Contract if needed in future)
         renewal: data.renewal || false,

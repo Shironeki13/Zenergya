@@ -155,6 +155,9 @@ export default function EditContractPage() {
                 ...data,
                 startDate: data.startDate.toISOString(),
                 endDate: data.endDate.toISOString(),
+                // If refused, reset to pending_validation
+                validationStatus: contract.validationStatus === 'refused' ? 'pending_validation' : contract.validationStatus,
+                refusalReason: contract.validationStatus === 'refused' ? '' : contract.refusalReason,
             })
             router.push(`/contracts/${contract.id}`)
             router.refresh()

@@ -25,7 +25,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="fr" className={inter.variable} suppressHydrationWarning>
-      <body className="font-body antialiased">
+      <body className="font-body antialiased" suppressHydrationWarning>
         <ThemeProvider
           attribute="class"
           defaultTheme="system"
