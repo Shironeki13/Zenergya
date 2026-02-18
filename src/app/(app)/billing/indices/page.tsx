@@ -9,9 +9,12 @@ import { Label } from '@/components/ui/label';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Plus, Pencil, Trash2, Search, AlertCircle, FileSpreadsheet, Upload, Download, LineChart as LineChartIcon } from 'lucide-react';
+import { Plus, Pencil, Trash2, Search, AlertCircle, FileSpreadsheet, Upload, Download, LineChart as LineChartIcon, RefreshCw } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { createIndex, updateIndex, deleteIndex, createIndexValue, updateIndexValue, deleteIndexValue } from '@/services/firestore';
+
+
 import { Index, IndexValue } from '@/lib/types';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
@@ -30,9 +33,18 @@ export default function IndicesPage() {
     const { toast } = useToast();
     const [isIndexDialogOpen, setIsIndexDialogOpen] = useState(false);
     const [isValueDialogOpen, setIsValueDialogOpen] = useState(false);
+    const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+    const [isDeleteValueDialogOpen, setIsDeleteValueDialogOpen] = useState(false);
+
     const [editingIndex, setEditingIndex] = useState<Index | null>(null);
     const [editingValue, setEditingValue] = useState<IndexValue | null>(null);
+    const [indexToDelete, setIndexToDelete] = useState<Index | null>(null);
+    const [valueToDelete, setValueToDelete] = useState<IndexValue | null>(null);
+
     const [selectedIndexId, setSelectedIndexId] = useState<string | null>(null);
+    const [isSyncing, setIsSyncing] = useState(false);
+
+
 
     const indicesFileInputRef = useRef<HTMLInputElement>(null);
     const valuesFileInputRef = useRef<HTMLInputElement>(null);
@@ -165,6 +177,64 @@ export default function IndicesPage() {
             toast({ title: "Erreur", description: error.message || "Une erreur est survenue.", variant: "destructive" });
         }
     };
+
+    const handleDeleteIndex = async () => {
+        if (!indexToDelete) return;
+        try {
+            await deleteIndex(indexToDelete.id);
+            toast({ title: "Indice supprimé", description: "L'indice et ses valeurs ont été supprimés." });
+            if (selectedIndexId === indexToDelete.id) setSelectedIndexId(null);
+            await reloadData();
+            setIsDeleteDialogOpen(false);
+            setIndexToDelete(null);
+        } catch (error) {
+            console.error(error);
+            toast({ title: "Erreur", description: "La suppression a échoué.", variant: "destructive" });
+        }
+    };
+
+    const handleDeleteValue = async () => {
+        if (!valueToDelete) return;
+        try {
+            await deleteIndexValue(valueToDelete.id);
+            toast({ title: "Valeur supprimée", description: "La valeur a été supprimée." });
+            await reloadData();
+            setIsDeleteValueDialogOpen(false);
+            setValueToDelete(null);
+        } catch (error) {
+            console.error(error);
+            toast({ title: "Erreur", description: "La suppression a échoué.", variant: "destructive" });
+        }
+    };
+
+
+    const handleSyncIndices = async () => {
+        setIsSyncing(true);
+        try {
+            const response = await fetch('/api/indices/sync', { method: 'POST' });
+            const data = await response.json();
+
+            if (data.success) {
+                toast({
+                    title: "Synchronisation terminée",
+                    description: `${data.stats.newValues} nouvelles valeurs ajoutées.`,
+                });
+                await reloadData();
+            } else {
+                throw new Error(data.message || 'Erreur lors de la synchronisation');
+            }
+        } catch (error: any) {
+            console.error(error);
+            toast({
+                title: "Erreur de synchronisation",
+                description: error.message,
+                variant: "destructive"
+            });
+        } finally {
+            setIsSyncing(false);
+        }
+    };
+
 
     // --- Bulk Import/Export Logic ---
 
@@ -427,6 +497,14 @@ export default function IndicesPage() {
                         Configurez les indices de référence et saisissez leurs valeurs mensuelles.
                     </p>
                 </div>
+                <Button onClick={handleSyncIndices} disabled={isSyncing}>
+                    {isSyncing ? (
+                        <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                    ) : (
+                        <RefreshCw className="h-4 w-4 mr-2" />
+                    )}
+                    Synchroniser les indices
+                </Button>
             </div>
 
             <div className="grid lg:grid-cols-3 gap-6">
@@ -577,11 +655,17 @@ export default function IndicesPage() {
                                         <div className="font-medium">{index.code}</div>
                                         <div className="text-xs text-muted-foreground">{index.label} ({index.unit})</div>
                                     </div>
-                                    <Button variant="ghost" size="icon" onClick={(e) => { e.stopPropagation(); handleEditIndex(index); }}>
-                                        <Pencil className="h-4 w-4" />
-                                    </Button>
+                                    <div className="flex gap-1">
+                                        <Button variant="ghost" size="icon" onClick={(e) => { e.stopPropagation(); handleEditIndex(index); }}>
+                                            <Pencil className="h-4 w-4" />
+                                        </Button>
+                                        <Button variant="ghost" size="icon" className="text-destructive hover:text-destructive hover:bg-destructive/10" onClick={(e) => { e.stopPropagation(); setIndexToDelete(index); setIsDeleteDialogOpen(true); }}>
+                                            <Trash2 className="h-4 w-4" />
+                                        </Button>
+                                    </div>
                                 </div>
                             ))}
+
                             {filteredIndices.length === 0 && (
                                 <div className="text-center py-4 text-muted-foreground text-sm">
                                     Aucun indice trouvé.
@@ -826,11 +910,17 @@ export default function IndicesPage() {
                                                 <TableCell className="text-muted-foreground text-sm">{val.source}</TableCell>
                                                 <TableCell className="text-right">
                                                     {(!selectedIndexId || indices.find(i => i.id === selectedIndexId)?.type !== 'calculated') && (
-                                                        <Button variant="ghost" size="icon" onClick={() => handleEditValue(val)}>
-                                                            <Pencil className="h-4 w-4" />
-                                                        </Button>
+                                                        <div className="flex justify-end gap-1">
+                                                            <Button variant="ghost" size="icon" onClick={() => handleEditValue(val)}>
+                                                                <Pencil className="h-4 w-4" />
+                                                            </Button>
+                                                            <Button variant="ghost" size="icon" className="text-destructive hover:text-destructive hover:bg-destructive/10" onClick={() => { setValueToDelete(val); setIsDeleteValueDialogOpen(true); }}>
+                                                                <Trash2 className="h-4 w-4" />
+                                                            </Button>
+                                                        </div>
                                                     )}
                                                 </TableCell>
+
                                             </TableRow>
                                         );
                                     })}
@@ -847,6 +937,43 @@ export default function IndicesPage() {
                     </Card>
                 </div>
             </div >
+
+            {/* Confirmation Dialogs */}
+            <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>Êtes-vous sûr ?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                            Cette action supprimera définitivement l'indice <strong>{indexToDelete?.code}</strong> et toutes ses valeurs historiques ({indexValues.filter(v => v.indexId === indexToDelete?.id).length} valeurs).
+                            Cette action est irréversible.
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel>Annuler</AlertDialogCancel>
+                        <AlertDialogAction onClick={handleDeleteIndex} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+                            Supprimer
+                        </AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
+
+            <AlertDialog open={isDeleteValueDialogOpen} onOpenChange={setIsDeleteValueDialogOpen}>
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>Supprimer la valeur ?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                            Voulez-vous supprimer la valeur pour la période <strong>{valueToDelete?.period}</strong> ?
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel>Annuler</AlertDialogCancel>
+                        <AlertDialogAction onClick={handleDeleteValue} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+                            Supprimer
+                        </AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
         </div >
+
     );
 }

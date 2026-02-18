@@ -376,8 +376,16 @@ export async function updateIndex(id: string, data: Partial<Omit<Index, 'id'>>) 
     return updateSettingItem('indices', id, data);
 }
 export async function deleteIndex(id: string) {
+    // 1. Delete all associated index values
+    const q = query(collection(db, 'indexValues'), where("indexId", "==", id));
+    const snapshot = await getDocs(q);
+    const deletePromises = snapshot.docs.map(doc => deleteDoc(doc.ref));
+    await Promise.all(deletePromises);
+
+    // 2. Delete the index itself
     return deleteSettingItem('indices', id);
 }
+
 
 // Valeurs d'Indices
 export async function createIndexValue(data: Omit<IndexValue, 'id'>) {
@@ -472,9 +480,16 @@ export async function createMeterReading(data: Omit<MeterReading, 'id'>) {
 // --- Fonctions de Paramétrage (Firestore) ---
 async function createSettingItem(collectionName: string, data: DocumentData): Promise<any> {
     const collectionRef = collection(db, collectionName);
-    const docRef = await addDoc(collectionRef, data);
-    return { id: docRef.id, ...data };
+    try {
+        const docRef = await addDoc(collectionRef, data);
+        return { id: docRef.id, ...data };
+    } catch (e: any) {
+        console.error(`Firestore Error in createSettingItem (${collectionName}):`, e);
+        console.error('Problematic Data:', JSON.stringify(data, null, 2));
+        throw e;
+    }
 }
+
 
 async function updateSettingItem(collectionName: string, id: string, data: DocumentData): Promise<void> {
     const docRef = doc(db, collectionName, id);
