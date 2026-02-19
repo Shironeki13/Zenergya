@@ -475,6 +475,63 @@ export type CreditNote = {
     reason: string;
 }
 
+// --- Travaux (Works) Types ---
+
+export type WorkProjectType = 'P5' | 'P6';
+export type WorkProjectStatus = 'brouillon' | 'en_cours' | 'termine' | 'annule';
+
+export type WorkProject = {
+    id: string;
+    clientId: string;
+    clientName: string; // Denormalized
+    siteId: string;
+    siteName: string; // Denormalized
+    name: string;
+    description?: string;
+    type: WorkProjectType;
+    status: WorkProjectStatus;
+    totalAmountHT: number;
+    startDate?: string; // ISO date
+    endDate?: string; // ISO date
+    createdAt: string; // ISO date
+    createdBy: string;
+}
+
+export type WorkQuoteStatus = 'brouillon' | 'envoye' | 'valide' | 'facture' | 'annule';
+
+export type WorkQuote = {
+    id: string;
+    projectId: string;
+    quoteNumber: string;
+    date: string; // ISO date
+    amountHT: number;
+    vatRate: number;
+    amountTTC: number;
+    status: WorkQuoteStatus;
+    description: string;
+    documentUrl?: string; // PDF URL
+    invoiceId?: string; // Link to generated invoice if status is 'facture'
+}
+
+export type ProgressSituationStatus = 'brouillon' | 'valide' | 'facture' | 'annule';
+
+export type ProgressSituation = {
+    id: string;
+    projectId: string;
+    situationNumber: number; // 1, 2, 3...
+    date: string; // ISO date
+    percentage: number; // 0-100
+    amountHT: number; // Amount for this specific situation
+    amountCumulatedHT: number; // Total amount since start
+    vatRate: number;
+    amountTTC: number;
+    status: ProgressSituationStatus;
+    description: string;
+    documentUrl?: string; // PDF URL
+    invoiceId?: string; // Link to generated invoice if status is 'facture'
+}
+
+
 // Settings Types
 export type Company = {
     id: string;

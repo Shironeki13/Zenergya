@@ -90,6 +90,12 @@ function MainAppLayout({ children }: { children: React.ReactNode }) {
     { href: '/admin/validations', label: 'Admin', icon: ShieldCheck },
   ];
 
+  const travauxLinks = [
+    { href: '/works/p5', label: 'Interventions (P5)', icon: Briefcase },
+    { href: '/works/p6', label: 'Projets (P6)', icon: Calculator },
+  ];
+
+
   return (
     <div className="grid min-h-screen w-full md:grid-cols-[240px_1fr] lg:grid-cols-[280px_1fr]">
       <div className="hidden border-r bg-muted/40 md:block">
@@ -147,9 +153,39 @@ function MainAppLayout({ children }: { children: React.ReactNode }) {
               </Collapsible>
 
               <Collapsible
+                defaultOpen={pathname.startsWith('/works')}
+                className="flex flex-col gap-1"
+              >
+                <CollapsibleTrigger asChild>
+                  <div
+                    className="flex items-center gap-3 rounded-lg px-3 py-2 text-muted-foreground transition-all hover:text-primary hover:bg-muted cursor-pointer font-semibold"
+                  >
+                    <Briefcase className="h-4 w-4" />
+                    <span>Travaux</span>
+                    <ChevronDown className="ml-auto h-4 w-4 transition-transform [&[data-state=open]]:rotate-180" />
+                  </div>
+                </CollapsibleTrigger>
+                <CollapsibleContent className="pl-4 space-y-1 pt-1">
+                  {travauxLinks.map(link => (
+                    <Link
+                      key={link.href}
+                      href={link.href}
+                      className={cn(
+                        "flex items-center gap-3 rounded-lg px-3 py-2 text-muted-foreground transition-all text-sm hover:text-primary hover:bg-muted",
+                        pathname === link.href && "text-primary bg-primary/10 font-medium"
+                      )}
+                    >
+                      {link.label}
+                    </Link>
+                  ))}
+                </CollapsibleContent>
+              </Collapsible>
+
+              <Collapsible
                 defaultOpen={pathname.startsWith('/invoices') || pathname.startsWith('/credit-notes') || pathname.startsWith('/billing') || pathname.startsWith('/dashboard') || pathname.startsWith('/clients') || pathname.startsWith('/sites')}
                 className="flex flex-col gap-1"
               >
+
                 <CollapsibleTrigger asChild>
                   <div
                     className="flex items-center gap-3 rounded-lg px-3 py-2 text-muted-foreground transition-all hover:text-primary hover:bg-muted cursor-pointer font-semibold"
@@ -255,7 +291,32 @@ function MainAppLayout({ children }: { children: React.ReactNode }) {
                   </CollapsibleContent>
                 </Collapsible>
 
+                <Collapsible defaultOpen={pathname.startsWith('/works')}>
+                  <CollapsibleTrigger className="w-full">
+                    <div className="mx-[-0.65rem] flex items-center gap-4 rounded-xl px-3 py-2 text-muted-foreground hover:text-foreground">
+                      <Briefcase className="h-5 w-5" />
+                      Travaux
+                      <ChevronDown className="ml-auto h-5 w-5 transition-transform [&[data-state=open]]:rotate-180" />
+                    </div>
+                  </CollapsibleTrigger>
+                  <CollapsibleContent className="pl-10 mt-2 space-y-2">
+                    {travauxLinks.map(link => (
+                      <Link
+                        key={link.href}
+                        href={link.href}
+                        className={cn(
+                          "mx-[-0.65rem] flex items-center gap-4 rounded-xl px-3 py-2 text-muted-foreground hover:text-foreground",
+                          pathname === link.href && "bg-muted text-foreground"
+                        )}
+                      >
+                        {link.label}
+                      </Link>
+                    ))}
+                  </CollapsibleContent>
+                </Collapsible>
+
                 <Collapsible defaultOpen={pathname.startsWith('/invoices') || pathname.startsWith('/credit-notes') || pathname.startsWith('/billing') || pathname.startsWith('/dashboard') || pathname.startsWith('/clients') || pathname.startsWith('/sites')}>
+
                   <CollapsibleTrigger className="w-full">
                     <div className="mx-[-0.65rem] flex items-center gap-4 rounded-xl px-3 py-2 text-muted-foreground hover:text-foreground">
                       <CircleDollarSign className="h-5 w-5" />

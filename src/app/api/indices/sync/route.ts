@@ -3,7 +3,9 @@ import { syncAllIndices } from '@/services/index-sync';
 
 export async function POST() {
     try {
+        console.log('API Sync: Starting synchronization...');
         const stats = await syncAllIndices();
+        console.log('API Sync: Synchronization finished', stats);
         return NextResponse.json({
             success: true,
             message: 'Indices synchronisés avec succès',
@@ -14,7 +16,8 @@ export async function POST() {
         return NextResponse.json({
             success: false,
             message: 'Erreur lors de la synchronisation',
-            error: error.message
+            error: error.message,
+            stack: error.stack
         }, { status: 500 });
     }
 }

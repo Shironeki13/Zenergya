@@ -1,4 +1,4 @@
-import { getIndices, createIndex, getIndexValues, createIndexValue } from './firestore';
+import { getIndices, createIndex, getIndexValues, createIndexValue, updateIndex } from './firestore';
 import { indexFetchers } from '@/lib/indices/registry';
 import { Index, IndexValue } from '@/lib/types';
 
@@ -17,23 +17,37 @@ export async function syncAllIndices(): Promise<SyncStats> {
         errors: []
     };
 
-    const existingIndices = await getIndices();
-    const existingValues = await getIndexValues();
+    console.log(`Sync Service: Starting sync for ${indexFetchers.length} indices`);
+
+    let existingIndices: Index[] = [];
+    let existingValues: IndexValue[] = [];
+
+    try {
+        existingIndices = await getIndices();
+        existingValues = await getIndexValues();
+        console.log(`Sync Service: Found ${existingIndices.length} existing indices and ${existingValues.length} values`);
+    } catch (dbError: any) {
+        console.error('Sync Service: Database error while fetching initial data:', dbError);
+        throw new Error(`Database error: ${dbError.message}`);
+    }
 
     for (const fetcher of indexFetchers) {
+        console.log(`Sync Service: Syncing ${fetcher.code}...`);
         try {
             // 1. Fetch data
             const results = await fetcher.fetch();
+            console.log(`Sync Service: ${fetcher.code} fetched ${results.length} results`);
 
             // 2. Ensure index exists
             let index = existingIndices.find(i => i.code === fetcher.code);
             if (!index) {
-                console.log(`Creating missing index: ${fetcher.code}`);
+                console.log(`Sync Service: Creating missing index ${fetcher.code}`);
                 index = await createIndex({
                     code: fetcher.code,
                     label: `Indice ${fetcher.code} (Auto)`,
-                    unit: '€/MWh',
+                    unit: fetcher.code === 'PEG' ? '€/MWh' : 'Index',
                     active: true,
+                    decimals: 2,
                     description: `Dernière synchronisation automatique le ${new Date().toLocaleDateString()}`
                 });
                 if (!index || !index.id) {
@@ -41,10 +55,16 @@ export async function syncAllIndices(): Promise<SyncStats> {
                 }
                 stats.newIndices++;
                 existingIndices.push(index!);
+            } else if (index.decimals === undefined) {
+                // Patch existing index if decimals property is missing
+                console.log(`Sync Service: Patching decimals for index ${fetcher.code}`);
+                await updateIndex(index.id, { decimals: 2 });
+                index.decimals = 2;
             }
 
 
             // 3. Save new values
+            let newValuesForIndex = 0;
             for (const res of results) {
                 const alreadyExists = existingValues.some(v =>
                     v.indexId === index!.id &&
@@ -60,22 +80,19 @@ export async function syncAllIndices(): Promise<SyncStats> {
                         comment: 'Synchronisation automatique'
                     };
 
-                    console.log(`Adding value: ${index!.code} ${res.period} = ${res.value}`);
-
-                    // Final defensive check against undefined/NaN
                     if (!newValue.indexId || !newValue.period || isNaN(newValue.value)) {
-                        console.warn('Skipping invalid value:', newValue);
                         continue;
                     }
 
                     await createIndexValue(newValue);
                     stats.newValues++;
+                    newValuesForIndex++;
                     existingValues.push({ ...newValue, id: 'temp' } as IndexValue);
                 }
-
             }
+            console.log(`Sync Service: ${fetcher.code} sync complete (+${newValuesForIndex} values)`);
         } catch (error: any) {
-            console.error(`Error syncing index ${fetcher.code}:`, error);
+            console.error(`Sync Service: Error syncing ${fetcher.code}:`, error);
             stats.errors.push(`${fetcher.code}: ${error.message}`);
         }
     }

@@ -1,5 +1,5 @@
 import { db } from '@/lib/firebase';
-import type { Client, Site, Contract, Invoice, CreditNote, MeterReading, Company, Agency, Sector, Activity, User, Role, Schedule, Term, Typology, VatRate, RevisionFormula, PaymentTerm, PricingRule, Market, Meter, MeterType, Index, IndexValue, RevisionRule, Service, InvoiceStatus, Amendment, Termination, Renewal, TrusteeChange, BeChange, Interest, Dju, SettlementRule, ServiceSettlement, SettlementMethodType, SettlementTargetType } from '@/lib/types';
+import type { Client, Site, Contract, Invoice, CreditNote, MeterReading, Company, Agency, Sector, Activity, User, Role, Schedule, Term, Typology, VatRate, RevisionFormula, PaymentTerm, PricingRule, Market, Meter, MeterType, Index, IndexValue, RevisionRule, Service, InvoiceStatus, Amendment, Termination, Renewal, TrusteeChange, BeChange, Interest, Dju, SettlementRule, ServiceSettlement, SettlementMethodType, SettlementTargetType, WorkProject, WorkQuote, ProgressSituation } from '@/lib/types';
 import { collection, getDocs, doc, getDoc, addDoc, updateDoc, deleteDoc, query, where, DocumentData, writeBatch, runTransaction, Timestamp } from 'firebase/firestore';
 import { deleteFileFromUrl } from './storage';
 
@@ -1083,3 +1083,77 @@ export async function initializeSettlementRules() {
         await createSettlementRule(d);
     }
 }
+
+// --- Travaux (Works) ---
+
+export async function getWorkProjects(): Promise<WorkProject[]> {
+    return getCollection<WorkProject>(collection(db, 'workProjects'));
+}
+
+export async function getWorkProject(id: string): Promise<WorkProject | null> {
+    return getDocument<WorkProject>(doc(db, 'workProjects', id));
+}
+
+export async function createWorkProject(data: Omit<WorkProject, 'id'>) {
+    const docRef = await addDoc(collection(db, 'workProjects'), {
+        ...data,
+        createdAt: new Date().toISOString()
+    });
+    return { id: docRef.id, ...data };
+}
+
+export async function updateWorkProject(id: string, data: Partial<Omit<WorkProject, 'id'>>) {
+    await updateDoc(doc(db, 'workProjects', id), data);
+}
+
+export async function deleteWorkProject(id: string) {
+    // Also delete associated quotes and situations
+    const quotes = await getWorkQuotesByProject(id);
+    for (const quote of quotes) {
+        await deleteWorkQuote(quote.id);
+    }
+    const situations = await getProgressSituationsByProject(id);
+    for (const situation of situations) {
+        await deleteProgressSituation(situation.id);
+    }
+    await deleteDoc(doc(db, 'workProjects', id));
+}
+
+// Devise / Devis (P5)
+export async function getWorkQuotesByProject(projectId: string): Promise<WorkQuote[]> {
+    const q = query(collection(db, 'workQuotes'), where("projectId", "==", projectId));
+    return getCollection<WorkQuote>(q);
+}
+
+export async function createWorkQuote(data: Omit<WorkQuote, 'id'>) {
+    const docRef = await addDoc(collection(db, 'workQuotes'), data);
+    return { id: docRef.id, ...data };
+}
+
+export async function updateWorkQuote(id: string, data: Partial<Omit<WorkQuote, 'id'>>) {
+    await updateDoc(doc(db, 'workQuotes', id), data);
+}
+
+export async function deleteWorkQuote(id: string) {
+    await deleteDoc(doc(db, 'workQuotes', id));
+}
+
+// Situations (P6)
+export async function getProgressSituationsByProject(projectId: string): Promise<ProgressSituation[]> {
+    const q = query(collection(db, 'progressSituations'), where("projectId", "==", projectId));
+    return getCollection<ProgressSituation>(q);
+}
+
+export async function createProgressSituation(data: Omit<ProgressSituation, 'id'>) {
+    const docRef = await addDoc(collection(db, 'progressSituations'), data);
+    return { id: docRef.id, ...data };
+}
+
+export async function updateProgressSituation(id: string, data: Partial<Omit<ProgressSituation, 'id'>>) {
+    await updateDoc(doc(db, 'progressSituations', id), data);
+}
+
+export async function deleteProgressSituation(id: string) {
+    await deleteDoc(doc(db, 'progressSituations', id));
+}
+
