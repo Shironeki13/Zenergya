@@ -2,13 +2,13 @@
 'use client';
 
 import Link from 'next/link';
-import { 
-  FilePlus2, 
-  FileText, 
-  FileX, 
-  RefreshCw, 
-  Hammer, 
-  Users, 
+import {
+  FilePlus2,
+  FileText,
+  FileX,
+  RefreshCw,
+  Hammer,
+  Users,
   Briefcase,
   ChevronLeft,
   Building,
@@ -87,33 +87,43 @@ export default function NewDocumentPage() {
           </Button>
         </Link>
         <div>
-            <h1 className="text-2xl font-bold tracking-tight">Ajouter un Document</h1>
-            <p className="text-muted-foreground">
+          <h1 className="text-2xl font-bold tracking-tight">Ajouter un Document</h1>
+          <p className="text-muted-foreground">
             Choisissez le type de document que vous souhaitez ajouter à votre contrathèque.
-            </p>
+          </p>
         </div>
       </div>
-      
+
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
         {documentTypes.map((doc, index) => {
           const isFunctional = doc.href !== '#' && doc.enabled;
-          const Wrapper = isFunctional ? Link : 'div';
-          
+          const cardContent = (
+            <Card className="hover:border-primary/80 hover:shadow-lg transition-all duration-200 h-full">
+              <CardHeader className="flex flex-row items-center gap-4">
+                <div className="bg-muted p-3 rounded-lg">
+                  <doc.icon className="h-6 w-6 text-primary" />
+                </div>
+                <div>
+                  <CardTitle>{doc.title}</CardTitle>
+                  <CardDescription className="mt-1">{doc.description}</CardDescription>
+                </div>
+              </CardHeader>
+            </Card>
+          );
+
+          if (isFunctional) {
+            return (
+              <Link key={index} href={doc.href} className={!doc.enabled ? 'opacity-50 cursor-not-allowed' : 'hover:scale-105 transition-transform duration-200'}>
+                {cardContent}
+              </Link>
+            );
+          }
+
           return (
-            <Wrapper key={index} {...(isFunctional ? { href: doc.href } : {})} className={!doc.enabled ? 'opacity-50 cursor-not-allowed' : 'hover:scale-105 transition-transform duration-200'}>
-              <Card className="hover:border-primary/80 hover:shadow-lg transition-all duration-200 h-full">
-                <CardHeader className="flex flex-row items-center gap-4">
-                  <div className="bg-muted p-3 rounded-lg">
-                    <doc.icon className="h-6 w-6 text-primary" />
-                  </div>
-                  <div>
-                    <CardTitle>{doc.title}</CardTitle>
-                    <CardDescription className="mt-1">{doc.description}</CardDescription>
-                  </div>
-                </CardHeader>
-              </Card>
-            </Wrapper>
-          )
+            <div key={index} className={!doc.enabled ? 'opacity-50 cursor-not-allowed' : 'hover:scale-105 transition-transform duration-200'}>
+              {cardContent}
+            </div>
+          );
         })}
       </div>
     </div>

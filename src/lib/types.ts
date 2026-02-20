@@ -1,5 +1,40 @@
 
 import { z } from 'zod';
+import type {
+    WorkQuote as AdvWorkQuote,
+    WorkQuoteVersion as AdvWorkQuoteVersion,
+    WorkQuoteLine as AdvWorkQuoteLine,
+    WorkAffair as AdvWorkAffair,
+    WorkBudgetLine as AdvWorkBudgetLine,
+    WorkLot as AdvWorkLot,
+    WorkPoste as AdvWorkPoste,
+    WorkSituation as AdvWorkSituation,
+    WorkSituationLine as AdvWorkSituationLine,
+    PurchaseOrder as AdvPurchaseOrder,
+    PurchaseOrderLine as AdvPurchaseOrderLine,
+    CatalogArticle as AdvCatalogArticle,
+    CatalogOuvrage as AdvCatalogOuvrage,
+    OuvrageComposant as AdvOuvrageComposant,
+    WorkLineType as AdvWorkLineType
+} from './works/types';
+
+export type {
+    AdvWorkQuote,
+    AdvWorkQuoteVersion,
+    AdvWorkQuoteLine,
+    AdvWorkAffair,
+    AdvWorkBudgetLine,
+    AdvWorkLot,
+    AdvWorkPoste,
+    AdvWorkSituation,
+    AdvWorkSituationLine,
+    AdvPurchaseOrder,
+    AdvPurchaseOrderLine,
+    AdvCatalogArticle,
+    AdvCatalogOuvrage,
+    AdvOuvrageComposant,
+    AdvWorkLineType
+};
 
 export const ContractDocumentSchema = z.object({
     name: z.string(),
@@ -28,6 +63,7 @@ export const ActivityDetailSchema = z.object({
     ecsSmallQ: z.number().optional(),
     ecsNB: z.number().optional(),
 });
+export type ActivityDetail = z.infer<typeof ActivityDetailSchema>;
 
 export const ClientBaseSchema = z.object({
     name: z.string().min(2, "La raison sociale est requise."),
@@ -61,9 +97,11 @@ export const ClientBaseSchema = z.object({
     chorusServiceCode: z.string().optional(),
     chorusLegalCommitmentNumber: z.string().optional(),
     chorusMarketNumber: z.string().optional(),
-    // invoicingType moved to Contract
-    // Contract fields moved to Contract
-    // documents moved to Contract (mostly) but maybe keep generic client docs? Let's keep it simple and move contract docs to Contract.
+    invoicingType: z.enum(['multi-site', 'global']).default('multi-site'),
+    activityIds: z.array(z.string()).optional(),
+    activitiesDetails: z.array(ActivityDetailSchema).optional(),
+    startDate: z.date().optional(),
+    endDate: z.date().optional(),
 });
 
 export const ClientSchema = ClientBaseSchema.superRefine((data, ctx) => {
@@ -143,9 +181,9 @@ export type MeterReading = {
 
 
 export type MonthlyBilling = {
-    month: string;
-    date: number; // jour du mois
+    month: number;
     percentage: number;
+    date?: number; // jour du mois
 }
 
 export type RevisionInfo = {
@@ -210,9 +248,13 @@ export type Contract = {
     tacitRenewal: boolean;
     noticePeriod?: string;
 
-    activitiesDetails?: z.infer<typeof ActivityDetailSchema>[];
+    activitiesDetails?: ActivityDetail[];
 
     monthlyBilling?: MonthlyBilling[];
+
+    marketType?: 'Marché Public' | 'Marché Privé';
+    shareRate?: number[];
+    revisionFormula?: string;
 
     // Revisions (Legacy/Global)
     revisionP1?: RevisionInfo;
@@ -475,61 +517,37 @@ export type CreditNote = {
     reason: string;
 }
 
-// --- Travaux (Works) Types ---
-
-export type WorkProjectType = 'P5' | 'P6';
-export type WorkProjectStatus = 'brouillon' | 'en_cours' | 'termine' | 'annule';
-
+// --- Travaux (Works) Types (Legacy) ---
 export type WorkProject = {
     id: string;
-    clientId: string;
-    clientName: string; // Denormalized
-    siteId: string;
-    siteName: string; // Denormalized
     name: string;
-    description?: string;
-    type: WorkProjectType;
-    status: WorkProjectStatus;
-    totalAmountHT: number;
-    startDate?: string; // ISO date
-    endDate?: string; // ISO date
-    createdAt: string; // ISO date
-    createdBy: string;
-}
-
-export type WorkQuoteStatus = 'brouillon' | 'envoye' | 'valide' | 'facture' | 'annule';
+    clientId: string;
+    clientName: string;
+    siteId: string;
+    siteName: string;
+    status: "En cours" | "Terminé" | "Brouillon";
+    startDate: string;
+    totalHT: number;
+};
 
 export type WorkQuote = {
     id: string;
     projectId: string;
-    quoteNumber: string;
-    date: string; // ISO date
-    amountHT: number;
-    vatRate: number;
-    amountTTC: number;
-    status: WorkQuoteStatus;
-    description: string;
-    documentUrl?: string; // PDF URL
-    invoiceId?: string; // Link to generated invoice if status is 'facture'
-}
-
-export type ProgressSituationStatus = 'brouillon' | 'valide' | 'facture' | 'annule';
+    number: string;
+    date: string;
+    totalHT: number;
+    status: "Brouillon" | "Envoyé" | "Accepté" | "Refusé";
+};
 
 export type ProgressSituation = {
     id: string;
     projectId: string;
-    situationNumber: number; // 1, 2, 3...
-    date: string; // ISO date
-    percentage: number; // 0-100
-    amountHT: number; // Amount for this specific situation
-    amountCumulatedHT: number; // Total amount since start
-    vatRate: number;
-    amountTTC: number;
-    status: ProgressSituationStatus;
-    description: string;
-    documentUrl?: string; // PDF URL
-    invoiceId?: string; // Link to generated invoice if status is 'facture'
-}
+    number: number;
+    date: string;
+    percentage: number;
+    amount: number;
+    status: "Brouillon" | "Validée" | "Facturée";
+};
 
 
 // Settings Types
@@ -833,6 +851,7 @@ export const ExtractContractInfoOutputSchema = z.object({
             email: z.string().optional(),
             phone: z.string().optional(),
         }).optional(),
+        invoicingType: z.enum(['multi-site', 'global']).optional().describe("Type de facturation (global ou multi-site)."),
     }),
     contrat: z.object({
         objet: z.string().optional().describe("Objet du contrat."),
@@ -858,6 +877,7 @@ export const ExtractContractInfoOutputSchema = z.object({
         hasECS: z.boolean().optional().describe("ECS inclus ?"),
         contractualNB: z.number().optional().describe("Valeur du NB (Nombre de Base)."),
         smallQ: z.number().optional().describe("Valeur du petit q."),
+        invoicingType: z.enum(['multi-site', 'global']).optional().describe("Type de facturation (global ou multi-site)."),
     }),
     // Legacy fields kept optional for compatibility if needed, but main logic should use nested
     activityIds: z.array(z.string()).optional(),
@@ -893,6 +913,7 @@ export type DataContextType = {
     pricingRules: PricingRule[];
     markets: Market[];
     roles: Role[];
+    users: User[];
     // Contract Events
     amendments: Amendment[];
     terminations: Termination[];
@@ -901,6 +922,28 @@ export type DataContextType = {
     beChanges: BeChange[];
     interests: Interest[];
     settlementRules: SettlementRule[];
+
+    // Legacy Works (Keep for compatibility)
+    workProjects: WorkProject[];
+    workQuotes_legacy: WorkQuote[]; // renamed slightly in context if needed
+    progressSituations: ProgressSituation[];
+
+    // Advanced Works Collections
+    advWorkQuotes: AdvWorkQuote[];
+    advWorkQuoteVersions: AdvWorkQuoteVersion[];
+    advWorkQuoteLines: AdvWorkQuoteLine[];
+    advWorkAffairs: AdvWorkAffair[];
+    advWorkBudgetLines: AdvWorkBudgetLine[];
+    advWorkLots: AdvWorkLot[];
+    advWorkPostes: AdvWorkPoste[];
+    advWorkSituations: AdvWorkSituation[];
+    advWorkSituationLines: AdvWorkSituationLine[];
+    advPurchaseOrders: AdvPurchaseOrder[];
+    advPurchaseOrderLines: AdvPurchaseOrderLine[];
+    advCatalogArticles: AdvCatalogArticle[];
+    advCatalogOuvrages: AdvCatalogOuvrage[];
+    advOuvrageComposants: AdvOuvrageComposant[];
+
     currentUser: User | null;
     setCurrentUser: (user: User | null) => void;
     isLoading: boolean;

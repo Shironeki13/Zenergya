@@ -199,12 +199,14 @@ export default function NewContractFromPdfPage() {
                 terms: terms.map(({ id, name }) => ({ id, name }))
             });
 
+            const res = result as any;
             const mappedData: Partial<ClientFormValues> = {
-                ...result,
-                startDate: result.startDate ? new Date(result.startDate) : undefined,
-                endDate: result.endDate ? new Date(result.endDate) : undefined,
-                activityIds: result.activitiesDetails?.map(a => a.activityId) ?? [],
-                invoicingType: result.invoicingType || 'multi-site',
+                ...res.client,
+                ...res.contrat,
+                startDate: res.contrat?.startDate ? new Date(res.contrat.startDate) : undefined,
+                endDate: res.contrat?.endDate ? new Date(res.contrat.endDate) : undefined,
+                activityIds: res.activitiesDetails?.map((a: any) => a.activityId) ?? [],
+                invoicingType: res.contrat?.invoicingType || res.client?.invoicingType || 'multi-site',
             };
 
             setAnalysisResult(mappedData);

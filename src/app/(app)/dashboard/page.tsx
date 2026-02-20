@@ -280,6 +280,7 @@ export default function Dashboard() {
                     content={<ChartTooltipContent
                       nameKey="name"
                       hideIndicator
+                      hideLabel
                     />}
                   />
                   <Pie
@@ -297,10 +298,9 @@ export default function Dashboard() {
                     ))}
                   </Pie>
                   <ChartLegend
-                    content={<ChartLegendContent />}
-                    nameKey="name"
-                    className="-translate-y-2 flex-wrap gap-2 [&>*]:basis-1/4 [&>*]:justify-center"
+                    content={<ChartLegendContent nameKey="name" className="-translate-y-2 flex-wrap gap-2 [&>*]:basis-1/4 [&>*]:justify-center" />}
                   />
+
                 </PieChart>
               </ResponsiveContainer>
             </ChartContainer>
@@ -342,8 +342,16 @@ export default function Dashboard() {
                   <TableCell>
                     <div className="font-medium">{invoice.clientName}</div>
                   </TableCell>
+                  <TableCell className="hidden md:table-cell">
+                    <Badge variant={invoice.status === 'paid' ? 'secondary' : invoice.status === 'overdue' ? 'destructive' : 'outline'}>
+                      {translateStatus(invoice.status)}
+                    </Badge>
+                  </TableCell>
+                  <TableCell className="hidden md:table-cell">
+                    {new Date(invoice.date).toLocaleDateString('fr-FR')}
+                  </TableCell>
                   <TableCell className="text-right font-medium">
-                    {invoice.total.toFixed(2)} €
+                    {invoice.total.toLocaleString('fr-FR', { style: 'currency', currency: 'EUR' })}
                   </TableCell>
                 </TableRow>
               ))}

@@ -16,15 +16,9 @@ import { useToast } from '@/hooks/use-toast';
 import { useData } from '@/context/data-context';
 import { updateContract } from '@/services/firestore';
 import type { Contract, ActivityDetail } from '@/lib/types';
+import { ActivityDetailSchema } from '@/lib/types';
 
-const activityDetailSchema = z.object({
-    activityId: z.string(),
-    amount: z.number().optional(),
-    termId: z.string().optional(),
-    scheduleId: z.string().optional(),
-    revisionFormula: z.string().optional(),
-    // Add other fields as needed based on ActivityDetail type
-});
+const activityDetailSchema = ActivityDetailSchema;
 
 const formSchema = z.object({
     activitiesDetails: z.array(activityDetailSchema),

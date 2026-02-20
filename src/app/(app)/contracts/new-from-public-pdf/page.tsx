@@ -194,12 +194,13 @@ export default function NewContractFromPublicPdfPage() {
             });
 
             const mappedData: Partial<ClientFormValues> = {
-                ...result,
+                ...result.client,
+                ...result.contrat,
                 clientType: "public",
                 useChorus: true,
-                startDate: result.startDate ? new Date(result.startDate) : undefined,
-                endDate: result.endDate ? new Date(result.endDate) : undefined,
-                activityIds: result.activitiesDetails?.map(a => a.activityId) ?? [],
+                startDate: result.contrat.startDate ? new Date(result.contrat.startDate) : undefined,
+                endDate: result.contrat.endDate ? new Date(result.contrat.endDate) : undefined,
+                activityIds: result.activitiesDetails?.map((a: any) => a.activityId) ?? [],
             };
 
             setAnalysisResult(mappedData);
