@@ -1,5 +1,5 @@
 import { db } from '@/lib/firebase';
-import type { Client, Site, Contract, Invoice, CreditNote, MeterReading, Company, Agency, Sector, Activity, User, Role, Schedule, Term, Typology, VatRate, RevisionFormula, PaymentTerm, PricingRule, Market, Meter, MeterType, Index, IndexValue, RevisionRule, Service, InvoiceStatus, Amendment, Termination, Renewal, TrusteeChange, BeChange, Interest, Dju, SettlementRule, ServiceSettlement, SettlementMethodType, SettlementTargetType, WorkProject, WorkQuote, ProgressSituation } from '@/lib/types';
+import type { Client, Site, Contract, Invoice, CreditNote, MeterReading, Company, Agency, Sector, Activity, User, Role, Schedule, Term, Typology, VatRate, RevisionFormula, PaymentTerm, PricingRule, Market, Meter, MeterType, Index, IndexValue, RevisionRule, Service, InvoiceStatus, Amendment, Termination, Renewal, TrusteeChange, BeChange, Interest, Dju, SettlementRule, ServiceSettlement, SettlementMethodType, SettlementTargetType, WorkProject, WorkQuote, ProgressSituation, AdvWorkQuote, AdvWorkQuoteVersion, AdvWorkQuoteLine, AdvWorkAffair, AdvWorkBudgetLine, AdvWorkLot, AdvWorkPoste, AdvWorkSituation, AdvWorkSituationLine, AdvPurchaseOrder, AdvPurchaseOrderLine, AdvCatalogArticle, AdvCatalogOuvrage, AdvOuvrageComposant } from '@/lib/types';
 import { collection, getDocs, doc, getDoc, addDoc, updateDoc, deleteDoc, query, where, DocumentData, writeBatch, runTransaction, Timestamp } from 'firebase/firestore';
 import { deleteFileFromUrl } from './storage';
 
@@ -213,7 +213,7 @@ export async function createContract(data: Omit<Contract, 'id' | 'status' | 'val
     return { id: docRef.id, ...newContractData };
 }
 
-export async function updateContract(id: string, data: Partial<Omit<Contract, 'id' | 'clientName'>>) {
+export async function updateContract(id: string, data: Partial<Omit<Contract, 'id'>>) {
     const contractDoc = doc(db, 'contracts', id);
     const updateData: { [key: string]: any } = { ...data };
     const revisionFields: ('revisionP1' | 'revisionP2' | 'revisionP3')[] = ['revisionP1', 'revisionP2', 'revisionP3'];
@@ -958,8 +958,7 @@ export async function createClientAndContract(data: any) {
         chorusServiceCode: data.chorusServiceCode,
         chorusLegalCommitmentNumber: data.chorusLegalCommitmentNumber,
         chorusMarketNumber: data.chorusMarketNumber,
-        // invoicingType moved to Contract
-        // documents moved to Contract
+        invoicingType: data.invoicingType || 'multi-site',
 
         // Hierarchy
         companyId: data.companyId,
@@ -1155,5 +1154,62 @@ export async function updateProgressSituation(id: string, data: Partial<Omit<Pro
 
 export async function deleteProgressSituation(id: string) {
     await deleteDoc(doc(db, 'progressSituations', id));
+}
+
+// Advanced Works (P6 & Chiffrage)
+export async function getAdvWorkQuotes(): Promise<AdvWorkQuote[]> {
+    return getCollection<AdvWorkQuote>(collection(db, 'advWorkQuotes'));
+}
+
+export async function getAdvWorkQuoteVersions(): Promise<AdvWorkQuoteVersion[]> {
+    return getCollection<AdvWorkQuoteVersion>(collection(db, 'advWorkQuoteVersions'));
+}
+
+export async function getAdvWorkQuoteLines(): Promise<AdvWorkQuoteLine[]> {
+    return getCollection<AdvWorkQuoteLine>(collection(db, 'advWorkQuoteLines'));
+}
+
+export async function getAdvWorkAffairs(): Promise<AdvWorkAffair[]> {
+    return getCollection<AdvWorkAffair>(collection(db, 'advWorkAffairs'));
+}
+
+export async function getAdvWorkBudgetLines(): Promise<AdvWorkBudgetLine[]> {
+    return getCollection<AdvWorkBudgetLine>(collection(db, 'advWorkBudgetLines'));
+}
+
+export async function getAdvWorkLots(): Promise<AdvWorkLot[]> {
+    return getCollection<AdvWorkLot>(collection(db, 'advWorkLots'));
+}
+
+export async function getAdvWorkPostes(): Promise<AdvWorkPoste[]> {
+    return getCollection<AdvWorkPoste>(collection(db, 'advWorkPostes'));
+}
+
+export async function getAdvWorkSituations(): Promise<AdvWorkSituation[]> {
+    return getCollection<AdvWorkSituation>(collection(db, 'advWorkSituations'));
+}
+
+export async function getAdvWorkSituationLines(): Promise<AdvWorkSituationLine[]> {
+    return getCollection<AdvWorkSituationLine>(collection(db, 'advWorkSituationLines'));
+}
+
+export async function getAdvPurchaseOrders(): Promise<AdvPurchaseOrder[]> {
+    return getCollection<AdvPurchaseOrder>(collection(db, 'advPurchaseOrders'));
+}
+
+export async function getAdvPurchaseOrderLines(): Promise<AdvPurchaseOrderLine[]> {
+    return getCollection<AdvPurchaseOrderLine>(collection(db, 'advPurchaseOrderLines'));
+}
+
+export async function getCatalogArticles(): Promise<AdvCatalogArticle[]> {
+    return getCollection<AdvCatalogArticle>(collection(db, 'advCatalogArticles'));
+}
+
+export async function getCatalogOuvrages(): Promise<AdvCatalogOuvrage[]> {
+    return getCollection<AdvCatalogOuvrage>(collection(db, 'advCatalogOuvrages'));
+}
+
+export async function getOuvrageComposants(): Promise<AdvOuvrageComposant[]> {
+    return getCollection<AdvOuvrageComposant>(collection(db, 'advOuvrageComposants'));
 }
 

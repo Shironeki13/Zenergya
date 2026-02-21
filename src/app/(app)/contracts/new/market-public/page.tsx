@@ -209,12 +209,28 @@ export default function PublicMarketAIPage() {
             });
 
             const mappedData: Partial<ClientFormValues> = {
-                ...result,
+                // Client Info
+                name: result.client?.name || "",
+                address: result.client?.address || "",
+                postalCode: result.client?.postalCode || "",
+                city: result.client?.city || "",
                 clientType: "public",
                 useChorus: true,
-                startDate: result.startDate ? new Date(result.startDate) : undefined,
-                endDate: result.endDate ? new Date(result.endDate) : undefined,
-                activityIds: result.activitiesDetails?.map(a => a.activityId) ?? [],
+                siret: result.client?.siret || "",
+                technicalContactName: result.client?.contactTechnique?.name || "",
+                technicalContactEmail: result.client?.contactTechnique?.email || "",
+                technicalContactPhone: result.client?.contactTechnique?.phone || "",
+
+                // Contract Info
+                startDate: result.contrat?.startDate ? new Date(result.contrat.startDate) : undefined,
+                endDate: result.contrat?.endDate ? new Date(result.contrat.endDate) : undefined,
+                renewal: result.contrat?.tacitRenewal || false,
+                tacitRenewal: result.contrat?.tacitRenewal || false,
+                noticePeriod: result.contrat?.noticePeriod || "",
+
+                // Activities
+                activityIds: result.activityIds ?? [],
+                activitiesDetails: result.activitiesDetails ?? [],
             };
 
             setAnalysisResult(mappedData);
@@ -484,7 +500,7 @@ export default function PublicMarketAIPage() {
                                                                                     if (checked) {
                                                                                         // Add default detail if not exists
                                                                                         if (!currentDetails.find(d => d.activityId === item.id)) {
-                                                                                            form.setValue('activitiesDetails', [...currentDetails, { activityId: item.id, volume: 0, amount: 0 }]);
+                                                                                            form.setValue('activitiesDetails', [...currentDetails, { activityId: item.id, amount: 0 }]);
                                                                                         }
                                                                                     } else {
                                                                                         // Remove detail

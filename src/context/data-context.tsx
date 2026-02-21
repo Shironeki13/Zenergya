@@ -8,11 +8,14 @@ import {
   getTypologies, getVatRates, getRevisionFormulas, getPaymentTerms, getPricingRules,
   getMarkets, getRoles, getUsers, getIndices, getIndexValues, getRevisionRules, getServices,
   getAmendments, getTerminations, getRenewals, getTrusteeChanges, getBeChanges, getInterests, getSettlementRules,
-  initializeSettlementRules
+  initializeSettlementRules,
+  getAdvWorkQuotes, getAdvWorkQuoteVersions, getAdvWorkQuoteLines, getAdvWorkAffairs, getAdvWorkBudgetLines,
+  getAdvWorkLots, getAdvWorkPostes, getAdvWorkSituations, getAdvWorkSituationLines, getAdvPurchaseOrders,
+  getAdvPurchaseOrderLines, getCatalogArticles, getCatalogOuvrages, getOuvrageComposants
 } from '@/services/firestore';
 import { auth } from '@/lib/firebase';
 // import { signInAnonymously } from 'firebase/auth';
-import type { DataContextType, Client, Site, Contract, Invoice, CreditNote, Meter, MeterType, MeterReading, Company, Agency, Sector, Activity, Schedule, Term, Typology, VatRate, RevisionFormula, PaymentTerm, PricingRule, Market, Role, User, Index, IndexValue, RevisionRule, Service, Amendment, Termination, Renewal, TrusteeChange, BeChange, Interest, SettlementRule } from '@/lib/types';
+import type { DataContextType, Client, Site, Contract, Invoice, CreditNote, Meter, MeterType, MeterReading, Company, Agency, Sector, Activity, Schedule, Term, Typology, VatRate, RevisionFormula, PaymentTerm, PricingRule, Market, Role, User, Index, IndexValue, RevisionRule, Service, Amendment, Termination, Renewal, TrusteeChange, BeChange, Interest, SettlementRule, WorkProject, WorkQuote, ProgressSituation, AdvWorkQuote, AdvWorkQuoteVersion, AdvWorkQuoteLine, AdvWorkAffair, AdvWorkBudgetLine, AdvWorkLot, AdvWorkPoste, AdvWorkSituation, AdvWorkSituationLine, AdvPurchaseOrder, AdvPurchaseOrderLine, AdvCatalogArticle, AdvCatalogOuvrage, AdvOuvrageComposant } from '@/lib/types';
 import { useToast } from '@/hooks/use-toast';
 
 const DataContext = createContext<DataContextType | undefined>(undefined);
@@ -52,6 +55,25 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     beChanges: [] as BeChange[],
     interests: [] as Interest[], // New State
     settlementRules: [] as SettlementRule[],
+    // Legacy Works
+    workProjects: [] as WorkProject[],
+    workQuotes_legacy: [] as WorkQuote[],
+    progressSituations: [] as ProgressSituation[],
+    // Advanced Works
+    advWorkQuotes: [] as AdvWorkQuote[],
+    advWorkQuoteVersions: [] as AdvWorkQuoteVersion[],
+    advWorkQuoteLines: [] as AdvWorkQuoteLine[],
+    advWorkAffairs: [] as AdvWorkAffair[],
+    advWorkBudgetLines: [] as AdvWorkBudgetLine[],
+    advWorkLots: [] as AdvWorkLot[],
+    advWorkPostes: [] as AdvWorkPoste[],
+    advWorkSituations: [] as AdvWorkSituation[],
+    advWorkSituationLines: [] as AdvWorkSituationLine[],
+    advPurchaseOrders: [] as AdvPurchaseOrder[],
+    advPurchaseOrderLines: [] as AdvPurchaseOrderLine[],
+    advCatalogArticles: [] as AdvCatalogArticle[],
+    advCatalogOuvrages: [] as AdvCatalogOuvrage[],
+    advOuvrageComposants: [] as AdvOuvrageComposant[],
   });
 
   // Mock Current User (Director by default)
@@ -80,7 +102,10 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         getCompanies(), getAgencies(), getSectors(), getActivities(), getSchedules(), getTerms(),
         getTypologies(), getVatRates(), getRevisionFormulas(), getPaymentTerms(), getPricingRules(),
         getMarkets(), getRoles(), getUsers(), getIndices(), getIndexValues(), getRevisionRules(), getServices(),
-        getAmendments(), getTerminations(), getRenewals(), getTrusteeChanges(), getBeChanges(), getInterests(), getSettlementRules()
+        getAmendments(), getTerminations(), getRenewals(), getTrusteeChanges(), getBeChanges(), getInterests(), getSettlementRules(),
+        getAdvWorkQuotes(), getAdvWorkQuoteVersions(), getAdvWorkQuoteLines(), getAdvWorkAffairs(), getAdvWorkBudgetLines(),
+        getAdvWorkLots(), getAdvWorkPostes(), getAdvWorkSituations(), getAdvWorkSituationLines(), getAdvPurchaseOrders(),
+        getAdvPurchaseOrderLines(), getCatalogArticles(), getCatalogOuvrages(), getOuvrageComposants()
       ]);
 
       const [
@@ -88,7 +113,10 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         companies, agencies, sectors, activities, schedules, terms,
         typologies, vatRates, revisionFormulas, paymentTerms, pricingRules,
         markets, roles, users, indices, indexValues, revisionRules, services,
-        amendments, terminations, renewals, trusteeChanges, beChanges, interests, settlementRules
+        amendments, terminations, renewals, trusteeChanges, beChanges, interests, settlementRules,
+        advWorkQuotes, advWorkQuoteVersions, advWorkQuoteLines, advWorkAffairs, advWorkBudgetLines,
+        advWorkLots, advWorkPostes, advWorkSituations, advWorkSituationLines, advPurchaseOrders,
+        advPurchaseOrderLines, advCatalogArticles, advCatalogOuvrages, advOuvrageComposants
       ] = results;
 
       if (clients.status === 'rejected') console.error("Failed to load clients", clients.reason);
@@ -159,6 +187,25 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         beChanges: beChanges.status === 'fulfilled' ? beChanges.value : [],
         interests: interests.status === 'fulfilled' ? interests.value : [],
         settlementRules: settlementRules.status === 'fulfilled' ? settlementRules.value : [],
+        // Advanced
+        advWorkQuotes: advWorkQuotes.status === 'fulfilled' ? advWorkQuotes.value : [],
+        advWorkQuoteVersions: advWorkQuoteVersions.status === 'fulfilled' ? advWorkQuoteVersions.value : [],
+        advWorkQuoteLines: advWorkQuoteLines.status === 'fulfilled' ? advWorkQuoteLines.value : [],
+        advWorkAffairs: advWorkAffairs.status === 'fulfilled' ? advWorkAffairs.value : [],
+        advWorkBudgetLines: advWorkBudgetLines.status === 'fulfilled' ? advWorkBudgetLines.value : [],
+        advWorkLots: advWorkLots.status === 'fulfilled' ? advWorkLots.value : [],
+        advWorkPostes: advWorkPostes.status === 'fulfilled' ? advWorkPostes.value : [],
+        advWorkSituations: advWorkSituations.status === 'fulfilled' ? advWorkSituations.value : [],
+        advWorkSituationLines: advWorkSituationLines.status === 'fulfilled' ? advWorkSituationLines.value : [],
+        advPurchaseOrders: advPurchaseOrders.status === 'fulfilled' ? advPurchaseOrders.value : [],
+        advPurchaseOrderLines: advPurchaseOrderLines.status === 'fulfilled' ? advPurchaseOrderLines.value : [],
+        advCatalogArticles: advCatalogArticles.status === 'fulfilled' ? advCatalogArticles.value : [],
+        advCatalogOuvrages: advCatalogOuvrages.status === 'fulfilled' ? advCatalogOuvrages.value : [],
+        advOuvrageComposants: advOuvrageComposants.status === 'fulfilled' ? advOuvrageComposants.value : [],
+        // Legacy (Mocked for now as we don't have separate services for these placeholders yet)
+        workProjects: [],
+        workQuotes_legacy: [],
+        progressSituations: [],
       });
 
       // Auto-init rules if empty (side effect, but ensures we exist)

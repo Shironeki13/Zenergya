@@ -1,6 +1,6 @@
 import { clsx, type ClassValue } from "clsx"
 import { twMerge } from "tailwind-merge"
-import { parse } from 'papaparse';
+import { unparse } from 'papaparse';
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
@@ -14,7 +14,7 @@ export function downloadCSV<T extends object>(data: T[], filename: string) {
 
   // Flatten nested objects for CSV export
   const flattenedData = data.map(row => {
-    const flatRow: {[key: string]: any} = {};
+    const flatRow: { [key: string]: any } = {};
     for (const [key, value] of Object.entries(row)) {
       if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
         for (const [nestedKey, nestedValue] of Object.entries(value)) {
@@ -30,8 +30,8 @@ export function downloadCSV<T extends object>(data: T[], filename: string) {
     return flatRow;
   });
 
-  const csv = parse(flattenedData, { header: true });
-  
+  const csv = unparse(flattenedData, { header: true });
+
   const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
   const link = document.createElement('a');
   const url = URL.createObjectURL(blob);

@@ -62,6 +62,28 @@ export default function WorksDashboard() {
                         </CardContent>
                     </Link>
                 </Card>
+
+                <Card className="hover:border-primary/50 transition-colors cursor-pointer group border-blue-200 bg-blue-50/10">
+                    <Link href="/works/chiffrage/new">
+                        <CardHeader>
+                            <div className="flex items-center gap-2">
+                                <div className="p-2 rounded-lg bg-blue-100 text-blue-800 group-hover:bg-blue-800 group-hover:text-white transition-colors">
+                                    <Calculator className="h-5 w-5" />
+                                </div>
+                                <CardTitle>Chiffrage & Études</CardTitle>
+                            </div>
+                            <CardDescription>
+                                Outil de chiffrage inspiré d'Optima pour vos devis complexes.
+                            </CardDescription>
+                        </CardHeader>
+                        <CardContent>
+                            <div className="flex items-center justify-between">
+                                <span className="text-sm font-medium text-blue-800">Créer un nouveau chiffrage</span>
+                                <Plus className="h-4 w-4 text-blue-800" />
+                            </div>
+                        </CardContent>
+                    </Link>
+                </Card>
             </div>
         </div>
     );
