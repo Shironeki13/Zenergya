@@ -1,5 +1,5 @@
 import { db } from '@/lib/firebase';
-import type { Client, Site, Contract, Invoice, CreditNote, MeterReading, Company, Agency, Sector, Activity, User, Role, Schedule, Term, Typology, VatRate, RevisionFormula, PaymentTerm, PricingRule, Market, Meter, MeterType, Index, IndexValue, RevisionRule, Service, InvoiceStatus, Amendment, Termination, Renewal, TrusteeChange, BeChange, Interest, Dju, SettlementRule, ServiceSettlement, SettlementMethodType, SettlementTargetType, WorkProject, WorkQuote, ProgressSituation, AdvWorkQuote, AdvWorkQuoteVersion, AdvWorkQuoteLine, AdvWorkAffair, AdvWorkBudgetLine, AdvWorkLot, AdvWorkPoste, AdvWorkSituation, AdvWorkSituationLine, AdvPurchaseOrder, AdvPurchaseOrderLine, AdvCatalogArticle, AdvCatalogOuvrage, AdvOuvrageComposant } from '@/lib/types';
+import type { Client, Contact, Site, Contract, Invoice, CreditNote, MeterReading, Company, Agency, Sector, Activity, User, Role, Schedule, Term, Typology, VatRate, RevisionFormula, PaymentTerm, PricingRule, Market, Meter, MeterType, Index, IndexValue, RevisionRule, Service, InvoiceStatus, Amendment, Termination, Renewal, TrusteeChange, BeChange, Interest, Dju, SettlementRule, ServiceSettlement, SettlementMethodType, SettlementTargetType, WorkProject, WorkQuote, ProgressSituation, AdvWorkQuote, AdvWorkQuoteVersion, AdvWorkQuoteLine, AdvWorkAffair, AdvWorkBudgetLine, AdvWorkLot, AdvWorkPoste, AdvWorkSituation, AdvWorkSituationLine, AdvPurchaseOrder, AdvPurchaseOrderLine, AdvCatalogArticle, AdvCatalogOuvrage, AdvOuvrageComposant } from '@/lib/types';
 import { collection, getDocs, doc, getDoc, addDoc, updateDoc, deleteDoc, query, where, DocumentData, writeBatch, runTransaction, Timestamp } from 'firebase/firestore';
 import { deleteFileFromUrl } from './storage';
 
@@ -120,23 +120,59 @@ export async function updateClient(id: string, data: Partial<Omit<Client, 'id'>>
 }
 
 export async function deleteClient(id: string) {
-    // 1. Get all associated sites
+    // 1. Get all associated contacts and delete them
+    const contacts = await getContactsByClient(id);
+    for (const contact of contacts) {
+        await deleteContact(contact.id);
+    }
+
+    // 2. Get all associated sites
     const sites = await getSitesByClient(id);
-    // 2. Delete all sites
+    // 3. Delete all sites
     for (const site of sites) {
         await deleteSite(site.id);
     }
 
-    // 3. Get all associated contracts
+    // 4. Get all associated contracts
     const contracts = await getContractsByClient(id);
-    // 4. Delete all contracts
+    // 5. Delete all contracts
     for (const contract of contracts) {
         await deleteContract(contract.id);
     }
 
-    // 5. Delete the client
+    // 6. Delete the client
     const clientDoc = doc(db, 'clients', id);
     await deleteDoc(clientDoc);
+}
+
+
+// Contacts
+export async function getContacts(): Promise<Contact[]> {
+    return getCollection<Contact>(collection(db, 'contacts'));
+}
+
+export async function getContactsByClient(clientId: string): Promise<Contact[]> {
+    const q = query(collection(db, 'contacts'), where("clientId", "==", clientId));
+    return getCollection<Contact>(q);
+}
+
+export async function createContact(data: Omit<Contact, 'id'>): Promise<Contact> {
+    const contactsCollection = collection(db, 'contacts');
+    const cleanData = Object.fromEntries(
+        Object.entries(data).filter(([_, value]) => value !== undefined)
+    );
+    const docRef = await addDoc(contactsCollection, cleanData);
+    return { id: docRef.id, ...data } as Contact;
+}
+
+export async function updateContact(id: string, data: Partial<Omit<Contact, 'id'>>) {
+    const contactDoc = doc(db, 'contacts', id);
+    await updateDoc(contactDoc, data);
+}
+
+export async function deleteContact(id: string) {
+    const contactDoc = doc(db, 'contacts', id);
+    await deleteDoc(contactDoc);
 }
 
 
@@ -171,7 +207,27 @@ export async function deleteSite(id: string) {
     await deleteDoc(siteDoc);
 }
 
-
+export async function batchCreateSites(
+    contractId: string,
+    clientId: string,
+    sitesData: Omit<Site, 'id' | 'contractId' | 'clientId'>[]
+): Promise<{ created: number; ids: string[] }> {
+    const ids: string[] = [];
+    for (const siteData of sitesData) {
+        const created = await createSite({
+            ...siteData,
+            contractId,
+            clientId,
+        } as Omit<Site, 'id'>);
+        ids.push(created.id);
+    }
+    // Update contract siteIds
+    const contractDoc = doc(db, 'contracts', contractId);
+    const contractSnap = await getDoc(contractDoc);
+    const existingSiteIds = contractSnap.data()?.siteIds || [];
+    await updateDoc(contractDoc, { siteIds: [...existingSiteIds, ...ids] });
+    return { created: ids.length, ids };
+}
 // Contrats
 export async function getContracts(): Promise<Contract[]> {
     return getCollection<Contract>(collection(db, 'contracts'));
@@ -939,7 +995,7 @@ export async function deleteBeChange(id: string) {
 // Orchestration
 export async function createClientAndContract(data: any) {
 
-    // 1. Separate Client and Contract data
+    // 1. Prepare Client data (cleaned - no contacts, no contract fields)
     const clientData: Omit<Client, 'id'> = {
         name: data.name,
         address: data.address,
@@ -958,42 +1014,50 @@ export async function createClientAndContract(data: any) {
         chorusServiceCode: data.chorusServiceCode,
         chorusLegalCommitmentNumber: data.chorusLegalCommitmentNumber,
         chorusMarketNumber: data.chorusMarketNumber,
-        invoicingType: data.invoicingType || 'multi-site',
-
         // Hierarchy
         companyId: data.companyId,
         agencyId: data.agencyId,
         sectorId: data.sectorId,
-        // Contacts
-        technicalContactName: data.technicalContactName,
-        technicalContactEmail: data.technicalContactEmail,
-        technicalContactPhone: data.technicalContactPhone,
-        billingContactName: data.billingContactName,
-        billingContactEmail: data.billingContactEmail,
-        billingContactPhone: data.billingContactPhone,
-        renewal: data.renewal,
-        tacitRenewal: data.tacitRenewal,
-        renewalDuration: data.renewalDuration,
-        noticePeriod: data.noticePeriod,
     };
 
     // 2. Create Client
     const newClient = await createClient(clientData);
 
-    // 3. Prepare Contract data
+    // 3. Create Contacts (as separate entities)
+    const contacts: Contact[] = [];
+    if (data.technicalContactName || data.technicalContactEmail || data.technicalContactPhone) {
+        const contact = await createContact({
+            clientId: newClient.id,
+            type: 'technique',
+            name: data.technicalContactName || '',
+            email: data.technicalContactEmail || undefined,
+            phone: data.technicalContactPhone || undefined,
+        });
+        contacts.push(contact);
+    }
+    if (data.billingContactName || data.billingContactEmail || data.billingContactPhone) {
+        const contact = await createContact({
+            clientId: newClient.id,
+            type: 'facturation',
+            name: data.billingContactName || '',
+            email: data.billingContactEmail || undefined,
+            phone: data.billingContactPhone || undefined,
+        });
+        contacts.push(contact);
+    }
+
+    // 4. Prepare Contract data (cleaned - P1/revision fields go to Site, not Contract)
     const contractData: Omit<Contract, 'id' | 'status' | 'validationStatus'> = {
         clientId: newClient.id,
         clientName: newClient.name,
-        siteIds: [], // Initial empty list
+        siteIds: [], // Updated after site creation
         startDate: data.startDate,
         endDate: data.endDate,
-        billingSchedule: 'Mensuel', // Default
-        term: data.term || 'Echu',
         activityIds: data.activityIds || [],
         activitiesDetails: data.activitiesDetails || [],
         invoicingType: data.invoicingType || 'multi-site',
 
-        // New Contract Fields
+        // Contract identification
         name: data.contractName, // Contract Name
         label: data.label,
         contractNumber: data.contractNumber,
@@ -1001,30 +1065,52 @@ export async function createClientAndContract(data: any) {
         baseAmountP2: data.baseAmountP2,
         baseAmountP3: data.baseAmountP3,
         baseAmountP3R: data.baseAmountP3R,
-        revisionP1: data.revisionP1 ? { formula: data.revisionP1 } : undefined,
-        revisionP2: data.revisionP2 ? { formula: data.revisionP2 } : undefined,
-        revisionP3: data.revisionP3 ? { formula: data.revisionP3 } : undefined,
-        heatingReferenceDju: data.heatingReferenceDju,
-        heatingWeatherStation: data.heatingWeatherStation,
-        hasInterest: data.hasInterest || false,
-        hasHeating: data.hasHeating || false,
-        hasECS: data.hasECS || false,
-        contractualNB: data.contractualNB,
-        smallQ: data.smallQ,
 
-        // Renewal (also on Client, but good to have on Contract if needed in future)
+        // Renewal conditions (contract-level)
         renewal: data.renewal || false,
         tacitRenewal: data.tacitRenewal || false,
         renewalDuration: data.renewalDuration,
         noticePeriod: data.noticePeriod,
 
         documents: data.documents || [],
+
+        // Market type
+        marketType: data.marketType,
     };
 
-    // 4. Create Contract
+    // 5. Create Contract
     const newContract = await createContract(contractData);
 
-    return { client: newClient, contract: newContract };
+    // 6. Create initial Site (if site data provided)
+    let newSite = null;
+    if (data.site) {
+        const siteData: Omit<Site, 'id'> = {
+            contractId: newContract.id,
+            clientId: newClient.id,
+            clientName: newClient.name,
+            name: data.site.name || newClient.name,
+            address: data.site.address || data.address || '',
+            postalCode: data.site.postalCode || data.postalCode,
+            city: data.site.city || data.city,
+            billingSchedule: data.site.billingSchedule || 'Mensuel',
+            termId: data.site.term,
+            revisionP1: data.site.revisionP1 ? { formula: data.site.revisionP1 } : undefined,
+            revisionP2: data.site.revisionP2 ? { formula: data.site.revisionP2 } : undefined,
+            revisionP3: data.site.revisionP3 ? { formula: data.site.revisionP3 } : undefined,
+            hasHeating: data.site.hasHeating || false,
+            hasECS: data.site.hasECS || false,
+            hasInterest: data.site.hasInterest || false,
+            heatingReferenceDju: data.site.heatingReferenceDju,
+            heatingWeatherStation: data.site.heatingWeatherStation,
+            contractualNB: data.site.contractualNB,
+            smallQ: data.site.smallQ,
+        };
+        newSite = await createSite(siteData);
+        // Update contract with siteIds
+        await updateContract(newContract.id, { siteIds: [newSite.id] });
+    }
+
+    return { client: newClient, contract: newContract, contacts, site: newSite };
 }
 
 // Relevés de Compteurs (Suite)

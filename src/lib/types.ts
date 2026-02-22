@@ -67,9 +67,9 @@ export type ActivityDetail = z.infer<typeof ActivityDetailSchema>;
 
 export const ClientBaseSchema = z.object({
     name: z.string().min(2, "La raison sociale est requise."),
-    address: z.string().optional(),
-    postalCode: z.string().optional(),
-    city: z.string().optional(),
+    address: z.string().min(1, "L'adresse est requise."),
+    postalCode: z.string().min(1, "Le code postal est requis."),
+    city: z.string().min(1, "La ville est requise."),
     clientType: z.enum(["private", "public"], { required_error: "Le type de client est requis." }),
     typologyId: z.string({ required_error: "La typologie est requise." }),
     // Hierarchy fields
@@ -82,26 +82,11 @@ export const ClientBaseSchema = z.object({
     beName: z.string().optional(),
     beEmail: z.string().email({ message: "Email BE invalide." }).optional().or(z.literal('')),
     bePhone: z.string().optional(),
-    technicalContactName: z.string().optional(),
-    technicalContactEmail: z.string().email({ message: "Email invalide." }).optional().or(z.literal('')),
-    technicalContactPhone: z.string().optional(),
-    billingContactName: z.string().optional(),
-    billingContactEmail: z.string().email({ message: "Email invalide." }).optional().or(z.literal('')),
-    billingContactPhone: z.string().optional(),
     useChorus: z.boolean().default(false),
-    renewal: z.boolean().default(false),
-    tacitRenewal: z.boolean().default(false),
-    renewalDuration: z.string().optional(),
-    noticePeriod: z.string().optional(),
     siret: z.string().optional(),
     chorusServiceCode: z.string().optional(),
     chorusLegalCommitmentNumber: z.string().optional(),
     chorusMarketNumber: z.string().optional(),
-    invoicingType: z.enum(['multi-site', 'global']).default('multi-site'),
-    activityIds: z.array(z.string()).optional(),
-    activitiesDetails: z.array(ActivityDetailSchema).optional(),
-    startDate: z.date().optional(),
-    endDate: z.date().optional(),
 });
 
 export const ClientSchema = ClientBaseSchema.superRefine((data, ctx) => {
@@ -112,21 +97,33 @@ export const ClientSchema = ClientBaseSchema.superRefine((data, ctx) => {
             path: ["siret"],
         });
     }
+    if (data.clientType === 'public' && (!data.siret || data.siret.length === 0)) {
+        ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: "Le SIRET est obligatoire pour un client public.",
+            path: ["siret"],
+        });
+    }
 });
 
 
 export type Client = z.infer<typeof ClientSchema> & {
     id: string;
     typologyName?: string; // denormalized for display
-    contactEmail?: string;
-    // New fields
     clientNumber?: string; // N° Chrono
     createdAt?: string; // Timestamp
     createdBy?: string; // User ID/Name
-    technicalContactEmail?: string;
-    technicalContactPhone?: string;
-    billingContactEmail?: string;
-    billingContactPhone?: string;
+};
+
+// --- Contact Type ---
+export type Contact = {
+    id: string;
+    clientId: string;
+    type: 'technique' | 'facturation' | 'principal' | 'autre';
+    name: string;
+    email?: string;
+    phone?: string;
+    role?: string; // Descriptif libre du rôle (ex: "Gardien", "Directeur technique")
 };
 
 
@@ -142,6 +139,36 @@ export type Site = {
     city?: string;
     activityIds?: string[];
     amounts?: { activityId: string; amount: number }[]; // Montants à facturer par activité
+
+    // --- Billing & Revision (moved from Contract) ---
+    billingSchedule?: string; // Périodicité de facturation
+    termId?: string; // Terme/Échéance
+    monthlyBilling?: MonthlyBilling[]; // Échéancier mensuel
+
+    // Revisions per site
+    revisionP1?: RevisionInfo;
+    revisionP2?: RevisionInfo;
+    revisionP3?: RevisionInfo;
+    analyticP1?: string;
+    analyticP2?: string;
+    analyticP3?: string;
+
+    // --- P1 Specific (moved from Contract) ---
+    hasHeating?: boolean;
+    hasECS?: boolean;
+    hasInterest?: boolean;
+    heatingReferenceDju?: number; // DJU de référence annuel
+    heatingWeatherStation?: string; // Station météo
+    contractualNB?: number; // NB (Nombre de Base)
+    smallQ?: number; // Petit q (Quantité/Coeff)
+
+    // --- Legacy conditional fields (moved from Contract) ---
+    heatingDays?: number; // Jours de chauffe (MF)
+    baseDJU?: number; // DJU de base (MT)
+    weatherStationCode?: string; // Station météo (MT)
+    consumptionBase?: number; // Base de consommation (Intéressement)
+    shareRateClient?: number; // Taux partage client (Intéressement)
+    shareRateOperator?: number; // Taux partage exploitant (Intéressement)
 }
 
 export type MeterType = {
@@ -187,9 +214,14 @@ export type MonthlyBilling = {
 }
 
 export type RevisionInfo = {
-    formulaId?: string | null;
-    formula?: string; // Custom formula string
-    date?: string; // ISO String date
+    ruleId?: string;          // Link to RevisionRule (calculation engine)
+    formulaId?: string | null; // Link to RevisionFormula (contractual text)
+    formula?: string;         // Custom formula string (fallback)
+    periodicity?: 'annual' | 'semi-annual' | 'quarterly'; // Revision frequency
+    anniversaryDate?: string; // Anniversary date for revision (MM-DD format)
+    baseDate?: string;        // Reference/base date (YYYY-MM-DD)
+    baseAmount?: number;      // Base amount to revise
+    date?: string;            // Legacy: ISO String date
 }
 
 export type HeatingRevisionIndices = {
@@ -215,25 +247,24 @@ export type Contract = {
     siteIds: string[];
     startDate: string; // ISO String date
     endDate: string; // ISO String date
-    billingSchedule: string;
-    term: string;
     activityIds: string[];
     status: "Actif" | "Résilié" | "Terminé" | "Brouillon";
     validationStatus: "pending_validation" | "validated" | "refused";
     marketId?: string;
-    hasInterest?: boolean;
     terminationDate?: string; // ISO String for cancellation date
     documents?: ContractDocument[]; // Champ pour la GED
 
-    // New fields
+    // Identification
     contractNumber?: string; // N° Contrat (CTR-ANNÉE-N° Client-001)
     createdAt?: string; // Timestamp
     createdBy?: string; // User ID/Name
     requesterEmail?: string; // Email of the user who created the contract
     refusalReason?: string; // Reason for refusal by admin
     label?: string; // Libellé (= Localité / Spécificité)
-    name?: string; // Nom Contrat (= Nom Client + ‘-’ + Libellé Contrat)
+    name?: string; // Nom Contrat (= Nom Client + '-' + Libellé Contrat)
     externalRef?: string;
+
+    // Global amounts
     baseAmountP1?: number; // Montant global base marché P1 HT/AN
     baseAmountP2?: number; // Montant global base marché P2 HT/AN
     baseAmountP3?: number; // Montant global base marché P3 HT/AN
@@ -241,7 +272,7 @@ export type Contract = {
     signedByCompany?: boolean;
     signedByClient?: boolean;
 
-    // Moved from Client
+    // Contract conditions
     invoicingType: 'multi-site' | 'global';
     renewal: boolean;
     renewalDuration?: string;
@@ -250,53 +281,19 @@ export type Contract = {
 
     activitiesDetails?: ActivityDetail[];
 
-    monthlyBilling?: MonthlyBilling[];
-
     marketType?: 'Marché Public' | 'Marché Privé';
     shareRate?: number[];
     revisionFormula?: string;
+    p1SubTypes?: string[]; // P1 sub-types: chauffage, ecs, refac, abonnement
 
-    // Revisions (Legacy/Global)
-    revisionP1?: RevisionInfo;
-    revisionP2?: RevisionInfo;
-    revisionP3?: RevisionInfo;
-    analyticP1?: string;
-    analyticP2?: string;
-    analyticP3?: string;
-
-    // P1 Specific Fields (Legacy or kept for easy access?)
-    // We might want to keep them for backward compatibility or ease of use if not using activitiesDetails everywhere yet
-    hasHeating: boolean;
-    hasECS: boolean;
-
-    // Heating fields
-    heatingFlatRateHT?: number; // Forfait P1 CH HT (€/an)
-    heatingUnitPriceKwh?: number; // PU kWh CH (€/kWh)
-    heatingReferenceDju?: number; // DJU de référence annuel
-    heatingWeatherStation?: string; // Station météo
-    heatingRevisionIndices?: HeatingRevisionIndices;
-
-    // ECS fields
-    ecsFlatRateHT?: number; // Forfait P1 ECS HT (€/an)
-    ecsUnitPriceM3?: number; // PU m3 ECS
-    ecsRevisionIndices?: EcsRevisionIndices;
-
-    // P1 Factors
-    contractualNB?: number; // NB (Nombre de Base)
-    smallQ?: number; // Petit q (Quantité/Coeff)
-
-
-    // Conditional fields (legacy, to be reviewed if they overlap)
-    heatingDays?: number; // Jours de chauffe (MF)
-    baseDJU?: number; // DJU de base (MT)
-    weatherStationCode?: string; // Station météo (MT)
-    consumptionBase?: number; // Base de consommation (Intéressement)
-    shareRateClient?: number; // Taux partage client (Intéressement)
-    shareRateOperator?: number; // Taux partage exploitant (Intéressement)
-    flatRateAmount?: number; // Montant forfaitaire (CP, PF)
-    managementFees?: number; // Frais de gestion (CP, PF)
-    unitPriceUsefulMWh?: number; // Prix €/MWh utile (MC)
-    unitPricePrimaryMWh?: number; // Prix €/MWh primaire (CP)
+    // --- Legacy fields kept for single-site inheritance ---
+    // When a contract has a single site, these can be inherited by the site
+    billingSchedule?: string; // Legacy: moved to Site
+    term?: string; // Legacy: moved to Site
+    monthlyBilling?: MonthlyBilling[]; // Legacy: moved to Site
+    revisionP1?: RevisionInfo; // Legacy: moved to Site
+    revisionP2?: RevisionInfo; // Legacy: moved to Site
+    revisionP3?: RevisionInfo; // Legacy: moved to Site
 };
 
 // --- New Contract Event Types ---
@@ -860,13 +857,21 @@ export const ExtractContractInfoOutputSchema = z.object({
         startDate: z.string().optional().describe("Date de début (YYYY-MM-DD)."),
         durationStr: z.string().optional().describe("Durée telle qu'écrite (ex: 2 ans)."),
         endDate: z.string().optional().describe("Date de fin (YYYY-MM-DD)."),
-        term: z.string().optional().describe("Périodicité de facturation (ex: Trimestriel)."),
         tacitRenewal: z.boolean().optional(),
         noticePeriod: z.string().optional().describe("Préavis de résiliation."),
         baseAmountP1: z.number().optional().describe("Montant P1 HT annuel."),
         baseAmountP2: z.number().optional().describe("Montant P2 HT annuel."),
         baseAmountP3: z.number().optional().describe("Montant P3 HT annuel."),
         baseAmountP3R: z.number().optional().describe("Montant P3R HT annuel."),
+        invoicingType: z.enum(['multi-site', 'global']).optional().describe("Type de facturation (global ou multi-site)."),
+    }),
+    site: z.object({
+        name: z.string().optional().describe("Nom du site (souvent identique au nom client)."),
+        address: z.string().optional().describe("Adresse du site."),
+        postalCode: z.string().optional().describe("Code postal du site."),
+        city: z.string().optional().describe("Ville du site."),
+        billingSchedule: z.string().optional().describe("Périodicité de facturation (ex: Mensuel, Trimestriel)."),
+        term: z.string().optional().describe("Terme de paiement (ex: Échu, Échoir)."),
         revisionP1: z.string().optional().describe("Formule de révision P1."),
         revisionP2: z.string().optional().describe("Formule de révision P2."),
         revisionP3: z.string().optional().describe("Formule de révision P3."),
@@ -877,9 +882,7 @@ export const ExtractContractInfoOutputSchema = z.object({
         hasECS: z.boolean().optional().describe("ECS inclus ?"),
         contractualNB: z.number().optional().describe("Valeur du NB (Nombre de Base)."),
         smallQ: z.number().optional().describe("Valeur du petit q."),
-        invoicingType: z.enum(['multi-site', 'global']).optional().describe("Type de facturation (global ou multi-site)."),
-    }),
-    // Legacy fields kept optional for compatibility if needed, but main logic should use nested
+    }).optional(),
     activityIds: z.array(z.string()).optional(),
     activitiesDetails: z.array(ActivityDetailSchema).optional(),
 });
@@ -889,6 +892,7 @@ export type ExtractContractInfoOutput = z.infer<typeof ExtractContractInfoOutput
 // Data Context Type
 export type DataContextType = {
     clients: Client[];
+    contacts: Contact[]; // NEW: Contact entity
     sites: Site[];
     contracts: Contract[];
     invoices: Invoice[];

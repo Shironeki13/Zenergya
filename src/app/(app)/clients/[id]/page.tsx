@@ -74,7 +74,7 @@ export default function ClientDetailPage() {
         </Link>
         <div>
           <h1 className="text-xl font-semibold">{client.name}</h1>
-          <p className="text-sm text-muted-foreground">{client.contactEmail}</p>
+          <p className="text-sm text-muted-foreground">{client.address || ''}</p>
         </div>
       </div>
 

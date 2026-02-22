@@ -243,42 +243,9 @@ export default function EditClientPage() {
 
             <Separator />
 
-            <h2 className="text-xl font-semibold">Contacts</h2>
-            <div className="grid md:grid-cols-2 gap-8">
-              <div className="space-y-4">
-                <h3 className="text-sm font-medium text-muted-foreground">Contact Technique</h3>
-                <FormField control={form.control} name="technicalContactEmail" render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Email</FormLabel>
-                    <FormControl><Input placeholder="tech@client.com" {...field} /></FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )} />
-                <FormField control={form.control} name="technicalContactPhone" render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Téléphone</FormLabel>
-                    <FormControl><Input placeholder="0123456789" {...field} /></FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )} />
-              </div>
-              <div className="space-y-4">
-                <h3 className="text-sm font-medium text-muted-foreground">Contact Facturation</h3>
-                <FormField control={form.control} name="billingContactEmail" render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Email</FormLabel>
-                    <FormControl><Input placeholder="billing@client.com" {...field} /></FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )} />
-                <FormField control={form.control} name="billingContactPhone" render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Téléphone</FormLabel>
-                    <FormControl><Input placeholder="0123456789" {...field} /></FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )} />
-              </div>
+            <div className="p-4 border rounded-lg bg-muted/50">
+              <h2 className="text-xl font-semibold mb-2">Contacts</h2>
+              <p className="text-sm text-muted-foreground">Les contacts sont gérés séparément de la fiche client.</p>
             </div>
 
             <Separator />

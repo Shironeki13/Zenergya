@@ -20,7 +20,7 @@ import { Switch } from '@/components/ui/switch';
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
 import { useData } from '@/context/data-context';
-import { ClientSchema, ExtractContractInfoOutputSchema } from '@/lib/types';
+import { ClientBaseSchema, ActivityDetailSchema, ExtractContractInfoOutputSchema } from '@/lib/types';
 import { extractContractInfo } from '@/ai/flows/extract-contract-info-flow';
 import { createClientAndContract } from '@/services/firestore';
 import { cn } from '@/lib/utils';
@@ -67,7 +67,21 @@ Voici les informations à extraire:
 - Numéro d'engagement juridique (chorusLegalCommitmentNumber): Le numéro EJ pour Chorus.
 `;
 
-type ClientFormValues = z.infer<typeof ClientSchema>;
+
+// Extended schema for this page: combines client fields with contract fields
+const NewPublicContractFormSchema = ClientBaseSchema.extend({
+    invoicingType: z.enum(['multi-site', 'global']).default('multi-site'),
+    activityIds: z.array(z.string()).optional(),
+    activitiesDetails: z.array(ActivityDetailSchema).optional(),
+    startDate: z.date().optional(),
+    endDate: z.date().optional(),
+    renewal: z.boolean().default(false),
+    tacitRenewal: z.boolean().default(false),
+    renewalDuration: z.string().optional(),
+    noticePeriod: z.string().optional(),
+});
+
+type ClientFormValues = z.infer<typeof NewPublicContractFormSchema>;
 
 const fileToDataUrl = (file: File): Promise<string> => {
     return new Promise((resolve, reject) => {
@@ -103,7 +117,7 @@ export default function NewContractFromPublicPdfPage() {
     const { clients, typologies, activities, terms, schedules, companies, agencies, sectors } = useData();
 
     const form = useForm<ClientFormValues>({
-        resolver: zodResolver(ClientSchema),
+        resolver: zodResolver(NewPublicContractFormSchema),
         defaultValues: {
             name: "",
             address: "",

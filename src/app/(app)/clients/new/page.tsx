@@ -27,7 +27,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { Switch } from "@/components/ui/switch"
 import { Separator } from "@/components/ui/separator"
-import type { Typology } from "@/lib/types"
+import type { Typology, Company, Agency, Sector } from "@/lib/types"
 import { ClientSchema } from "@/lib/types"
 import { useData } from "@/context/data-context"
 
@@ -37,7 +37,7 @@ type ClientFormValues = z.infer<typeof ClientSchema>
 export default function NewClientPage() {
   const router = useRouter();
   const { toast } = useToast()
-  const { currentUser } = useData();
+  const { currentUser, companies, agencies, sectors, reloadData } = useData();
   const [typologies, setTypologies] = useState<Typology[]>([]);
   const [isDataLoading, setIsDataLoading] = useState(true);
 
@@ -84,6 +84,8 @@ export default function NewClientPage() {
   const watchTypologyId = form.watch("typologyId");
   const watchIsBe = form.watch("isBe");
   const watchUseChorus = form.watch("useChorus");
+  const watchCompanyId = form.watch("companyId");
+  const watchAgencyId = form.watch("agencyId");
 
   const selectedTypology = React.useMemo(() =>
     typologies.find(t => t.id === watchTypologyId),
@@ -91,9 +93,19 @@ export default function NewClientPage() {
   );
   const showRepresentedBy = selectedTypology?.name === 'Copropriété';
 
+  const filteredAgencies = React.useMemo(() =>
+    watchCompanyId ? agencies.filter(a => a.companyId === watchCompanyId) : agencies,
+    [agencies, watchCompanyId]
+  );
+  const filteredSectors = React.useMemo(() =>
+    watchAgencyId ? sectors.filter(s => s.agencyId === watchAgencyId) : sectors,
+    [sectors, watchAgencyId]
+  );
+
   async function onSubmit(data: ClientFormValues) {
     try {
       const newClient = await createClient(data);
+      await reloadData();
       toast({
         title: "Client Créé",
         description: "Le nouveau client a été créé avec succès.",
@@ -108,6 +120,26 @@ export default function NewClientPage() {
         variant: "destructive"
       });
     }
+  }
+
+  function onInvalid(errors: Record<string, unknown>) {
+    const errorFields = Object.keys(errors);
+    const fieldLabels: Record<string, string> = {
+      name: 'Raison sociale',
+      typologyId: 'Typologie',
+      companyId: 'Société',
+      agencyId: 'Agence',
+      sectorId: 'Secteur',
+      clientType: 'Type de client',
+      siret: 'SIRET',
+    };
+    const labels = errorFields.map(f => fieldLabels[f] || f).join(', ');
+    toast({
+      title: "Formulaire incomplet",
+      description: `Champs invalides : ${labels}`,
+      variant: "destructive",
+    });
+    console.error('Form validation errors:', errors);
   }
 
   return (
@@ -132,7 +164,50 @@ export default function NewClientPage() {
           </div>
         ) : (
           <Form {...form}>
-            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-8">
+            <form onSubmit={form.handleSubmit(onSubmit, onInvalid)} className="space-y-8">
+
+              {/* Hierarchy fields: Company → Agency → Sector */}
+              <h2 className="text-xl font-semibold">Rattachement</h2>
+              <div className="grid md:grid-cols-3 gap-8">
+                <FormField control={form.control} name="companyId" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Société</FormLabel>
+                    <Select onValueChange={(val) => { field.onChange(val); form.setValue('agencyId', ''); form.setValue('sectorId', ''); }} value={field.value}>
+                      <FormControl><SelectTrigger><SelectValue placeholder="Sélectionnez une société" /></SelectTrigger></FormControl>
+                      <SelectContent>
+                        {companies.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )} />
+                <FormField control={form.control} name="agencyId" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Agence</FormLabel>
+                    <Select onValueChange={(val) => { field.onChange(val); form.setValue('sectorId', ''); }} value={field.value} disabled={!watchCompanyId}>
+                      <FormControl><SelectTrigger><SelectValue placeholder="Sélectionnez une agence" /></SelectTrigger></FormControl>
+                      <SelectContent>
+                        {filteredAgencies.map(a => <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )} />
+                <FormField control={form.control} name="sectorId" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Secteur</FormLabel>
+                    <Select onValueChange={field.onChange} value={field.value} disabled={!watchAgencyId}>
+                      <FormControl><SelectTrigger><SelectValue placeholder="Sélectionnez un secteur" /></SelectTrigger></FormControl>
+                      <SelectContent>
+                        {filteredSectors.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )} />
+              </div>
+
+              <Separator />
 
               <h2 className="text-xl font-semibold">Informations Client</h2>
               <div className="grid md:grid-cols-2 gap-8">
@@ -209,42 +284,9 @@ export default function NewClientPage() {
 
               <Separator />
 
-              <h2 className="text-xl font-semibold">Contacts</h2>
-              <div className="grid md:grid-cols-2 gap-8">
-                <div className="space-y-4">
-                  <h3 className="text-sm font-medium text-muted-foreground">Contact Technique</h3>
-                  <FormField control={form.control} name="technicalContactEmail" render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Email</FormLabel>
-                      <FormControl><Input placeholder="tech@client.com" {...field} /></FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )} />
-                  <FormField control={form.control} name="technicalContactPhone" render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Téléphone</FormLabel>
-                      <FormControl><Input placeholder="0123456789" {...field} /></FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )} />
-                </div>
-                <div className="space-y-4">
-                  <h3 className="text-sm font-medium text-muted-foreground">Contact Facturation</h3>
-                  <FormField control={form.control} name="billingContactEmail" render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Email</FormLabel>
-                      <FormControl><Input placeholder="billing@client.com" {...field} /></FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )} />
-                  <FormField control={form.control} name="billingContactPhone" render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Téléphone</FormLabel>
-                      <FormControl><Input placeholder="0123456789" {...field} /></FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )} />
-                </div>
+              <div className="p-4 border rounded-lg bg-muted/50">
+                <h2 className="text-xl font-semibold mb-2">Contacts</h2>
+                <p className="text-sm text-muted-foreground">Les contacts seront gérés séparément après la création du client.</p>
               </div>
 
               <Separator />
@@ -289,10 +331,7 @@ export default function NewClientPage() {
                 </div>
               </div>
 
-              {/* Hidden fields for hierarchy - to be populated properly or handled via context */}
-              <FormField control={form.control} name="companyId" render={({ field }) => <Input type="hidden" {...field} />} />
-              <FormField control={form.control} name="agencyId" render={({ field }) => <Input type="hidden" {...field} />} />
-              <FormField control={form.control} name="sectorId" render={({ field }) => <Input type="hidden" {...field} />} />
+
 
               <Button type="submit">Créer le Client</Button>
             </form>

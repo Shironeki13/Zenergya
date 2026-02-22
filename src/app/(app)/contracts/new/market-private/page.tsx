@@ -10,13 +10,13 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Loader2, Upload, FileText, CheckCircle, AlertCircle, ArrowLeft, Trash2, Sparkles, Building, FileSignature, User, Euro } from "lucide-react";
+import { Loader2, Upload, FileText, CheckCircle, AlertCircle, ArrowLeft, Trash2, Sparkles, Building, FileSignature, User, Euro, MapPin, Users } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { extractContractInfo } from '@/ai/flows/extract-contract-info-flow';
 import { createClientAndContract } from '@/services/firestore';
 import { uploadFile } from '@/services/storage';
 import { useData } from '@/context/data-context';
-import { ClientSchema, ClientBaseSchema } from "@/lib/types";
+import { ClientBaseSchema } from "@/lib/types";
 import {
     Form, FormControl, FormField, FormItem, FormLabel, FormMessage,
 } from "@/components/ui/form";
@@ -32,6 +32,7 @@ import { cn } from "@/lib/utils";
 import Link from 'next/link';
 import { Separator } from "@/components/ui/separator";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 // Default prompt for AI extraction
 const defaultPrompt = `Agis comme un expert en saisie de données juridiques. Analyse ce contrat et extrais les données pour remplir la base de données.
@@ -46,6 +47,7 @@ const defaultPrompt = `Agis comme un expert en saisie de données juridiques. An
     - "Industrie" (Usine, Site de production).
 4.  **Chorus (\`useChorus\`)** : Mets \`true\` UNIQUEMENT si le client est une entité publique (Mairie, Collectivité, État). Sinon \`false\`.
 5.  **Adresses** : L'\`address\` principale doit être le lieu d'exécution du contrat (l'adresse de l'immeuble chauffé).
+6.  **Contacts** : Identifie le contact technique et le contact facturation si mentionnés.
 
 **Instructions Logiques pour le CONTRAT :**
 1.  **Nom & Libellé** :
@@ -54,22 +56,33 @@ const defaultPrompt = `Agis comme un expert en saisie de données juridiques. An
 2.  **Dates & Durée** :
     - \`startDate\` : Date d'effet du contrat.
     - \`endDate\` : Date de fin (souvent calculée : date effet + durée).
-    - \`term\` : Périodicité de facturation (ex: "Trimestriel", "Mensuel", "Semestriel").
+    - \`durationStr\` : Durée telle qu'écrite dans le contrat (ex: "2 ans", "5 ans").
 3.  **Montants (HT/an)** :
     - \`baseAmountP1\` : Montant P1 (Total P1 ou Forfait P1).
     - \`baseAmountP2\` : Montant P2 (Total P2 ou Forfait P2).
     - \`baseAmountP3\` : Montant P3 (Garantie totale).
     - \`baseAmountP3R\` : Montant P3R (Renouvellement).
-4.  **Révisions de Prix** :
+4.  **Reconduction** :
+    - \`tacitRenewal\` : \`true\` si reconduction tacite.
+    - \`noticePeriod\` : Préavis de résiliation (ex: "3 mois", "6 mois").
+
+**Instructions Logiques pour le SITE :**
+1.  **Facturation** :
+    - \`billingSchedule\` : Périodicité de facturation (ex: "Mensuel", "Trimestriel", "Annuel").
+    - \`term\` : Terme de paiement (ex: "Échu", "Échoir").
+2.  **Révisions de Prix** :
     - \`revisionP1\` : Formule complète de révision P1.
     - \`revisionP2\` : Formule ou indice de révision P2.
     - \`revisionP3\` : Formule de révision P3.
-5.  **Données Techniques** :
+3.  **Données Techniques P1** :
     - \`heatingReferenceDju\` : DJU de référence (ex: 1200, 2050).
     - \`heatingWeatherStation\` : Station météo de référence (ex: "Nice", "Le Bourget").
-    - \`hasInterest\` : \`true\` si mention d'intéressement ou de partage d'économies.
+    - \`contractualNB\` : Valeur du NB contractuel.
+    - \`smallQ\` : Valeur du petit q.
+4.  **Options P1** :
     - \`hasHeating\` : \`true\` si prestation de chauffage (P1 Chauffage).
     - \`hasECS\` : \`true\` si prestation d'Eau Chaude Sanitaire (P1 ECS).
+    - \`hasInterest\` : \`true\` si mention d'intéressement ou de partage d'économies.
 
 **Format de sortie :** Uniquement un JSON valide respectant strictement ce schéma :
 
@@ -95,19 +108,21 @@ const defaultPrompt = `Agis comme un expert en saisie de données juridiques. An
      "startDate": "YYYY-MM-DD",
      "durationStr": "Durée (ex: 2 ans)",
      "endDate": "YYYY-MM-DD",
-     "term": "Périodicité (ex: Trimestriel)",
      "tacitRenewal": boolean,
      "noticePeriod": "Préavis",
      "baseAmountP1": number,
      "baseAmountP2": number,
      "baseAmountP3": number,
-     "baseAmountP3R": number,
+     "baseAmountP3R": number
+  },
+  "site": {
+     "billingSchedule": "Périodicité (ex: Mensuel, Trimestriel)",
+     "term": "Terme (ex: Échu, Échoir)",
      "revisionP1": "Formule...",
      "revisionP2": "Formule...",
      "revisionP3": "Formule...",
      "heatingReferenceDju": number,
      "heatingWeatherStation": "Station...",
-     "hasInterest": boolean,
      "hasInterest": boolean,
      "hasHeating": boolean,
      "hasECS": boolean,
@@ -116,18 +131,14 @@ const defaultPrompt = `Agis comme un expert en saisie de données juridiques. An
   }
 }`;
 
-// Extended schema to include contract amounts for the form
-const ExtendedClientSchema = ClientBaseSchema.extend({
-    // Contract specific fields
-    startDate: z.date().optional(),
-    endDate: z.date().optional(),
-    contractName: z.string().optional(),
-    label: z.string().optional(),
+// Site sub-schema for the Site tab
+const SiteFormSchema = z.object({
+    name: z.string().optional(),
+    address: z.string().optional(),
+    postalCode: z.string().optional(),
+    city: z.string().optional(),
+    billingSchedule: z.string().optional(),
     term: z.string().optional(),
-    baseAmountP1: z.number().optional(),
-    baseAmountP2: z.number().optional(),
-    baseAmountP3: z.number().optional(),
-    baseAmountP3R: z.number().optional(),
     revisionP1: z.string().optional(),
     revisionP2: z.string().optional(),
     revisionP3: z.string().optional(),
@@ -138,6 +149,32 @@ const ExtendedClientSchema = ClientBaseSchema.extend({
     hasECS: z.boolean().default(false),
     contractualNB: z.number().optional(),
     smallQ: z.number().optional(),
+});
+
+// Extended schema: Client + Contacts + Contract + Site
+const ExtendedClientSchema = ClientBaseSchema.extend({
+    // Contact fields (saved as separate Contact entities)
+    technicalContactName: z.string().optional(),
+    technicalContactEmail: z.string().optional(),
+    technicalContactPhone: z.string().optional(),
+    billingContactName: z.string().optional(),
+    billingContactEmail: z.string().optional(),
+    billingContactPhone: z.string().optional(),
+    // Contract fields
+    startDate: z.date().optional(),
+    endDate: z.date().optional(),
+    contractName: z.string().optional(),
+    label: z.string().optional(),
+    baseAmountP1: z.number().optional(),
+    baseAmountP2: z.number().optional(),
+    baseAmountP3: z.number().optional(),
+    baseAmountP3R: z.number().optional(),
+    renewal: z.boolean().default(false),
+    tacitRenewal: z.boolean().default(false),
+    renewalDuration: z.string().optional(),
+    noticePeriod: z.string().optional(),
+    // Site (nested)
+    site: SiteFormSchema.default({}),
 });
 
 type ClientFormValues = z.infer<typeof ExtendedClientSchema>;
@@ -184,9 +221,22 @@ export default function MarketPrivatePage() {
             billingContactPhone: "",
             baseAmountP1: undefined,
             baseAmountP2: undefined,
-            contractualNB: undefined,
-            smallQ: undefined,
             typologyId: "",
+
+            site: {
+                name: "",
+                address: "",
+                postalCode: "",
+                city: "",
+                billingSchedule: "Mensuel",
+                term: "",
+                revisionP1: "",
+                revisionP2: "",
+                revisionP3: "",
+                hasInterest: false,
+                hasHeating: false,
+                hasECS: false,
+            },
         },
     });
 
@@ -228,8 +278,9 @@ export default function MarketPrivatePage() {
                         terms: []
                     });
 
-                    // Map nested result to flat form values
+                    // Map AI result to form values — respecting new tabbed structure
                     const mappedData: Partial<ClientFormValues> = {
+                        // === TAB 1: Client ===
                         name: result.client?.name || "",
                         address: result.client?.address || "",
                         postalCode: result.client?.postalCode || "",
@@ -241,44 +292,49 @@ export default function MarketPrivatePage() {
                         useChorus: result.client?.useChorus || false,
                         isBe: result.client?.isBe || false,
 
+                        // === TAB 2: Contacts ===
                         technicalContactName: result.client?.contactTechnique?.name || "",
                         technicalContactEmail: result.client?.contactTechnique?.email || "",
                         technicalContactPhone: result.client?.contactTechnique?.phone || "",
-
                         billingContactName: result.client?.contactFacturation?.name || "",
                         billingContactEmail: result.client?.contactFacturation?.email || "",
                         billingContactPhone: result.client?.contactFacturation?.phone || "",
 
+                        // === TAB 3: Contrat ===
                         startDate: result.contrat?.startDate ? new Date(result.contrat.startDate) : undefined,
                         endDate: result.contrat?.endDate ? new Date(result.contrat.endDate) : undefined,
                         renewalDuration: result.contrat?.durationStr || "",
                         tacitRenewal: result.contrat?.tacitRenewal || false,
                         noticePeriod: result.contrat?.noticePeriod || "",
-                        renewal: !!result.contrat?.tacitRenewal, // Infer renewal from tacitRenewal
-
+                        renewal: !!result.contrat?.tacitRenewal,
                         baseAmountP1: result.contrat?.baseAmountP1,
                         baseAmountP2: result.contrat?.baseAmountP2,
                         baseAmountP3: result.contrat?.baseAmountP3,
                         baseAmountP3R: result.contrat?.baseAmountP3R,
-
                         contractName: result.contrat?.name || "",
                         label: result.contrat?.label || "",
-                        term: result.contrat?.term || "",
 
-                        revisionP1: result.contrat?.revisionP1 || "",
-                        revisionP2: result.contrat?.revisionP2 || "",
-                        revisionP3: result.contrat?.revisionP3 || "",
+                        // === TAB 4: Site ===
+                        site: {
+                            name: result.client?.name || "", // Default site name to client name
+                            address: result.client?.address || "",
+                            postalCode: result.client?.postalCode || "",
+                            city: result.client?.city || "",
+                            billingSchedule: result.site?.billingSchedule || "Mensuel",
+                            term: result.site?.term || "",
+                            revisionP1: result.site?.revisionP1 || "",
+                            revisionP2: result.site?.revisionP2 || "",
+                            revisionP3: result.site?.revisionP3 || "",
+                            heatingReferenceDju: result.site?.heatingReferenceDju,
+                            heatingWeatherStation: result.site?.heatingWeatherStation || "",
+                            hasInterest: result.site?.hasInterest || false,
+                            hasHeating: result.site?.hasHeating || false,
+                            hasECS: result.site?.hasECS || false,
+                            contractualNB: result.site?.contractualNB,
+                            smallQ: result.site?.smallQ,
+                        },
 
-                        heatingReferenceDju: result.contrat?.heatingReferenceDju,
-                        heatingWeatherStation: result.contrat?.heatingWeatherStation || "",
-
-                        hasInterest: result.contrat?.hasInterest || false,
-                        hasHeating: result.contrat?.hasHeating || false,
-                        hasECS: result.contrat?.hasECS || false,
-                        contractualNB: result.contrat?.contractualNB,
-                        smallQ: result.contrat?.smallQ,
-
-                        // Preserve or default hierarchy fields to avoid validation errors
+                        // Preserve hierarchy
                         companyId: form.getValues("companyId") || companies[0]?.id || "",
                         agencyId: form.getValues("agencyId") || agencies[0]?.id || "",
                         sectorId: form.getValues("sectorId") || sectors[0]?.id || "",
@@ -322,37 +378,21 @@ export default function MarketPrivatePage() {
                 downloadUrl = await uploadFile(file, path);
             }
 
-            // Separate contract specific fields that are not in ClientSchema
-            const { baseAmountP1, baseAmountP2, ...clientData } = data;
+            // Separate site data from the rest
+            const { site: siteData, ...restData } = data;
 
             const contractData = {
-                ...clientData,
+                ...restData,
                 clientType: 'private',
                 validationStatus: 'pending_validation',
                 requesterEmail: currentUser?.email,
-
                 documents: downloadUrl ? [{
                     name: file?.name || 'Contrat.pdf',
                     type: 'application/pdf',
                     url: downloadUrl
                 }] : [],
-                baseAmountP1,
-                baseAmountP2,
-                baseAmountP3: data.baseAmountP3,
-                baseAmountP3R: data.baseAmountP3R,
-                contractName: data.contractName,
-                label: data.label,
-                term: data.term,
-                revisionP1: data.revisionP1,
-                revisionP2: data.revisionP2,
-                revisionP3: data.revisionP3,
-                heatingReferenceDju: data.heatingReferenceDju,
-                heatingWeatherStation: data.heatingWeatherStation,
-                hasInterest: data.hasInterest,
-                hasHeating: data.hasHeating,
-                hasECS: data.hasECS,
-                contractualNB: data.contractualNB,
-                smallQ: data.smallQ,
+                // Pass site data for createClientAndContract to handle
+                site: siteData,
             };
 
             await createClientAndContract(contractData);
@@ -423,9 +463,9 @@ export default function MarketPrivatePage() {
 
                 <Card>
                     <CardHeader>
-                        <CardTitle>Configuration de l'IA</CardTitle>
+                        <CardTitle>Configuration de l&apos;IA</CardTitle>
                         <CardDescription>
-                            Vous pouvez ajuster le prompt utilisé pour l'analyse.
+                            Vous pouvez ajuster le prompt utilisé pour l&apos;analyse.
                         </CardDescription>
                     </CardHeader>
                     <CardContent>
@@ -453,7 +493,7 @@ export default function MarketPrivatePage() {
                     ) : (
                         <>
                             <Sparkles className="mr-2 h-4 w-4" />
-                            Lancer l'analyse
+                            Lancer l&apos;analyse
                         </>
                     )}
                 </Button>
@@ -475,7 +515,7 @@ export default function MarketPrivatePage() {
             <Sheet open={isSheetOpen} onOpenChange={setIsSheetOpen}>
                 <SheetContent className="w-full sm:max-w-2xl overflow-y-auto">
                     <SheetHeader>
-                        <SheetTitle>Validation de l'analyse</SheetTitle>
+                        <SheetTitle>Validation de l&apos;analyse</SheetTitle>
                         <SheetDescription>
                             Vérifiez les données extraites avant de valider.
                         </SheetDescription>
@@ -492,9 +532,9 @@ export default function MarketPrivatePage() {
                                     description: `Champs invalides: ${errorMessages}`,
                                     variant: "destructive",
                                 });
-                            })} className="space-y-8">
+                            })} className="space-y-6">
 
-                                {/* Section Hiérarchie */}
+                                {/* Section Hiérarchie (always visible above tabs) */}
                                 <div className="space-y-4">
                                     <div className="flex items-center gap-2 pb-2 border-b">
                                         <Building className="h-5 w-5 text-primary" />
@@ -558,342 +598,414 @@ export default function MarketPrivatePage() {
                                     </div>
                                 </div>
 
-                                {/* Section Client */}
-                                <div className="space-y-4">
-                                    <div className="flex items-center gap-2 pb-2 border-b">
-                                        <Building className="h-5 w-5 text-primary" />
-                                        <h3 className="font-semibold text-lg">Client</h3>
-                                    </div>
+                                {/* ===== TABBED FORM ===== */}
+                                <Tabs defaultValue="client" className="w-full">
+                                    <TabsList className="grid w-full grid-cols-4">
+                                        <TabsTrigger value="client" className="gap-1.5">
+                                            <Building className="h-3.5 w-3.5" />
+                                            Client
+                                        </TabsTrigger>
+                                        <TabsTrigger value="contacts" className="gap-1.5">
+                                            <Users className="h-3.5 w-3.5" />
+                                            Contacts
+                                        </TabsTrigger>
+                                        <TabsTrigger value="contrat" className="gap-1.5">
+                                            <FileSignature className="h-3.5 w-3.5" />
+                                            Contrat
+                                        </TabsTrigger>
+                                        <TabsTrigger value="site" className="gap-1.5">
+                                            <MapPin className="h-3.5 w-3.5" />
+                                            Site
+                                        </TabsTrigger>
+                                    </TabsList>
 
-                                    <FormField control={form.control} name="name" render={({ field }) => (
-                                        <FormItem>
-                                            <FormLabel>Raison Sociale</FormLabel>
-                                            <FormControl><Input {...field} /></FormControl>
-                                            <FormMessage />
-                                        </FormItem>
-                                    )} />
-
-                                    <div className="grid grid-cols-2 gap-4">
-                                        <FormField control={form.control} name="typologyId" render={({ field }) => (
+                                    {/* ===== TAB 1: CLIENT ===== */}
+                                    <TabsContent value="client" className="space-y-4 pt-4">
+                                        <FormField control={form.control} name="name" render={({ field }) => (
                                             <FormItem>
-                                                <FormLabel>Typologie</FormLabel>
-                                                <Select onValueChange={field.onChange} defaultValue={field.value}>
-                                                    <FormControl>
-                                                        <SelectTrigger>
-                                                            <SelectValue placeholder="Sélectionner" />
-                                                        </SelectTrigger>
-                                                    </FormControl>
-                                                    <SelectContent>
-                                                        {typologies.map((t) => (
-                                                            <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>
-                                                        ))}
-                                                    </SelectContent>
-                                                </Select>
-                                                <FormMessage />
-                                            </FormItem>
-                                        )} />
-                                        <FormField control={form.control} name="clientType" render={({ field }) => (
-                                            <FormItem>
-                                                <FormLabel>Type</FormLabel>
-                                                <Select onValueChange={field.onChange} defaultValue={field.value}>
-                                                    <FormControl>
-                                                        <SelectTrigger>
-                                                            <SelectValue placeholder="Sélectionner" />
-                                                        </SelectTrigger>
-                                                    </FormControl>
-                                                    <SelectContent>
-                                                        <SelectItem value="private">Privé</SelectItem>
-                                                        <SelectItem value="public">Public</SelectItem>
-                                                    </SelectContent>
-                                                </Select>
-                                                <FormMessage />
-                                            </FormItem>
-                                        )} />
-                                    </div>
-
-                                    <FormField control={form.control} name="address" render={({ field }) => (
-                                        <FormItem>
-                                            <FormLabel>Adresse</FormLabel>
-                                            <FormControl><Input {...field} /></FormControl>
-                                            <FormMessage />
-                                        </FormItem>
-                                    )} />
-
-                                    <div className="grid grid-cols-2 gap-4">
-                                        <FormField control={form.control} name="postalCode" render={({ field }) => (
-                                            <FormItem>
-                                                <FormLabel>Code Postal</FormLabel>
+                                                <FormLabel>Raison Sociale</FormLabel>
                                                 <FormControl><Input {...field} /></FormControl>
                                                 <FormMessage />
                                             </FormItem>
                                         )} />
-                                        <FormField control={form.control} name="city" render={({ field }) => (
-                                            <FormItem>
-                                                <FormLabel>Ville</FormLabel>
-                                                <FormControl><Input {...field} /></FormControl>
-                                                <FormMessage />
-                                            </FormItem>
-                                        )} />
-                                    </div>
 
-                                    <div className="grid grid-cols-2 gap-4">
-                                        <FormField control={form.control} name="siret" render={({ field }) => (
-                                            <FormItem>
-                                                <FormLabel>SIRET</FormLabel>
-                                                <FormControl><Input {...field} /></FormControl>
-                                                <FormMessage />
-                                            </FormItem>
-                                        )} />
-                                        {typologies.find(t => t.id === form.watch("typologyId"))?.name === "Copropriété" && (
-                                            <FormField control={form.control} name="representedBy" render={({ field }) => (
+                                        <div className="grid grid-cols-2 gap-4">
+                                            <FormField control={form.control} name="typologyId" render={({ field }) => (
                                                 <FormItem>
-                                                    <FormLabel>Représenté par</FormLabel>
+                                                    <FormLabel>Typologie</FormLabel>
+                                                    <Select onValueChange={field.onChange} defaultValue={field.value}>
+                                                        <FormControl>
+                                                            <SelectTrigger>
+                                                                <SelectValue placeholder="Sélectionner" />
+                                                            </SelectTrigger>
+                                                        </FormControl>
+                                                        <SelectContent>
+                                                            {typologies.map((t) => (
+                                                                <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>
+                                                            ))}
+                                                        </SelectContent>
+                                                    </Select>
+                                                    <FormMessage />
+                                                </FormItem>
+                                            )} />
+                                            <FormField control={form.control} name="clientType" render={({ field }) => (
+                                                <FormItem>
+                                                    <FormLabel>Type</FormLabel>
+                                                    <Select onValueChange={field.onChange} defaultValue={field.value}>
+                                                        <FormControl>
+                                                            <SelectTrigger>
+                                                                <SelectValue placeholder="Sélectionner" />
+                                                            </SelectTrigger>
+                                                        </FormControl>
+                                                        <SelectContent>
+                                                            <SelectItem value="private">Privé</SelectItem>
+                                                            <SelectItem value="public">Public</SelectItem>
+                                                        </SelectContent>
+                                                    </Select>
+                                                    <FormMessage />
+                                                </FormItem>
+                                            )} />
+                                        </div>
+
+                                        <FormField control={form.control} name="address" render={({ field }) => (
+                                            <FormItem>
+                                                <FormLabel>Adresse</FormLabel>
+                                                <FormControl><Input {...field} /></FormControl>
+                                                <FormMessage />
+                                            </FormItem>
+                                        )} />
+
+                                        <div className="grid grid-cols-2 gap-4">
+                                            <FormField control={form.control} name="postalCode" render={({ field }) => (
+                                                <FormItem>
+                                                    <FormLabel>Code Postal</FormLabel>
                                                     <FormControl><Input {...field} /></FormControl>
                                                     <FormMessage />
                                                 </FormItem>
                                             )} />
-                                        )}
-                                    </div>
-
-                                    <div className="space-y-2">
-                                        <Label className="text-sm font-medium text-muted-foreground">Contact Technique</Label>
-                                        <div className="grid grid-cols-2 gap-2">
-                                            <FormField control={form.control} name="technicalContactName" render={({ field }) => (
-                                                <FormItem><FormControl><Input placeholder="Nom" {...field} /></FormControl></FormItem>
-                                            )} />
-                                            <FormField control={form.control} name="technicalContactEmail" render={({ field }) => (
-                                                <FormItem><FormControl><Input placeholder="Email" {...field} /></FormControl></FormItem>
-                                            )} />
-                                        </div>
-                                    </div>
-
-                                    <div className="space-y-2">
-                                        <Label className="text-sm font-medium text-muted-foreground">Contact Facturation</Label>
-                                        <div className="grid grid-cols-2 gap-2">
-                                            <FormField control={form.control} name="billingContactName" render={({ field }) => (
-                                                <FormItem><FormControl><Input placeholder="Nom" {...field} /></FormControl></FormItem>
-                                            )} />
-                                            <FormField control={form.control} name="billingContactEmail" render={({ field }) => (
-                                                <FormItem><FormControl><Input placeholder="Email" {...field} /></FormControl></FormItem>
-                                            )} />
-                                        </div>
-                                    </div>
-                                </div>
-
-                                {/* Section Contrat */}
-                                <div className="space-y-4">
-                                    <div className="flex items-center gap-2 pb-2 border-b">
-                                        <FileSignature className="h-5 w-5 text-primary" />
-                                        <h3 className="font-semibold text-lg">Contrat</h3>
-                                    </div>
-
-                                    <div className="grid grid-cols-2 gap-4">
-                                        <FormField control={form.control} name="startDate" render={({ field }) => (
-                                            <FormItem className="flex flex-col"><FormLabel>Date de Début</FormLabel>
-                                                <Popover><PopoverTrigger asChild><FormControl>
-                                                    <Button variant={"outline"} className={cn("w-full pl-3 text-left font-normal", !field.value && "text-muted-foreground")}>
-                                                        {field.value ? format(field.value, "PPP", { locale: fr }) : <span>Choisir une date</span>}
-                                                    </Button>
-                                                </FormControl></PopoverTrigger><PopoverContent className="w-auto p-0" align="start">
-                                                        <Calendar mode="single" selected={field.value} onSelect={field.onChange} initialFocus locale={fr} />
-                                                    </PopoverContent></Popover><FormMessage />
-                                            </FormItem>
-                                        )} />
-                                        <FormField control={form.control} name="endDate" render={({ field }) => (
-                                            <FormItem className="flex flex-col"><FormLabel>Date de Fin</FormLabel>
-                                                <Popover><PopoverTrigger asChild><FormControl>
-                                                    <Button variant={"outline"} className={cn("w-full pl-3 text-left font-normal", !field.value && "text-muted-foreground")}>
-                                                        {field.value ? format(field.value, "PPP", { locale: fr }) : <span>Choisir une date</span>}
-                                                    </Button>
-                                                </FormControl></PopoverTrigger><PopoverContent className="w-auto p-0" align="start">
-                                                        <Calendar mode="single" selected={field.value} onSelect={field.onChange} initialFocus locale={fr} />
-                                                    </PopoverContent></Popover><FormMessage />
-                                            </FormItem>
-                                        )} />
-                                    </div>
-
-                                    <FormField control={form.control} name="renewal" render={({ field }) => (
-                                        <FormItem className="flex flex-row items-center justify-between rounded-lg border p-4">
-                                            <div className="space-y-0.5"><FormLabel>Reconduction</FormLabel></div>
-                                            <FormControl><Switch checked={field.value} onCheckedChange={field.onChange} /></FormControl>
-                                        </FormItem>
-                                    )} />
-
-                                    {form.watch("renewal") && (
-                                        <div className="space-y-4 pt-2">
-                                            <FormField control={form.control} name="tacitRenewal" render={({ field }) => (
-                                                <FormItem className="flex flex-row items-center justify-between rounded-lg border p-4">
-                                                    <div className="space-y-0.5"><FormLabel>Tacite Reconduction</FormLabel></div>
-                                                    <FormControl><Switch checked={field.value} onCheckedChange={field.onChange} /></FormControl>
-                                                </FormItem>
-                                            )} />
-                                            <FormField control={form.control} name="renewalDuration" render={({ field }) => (
+                                            <FormField control={form.control} name="city" render={({ field }) => (
                                                 <FormItem>
-                                                    <FormLabel>Durée de reconduction</FormLabel>
-                                                    <FormControl><Input placeholder="Ex: 12 mois" {...field} /></FormControl>
+                                                    <FormLabel>Ville</FormLabel>
+                                                    <FormControl><Input {...field} /></FormControl>
                                                     <FormMessage />
                                                 </FormItem>
                                             )} />
                                         </div>
-                                    )}
 
-                                    <FormField control={form.control} name="noticePeriod" render={({ field }) => (
-                                        <FormItem>
-                                            <FormLabel>Préavis de résiliation</FormLabel>
-                                            <FormControl><Input placeholder="Ex: 2 mois" {...field} /></FormControl>
-                                            <FormMessage />
-                                        </FormItem>
-                                    )} />
+                                        <div className="grid grid-cols-2 gap-4">
+                                            <FormField control={form.control} name="siret" render={({ field }) => (
+                                                <FormItem>
+                                                    <FormLabel>SIRET</FormLabel>
+                                                    <FormControl><Input {...field} /></FormControl>
+                                                    <FormMessage />
+                                                </FormItem>
+                                            )} />
+                                            {typologies.find(t => t.id === form.watch("typologyId"))?.name === "Copropriété" && (
+                                                <FormField control={form.control} name="representedBy" render={({ field }) => (
+                                                    <FormItem>
+                                                        <FormLabel>Représenté par</FormLabel>
+                                                        <FormControl><Input {...field} /></FormControl>
+                                                        <FormMessage />
+                                                    </FormItem>
+                                                )} />
+                                            )}
+                                        </div>
+                                    </TabsContent>
 
-                                    <Separator />
+                                    {/* ===== TAB 2: CONTACTS ===== */}
+                                    <TabsContent value="contacts" className="space-y-6 pt-4">
+                                        <div className="space-y-3">
+                                            <Label className="text-sm font-semibold">Contact Technique</Label>
+                                            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                                                <FormField control={form.control} name="technicalContactName" render={({ field }) => (
+                                                    <FormItem><FormControl><Input placeholder="Nom" {...field} /></FormControl></FormItem>
+                                                )} />
+                                                <FormField control={form.control} name="technicalContactEmail" render={({ field }) => (
+                                                    <FormItem><FormControl><Input placeholder="Email" {...field} /></FormControl></FormItem>
+                                                )} />
+                                                <FormField control={form.control} name="technicalContactPhone" render={({ field }) => (
+                                                    <FormItem><FormControl><Input placeholder="Téléphone" {...field} /></FormControl></FormItem>
+                                                )} />
+                                            </div>
+                                        </div>
 
-                                    <div className="grid grid-cols-2 gap-4">
-                                        <FormField control={form.control} name="baseAmountP1" render={({ field }) => (
+                                        <Separator />
+
+                                        <div className="space-y-3">
+                                            <Label className="text-sm font-semibold">Contact Facturation</Label>
+                                            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                                                <FormField control={form.control} name="billingContactName" render={({ field }) => (
+                                                    <FormItem><FormControl><Input placeholder="Nom" {...field} /></FormControl></FormItem>
+                                                )} />
+                                                <FormField control={form.control} name="billingContactEmail" render={({ field }) => (
+                                                    <FormItem><FormControl><Input placeholder="Email" {...field} /></FormControl></FormItem>
+                                                )} />
+                                                <FormField control={form.control} name="billingContactPhone" render={({ field }) => (
+                                                    <FormItem><FormControl><Input placeholder="Téléphone" {...field} /></FormControl></FormItem>
+                                                )} />
+                                            </div>
+                                        </div>
+                                    </TabsContent>
+
+                                    {/* ===== TAB 3: CONTRAT ===== */}
+                                    <TabsContent value="contrat" className="space-y-4 pt-4">
+                                        <div className="grid grid-cols-2 gap-4">
+                                            <FormField control={form.control} name="startDate" render={({ field }) => (
+                                                <FormItem className="flex flex-col"><FormLabel>Date de Début</FormLabel>
+                                                    <Popover><PopoverTrigger asChild><FormControl>
+                                                        <Button variant={"outline"} className={cn("w-full pl-3 text-left font-normal", !field.value && "text-muted-foreground")}>
+                                                            {field.value ? format(field.value, "PPP", { locale: fr }) : <span>Choisir une date</span>}
+                                                        </Button>
+                                                    </FormControl></PopoverTrigger><PopoverContent className="w-auto p-0" align="start">
+                                                            <Calendar mode="single" selected={field.value} onSelect={field.onChange} initialFocus locale={fr} />
+                                                        </PopoverContent></Popover><FormMessage />
+                                                </FormItem>
+                                            )} />
+                                            <FormField control={form.control} name="endDate" render={({ field }) => (
+                                                <FormItem className="flex flex-col"><FormLabel>Date de Fin</FormLabel>
+                                                    <Popover><PopoverTrigger asChild><FormControl>
+                                                        <Button variant={"outline"} className={cn("w-full pl-3 text-left font-normal", !field.value && "text-muted-foreground")}>
+                                                            {field.value ? format(field.value, "PPP", { locale: fr }) : <span>Choisir une date</span>}
+                                                        </Button>
+                                                    </FormControl></PopoverTrigger><PopoverContent className="w-auto p-0" align="start">
+                                                            <Calendar mode="single" selected={field.value} onSelect={field.onChange} initialFocus locale={fr} />
+                                                        </PopoverContent></Popover><FormMessage />
+                                                </FormItem>
+                                            )} />
+                                        </div>
+
+                                        <FormField control={form.control} name="renewal" render={({ field }) => (
+                                            <FormItem className="flex flex-row items-center justify-between rounded-lg border p-4">
+                                                <div className="space-y-0.5"><FormLabel>Reconduction</FormLabel></div>
+                                                <FormControl><Switch checked={field.value} onCheckedChange={field.onChange} /></FormControl>
+                                            </FormItem>
+                                        )} />
+
+                                        {form.watch("renewal") && (
+                                            <div className="space-y-4 pt-2">
+                                                <FormField control={form.control} name="tacitRenewal" render={({ field }) => (
+                                                    <FormItem className="flex flex-row items-center justify-between rounded-lg border p-4">
+                                                        <div className="space-y-0.5"><FormLabel>Tacite Reconduction</FormLabel></div>
+                                                        <FormControl><Switch checked={field.value} onCheckedChange={field.onChange} /></FormControl>
+                                                    </FormItem>
+                                                )} />
+                                                <FormField control={form.control} name="renewalDuration" render={({ field }) => (
+                                                    <FormItem>
+                                                        <FormLabel>Durée de reconduction</FormLabel>
+                                                        <FormControl><Input placeholder="Ex: 12 mois" {...field} /></FormControl>
+                                                        <FormMessage />
+                                                    </FormItem>
+                                                )} />
+                                            </div>
+                                        )}
+
+                                        <FormField control={form.control} name="noticePeriod" render={({ field }) => (
                                             <FormItem>
-                                                <FormLabel>Montant P1 (HT/an)</FormLabel>
-                                                <FormControl>
-                                                    <div className="relative">
-                                                        <Euro className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
-                                                        <Input type="number" className="pl-8" {...field} onChange={e => field.onChange(e.target.value === '' ? undefined : e.target.valueAsNumber)} />
-                                                    </div>
-                                                </FormControl>
+                                                <FormLabel>Préavis de résiliation</FormLabel>
+                                                <FormControl><Input placeholder="Ex: 2 mois" {...field} /></FormControl>
                                                 <FormMessage />
                                             </FormItem>
                                         )} />
-                                        <FormField control={form.control} name="baseAmountP2" render={({ field }) => (
-                                            <FormItem>
-                                                <FormLabel>Montant P2 (HT/an)</FormLabel>
-                                                <FormControl>
-                                                    <div className="relative">
-                                                        <Euro className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
-                                                        <Input type="number" className="pl-8" {...field} onChange={e => field.onChange(e.target.value === '' ? undefined : e.target.valueAsNumber)} />
-                                                    </div>
-                                                </FormControl>
-                                                <FormMessage />
-                                            </FormItem>
-                                        )} />
-                                    </div>
 
-                                    <div className="grid grid-cols-2 gap-4">
-                                        <FormField control={form.control} name="baseAmountP3" render={({ field }) => (
-                                            <FormItem>
-                                                <FormLabel>Montant P3 (HT/an)</FormLabel>
-                                                <FormControl>
-                                                    <div className="relative">
-                                                        <Euro className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
-                                                        <Input type="number" className="pl-8" {...field} onChange={e => field.onChange(e.target.value === '' ? undefined : e.target.valueAsNumber)} />
-                                                    </div>
-                                                </FormControl>
-                                                <FormMessage />
-                                            </FormItem>
-                                        )} />
-                                        <FormField control={form.control} name="baseAmountP3R" render={({ field }) => (
-                                            <FormItem>
-                                                <FormLabel>Montant P3R (HT/an)</FormLabel>
-                                                <FormControl>
-                                                    <div className="relative">
-                                                        <Euro className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
-                                                        <Input type="number" className="pl-8" {...field} onChange={e => field.onChange(e.target.value === '' ? undefined : e.target.valueAsNumber)} />
-                                                    </div>
-                                                </FormControl>
-                                                <FormMessage />
-                                            </FormItem>
-                                        )} />
-                                    </div>
+                                        <Separator />
 
-                                    <div className="grid grid-cols-2 gap-4">
-                                        <FormField control={form.control} name="contractName" render={({ field }) => (
+                                        <div className="grid grid-cols-2 gap-4">
+                                            <FormField control={form.control} name="baseAmountP1" render={({ field }) => (
+                                                <FormItem>
+                                                    <FormLabel>Montant P1 (HT/an)</FormLabel>
+                                                    <FormControl>
+                                                        <div className="relative">
+                                                            <Euro className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+                                                            <Input type="number" className="pl-8" {...field} onChange={e => field.onChange(e.target.value === '' ? undefined : e.target.valueAsNumber)} />
+                                                        </div>
+                                                    </FormControl>
+                                                    <FormMessage />
+                                                </FormItem>
+                                            )} />
+                                            <FormField control={form.control} name="baseAmountP2" render={({ field }) => (
+                                                <FormItem>
+                                                    <FormLabel>Montant P2 (HT/an)</FormLabel>
+                                                    <FormControl>
+                                                        <div className="relative">
+                                                            <Euro className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+                                                            <Input type="number" className="pl-8" {...field} onChange={e => field.onChange(e.target.value === '' ? undefined : e.target.valueAsNumber)} />
+                                                        </div>
+                                                    </FormControl>
+                                                    <FormMessage />
+                                                </FormItem>
+                                            )} />
+                                        </div>
+
+                                        <div className="grid grid-cols-2 gap-4">
+                                            <FormField control={form.control} name="baseAmountP3" render={({ field }) => (
+                                                <FormItem>
+                                                    <FormLabel>Montant P3 (HT/an)</FormLabel>
+                                                    <FormControl>
+                                                        <div className="relative">
+                                                            <Euro className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+                                                            <Input type="number" className="pl-8" {...field} onChange={e => field.onChange(e.target.value === '' ? undefined : e.target.valueAsNumber)} />
+                                                        </div>
+                                                    </FormControl>
+                                                    <FormMessage />
+                                                </FormItem>
+                                            )} />
+                                            <FormField control={form.control} name="baseAmountP3R" render={({ field }) => (
+                                                <FormItem>
+                                                    <FormLabel>Montant P3R (HT/an)</FormLabel>
+                                                    <FormControl>
+                                                        <div className="relative">
+                                                            <Euro className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+                                                            <Input type="number" className="pl-8" {...field} onChange={e => field.onChange(e.target.value === '' ? undefined : e.target.valueAsNumber)} />
+                                                        </div>
+                                                    </FormControl>
+                                                    <FormMessage />
+                                                </FormItem>
+                                            )} />
+                                        </div>
+
+                                        <div className="grid grid-cols-2 gap-4">
+                                            <FormField control={form.control} name="contractName" render={({ field }) => (
+                                                <FormItem>
+                                                    <FormLabel>Nom du Contrat</FormLabel>
+                                                    <FormControl><Input {...field} /></FormControl>
+                                                    <FormMessage />
+                                                </FormItem>
+                                            )} />
+                                            <FormField control={form.control} name="label" render={({ field }) => (
+                                                <FormItem>
+                                                    <FormLabel>Libellé</FormLabel>
+                                                    <FormControl><Input {...field} /></FormControl>
+                                                    <FormMessage />
+                                                </FormItem>
+                                            )} />
+                                        </div>
+                                    </TabsContent>
+
+                                    {/* ===== TAB 4: SITE ===== */}
+                                    <TabsContent value="site" className="space-y-4 pt-4">
+                                        <FormField control={form.control} name="site.name" render={({ field }) => (
                                             <FormItem>
-                                                <FormLabel>Nom du Contrat</FormLabel>
+                                                <FormLabel>Nom du Site</FormLabel>
+                                                <FormControl><Input placeholder="Ex: Résidence Le Bastion" {...field} /></FormControl>
+                                                <FormMessage />
+                                            </FormItem>
+                                        )} />
+
+                                        <FormField control={form.control} name="site.address" render={({ field }) => (
+                                            <FormItem>
+                                                <FormLabel>Adresse du Site</FormLabel>
                                                 <FormControl><Input {...field} /></FormControl>
                                                 <FormMessage />
                                             </FormItem>
                                         )} />
-                                        <FormField control={form.control} name="label" render={({ field }) => (
-                                            <FormItem>
-                                                <FormLabel>Libellé</FormLabel>
-                                                <FormControl><Input {...field} /></FormControl>
-                                                <FormMessage />
-                                            </FormItem>
-                                        )} />
-                                    </div>
 
-                                    <FormField control={form.control} name="term" render={({ field }) => (
-                                        <FormItem>
-                                            <FormLabel>Périodicité</FormLabel>
-                                            <FormControl><Input placeholder="Ex: Trimestriel" {...field} /></FormControl>
-                                            <FormMessage />
-                                        </FormItem>
-                                    )} />
+                                        <div className="grid grid-cols-2 gap-4">
+                                            <FormField control={form.control} name="site.postalCode" render={({ field }) => (
+                                                <FormItem>
+                                                    <FormLabel>Code Postal</FormLabel>
+                                                    <FormControl><Input {...field} /></FormControl>
+                                                    <FormMessage />
+                                                </FormItem>
+                                            )} />
+                                            <FormField control={form.control} name="site.city" render={({ field }) => (
+                                                <FormItem>
+                                                    <FormLabel>Ville</FormLabel>
+                                                    <FormControl><Input {...field} /></FormControl>
+                                                    <FormMessage />
+                                                </FormItem>
+                                            )} />
+                                        </div>
 
-                                    <div className="space-y-2">
-                                        <Label className="text-sm font-medium text-muted-foreground">Révisions</Label>
-                                        <FormField control={form.control} name="revisionP1" render={({ field }) => (
-                                            <FormItem><FormControl><Input placeholder="Formule P1" {...field} /></FormControl></FormItem>
-                                        )} />
-                                        <FormField control={form.control} name="revisionP2" render={({ field }) => (
-                                            <FormItem><FormControl><Input placeholder="Formule P2" {...field} /></FormControl></FormItem>
-                                        )} />
-                                        <FormField control={form.control} name="revisionP3" render={({ field }) => (
-                                            <FormItem><FormControl><Input placeholder="Formule P3" {...field} /></FormControl></FormItem>
-                                        )} />
-                                    </div>
+                                        <div className="grid grid-cols-2 gap-4">
+                                            <FormField control={form.control} name="site.billingSchedule" render={({ field }) => (
+                                                <FormItem>
+                                                    <FormLabel>Périodicité de Facturation</FormLabel>
+                                                    <FormControl><Input placeholder="Ex: Mensuel" {...field} /></FormControl>
+                                                    <FormMessage />
+                                                </FormItem>
+                                            )} />
+                                            <FormField control={form.control} name="site.term" render={({ field }) => (
+                                                <FormItem>
+                                                    <FormLabel>Terme / Échéance</FormLabel>
+                                                    <FormControl><Input placeholder="Ex: Échu" {...field} /></FormControl>
+                                                    <FormMessage />
+                                                </FormItem>
+                                            )} />
+                                        </div>
 
-                                    <div className="grid grid-cols-2 gap-4">
-                                        <FormField control={form.control} name="heatingReferenceDju" render={({ field }) => (
-                                            <FormItem>
-                                                <FormLabel>DJU Référence</FormLabel>
-                                                <FormControl><Input type="number" {...field} onChange={e => field.onChange(e.target.value === '' ? undefined : e.target.valueAsNumber)} /></FormControl>
-                                                <FormMessage />
-                                            </FormItem>
-                                        )} />
-                                        <FormField control={form.control} name="heatingWeatherStation" render={({ field }) => (
-                                            <FormItem>
-                                                <FormLabel>Station Météo</FormLabel>
-                                                <FormControl><Input {...field} /></FormControl>
-                                                <FormMessage />
-                                            </FormItem>
-                                        )} />
-                                    </div>
+                                        <Separator />
 
-                                    <div className="grid grid-cols-2 gap-4">
-                                        <FormField control={form.control} name="contractualNB" render={({ field }) => (
-                                            <FormItem>
-                                                <FormLabel>NB (Nombre de Base)</FormLabel>
-                                                <FormControl><Input type="number" {...field} onChange={e => field.onChange(e.target.value === '' ? undefined : e.target.valueAsNumber)} /></FormControl>
-                                                <FormMessage />
-                                            </FormItem>
-                                        )} />
-                                        <FormField control={form.control} name="smallQ" render={({ field }) => (
-                                            <FormItem>
-                                                <FormLabel>Petit q</FormLabel>
-                                                <FormControl><Input type="number" {...field} onChange={e => field.onChange(e.target.value === '' ? undefined : e.target.valueAsNumber)} /></FormControl>
-                                                <FormMessage />
-                                            </FormItem>
-                                        )} />
-                                    </div>
+                                        <div className="space-y-2">
+                                            <Label className="text-sm font-semibold">Formules de Révision</Label>
+                                            <FormField control={form.control} name="site.revisionP1" render={({ field }) => (
+                                                <FormItem><FormControl><Input placeholder="Formule P1" {...field} /></FormControl></FormItem>
+                                            )} />
+                                            <FormField control={form.control} name="site.revisionP2" render={({ field }) => (
+                                                <FormItem><FormControl><Input placeholder="Formule P2" {...field} /></FormControl></FormItem>
+                                            )} />
+                                            <FormField control={form.control} name="site.revisionP3" render={({ field }) => (
+                                                <FormItem><FormControl><Input placeholder="Formule P3" {...field} /></FormControl></FormItem>
+                                            )} />
+                                        </div>
 
-                                    <div className="flex flex-wrap gap-4">
-                                        <FormField control={form.control} name="hasInterest" render={({ field }) => (
-                                            <FormItem className="flex flex-row items-center space-x-2 space-y-0">
-                                                <FormControl><Switch checked={field.value} onCheckedChange={field.onChange} /></FormControl>
-                                                <FormLabel>Intéressement</FormLabel>
-                                            </FormItem>
-                                        )} />
-                                        <FormField control={form.control} name="hasHeating" render={({ field }) => (
-                                            <FormItem className="flex flex-row items-center space-x-2 space-y-0">
-                                                <FormControl><Switch checked={field.value} onCheckedChange={field.onChange} /></FormControl>
-                                                <FormLabel>Chauffage</FormLabel>
-                                            </FormItem>
-                                        )} />
-                                        <FormField control={form.control} name="hasECS" render={({ field }) => (
-                                            <FormItem className="flex flex-row items-center space-x-2 space-y-0">
-                                                <FormControl><Switch checked={field.value} onCheckedChange={field.onChange} /></FormControl>
-                                                <FormLabel>ECS</FormLabel>
-                                            </FormItem>
-                                        )} />
-                                    </div>
-                                </div>
+                                        <Separator />
+
+                                        <div className="grid grid-cols-2 gap-4">
+                                            <FormField control={form.control} name="site.heatingReferenceDju" render={({ field }) => (
+                                                <FormItem>
+                                                    <FormLabel>DJU Référence</FormLabel>
+                                                    <FormControl><Input type="number" {...field} onChange={e => field.onChange(e.target.value === '' ? undefined : e.target.valueAsNumber)} /></FormControl>
+                                                    <FormMessage />
+                                                </FormItem>
+                                            )} />
+                                            <FormField control={form.control} name="site.heatingWeatherStation" render={({ field }) => (
+                                                <FormItem>
+                                                    <FormLabel>Station Météo</FormLabel>
+                                                    <FormControl><Input {...field} /></FormControl>
+                                                    <FormMessage />
+                                                </FormItem>
+                                            )} />
+                                        </div>
+
+                                        <div className="grid grid-cols-2 gap-4">
+                                            <FormField control={form.control} name="site.contractualNB" render={({ field }) => (
+                                                <FormItem>
+                                                    <FormLabel>NB (Nombre de Base)</FormLabel>
+                                                    <FormControl><Input type="number" {...field} onChange={e => field.onChange(e.target.value === '' ? undefined : e.target.valueAsNumber)} /></FormControl>
+                                                    <FormMessage />
+                                                </FormItem>
+                                            )} />
+                                            <FormField control={form.control} name="site.smallQ" render={({ field }) => (
+                                                <FormItem>
+                                                    <FormLabel>Petit q</FormLabel>
+                                                    <FormControl><Input type="number" {...field} onChange={e => field.onChange(e.target.value === '' ? undefined : e.target.valueAsNumber)} /></FormControl>
+                                                    <FormMessage />
+                                                </FormItem>
+                                            )} />
+                                        </div>
+
+                                        <div className="flex flex-wrap gap-4">
+                                            <FormField control={form.control} name="site.hasInterest" render={({ field }) => (
+                                                <FormItem className="flex flex-row items-center space-x-2 space-y-0">
+                                                    <FormControl><Switch checked={field.value} onCheckedChange={field.onChange} /></FormControl>
+                                                    <FormLabel>Intéressement</FormLabel>
+                                                </FormItem>
+                                            )} />
+                                            <FormField control={form.control} name="site.hasHeating" render={({ field }) => (
+                                                <FormItem className="flex flex-row items-center space-x-2 space-y-0">
+                                                    <FormControl><Switch checked={field.value} onCheckedChange={field.onChange} /></FormControl>
+                                                    <FormLabel>Chauffage</FormLabel>
+                                                </FormItem>
+                                            )} />
+                                            <FormField control={form.control} name="site.hasECS" render={({ field }) => (
+                                                <FormItem className="flex flex-row items-center space-x-2 space-y-0">
+                                                    <FormControl><Switch checked={field.value} onCheckedChange={field.onChange} /></FormControl>
+                                                    <FormLabel>ECS</FormLabel>
+                                                </FormItem>
+                                            )} />
+                                        </div>
+                                    </TabsContent>
+                                </Tabs>
 
                                 <div className="flex justify-end gap-4 pt-4">
                                     <Button type="button" variant="outline" onClick={() => setIsSheetOpen(false)}>Annuler</Button>

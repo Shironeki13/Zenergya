@@ -44,7 +44,8 @@ import {
   Paperclip,
   Edit,
   Trash2,
-  CreditCard
+  CreditCard,
+  Upload
 } from "lucide-react";
 import {
   getContract, getSitesByContract, getMeters,
@@ -52,7 +53,9 @@ import {
   createSite, updateSite, deleteSite,
   getAmendmentsByContract, getTerminationsByContract, getRenewalsByContract, getTrusteeChangesByContract, getBeChangesByContract
 } from "@/services/firestore";
-import type { Activity, Contract, Invoice, Site, Meter, RevisionFormula, Term, Schedule, Amendment, Termination, Renewal, TrusteeChange, BeChange } from "@/lib/types";
+import type { Activity, Contract, Invoice, Site, Meter, RevisionFormula, RevisionRule, RevisionInfo, Term, Schedule, Amendment, Termination, Renewal, TrusteeChange, BeChange } from "@/lib/types";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { useData } from "@/context/data-context";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import { AmendmentDialog } from "@/components/contracts/events/AmendmentDialog";
@@ -60,12 +63,14 @@ import { TerminationDialog } from "@/components/contracts/events/TerminationDial
 import { RenewalDialog } from "@/components/contracts/events/RenewalDialog";
 import { TrusteeChangeDialog } from "@/components/contracts/events/TrusteeChangeDialog";
 import { BeChangeDialog } from "@/components/contracts/events/BeChangeDialog";
+import { SiteImportDialog } from "@/components/contracts/SiteImportDialog";
 
 export default function ContractDetailPage() {
   const params = useParams();
   const id = params.id as string;
   const router = useRouter();
   const { toast } = useToast();
+  const { revisionRules } = useData();
 
   const [isLoading, setIsLoading] = useState(true);
   const [contract, setContract] = useState<Contract | null>(null);
@@ -95,6 +100,7 @@ export default function ContractDetailPage() {
   const [siteDialogOpen, setSiteDialogOpen] = useState(false);
   const [editingSite, setEditingSite] = useState<Site | null>(null);
   const [siteToDelete, setSiteToDelete] = useState<Site | null>(null);
+  const [importDialogOpen, setImportDialogOpen] = useState(false);
 
   // Site Form State
   const [siteName, setSiteName] = useState('');
@@ -104,6 +110,11 @@ export default function ContractDetailPage() {
   const [siteCity, setSiteCity] = useState('');
   const [siteActivityIds, setSiteActivityIds] = useState<string[]>([]);
   const [siteAmounts, setSiteAmounts] = useState<Record<string, number>>({});
+
+  // Revision state per activity type
+  const [revP1, setRevP1] = useState<Partial<RevisionInfo>>({});
+  const [revP2, setRevP2] = useState<Partial<RevisionInfo>>({});
+  const [revP3, setRevP3] = useState<Partial<RevisionInfo>>({});
 
   const reloadData = useCallback(async () => {
     if (!id) return;
@@ -201,6 +212,9 @@ export default function ContractDetailPage() {
     setSiteCity('');
     setSiteActivityIds([]);
     setSiteAmounts({});
+    setRevP1({});
+    setRevP2({});
+    setRevP3({});
     setEditingSite(null);
   };
 
@@ -216,6 +230,9 @@ export default function ContractDetailPage() {
       setSiteActivityIds(site.activityIds || []);
       const amounts = site.amounts?.reduce((acc, curr) => ({ ...acc, [curr.activityId]: curr.amount }), {}) || {};
       setSiteAmounts(amounts);
+      setRevP1(site.revisionP1 || {});
+      setRevP2(site.revisionP2 || {});
+      setRevP3(site.revisionP3 || {});
     }
     setSiteDialogOpen(true);
   };
@@ -234,6 +251,9 @@ export default function ContractDetailPage() {
       amounts: Object.entries(siteAmounts)
         .filter(([activityId]) => siteActivityIds.includes(activityId))
         .map(([activityId, amount]) => ({ activityId, amount: Number(amount) || 0 })),
+      revisionP1: Object.keys(revP1).length > 0 ? revP1 as RevisionInfo : undefined,
+      revisionP2: Object.keys(revP2).length > 0 ? revP2 as RevisionInfo : undefined,
+      revisionP3: Object.keys(revP3).length > 0 ? revP3 as RevisionInfo : undefined,
     };
 
     try {
@@ -371,13 +391,13 @@ export default function ContractDetailPage() {
               <div className="flex items-center">
                 <FileClock className="mr-2 h-4 w-4 text-muted-foreground" />
                 <span>
-                  Facturé {contract.billingSchedule}
+                  Facturé {sites[0]?.billingSchedule || contract.billingSchedule || 'Non défini'}
                 </span>
               </div>
               <div className="flex items-center">
                 <ClipboardList className="mr-2 h-4 w-4 text-muted-foreground" />
                 <span>
-                  Terme : {contract.term}
+                  Terme : {(sites[0]?.termId && terms.find(t => t.id === sites[0].termId)?.name) || contract.term || 'Non défini'}
                 </span>
               </div>
               <div className="flex items-center">
@@ -444,9 +464,14 @@ export default function ContractDetailPage() {
                 <CardTitle className="flex items-center gap-2"><MapPin className="h-5 w-5" /> Sites</CardTitle>
                 <CardDescription>Sites rattachés à ce contrat.</CardDescription>
               </div>
-              <Button size="sm" variant="ghost" className="h-8 w-8 p-0" onClick={() => handleOpenSiteDialog()}>
-                <PlusCircle className="h-5 w-5" />
-              </Button>
+              <div className="flex gap-1">
+                <Button size="sm" variant="ghost" className="h-8 w-8 p-0" onClick={() => setImportDialogOpen(true)} title="Importer des sites">
+                  <Upload className="h-5 w-5" />
+                </Button>
+                <Button size="sm" variant="ghost" className="h-8 w-8 p-0" onClick={() => handleOpenSiteDialog()} title="Ajouter un site">
+                  <PlusCircle className="h-5 w-5" />
+                </Button>
+              </div>
             </div>
           </CardHeader>
           <CardContent>
@@ -553,25 +578,12 @@ export default function ContractDetailPage() {
                   </div>
                 </>
               ) : (
-                // Legacy Fallback
+                // Legacy Fallback - P1 fields now managed at Site level
                 <>
                   <div className="flex items-center"><Settings className="mr-2 h-4 w-4" /> Révision: {renderRevisionInfo(contract.revisionP1)}</div>
-                  {contract.hasHeating && (
-                    <div className="p-3 border rounded-md">
-                      <h4 className="font-semibold mb-2 flex items-center gap-2"><Flame className="h-4 w-4 text-orange-500" /> Chauffage</h4>
-                      <p>Forfait HT: {contract.heatingFlatRateHT?.toFixed(2) ?? 'N/A'} €/an</p>
-                      <p>PU kWh: {contract.heatingUnitPriceKwh?.toFixed(4) ?? 'N/A'} €</p>
-                      <p>DJU Réf: {contract.heatingReferenceDju ?? 'N/A'}</p>
-                      <p>Station Météo: {contract.heatingWeatherStation || 'N/A'}</p>
-                    </div>
-                  )}
-                  {contract.hasECS && (
-                    <div className="p-3 border rounded-md">
-                      <h4 className="font-semibold mb-2 flex items-center gap-2"><Droplets className="h-4 w-4 text-blue-500" /> Eau Chaude Sanitaire</h4>
-                      <p>Forfait HT: {contract.ecsFlatRateHT?.toFixed(2) ?? 'N/A'} €/an</p>
-                      <p>PU m³: {contract.ecsUnitPriceM3?.toFixed(2) ?? 'N/A'} €</p>
-                    </div>
-                  )}
+                  <div className="p-3 border rounded-md text-muted-foreground">
+                    <p className="text-sm">Les détails P1 (chauffage, ECS) sont désormais gérés au niveau du site.</p>
+                  </div>
                 </>
               )}
             </CardContent>
@@ -826,6 +838,86 @@ export default function ContractDetailPage() {
               </CardContent>
             </Card>
 
+            {/* Revision fields */}
+            {siteActivityIds.length > 0 && (
+              <Card>
+                <CardHeader>
+                  <CardTitle>Révisions de prix</CardTitle>
+                  <CardDescription>Configurez la règle de calcul, la périodicité et les montants de base pour chaque activité.</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-6">
+                  {activities.filter(a => siteActivityIds.includes(a.id)).map(activity => {
+                    const rev = activity.type === 'P1' ? revP1 : activity.type === 'P2' ? revP2 : revP3;
+                    const setRev = activity.type === 'P1' ? setRevP1 : activity.type === 'P2' ? setRevP2 : setRevP3;
+                    const filteredRules = revisionRules.filter(r => !r.activityId || r.activityId === activity.id);
+                    return (
+                      <div key={`rev-${activity.id}`} className="space-y-3 p-3 border rounded-lg">
+                        <h4 className="font-medium text-sm">{activity.label} ({activity.code})</h4>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                          <div className="space-y-1">
+                            <Label>Règle de révision</Label>
+                            <Select value={rev.ruleId || ''} onValueChange={(v) => setRev(prev => ({ ...prev, ruleId: v || undefined }))}>
+                              <SelectTrigger><SelectValue placeholder="Aucune règle" /></SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="__none__">— Aucune —</SelectItem>
+                                {filteredRules.map(rule => (
+                                  <SelectItem key={rule.id} value={rule.id}>{rule.name} ({rule.code})</SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          <div className="space-y-1">
+                            <Label>Périodicité</Label>
+                            <Select value={rev.periodicity || ''} onValueChange={(v) => setRev(prev => ({ ...prev, periodicity: (v || undefined) as RevisionInfo['periodicity'] }))}>
+                              <SelectTrigger><SelectValue placeholder="Non définie" /></SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="annual">Annuelle</SelectItem>
+                                <SelectItem value="semi-annual">Semestrielle</SelectItem>
+                                <SelectItem value="quarterly">Trimestrielle</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          <div className="space-y-1">
+                            <Label>Date anniversaire (JJ/MM)</Label>
+                            <Input
+                              placeholder="ex: 01-01"
+                              value={rev.anniversaryDate || ''}
+                              onChange={(e) => setRev(prev => ({ ...prev, anniversaryDate: e.target.value || undefined }))}
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <Label>Date de base</Label>
+                            <Input
+                              type="date"
+                              value={rev.baseDate || ''}
+                              onChange={(e) => setRev(prev => ({ ...prev, baseDate: e.target.value || undefined }))}
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <Label>Montant de base (€ HT)</Label>
+                            <Input
+                              type="number"
+                              placeholder="Montant à réviser"
+                              value={rev.baseAmount || ''}
+                              onChange={(e) => setRev(prev => ({ ...prev, baseAmount: parseFloat(e.target.value) || undefined }))}
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <Label>Formule contractuelle (texte libre)</Label>
+                            <Input
+                              placeholder="ex: P0 × (0.15 + 0.85 × S/S0)"
+                              value={rev.formula || ''}
+                              onChange={(e) => setRev(prev => ({ ...prev, formula: e.target.value || undefined }))}
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </CardContent>
+              </Card>
+            )}
+
             <DialogFooter className="pt-4">
               <DialogClose asChild><Button type="button" variant="outline">Annuler</Button></DialogClose>
               <Button type="submit">Enregistrer</Button>
@@ -847,6 +939,16 @@ export default function ContractDetailPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Site Import Dialog */}
+      <SiteImportDialog
+        open={importDialogOpen}
+        onOpenChange={setImportDialogOpen}
+        contractId={id}
+        clientId={contract?.clientId || ''}
+        activities={activities}
+        onComplete={reloadData}
+      />
 
     </div >
   );

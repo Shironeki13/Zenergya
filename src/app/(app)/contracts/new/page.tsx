@@ -2,7 +2,7 @@
 
 import { useState } from "react"
 import { useRouter } from "next/navigation"
-import { Building2, Landmark, FileText, XCircle, RefreshCw, Hammer, Users, Briefcase, ChevronLeft } from "lucide-react"
+import { Building2, Landmark, FileText, XCircle, RefreshCw, Hammer, Users, Briefcase, ChevronLeft, Edit } from "lucide-react"
 import Link from "next/link"
 
 import { Button } from "@/components/ui/button"
@@ -46,6 +46,13 @@ export default function DocumentHubPage() {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        <DocumentCard
+          title="Saisie Manuelle"
+          description="Créer un contrat manuellement sans analyse IA."
+          icon={Edit}
+          color="text-green-500 bg-green-50"
+          onClick={() => router.push("/contracts/new/manual")}
+        />
         <DocumentCard
           title="Marché Privé"
           description="Créer une base marché à partir d'un contrat privé unique."

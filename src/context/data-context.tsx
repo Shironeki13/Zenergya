@@ -3,7 +3,7 @@
 
 import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
 import {
-  getClients, getSites, getContracts, getInvoices, getCreditNotes, getMeters, getMeterTypes, getMeterReadings,
+  getClients, getContacts, getSites, getContracts, getInvoices, getCreditNotes, getMeters, getMeterTypes, getMeterReadings,
   getCompanies, getAgencies, getSectors, getActivities, getSchedules, getTerms,
   getTypologies, getVatRates, getRevisionFormulas, getPaymentTerms, getPricingRules,
   getMarkets, getRoles, getUsers, getIndices, getIndexValues, getRevisionRules, getServices,
@@ -15,7 +15,7 @@ import {
 } from '@/services/firestore';
 import { auth } from '@/lib/firebase';
 // import { signInAnonymously } from 'firebase/auth';
-import type { DataContextType, Client, Site, Contract, Invoice, CreditNote, Meter, MeterType, MeterReading, Company, Agency, Sector, Activity, Schedule, Term, Typology, VatRate, RevisionFormula, PaymentTerm, PricingRule, Market, Role, User, Index, IndexValue, RevisionRule, Service, Amendment, Termination, Renewal, TrusteeChange, BeChange, Interest, SettlementRule, WorkProject, WorkQuote, ProgressSituation, AdvWorkQuote, AdvWorkQuoteVersion, AdvWorkQuoteLine, AdvWorkAffair, AdvWorkBudgetLine, AdvWorkLot, AdvWorkPoste, AdvWorkSituation, AdvWorkSituationLine, AdvPurchaseOrder, AdvPurchaseOrderLine, AdvCatalogArticle, AdvCatalogOuvrage, AdvOuvrageComposant } from '@/lib/types';
+import type { DataContextType, Client, Contact, Site, Contract, Invoice, CreditNote, Meter, MeterType, MeterReading, Company, Agency, Sector, Activity, Schedule, Term, Typology, VatRate, RevisionFormula, PaymentTerm, PricingRule, Market, Role, User, Index, IndexValue, RevisionRule, Service, Amendment, Termination, Renewal, TrusteeChange, BeChange, Interest, SettlementRule, WorkProject, WorkQuote, ProgressSituation, AdvWorkQuote, AdvWorkQuoteVersion, AdvWorkQuoteLine, AdvWorkAffair, AdvWorkBudgetLine, AdvWorkLot, AdvWorkPoste, AdvWorkSituation, AdvWorkSituationLine, AdvPurchaseOrder, AdvPurchaseOrderLine, AdvCatalogArticle, AdvCatalogOuvrage, AdvOuvrageComposant } from '@/lib/types';
 import { useToast } from '@/hooks/use-toast';
 
 const DataContext = createContext<DataContextType | undefined>(undefined);
@@ -23,6 +23,7 @@ const DataContext = createContext<DataContextType | undefined>(undefined);
 export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [data, setData] = useState({
     clients: [] as Client[],
+    contacts: [] as Contact[],
     sites: [] as Site[],
     contracts: [] as Contract[],
     invoices: [] as Invoice[],
@@ -98,7 +99,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     setIsLoading(true);
     try {
       const results = await Promise.allSettled([
-        getClients(), getSites(), getContracts(), getInvoices(), getCreditNotes(), getMeters(), getMeterTypes(), getMeterReadings(),
+        getClients(), getContacts(), getSites(), getContracts(), getInvoices(), getCreditNotes(), getMeters(), getMeterTypes(), getMeterReadings(),
         getCompanies(), getAgencies(), getSectors(), getActivities(), getSchedules(), getTerms(),
         getTypologies(), getVatRates(), getRevisionFormulas(), getPaymentTerms(), getPricingRules(),
         getMarkets(), getRoles(), getUsers(), getIndices(), getIndexValues(), getRevisionRules(), getServices(),
@@ -109,7 +110,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       ]);
 
       const [
-        clients, sites, contracts, invoices, creditNotes, meters, meterTypes, meterReadings,
+        clients, contacts, sites, contracts, invoices, creditNotes, meters, meterTypes, meterReadings,
         companies, agencies, sectors, activities, schedules, terms,
         typologies, vatRates, revisionFormulas, paymentTerms, pricingRules,
         markets, roles, users, indices, indexValues, revisionRules, services,
@@ -120,6 +121,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       ] = results;
 
       if (clients.status === 'rejected') console.error("Failed to load clients", clients.reason);
+      if (contacts.status === 'rejected') console.error("Failed to load contacts", contacts.reason);
       if (sites.status === 'rejected') console.error("Failed to load sites", sites.reason);
       if (contracts.status === 'rejected') console.error("Failed to load contracts", contracts.reason);
       if (invoices.status === 'rejected') console.error("Failed to load invoices", invoices.reason);
@@ -155,6 +157,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
       setData({
         clients: clients.status === 'fulfilled' ? clients.value : [],
+        contacts: contacts.status === 'fulfilled' ? contacts.value : [],
         sites: sites.status === 'fulfilled' ? sites.value : [],
         contracts: contracts.status === 'fulfilled' ? contracts.value : [],
         invoices: invoices.status === 'fulfilled' ? invoices.value : [],

@@ -37,7 +37,7 @@ export default function BatchBillingPage() {
 
     const billableItems = useMemo(() => {
         if (isLoading) return [];
-        
+
         const results: BillableItem[] = [];
 
         const activeContracts = contracts.filter(c => c.status === 'Actif');
@@ -52,7 +52,7 @@ export default function BatchBillingPage() {
         for (const contract of activeContracts) {
             const contractInvoices = invoicesByContract[contract.id] || [];
             contractInvoices.sort((a, b) => new Date(b.periodEndDate!).getTime() - new Date(a.periodEndDate!).getTime());
-            
+
             const lastInvoice = contractInvoices[0];
             const contractStartDate = new Date(contract.startDate);
             let nextBillingStartDate = lastInvoice ? new Date(lastInvoice.periodEndDate!) : contractStartDate;
@@ -84,7 +84,7 @@ export default function BatchBillingPage() {
                         nextBillingEndDate.setDate(nextBillingEndDate.getDate() - 1);
                         break;
                 }
-                
+
                 const contractEndDate = new Date(contract.endDate);
                 if (nextBillingEndDate > contractEndDate) {
                     nextBillingEndDate = contractEndDate;
@@ -102,7 +102,7 @@ export default function BatchBillingPage() {
                         }
                     }
                 }
-                
+
                 totalAmountForPeriod *= billingFactor;
 
                 results.push({
@@ -111,10 +111,10 @@ export default function BatchBillingPage() {
                     clientName: contract.clientName,
                     periodStartDate: new Date(nextBillingStartDate),
                     periodEndDate: nextBillingEndDate,
-                    billingSchedule: contract.billingSchedule,
+                    billingSchedule: contract.billingSchedule || 'Annuel',
                     amount: totalAmountForPeriod,
                 });
-                
+
                 nextBillingStartDate = new Date(nextBillingEndDate);
                 nextBillingStartDate.setDate(nextBillingStartDate.getDate() + 1);
             }
@@ -144,9 +144,9 @@ export default function BatchBillingPage() {
             return;
         }
         setIsGenerating(true);
-        
+
         const itemsToGenerate = billableItems.filter(item => selectedItems.includes(item.id));
-        
+
         const promises = itemsToGenerate.map(item => generateInvoice({
             contractId: item.contractId,
             invoiceDate: new Date().toISOString(),
@@ -157,7 +157,7 @@ export default function BatchBillingPage() {
             const results = await Promise.allSettled(promises);
             const successfulGenerations = results.filter(r => r.status === 'fulfilled' && r.value.success);
             const failedGenerations = results.filter(r => r.status === 'rejected' || (r.status === 'fulfilled' && !r.value.success));
-            
+
             if (successfulGenerations.length > 0) {
                 toast({
                     title: 'Génération terminée',
@@ -170,7 +170,7 @@ export default function BatchBillingPage() {
                     if (r.status === 'fulfilled') return r.value.error;
                     return (r.reason as Error).message;
                 }).join(', ');
-                 toast({
+                toast({
                     title: 'Échecs de génération',
                     description: `Erreurs pour ${failedGenerations.length} factures: ${errorMessage}`,
                     variant: 'destructive',
@@ -179,7 +179,7 @@ export default function BatchBillingPage() {
             }
             setSelectedItems([]);
         } catch (error) {
-             toast({
+            toast({
                 title: 'Erreur inattendue',
                 description: 'Une erreur inattendue est survenue lors de la génération.',
                 variant: 'destructive',
@@ -200,29 +200,29 @@ export default function BatchBillingPage() {
                             Générez toutes les factures arrivées à échéance jusqu'à la date sélectionnée.
                         </CardDescription>
                     </div>
-                     <div className="flex items-center gap-4">
+                    <div className="flex items-center gap-4">
                         <div className="grid gap-2">
-                             <Label>Date d'échéance</Label>
-                             <Popover>
+                            <Label>Date d'échéance</Label>
+                            <Popover>
                                 <PopoverTrigger asChild>
                                     <Button
-                                    variant={"outline"}
-                                    className={cn(
-                                        "w-[240px] justify-start text-left font-normal",
-                                        !dueDate && "text-muted-foreground"
-                                    )}
+                                        variant={"outline"}
+                                        className={cn(
+                                            "w-[240px] justify-start text-left font-normal",
+                                            !dueDate && "text-muted-foreground"
+                                        )}
                                     >
-                                    <CalendarIcon className="mr-2 h-4 w-4" />
-                                    {dueDate ? format(dueDate, "PPP", { locale: fr }) : <span>Choisir une date</span>}
+                                        <CalendarIcon className="mr-2 h-4 w-4" />
+                                        {dueDate ? format(dueDate, "PPP", { locale: fr }) : <span>Choisir une date</span>}
                                     </Button>
                                 </PopoverTrigger>
                                 <PopoverContent className="w-auto p-0">
                                     <Calendar
-                                    mode="single"
-                                    selected={dueDate}
-                                    onSelect={(date) => setDueDate(date || new Date())}
-                                    initialFocus
-                                    locale={fr}
+                                        mode="single"
+                                        selected={dueDate}
+                                        onSelect={(date) => setDueDate(date || new Date())}
+                                        initialFocus
+                                        locale={fr}
                                     />
                                 </PopoverContent>
                             </Popover>

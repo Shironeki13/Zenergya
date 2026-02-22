@@ -23,7 +23,7 @@ import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover
 import { Calendar } from '@/components/ui/calendar';
 import { useData } from '@/context/data-context';
 import type { Client } from '@/lib/types';
-import { ClientSchema, type ExtractContractInfoOutput, ExtractContractInfoOutputSchema } from '@/lib/types';
+import { ClientBaseSchema, ActivityDetailSchema, type ExtractContractInfoOutput, ExtractContractInfoOutputSchema } from '@/lib/types';
 import { extractContractInfo } from '@/ai/flows/extract-contract-info-flow';
 import { createClientAndContract } from '@/services/firestore';
 import { uploadFile } from '@/services/storage';
@@ -75,7 +75,20 @@ COPIEZ ET COLLEZ LE CONTENU DE VOTRE CONTRAT ICI
 `;
 
 
-type ClientFormValues = z.infer<typeof ClientSchema>;
+// Extended schema for this page: combines client fields with contract fields
+const NewContractFormSchema = ClientBaseSchema.extend({
+    invoicingType: z.enum(['multi-site', 'global']).default('multi-site'),
+    activityIds: z.array(z.string()).optional(),
+    activitiesDetails: z.array(ActivityDetailSchema).optional(),
+    startDate: z.date().optional(),
+    endDate: z.date().optional(),
+    renewal: z.boolean().default(false),
+    tacitRenewal: z.boolean().default(false),
+    renewalDuration: z.string().optional(),
+    noticePeriod: z.string().optional(),
+});
+
+type ClientFormValues = z.infer<typeof NewContractFormSchema>;
 
 const fileToDataUrl = (file: File): Promise<string> => {
     return new Promise((resolve, reject) => {
@@ -100,7 +113,7 @@ export default function NewContractFromPdfPage() {
     const [showPrompt, setShowPrompt] = useState(false);
 
     const form = useForm<ClientFormValues>({
-        resolver: zodResolver(ClientSchema),
+        resolver: zodResolver(NewContractFormSchema),
         defaultValues: {
             name: "",
             address: "",

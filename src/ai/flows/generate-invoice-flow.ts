@@ -10,9 +10,9 @@
 
 import { ai } from '@/ai/genkit';
 import { z } from 'genkit';
-import { 
-  getContract, 
-  getSitesByClient, 
+import {
+  getContract,
+  getSitesByClient,
   getActivities,
   createInvoice,
   getNextInvoiceNumber,
@@ -46,24 +46,24 @@ const generateInvoiceFlow = ai.defineFlow(
 
       const client = await getClient(contract.clientId);
       if (!client) {
-          throw new Error('Client non trouvé.');
+        throw new Error('Client non trouvé.');
       }
-      
-      const invoicingType = client.invoicingType || 'multi-site';
-      
+
+      const invoicingType = contract.invoicingType || 'multi-site';
+
       // For now, let's assume one company for the whole system
       const companies = await getCompanies();
       if (companies.length === 0) {
-          throw new Error("Aucune société n'est configurée dans les paramètres.");
+        throw new Error("Aucune société n'est configurée dans les paramètres.");
       }
       const company = companies[0];
-      
+
       const existingInvoices = await getInvoicesByContract(contractId);
       existingInvoices.sort((a, b) => new Date(b.periodEndDate || 0).getTime() - new Date(a.periodEndDate || 0).getTime());
-      
+
       const lastInvoice = existingInvoices.find(inv => inv.status !== 'proforma');
       const contractStartDate = new Date(contract.startDate);
-      
+
       let periodStartDate = lastInvoice ? new Date(lastInvoice.periodEndDate!) : contractStartDate;
       if (lastInvoice) {
         periodStartDate.setDate(periodStartDate.getDate() + 1);
@@ -72,42 +72,42 @@ const generateInvoiceFlow = ai.defineFlow(
       let periodEndDate = new Date(periodStartDate);
       let billingFactor = 1;
       let scheduleLabel = "Annuel";
-      
+
       switch (contract.billingSchedule) {
         case 'Mensuel':
-            billingFactor = 1 / 12;
-            scheduleLabel = "Mensuel";
-            periodEndDate.setMonth(periodEndDate.getMonth() + 1);
-            periodEndDate.setDate(periodEndDate.getDate() - 1);
-            break;
+          billingFactor = 1 / 12;
+          scheduleLabel = "Mensuel";
+          periodEndDate.setMonth(periodEndDate.getMonth() + 1);
+          periodEndDate.setDate(periodEndDate.getDate() - 1);
+          break;
         case 'Trimestriel':
-            billingFactor = 1 / 4;
-            scheduleLabel = "Trimestriel";
-            periodEndDate.setMonth(periodEndDate.getMonth() + 3);
-            periodEndDate.setDate(periodEndDate.getDate() - 1);
-            break;
+          billingFactor = 1 / 4;
+          scheduleLabel = "Trimestriel";
+          periodEndDate.setMonth(periodEndDate.getMonth() + 3);
+          periodEndDate.setDate(periodEndDate.getDate() - 1);
+          break;
         case 'Semestriel':
-            billingFactor = 1 / 2;
-            scheduleLabel = "Semestriel";
-            periodEndDate.setMonth(periodEndDate.getMonth() + 6);
-            periodEndDate.setDate(periodEndDate.getDate() - 1);
-            break;
+          billingFactor = 1 / 2;
+          scheduleLabel = "Semestriel";
+          periodEndDate.setMonth(periodEndDate.getMonth() + 6);
+          periodEndDate.setDate(periodEndDate.getDate() - 1);
+          break;
         case 'Annuel':
         default:
-            billingFactor = 1;
-            scheduleLabel = "Annuel";
-            periodEndDate.setFullYear(periodEndDate.getFullYear() + 1);
-            periodEndDate.setDate(periodEndDate.getDate() - 1);
-            break;
+          billingFactor = 1;
+          scheduleLabel = "Annuel";
+          periodEndDate.setFullYear(periodEndDate.getFullYear() + 1);
+          periodEndDate.setDate(periodEndDate.getDate() - 1);
+          break;
       }
-      
+
       const contractEndDate = new Date(contract.endDate);
       if (periodEndDate > contractEndDate) {
         periodEndDate = contractEndDate;
       }
 
       if (periodStartDate > contractEndDate) {
-          throw new Error("Toutes les périodes de facturation pour ce contrat ont déjà été facturées.");
+        throw new Error("Toutes les périodes de facturation pour ce contrat ont déjà été facturées.");
       }
 
       const sites = await getSitesByClient(contract.clientId);
@@ -121,69 +121,69 @@ const generateInvoiceFlow = ai.defineFlow(
 
       let lineItems: InvoiceLineItem[] = [];
       const periodString = `Période du ${periodStartDate.toLocaleDateString()} au ${periodEndDate.toLocaleDateString()}`;
-      
-      if (invoicingType === 'multi-site') {
-          for (const site of contractSites) {
-            if (!site.amounts || site.amounts.length === 0) continue;
 
-            for (const amountInfo of site.amounts) {
-              const activity = activityMap.get(amountInfo.activityId);
-              if (activity && contract.activityIds.includes(activity.id)) {
-                const lineTotal = amountInfo.amount * billingFactor;
-                lineItems.push({
-                  description: `Prestation: ${activity.label} (${scheduleLabel}) - Site: ${site.name} - ${periodString}`,
-                  quantity: 1, 
-                  unitPrice: lineTotal,
-                  total: lineTotal,
-                  siteId: site.id,
-                  activityCode: activity.code,
-                });
-              }
+      if (invoicingType === 'multi-site') {
+        for (const site of contractSites) {
+          if (!site.amounts || site.amounts.length === 0) continue;
+
+          for (const amountInfo of site.amounts) {
+            const activity = activityMap.get(amountInfo.activityId);
+            if (activity && contract.activityIds.includes(activity.id)) {
+              const lineTotal = amountInfo.amount * billingFactor;
+              lineItems.push({
+                description: `Prestation: ${activity.label} (${scheduleLabel}) - Site: ${site.name} - ${periodString}`,
+                quantity: 1,
+                unitPrice: lineTotal,
+                total: lineTotal,
+                siteId: site.id,
+                activityCode: activity.code,
+              });
             }
           }
+        }
       } else { // 'global' invoicing
-          const aggregatedAmounts: Record<string, { activity: any; total: number }> = {};
+        const aggregatedAmounts: Record<string, { activity: any; total: number }> = {};
 
-          for (const site of contractSites) {
-              if (!site.amounts || site.amounts.length === 0) continue;
-              
-              for (const amountInfo of site.amounts) {
-                  const activity = activityMap.get(amountInfo.activityId);
-                  if (activity && contract.activityIds.includes(activity.id)) {
-                      if (!aggregatedAmounts[activity.id]) {
-                          aggregatedAmounts[activity.id] = { activity, total: 0 };
-                      }
-                      aggregatedAmounts[activity.id].total += amountInfo.amount * billingFactor;
-                  }
+        for (const site of contractSites) {
+          if (!site.amounts || site.amounts.length === 0) continue;
+
+          for (const amountInfo of site.amounts) {
+            const activity = activityMap.get(amountInfo.activityId);
+            if (activity && contract.activityIds.includes(activity.id)) {
+              if (!aggregatedAmounts[activity.id]) {
+                aggregatedAmounts[activity.id] = { activity, total: 0 };
               }
+              aggregatedAmounts[activity.id].total += amountInfo.amount * billingFactor;
+            }
           }
+        }
 
-          for (const key in aggregatedAmounts) {
-              const { activity, total } = aggregatedAmounts[key];
-              lineItems.push({
-                  description: `Prestation: ${activity.label} (${scheduleLabel}) - ${periodString}`,
-                  quantity: 1,
-                  unitPrice: total,
-                  total: total,
-                  activityCode: activity.code,
-              });
-          }
+        for (const key in aggregatedAmounts) {
+          const { activity, total } = aggregatedAmounts[key];
+          lineItems.push({
+            description: `Prestation: ${activity.label} (${scheduleLabel}) - ${periodString}`,
+            quantity: 1,
+            unitPrice: total,
+            total: total,
+            activityCode: activity.code,
+          });
+        }
       }
 
 
       if (lineItems.length === 0) {
-          throw new Error("Aucune prestation facturable trouvée pour les sites de ce contrat.");
+        throw new Error("Aucune prestation facturable trouvée pour les sites de ce contrat.");
       }
-      
+
       const subtotal = lineItems.reduce((acc, item) => acc + item.total, 0);
       const taxRate = 0.10; // Assuming 10% VAT
       const tax = subtotal * taxRate;
       const total = subtotal + tax;
-      
+
       const invoiceDateObj = new Date(invoiceDate);
       const dueDate = new Date(invoiceDateObj);
       dueDate.setDate(dueDate.getDate() + 30); // 30 days to pay
-      
+
       const invoiceNumber = isProforma ? undefined : await getNextInvoiceNumber(company.code);
 
       const newInvoice = {
