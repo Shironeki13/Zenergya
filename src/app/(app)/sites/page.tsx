@@ -27,12 +27,13 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogDescription } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogDescription, DialogClose } from '@/components/ui/dialog';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
-import { updateSite } from '@/services/firestore';
+import { updateSite, deleteSite } from '@/services/firestore';
 import type { Site, Activity } from '@/lib/types';
 import { useToast } from '@/hooks/use-toast';
 import { useData } from '@/context/data-context';
@@ -40,13 +41,15 @@ import { downloadCSV } from '@/lib/utils';
 
 
 export default function SitesPage() {
-  const { sites, clients, activities, isLoading, reloadData } = useData();
+  const { sites, clients, contracts, activities, isLoading, reloadData } = useData();
 
   const [addSiteDialogOpen, setAddSiteDialogOpen] = useState(false);
   const [editSiteDialogOpen, setEditSiteDialogOpen] = useState(false);
 
   const [selectedClientId, setSelectedClientId] = useState<string | null>(null);
   const [editingSite, setEditingSite] = useState<Site | null>(null);
+  const [deletingSite, setDeletingSite] = useState<Site | null>(null);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
 
   const router = useRouter();
@@ -131,6 +134,28 @@ export default function SitesPage() {
     }
   };
 
+  const handleOpenDeleteDialog = (site: Site) => {
+    setTimeout(() => {
+      setDeletingSite(site);
+      setDeleteDialogOpen(true);
+    }, 0);
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!deletingSite) return;
+    try {
+      await deleteSite(deletingSite.id);
+      toast({ title: 'Site supprimé', description: `Le site "${deletingSite.name}" a été supprimé.` });
+      await reloadData();
+    } catch (error) {
+      console.error(error);
+      toast({ title: 'Erreur', description: 'La suppression a échoué.', variant: 'destructive' });
+    } finally {
+      setDeleteDialogOpen(false);
+      setDeletingSite(null);
+    }
+  };
+
   const getFullAddress = (site: Site) => {
     const parts = [site.address, site.postalCode, site.city];
     return parts.filter(Boolean).join(', ');
@@ -138,11 +163,15 @@ export default function SitesPage() {
 
   const sitesWithClientNames = useMemo(() => {
     const clientMap = new Map(clients.map(c => [c.id, c.name]));
-    return sites.map(site => ({
-      ...site,
-      clientName: site.clientId ? clientMap.get(site.clientId) || 'N/A' : 'N/A'
-    }));
-  }, [sites, clients]);
+    return sites.map(site => {
+      const contract = contracts.find(c => c.id === site.contractId) || contracts.find(c => c.siteIds?.includes(site.id)) || null;
+      return {
+        ...site,
+        clientName: site.clientId ? clientMap.get(site.clientId) || 'N/A' : 'N/A',
+        contract: contract || null,
+      };
+    });
+  }, [sites, clients, contracts]);
 
   const filteredSites = useMemo(() => {
     if (!searchTerm) {
@@ -231,6 +260,7 @@ export default function SitesPage() {
             <TableRow>
               <TableHead>Nom du Site</TableHead>
               <TableHead>Client</TableHead>
+              <TableHead>Contrat</TableHead>
               <TableHead>Adresse</TableHead>
               <TableHead>
                 <span className="sr-only">Actions</span>
@@ -240,12 +270,12 @@ export default function SitesPage() {
           <TableBody>
             {isLoading ? (
               <TableRow>
-                <TableCell colSpan={4} className="text-center h-24">
+                <TableCell colSpan={5} className="text-center h-24">
                   <Loader2 className="mx-auto h-8 w-8 animate-spin text-muted-foreground" />
                 </TableCell>
               </TableRow>
             ) : filteredSites.length > 0 ? (
-              filteredSites.map((site: Site & { clientName: string }) => (
+              filteredSites.map((site: Site & { clientName: string; contract: import('@/lib/types').Contract | null }) => (
                 <TableRow key={site.id}>
                   <TableCell className="font-medium">
                     <Link href={`/sites/${site.id}`} className="hover:underline">
@@ -253,6 +283,15 @@ export default function SitesPage() {
                     </Link>
                   </TableCell>
                   <TableCell>{site.clientName}</TableCell>
+                  <TableCell>
+                    {site.contract ? (
+                      <Link href={`/contracts/${site.contract.id}`} className="hover:underline text-primary">
+                        {site.contract.contractNumber || site.contract.label || site.contract.name || site.contract.id}
+                      </Link>
+                    ) : (
+                      <span className="text-muted-foreground text-xs">—</span>
+                    )}
+                  </TableCell>
                   <TableCell>
                     {getFullAddress(site)}
                   </TableCell>
@@ -273,6 +312,15 @@ export default function SitesPage() {
                         <DropdownMenuItem asChild>
                           <Link href={`/clients/${site.clientId}`}>Voir le client</Link>
                         </DropdownMenuItem>
+                        <DropdownMenuItem onSelect={() => handleOpenEditDialog(site)}>
+                          Modifier
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          onSelect={() => handleOpenDeleteDialog(site)}
+                          className="text-destructive focus:text-destructive"
+                        >
+                          Supprimer
+                        </DropdownMenuItem>
                       </DropdownMenuContent>
                     </DropdownMenu>
                   </TableCell>
@@ -280,7 +328,7 @@ export default function SitesPage() {
               ))
             ) : (
               <TableRow>
-                <TableCell colSpan={4} className="text-center h-24">Aucun site trouvé.</TableCell>
+                <TableCell colSpan={5} className="text-center h-24">Aucun site trouvé.</TableCell>
               </TableRow>
             )}
           </TableBody>
@@ -371,6 +419,23 @@ export default function SitesPage() {
           </form>
         </DialogContent>
       </Dialog>
+
+      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Supprimer le site ?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Êtes-vous sûr de vouloir supprimer le site <strong>{deletingSite?.name}</strong> ? Cette action est irréversible.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setDeletingSite(null)}>Annuler</AlertDialogCancel>
+            <AlertDialogAction onClick={handleConfirmDelete} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+              Supprimer
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Card>
   );
 }

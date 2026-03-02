@@ -7,8 +7,8 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { ChevronLeft, PlusCircle, Eye, Loader2 } from 'lucide-react';
-import { getClient, getContractsByClient } from '@/services/firestore';
-import type { Client, Contract } from '@/lib/types';
+import { getClient, getContractsByClient, getSitesByClient } from '@/services/firestore';
+import type { Client, Contract, Site } from '@/lib/types';
 import { useToast } from '@/hooks/use-toast';
 import { Badge } from '@/components/ui/badge';
 import { AttachContractDialog } from '@/components/attach-contract-dialog';
@@ -20,6 +20,7 @@ export default function ClientDetailPage() {
 
   const [client, setClient] = useState<Client | null>(null);
   const [contracts, setContracts] = useState<Contract[]>([]);
+  const [sites, setSites] = useState<Site[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
   const fetchContracts = useCallback(async () => {
@@ -35,8 +36,9 @@ export default function ClientDetailPage() {
     async function fetchData() {
       setIsLoading(true);
       try {
-        const [clientData] = await Promise.all([
+        const [clientData, clientSites] = await Promise.all([
           getClient(id),
+          getSitesByClient(id),
         ]);
 
         if (!clientData) {
@@ -44,6 +46,7 @@ export default function ClientDetailPage() {
           return;
         }
         setClient(clientData);
+        setSites(clientSites);
         await fetchContracts();
       } catch (error) {
         console.error("Failed to fetch data for client detail page", error);
@@ -122,7 +125,7 @@ export default function ClientDetailPage() {
                     </TableCell>
                     <TableCell>{contract.startDate ? new Date(contract.startDate).toLocaleDateString() : '-'}</TableCell>
                     <TableCell>{contract.endDate ? new Date(contract.endDate).toLocaleDateString() : '-'}</TableCell>
-                    <TableCell>{contract.siteIds?.length || 0}</TableCell>
+                    <TableCell>{sites.filter(s => s.contractId === contract.id).length}</TableCell>
                     <TableCell className="text-right">
                       <Link href={`/contracts/${contract.id}`}>
                         <Button variant="ghost" size="icon" className="h-8 w-8">
