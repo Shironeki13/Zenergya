@@ -1,4 +1,4 @@
-import { Index, IndexValue } from './types';
+import { Index, IndexValue, RevisionRule, ServiceInitialIndexValue } from './types';
 
 export function calculateIndexValue(
     formula: string,
@@ -71,4 +71,62 @@ export function calculateIndexValue(
     }
 
     return null;
+}
+
+/**
+ * Calcule le coefficient de révision d'une prestation.
+ *
+ * Formules selon le type de règle :
+ *   FIXE          → 1
+ *   MONO_MOIS     → Ir / I0  (moyenne sur nbMonths, 1 seul indice attendu)
+ *   PONDERE_SIMPLE → Σ (coeff_i × Ir_i / I0_i)
+ *   PONDERE_A_B   → Pa + Pb × Σ (coeff_i × Ir_i / I0_i)
+ *
+ * Ir_i = moyenne des nbMonths dernières valeurs connues de l'indice i.
+ * I0_i = valeur de base stockée dans initialIndexValues de la prestation.
+ *
+ * Retourne null si les données sont insuffisantes (I0 manquant, pas de valeurs actuelles).
+ */
+export function calculateRevisionCoefficient(
+    rule: RevisionRule,
+    initialIndexValues: ServiceInitialIndexValue[],
+    allIndexValues: IndexValue[],
+): number | null {
+    if (rule.type === 'FIXE') return 1;
+
+    const indexRatios: { coefficient: number; ratio: number }[] = [];
+
+    for (const ruleIndex of rule.indices) {
+        const i0Entry = initialIndexValues.find(iv => iv.indexId === ruleIndex.indexId);
+        if (!i0Entry || i0Entry.value === 0) return null;
+
+        // Moyenne glissante sur les nbMonths dernières périodes disponibles
+        const sortedValues = [...allIndexValues]
+            .filter(iv => iv.indexId === ruleIndex.indexId)
+            .sort((a, b) => b.period.localeCompare(a.period))
+            .slice(0, rule.nbMonths);
+
+        if (sortedValues.length === 0) return null;
+
+        const Ir = sortedValues.reduce((sum, v) => sum + v.value, 0) / sortedValues.length;
+
+        indexRatios.push({ coefficient: ruleIndex.coefficient, ratio: Ir / i0Entry.value });
+    }
+
+    if (indexRatios.length === 0) return null;
+
+    const weightedSum = indexRatios.reduce((sum, { coefficient, ratio }) => sum + coefficient * ratio, 0);
+
+    switch (rule.type) {
+        case 'MONO_MOIS':
+        case 'PONDERE_SIMPLE':
+            return weightedSum;
+        case 'PONDERE_A_B': {
+            const pa = rule.paramA ?? 0;
+            const pb = rule.paramB ?? 1;
+            return pa + pb * weightedSum;
+        }
+        default:
+            return null;
+    }
 }

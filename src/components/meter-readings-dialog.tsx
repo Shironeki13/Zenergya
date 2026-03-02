@@ -83,7 +83,7 @@ export function MeterReadingsDialog({ meter, trigger }: MeterReadingsDialogProps
             // Find contractId
             const site = sites.find(s => s.id === meter.siteId);
             const contract = site ? contracts.find(c => c.siteIds.includes(site.id)) : null;
-            const contractId = contract?.id;
+            const contractId = contract?.id ?? null;
 
             const data = {
                 meterId: meter.id,

@@ -1,4 +1,4 @@
-import { getIndices, createIndex, getIndexValues, createIndexValue, updateIndex } from './firestore';
+import { getIndices, createIndex, getIndexValues, createIndexValue, updateIndex, updateIndexValue } from './firestore';
 import { indexFetchers } from '@/lib/indices/registry';
 import { Index, IndexValue } from '@/lib/types';
 
@@ -63,31 +63,31 @@ export async function syncAllIndices(): Promise<SyncStats> {
             }
 
 
-            // 3. Save new values
+            // 3. Save new values (create or update if value changed)
             let newValuesForIndex = 0;
             for (const res of results) {
-                const alreadyExists = existingValues.some(v =>
-                    v.indexId === index!.id &&
-                    v.period === res.period
+                if (!index!.id || !res.period || isNaN(res.value)) continue;
+
+                const existing = existingValues.find(v =>
+                    v.indexId === index!.id && v.period === res.period
                 );
 
-                if (!alreadyExists) {
-                    const newValue: Omit<IndexValue, 'id'> = {
+                if (!existing) {
+                    await createIndexValue({
                         indexId: index!.id,
                         period: res.period,
                         value: res.value,
                         source: res.source,
                         comment: 'Synchronisation automatique'
-                    };
-
-                    if (!newValue.indexId || !newValue.period || isNaN(newValue.value)) {
-                        continue;
-                    }
-
-                    await createIndexValue(newValue);
+                    });
                     stats.newValues++;
                     newValuesForIndex++;
-                    existingValues.push({ ...newValue, id: 'temp' } as IndexValue);
+                    existingValues.push({ indexId: index!.id, period: res.period, value: res.value, source: res.source, comment: 'Synchronisation automatique', id: 'temp' });
+                } else if (existing.value !== res.value) {
+                    await updateIndexValue(existing.id, { value: res.value, source: res.source });
+                    stats.newValues++;
+                    newValuesForIndex++;
+                    existing.value = res.value;
                 }
             }
             console.log(`Sync Service: ${fetcher.code} sync complete (+${newValuesForIndex} values)`);

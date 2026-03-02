@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
-import { ArrowLeft, Plus, Trash2, Edit, Check, MoreHorizontal, Save, ChevronsUpDown, X, Calculator } from 'lucide-react';
+import { ArrowLeft, Plus, Trash2, Edit, Check, MoreHorizontal, Save, ChevronsUpDown, X, Calculator, Flame, Droplets, Snowflake, Wrench } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -24,14 +24,14 @@ import { Textarea } from '@/components/ui/textarea';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { cn } from '@/lib/utils';
-import { calculateIndexValue } from '@/lib/calculations';
+import { calculateIndexValue, calculateRevisionCoefficient } from '@/lib/calculations';
 import { InterestManager } from '@/components/interest-manager';
 import { SettlementManager } from '@/components/settlement-manager';
 
 export default function SiteDetailsPage() {
     const params = useParams();
     const router = useRouter();
-    const { sites, contracts, meters, services, activities, revisionRules, pricingRules, terms, schedules, reloadData, isLoading, indices, indexValues, settlementRules } = useData();
+    const { sites, contracts, meters, services, activities, revisionRules, pricingRules, terms, schedules, reloadData, isLoading, indices, indexValues, settlementRules, meterReadings, vatRates } = useData();
     const siteId = params.id as string;
 
     const [site, setSite] = useState<Site | null>(null);
@@ -439,6 +439,74 @@ export default function SiteDetailsPage() {
     const activeMeter = activeService && activeService.meterId ? meters.find(m => m.id === activeService.meterId) : null;
     const activeActivity = activeService ? activities.find(a => a.id === activeService.activityId) : null;
 
+    const lastMeterReadings = activeMeter
+        ? [...meterReadings]
+            .filter(r => r.meterId === activeMeter.id)
+            .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+            .slice(0, 5)
+        : [];
+
+    const activeTerm = activeService ? terms.find(t => t.id === activeService.billingTermId) : null;
+    const activeSchedule = activeService ? schedules.find(s => s.id === activeService.scheduleId) : null;
+    const activeVatRate = activeService ? vatRates.find(v => v.id === activeService.vatRateId) : null;
+
+    // --- Calculs de révision ---
+    // Enrichit indexValues avec les valeurs calculées à la volée pour les indices de type 'calculated'
+    const expandedIndexValues = (() => {
+        if (!activeRevisionRule) return indexValues;
+        const extra: IndexValue[] = [];
+        for (const ruleIdx of activeRevisionRule.indices) {
+            const foundIndex = indices.find(i => i.id === ruleIdx.indexId);
+            if (foundIndex?.type !== 'calculated' || !foundIndex.formula) continue;
+            if (indexValues.some(iv => iv.indexId === ruleIdx.indexId)) continue; // déjà en base
+            const periods = [...new Set(indexValues.map(v => v.period))].sort();
+            for (const period of periods) {
+                const value = calculateIndexValue(foundIndex.formula, period, indices, indexValues, foundIndex.decimals ?? 4);
+                if (value !== null) {
+                    extra.push({ id: `calc-${ruleIdx.indexId}-${period}`, indexId: ruleIdx.indexId, period, value, source: 'Calculé' } as IndexValue);
+                }
+            }
+        }
+        return extra.length > 0 ? [...indexValues, ...extra] : indexValues;
+    })();
+
+    const revisionCoefficient = (activeRevisionRule && activeService?.initialIndexValues?.length)
+        ? calculateRevisionCoefficient(activeRevisionRule, activeService.initialIndexValues, expandedIndexValues)
+        : (activeRevisionRule?.type === 'FIXE' ? 1 : null);
+
+    // Diagnostic précis en cas d'échec du calcul
+    const revisionDiagnostic = (() => {
+        if (!activeRevisionRule || activeRevisionRule.type === 'FIXE' || revisionCoefficient !== null) return null;
+        if (!activeService?.initialIndexValues?.length) return 'Valeurs I0 non renseignées';
+        for (const ruleIndex of activeRevisionRule.indices) {
+            const i0Entry = activeService.initialIndexValues.find(iv => iv.indexId === ruleIndex.indexId);
+            if (!i0Entry || i0Entry.value === 0) {
+                const idx = indices.find(i => i.id === ruleIndex.indexId);
+                return `I0 manquant : ${idx?.code ?? '?'}`;
+            }
+            const hasCurrentValues = expandedIndexValues.some(iv => iv.indexId === ruleIndex.indexId);
+            if (!hasCurrentValues) {
+                const idx = indices.find(i => i.id === ruleIndex.indexId);
+                return `Valeurs courantes absentes : ${idx?.code ?? '?'}`;
+            }
+        }
+        return 'Données insuffisantes';
+    })();
+
+    const revisedUnitPrice = (activeService?.unitPrice != null && revisionCoefficient != null)
+        ? activeService.unitPrice * revisionCoefficient
+        : null;
+
+    // Consommation = écart entre les deux derniers relevés réels du compteur
+    const lastReal = lastMeterReadings.find(r => r.type === 'REEL' || r.type === 'CORRIGE');
+    const prevReal = lastMeterReadings.find(r => (r.type === 'REEL' || r.type === 'CORRIGE') && r.id !== lastReal?.id);
+    const consumption = (lastReal && prevReal) ? lastReal.value - prevReal.value : null;
+
+    // Montant estimé HT
+    const estimatedAmount = (consumption != null && revisedUnitPrice != null)
+        ? consumption * revisedUnitPrice
+        : null;
+
     return (
         <div className="space-y-6">
             {/* Header */}
@@ -455,17 +523,17 @@ export default function SiteDetailsPage() {
                             </Link>
                             <span className="mx-2">›</span>
                             <Link href={`/contracts/${contract.id}`} className="hover:underline hover:text-foreground">
-                                {contract.label || contract.name || contract.id}
+                                {contract.contractNumber || contract.label || contract.name || contract.id}
                             </Link>
                             <span className="mx-2">›</span>
                         </>
                     ) : (
                         <>
-                            <span>Site</span>
+                            <Link href="/sites" className="hover:underline hover:text-foreground">Sites</Link>
                             <span className="mx-2">›</span>
                         </>
                     )}
-                    <span className="font-medium text-foreground">Site</span>
+                    <span className="font-medium text-foreground">{site.name}</span>
                 </div>
 
                 <div className="flex items-center justify-between">
@@ -477,9 +545,21 @@ export default function SiteDetailsPage() {
                                     {contract?.status || 'Aucun contrat'}
                                 </Badge>
                             </div>
-                            <div className="text-sm text-muted-foreground flex items-center gap-2">
-                                <span>{contract?.clientName}</span>
-                            </div>
+                            {contract ? (
+                                <div className="text-sm text-muted-foreground flex items-center gap-1.5 mt-0.5">
+                                    <Link href={`/clients/${contract.clientId}`} className="hover:underline">
+                                        {contract.clientName}
+                                    </Link>
+                                    <span>›</span>
+                                    <Link href={`/contracts/${contract.id}`} className="hover:underline">
+                                        {contract.contractNumber || contract.label || contract.name}
+                                    </Link>
+                                </div>
+                            ) : (
+                                <div className="text-sm text-muted-foreground mt-0.5">
+                                    Non rattaché à un contrat
+                                </div>
+                            )}
                         </div>
                     </div>
                     <div className="flex items-center gap-2">
@@ -566,7 +646,15 @@ export default function SiteDetailsPage() {
                                             }}
                                         >
                                             <div className="text-sm font-medium">{service.type} {act?.label}</div>
-                                            <div className="text-xs text-muted-foreground">{service.energyType || ''}</div>
+                                            <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                                                {service.type === 'P1' && service.p1Type === 'ECS' && <Droplets className="h-3.5 w-3.5 text-blue-500" />}
+                                                {service.type === 'P1' && service.p1Type === 'CHAUFFAGE' && <Flame className="h-3.5 w-3.5 text-red-500" />}
+                                                {service.type === 'P1' && service.p1Type === 'EAU_FROIDE' && <Snowflake className="h-3.5 w-3.5 text-sky-300" />}
+                                                {service.type === 'P1' && service.p1Type === 'AUTRE' && <Wrench className="h-3.5 w-3.5 text-gray-400" />}
+                                                {service.type === 'P1' && service.p1Type
+                                                    ? (service.p1Type === 'ECS' ? 'ECS' : service.p1Type === 'CHAUFFAGE' ? 'Chauffage' : service.p1Type === 'EAU_FROIDE' ? 'Eau Froide' : 'Autre')
+                                                    : service.energyType || ''}
+                                            </div>
                                         </div>
                                     );
                                 })
@@ -587,9 +675,24 @@ export default function SiteDetailsPage() {
                         <TabsContent value={selectedType} className="space-y-6">
                             {/* Header for Service View */}
                             <div className="flex justify-between items-center">
-                                <h2 className="text-xl font-semibold">
+                                <h2 className="text-xl font-semibold flex items-center gap-2">
                                     {activeService ? (
-                                        `${activeService.type} ${activeActivity?.label || ''} — ${activeService.energyType || ''}`
+                                        <>
+                                            {activeService.type} {activeActivity?.label || ''} —{' '}
+                                            {activeService.type === 'P1' && activeService.p1Type ? (
+                                                <span className="flex items-center gap-1">
+                                                    {activeService.p1Type === 'ECS' && <Droplets className="h-5 w-5 text-blue-500" />}
+                                                    {activeService.p1Type === 'CHAUFFAGE' && <Flame className="h-5 w-5 text-red-500" />}
+                                                    {activeService.p1Type === 'EAU_FROIDE' && <Snowflake className="h-5 w-5 text-sky-300" />}
+                                                    {activeService.p1Type === 'AUTRE' && <Wrench className="h-5 w-5 text-gray-400" />}
+                                                    {activeService.p1Type === 'ECS' ? 'ECS' :
+                                                     activeService.p1Type === 'CHAUFFAGE' ? 'Chauffage' :
+                                                     activeService.p1Type === 'EAU_FROIDE' ? 'Eau Froide' : 'Autre'}
+                                                </span>
+                                            ) : (
+                                                activeService.energyType || ''
+                                            )}
+                                        </>
                                     ) : (
                                         `Prestations ${selectedType}`
                                     )}
@@ -641,8 +744,21 @@ export default function SiteDetailsPage() {
                                                         </div>
                                                     </div>
                                                     <div className="grid gap-2">
-                                                        <Label className="text-xs text-muted-foreground">Indice de base</Label>
-                                                        <div className="p-2 border rounded-md bg-muted/20 text-sm font-medium text-center">-</div>
+                                                        <Label className="text-xs text-muted-foreground">TVA</Label>
+                                                        <div className="p-2 border rounded-md bg-muted/20 text-sm font-medium text-center">
+                                                            {activeVatRate ? `${activeVatRate.rate} %` : '-'}
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                                <Separator />
+                                                <div className="grid grid-cols-2 gap-4">
+                                                    <div className="grid gap-2">
+                                                        <Label className="text-xs text-muted-foreground">Terme de facturation</Label>
+                                                        <div className="p-2 border rounded-md bg-muted/20 text-sm font-medium">{activeTerm?.name || '-'}</div>
+                                                    </div>
+                                                    <div className="grid gap-2">
+                                                        <Label className="text-xs text-muted-foreground">Périodicité</Label>
+                                                        <div className="p-2 border rounded-md bg-muted/20 text-sm font-medium">{activeSchedule?.name || '-'}</div>
                                                     </div>
                                                 </div>
                                             </CardContent>
@@ -655,21 +771,55 @@ export default function SiteDetailsPage() {
                                             </CardHeader>
                                             <CardContent>
                                                 {activeRevisionRule ? (
-                                                    <div className="space-y-4">
-                                                        <div className="flex justify-between text-xs text-muted-foreground mb-2">
-                                                            <span>Indice</span>
-                                                            <span>Utilisé dans révision</span>
-                                                        </div>
+                                                    <div className="space-y-3">
+                                                        {activeRevisionRule.type !== 'FIXE' && (
+                                                            <div className="grid grid-cols-3 text-xs text-muted-foreground font-medium px-1">
+                                                                <span>Indice</span>
+                                                                <span className="text-center">I0 (base)</span>
+                                                                <span className="text-right">Dernière valeur</span>
+                                                            </div>
+                                                        )}
                                                         {activeRevisionRule.indices.map((idx, i) => {
                                                             const foundIndex = indices.find(ind => ind.id === idx.indexId);
+                                                            const i0Entry = activeService.initialIndexValues?.find(iv => iv.indexId === idx.indexId);
+                                                            const latestValue = [...expandedIndexValues]
+                                                                .filter(iv => iv.indexId === idx.indexId)
+                                                                .sort((a, b) => b.period.localeCompare(a.period))[0];
                                                             return (
-                                                                <div key={i} className="flex items-center justify-between p-2 border rounded-md bg-muted/10">
-                                                                    <span className="font-medium text-sm">{foundIndex ? `${foundIndex.code} - ${foundIndex.label}` : idx.indexId}</span>
-                                                                    <Check className="h-4 w-4 text-primary" />
+                                                                <div key={i} className="p-2 border rounded-md bg-muted/10 space-y-1">
+                                                                    <div className="flex items-center justify-between">
+                                                                        <span className="font-medium text-sm">{foundIndex ? `${foundIndex.code} - ${foundIndex.label}` : idx.indexId}</span>
+                                                                        {activeRevisionRule.type !== 'FIXE' && idx.coefficient !== undefined && (
+                                                                            <span className="text-xs text-muted-foreground">Poids : {(idx.coefficient * 100).toFixed(0)} %</span>
+                                                                        )}
+                                                                    </div>
+                                                                    {activeRevisionRule.type !== 'FIXE' && (
+                                                                        <div className="grid grid-cols-2 gap-2 pt-1 border-t border-dashed mt-1">
+                                                                            <div>
+                                                                                <span className="text-xs text-muted-foreground block">I0</span>
+                                                                                <span className="text-xs font-medium">
+                                                                                    {i0Entry ? `${i0Entry.value} (${i0Entry.period})` : <span className="text-orange-500">Non défini</span>}
+                                                                                </span>
+                                                                            </div>
+                                                                            <div>
+                                                                                <span className="text-xs text-muted-foreground block">Dernière valeur</span>
+                                                                                <span className="text-xs font-medium">
+                                                                                    {latestValue ? `${latestValue.value} ${foundIndex?.unit || ''} (${latestValue.period})` : '-'}
+                                                                                </span>
+                                                                            </div>
+                                                                        </div>
+                                                                    )}
                                                                 </div>
                                                             );
                                                         })}
-                                                        {activeRevisionRule.indices.length === 0 && <div className="text-sm text-muted-foreground">Aucun indice configuré</div>}
+                                                        {activeRevisionRule.indices.length === 0 && (
+                                                            <div className="text-sm text-muted-foreground">Aucun indice configuré</div>
+                                                        )}
+                                                        {activeRevisionRule.type === 'PONDERE_A_B' && (
+                                                            <div className="text-xs text-muted-foreground pt-1 px-1">
+                                                                Formule : Pa ({activeRevisionRule.paramA ?? '-'}) + Pb ({activeRevisionRule.paramB ?? '-'}) × Σ indices
+                                                            </div>
+                                                        )}
                                                     </div>
                                                 ) : (
                                                     <div className="text-sm text-muted-foreground py-4 text-center">Aucune formule de révision associée</div>
@@ -683,7 +833,7 @@ export default function SiteDetailsPage() {
                                         <CardHeader>
                                             <CardTitle className="text-base">Compteurs associés</CardTitle>
                                         </CardHeader>
-                                        <CardContent>
+                                        <CardContent className="space-y-4">
                                             <Table>
                                                 <TableHeader>
                                                     <TableRow>
@@ -709,6 +859,52 @@ export default function SiteDetailsPage() {
                                                     <Plus className="h-4 w-4" /> Ajouter un compteur
                                                 </Button>
                                             </div>
+
+                                            {activeMeter && (
+                                                <>
+                                                    <Separator />
+                                                    <div>
+                                                        <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
+                                                            Derniers index relevés
+                                                        </div>
+                                                        {lastMeterReadings.length > 0 ? (
+                                                            <Table>
+                                                                <TableHeader>
+                                                                    <TableRow>
+                                                                        <TableHead>Date</TableHead>
+                                                                        <TableHead className="text-right">Index</TableHead>
+                                                                        <TableHead>Type</TableHead>
+                                                                    </TableRow>
+                                                                </TableHeader>
+                                                                <TableBody>
+                                                                    {lastMeterReadings.map(reading => (
+                                                                        <TableRow key={reading.id}>
+                                                                            <TableCell className="text-sm">
+                                                                                {new Date(reading.date).toLocaleDateString('fr-FR')}
+                                                                            </TableCell>
+                                                                            <TableCell className="text-right font-medium">
+                                                                                {reading.value.toLocaleString('fr-FR')} {reading.unit || activeMeter.unit}
+                                                                            </TableCell>
+                                                                            <TableCell>
+                                                                                <span className={`text-xs px-1.5 py-0.5 rounded-sm font-medium ${
+                                                                                    reading.type === 'REEL' ? 'bg-green-100 text-green-700' :
+                                                                                    reading.type === 'ESTIME' ? 'bg-yellow-100 text-yellow-700' :
+                                                                                    reading.type === 'CORRIGE' ? 'bg-blue-100 text-blue-700' :
+                                                                                    'bg-muted text-muted-foreground'
+                                                                                }`}>
+                                                                                    {reading.type}
+                                                                                </span>
+                                                                            </TableCell>
+                                                                        </TableRow>
+                                                                    ))}
+                                                                </TableBody>
+                                                            </Table>
+                                                        ) : (
+                                                            <p className="text-sm text-muted-foreground text-center py-2">Aucun relevé enregistré</p>
+                                                        )}
+                                                    </div>
+                                                </>
+                                            )}
                                         </CardContent>
                                     </Card>
 
@@ -718,18 +914,58 @@ export default function SiteDetailsPage() {
                                             <CardTitle className="text-base">Aperçu de calcul</CardTitle>
                                         </CardHeader>
                                         <CardContent className="space-y-2">
+                                            {/* Coefficient révisé */}
                                             <div className="flex justify-between items-center text-sm">
-                                                <span className="text-muted-foreground">Coefficient révisé estimé</span>
-                                                <span className="font-bold">11,23 € HT</span>
+                                                <span className="text-muted-foreground">
+                                                    Coefficient révisé
+                                                    {activeRevisionRule && ` (${activeRevisionRule.type}${activeRevisionRule.nbMonths > 1 ? `, moy. ${activeRevisionRule.nbMonths} mois` : ''})`}
+                                                </span>
+                                                <span className="font-bold">
+                                                    {revisionCoefficient != null
+                                                        ? revisionCoefficient.toFixed(4)
+                                                        : <span className="text-orange-500 italic text-xs">{revisionDiagnostic ?? '-'}</span>}
+                                                </span>
                                             </div>
+
+                                            {/* Prix unitaire révisé */}
                                             <div className="flex justify-between items-center text-sm">
-                                                <span className="text-muted-foreground">Consommation estimée</span>
-                                                <span className="font-bold">35 {activeService.unit?.includes('m3') ? 'm3' : 'MWh'}</span>
+                                                <span className="text-muted-foreground">Prix unitaire révisé</span>
+                                                <span className="font-bold">
+                                                    {revisedUnitPrice != null
+                                                        ? `${revisedUnitPrice.toFixed(4)} ${activeService.unit || '€'}`
+                                                        : <span className="text-muted-foreground italic text-xs">-</span>}
+                                                </span>
                                             </div>
+
+                                            {/* Consommation (uniquement si compteur lié) */}
+                                            {activeMeter && (
+                                                <div className="flex justify-between items-center text-sm">
+                                                    <span className="text-muted-foreground">
+                                                        Consommation relevée
+                                                        {lastReal && prevReal && (
+                                                            <span className="text-xs ml-1 text-muted-foreground/70">
+                                                                ({new Date(prevReal.date).toLocaleDateString('fr-FR')} → {new Date(lastReal.date).toLocaleDateString('fr-FR')})
+                                                            </span>
+                                                        )}
+                                                    </span>
+                                                    <span className="font-bold">
+                                                        {consumption != null
+                                                            ? `${consumption.toLocaleString('fr-FR')} ${activeMeter.unit}`
+                                                            : <span className="text-muted-foreground italic text-xs">Relevés insuffisants</span>}
+                                                    </span>
+                                                </div>
+                                            )}
+
                                             <Separator className="my-2" />
+
+                                            {/* Montant estimé */}
                                             <div className="flex justify-between items-center text-base">
                                                 <span className="font-medium">Montant {activeService.type} estimé</span>
-                                                <span className="font-bold text-primary">393,05 € HT</span>
+                                                <span className="font-bold text-primary">
+                                                    {estimatedAmount != null
+                                                        ? `${estimatedAmount.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} € HT`
+                                                        : <span className="text-muted-foreground text-sm font-normal italic">Données incomplètes</span>}
+                                                </span>
                                             </div>
                                         </CardContent>
                                     </Card>

@@ -25,35 +25,35 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Separator } from "@/components/ui/separator";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger, DialogClose } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogClose } from "@/components/ui/dialog";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
   ChevronLeft,
   Calendar,
   FileClock,
-  CheckCircle,
   FileText,
   PlusCircle,
-  ClipboardList,
   MapPin,
   Loader2,
-  Settings,
-  Flame,
-  Droplets,
-  Clock,
-  CalendarDays,
   Paperclip,
   Edit,
   Trash2,
   CreditCard,
-  Upload
+  Upload,
+  User,
+  Phone,
+  Mail,
+  Building2,
+  TrendingUp,
+  AlertTriangle,
 } from "lucide-react";
 import {
-  getContract, getSitesByContract, getMeters,
-  getInvoicesByContract, getActivities, getRevisionFormulas, getTerms, getSchedules,
-  createSite, updateSite, deleteSite,
+  getContract, getSitesByContract,
+  getInvoicesByContract, getActivities, getClient, getContactsByClient,
+  createSite, updateSite, deleteSite, updateContract,
   getAmendmentsByContract, getTerminationsByContract, getRenewalsByContract, getTrusteeChangesByContract, getBeChangesByContract
 } from "@/services/firestore";
-import type { Activity, Contract, Invoice, Site, Meter, RevisionFormula, RevisionRule, RevisionInfo, Term, Schedule, Amendment, Termination, Renewal, TrusteeChange, BeChange } from "@/lib/types";
+import type { Activity, Contract, Invoice, Site, RevisionInfo, Amendment, Termination, Renewal, TrusteeChange, BeChange, Client, Contact } from "@/lib/types";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useData } from "@/context/data-context";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -74,13 +74,11 @@ export default function ContractDetailPage() {
 
   const [isLoading, setIsLoading] = useState(true);
   const [contract, setContract] = useState<Contract | null>(null);
+  const [client, setClient] = useState<Client | null>(null);
+  const [contacts, setContacts] = useState<Contact[]>([]);
   const [sites, setSites] = useState<Site[]>([]);
-  const [meters, setMeters] = useState<Meter[]>([]);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [activities, setActivities] = useState<Activity[]>([]);
-  const [revisionFormulas, setRevisionFormulas] = useState<RevisionFormula[]>([]);
-  const [terms, setTerms] = useState<Term[]>([]);
-  const [schedules, setSchedules] = useState<Schedule[]>([]);
 
   // Contract Events State
   const [amendments, setAmendments] = useState<Amendment[]>([]);
@@ -141,12 +139,10 @@ export default function ContractDetailPage() {
 
         const [
           sitesData,
-          metersData,
           invoicesData,
           activitiesData,
-          formulasData,
-          termsData,
-          schedulesData,
+          clientData,
+          contactsData,
           amendmentsData,
           terminationsData,
           renewalsData,
@@ -154,12 +150,10 @@ export default function ContractDetailPage() {
           beChangesData
         ] = await Promise.all([
           getSitesByContract(id),
-          getMeters(),
           getInvoicesByContract(id),
           getActivities(),
-          getRevisionFormulas(),
-          getTerms(),
-          getSchedules(),
+          getClient(contractData.clientId),
+          getContactsByClient(contractData.clientId),
           getAmendmentsByContract(id),
           getTerminationsByContract(id),
           getRenewalsByContract(id),
@@ -169,28 +163,16 @@ export default function ContractDetailPage() {
 
         setSites(sitesData);
 
-        const contractSiteIds = sitesData.map((s: Site) => s.id);
-        const contractMeters = metersData.filter((meter: Meter) => contractSiteIds.includes(meter.siteId));
-        setMeters(contractMeters);
-
         setInvoices(invoicesData);
         setActivities(activitiesData);
-        setRevisionFormulas(formulasData);
-        setTerms(termsData);
-        setSchedules(schedulesData);
+        setClient(clientData);
+        setContacts(contactsData);
 
         setAmendments(amendmentsData);
         setTerminations(terminationsData);
         setRenewals(renewalsData);
         setTrusteeChanges(trusteeChangesData);
         setBeChanges(beChangesData);
-        // Let's fix the destructuring in the next chunk or here.
-        // Wait, I can't easily change the destructuring line in this chunk without including lines 109-117.
-        // I will rely on the fact that I added items to the Promise.all array.
-        // But I need to capture them.
-        // I will rewrite the destructuring line in a separate chunk or merge.
-        // Let's merge.
-
 
       } catch (error) {
         console.error("Failed to fetch contract details:", error);
@@ -261,7 +243,12 @@ export default function ContractDetailPage() {
         await updateSite(editingSite.id, siteData);
         toast({ title: "Site mis à jour", description: "Le site a été mis à jour avec succès." });
       } else {
-        await createSite({ ...siteData, contractId: id, clientId: contract?.clientId } as Omit<Site, 'id'>);
+        const newSite = await createSite({ ...siteData, contractId: id, clientId: contract?.clientId } as Omit<Site, 'id'>);
+        // Synchronise contract.siteIds
+        const currentSiteIds = contract?.siteIds || [];
+        if (newSite?.id && !currentSiteIds.includes(newSite.id)) {
+          await updateContract(id, { siteIds: [...currentSiteIds, newSite.id] });
+        }
         toast({ title: "Site créé", description: "Le nouveau site a été ajouté avec succès." });
       }
       await reloadData();
@@ -277,6 +264,9 @@ export default function ContractDetailPage() {
     if (!siteToDelete) return;
     try {
       await deleteSite(siteToDelete.id);
+      // Synchronise contract.siteIds
+      const currentSiteIds = contract?.siteIds || [];
+      await updateContract(id, { siteIds: currentSiteIds.filter(sid => sid !== siteToDelete.id) });
       toast({ title: "Succès", description: "Le site a été supprimé." });
       await reloadData();
       setSiteToDelete(null);
@@ -291,21 +281,15 @@ export default function ContractDetailPage() {
     );
   };
 
-
   const getBadgeVariant = (status: Contract['status']): 'secondary' | 'destructive' | 'warning' | 'outline' => {
     switch (status) {
-      case 'Actif':
-        return 'secondary';
-      case 'Résilié':
-        return 'destructive';
-      case 'Terminé':
-        return 'warning';
-      case 'Brouillon':
-        return 'outline';
-      default:
-        return 'secondary';
+      case 'Actif': return 'secondary';
+      case 'Résilié': return 'destructive';
+      case 'Terminé': return 'warning';
+      case 'Brouillon': return 'outline';
+      default: return 'secondary';
     }
-  }
+  };
 
   if (isLoading) {
     return (
@@ -319,43 +303,26 @@ export default function ContractDetailPage() {
     return notFound();
   }
 
-  const activityMap = new Map(activities.map((a: Activity) => [a.id, { label: a.label, code: a.code }]));
-  const revisionFormulaMap = new Map(revisionFormulas.map(f => [f.id, f.code]));
-  const termMap = new Map(terms.map(t => [t.id, t.name]));
-  const scheduleMap = new Map(schedules.map(s => [s.id, s.name]));
+  // KPI calculations
+  const totalContractualise = sites.reduce(
+    (sum, site) => sum + (site.amounts?.reduce((s, a) => s + a.amount, 0) ?? 0),
+    0
+  );
+  const totalFacture = invoices.reduce((sum, i) => sum + i.total, 0);
+  const totalPaye = invoices.filter(i => i.status === 'paid').reduce((sum, i) => sum + i.total, 0);
+  const soldeDu = invoices.filter(i => i.status === 'due' || i.status === 'overdue').reduce((sum, i) => sum + i.total, 0);
 
-  const getActivitiesByCode = (code: string) => {
-    return activities.find(a => a.code === code);
-  }
+  // Reconduction alert
+  const daysUntilEnd = contract.endDate
+    ? Math.ceil((new Date(contract.endDate).getTime() - Date.now()) / 86400000)
+    : null;
+  const showRenewAlert = daysUntilEnd !== null && daysUntilEnd <= 90 && contract.status === 'Actif';
 
-  const p1Activity = getActivitiesByCode('P1');
-  const p2Activity = getActivitiesByCode('P2');
-  const p3Activity = getActivitiesByCode('P3');
-
-  // Helper to get detail for an activity
-  const getDetail = (activityId?: string) => {
-    if (!activityId || !contract.activitiesDetails) return null;
-    return contract.activitiesDetails.find(d => d.activityId === activityId);
-  }
-
-  const p1Detail = getDetail(p1Activity?.id);
-  const p2Detail = getDetail(p2Activity?.id);
-  const p3Detail = getDetail(p3Activity?.id);
-
-
-  const meterMap = new Map(meters.map(m => [m.id, m.name]));
-  const siteMap = new Map(sites.map(s => [s.id, s.name]));
-
-  const renderRevisionInfo = (revision?: { formulaId?: string | null, date?: string }) => {
-    if (!revision || !revision.formulaId) return "N/A";
-    const formulaCode = revisionFormulaMap.get(revision.formulaId);
-    const date = revision.date ? ` (depuis le ${new Date(revision.date).toLocaleDateString()})` : '';
-    return `${formulaCode}${date}`;
-  };
-
+  const fmt = (n: number) => n.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
   return (
     <div className="grid gap-4 md:gap-8">
+      {/* Header */}
       <div className="flex items-center gap-4">
         <Link href="/contracts">
           <Button variant="outline" size="icon" className="h-7 w-7">
@@ -373,7 +340,72 @@ export default function ContractDetailPage() {
           <Link href={`/contracts/${id}/edit`}>Modifier</Link>
         </Button>
       </div>
+
+      {/* Reconduction alert */}
+      {showRenewAlert && (
+        <Alert className="border-amber-500/50 bg-amber-50 text-amber-800 dark:bg-amber-950/20 dark:text-amber-400 [&>svg]:text-amber-600">
+          <AlertTriangle className="h-4 w-4" />
+          <AlertTitle>Reconduction imminente</AlertTitle>
+          <AlertDescription>
+            Ce contrat arrive à échéance dans <strong>{daysUntilEnd} jour{daysUntilEnd > 1 ? 's' : ''}</strong> (le {new Date(contract.endDate).toLocaleDateString('fr-FR')}).
+            {contract.tacitRenewal && " La reconduction tacite est activée."}
+          </AlertDescription>
+        </Alert>
+      )}
+
+      {/* KPI strip */}
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <Card>
+          <CardHeader className="pb-2">
+            <CardDescription className="flex items-center gap-1">
+              <TrendingUp className="h-3.5 w-3.5" /> Montant contractualisé
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <p className="text-2xl font-bold">{fmt(totalContractualise)} €</p>
+            <p className="text-xs text-muted-foreground mt-1">Somme des montants sites</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="pb-2">
+            <CardDescription className="flex items-center gap-1">
+              <FileText className="h-3.5 w-3.5" /> Total facturé
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <p className="text-2xl font-bold">{fmt(totalFacture)} €</p>
+            <p className="text-xs text-muted-foreground mt-1">{invoices.length} facture{invoices.length !== 1 ? 's' : ''}</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="pb-2">
+            <CardDescription className="flex items-center gap-1">
+              <CreditCard className="h-3.5 w-3.5" /> Payé
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <p className="text-2xl font-bold text-green-600">{fmt(totalPaye)} €</p>
+            <p className="text-xs text-muted-foreground mt-1">Factures réglées</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="pb-2">
+            <CardDescription className="flex items-center gap-1">
+              <AlertTriangle className="h-3.5 w-3.5" /> Solde dû
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <p className={`text-2xl font-bold ${soldeDu > 0 ? 'text-destructive' : 'text-muted-foreground'}`}>
+              {fmt(soldeDu)} €
+            </p>
+            <p className="text-xs text-muted-foreground mt-1">Due + en retard</p>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Main 3-col grid */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+        {/* Contract Details */}
         <Card>
           <CardHeader className="pb-4">
             <CardTitle>Détails du Contrat</CardTitle>
@@ -384,20 +416,14 @@ export default function ContractDetailPage() {
               <div className="flex items-center">
                 <Calendar className="mr-2 h-4 w-4 text-muted-foreground" />
                 <span>
-                  {new Date(contract.startDate).toLocaleDateString()} -{" "}
-                  {new Date(contract.endDate).toLocaleDateString()}
+                  {new Date(contract.startDate).toLocaleDateString('fr-FR')} —{" "}
+                  {new Date(contract.endDate).toLocaleDateString('fr-FR')}
                 </span>
               </div>
               <div className="flex items-center">
                 <FileClock className="mr-2 h-4 w-4 text-muted-foreground" />
                 <span>
                   Facturé {sites[0]?.billingSchedule || contract.billingSchedule || 'Non défini'}
-                </span>
-              </div>
-              <div className="flex items-center">
-                <ClipboardList className="mr-2 h-4 w-4 text-muted-foreground" />
-                <span>
-                  Terme : {(sites[0]?.termId && terms.find(t => t.id === sites[0].termId)?.name) || contract.term || 'Non défini'}
                 </span>
               </div>
               <div className="flex items-center">
@@ -452,7 +478,6 @@ export default function ContractDetailPage() {
                 <div><span className="font-medium">Signé Client:</span> {contract.signedByClient ? 'Oui' : 'Non'}</div>
               </div>
             </div>
-
           </CardContent>
         </Card>
 
@@ -513,118 +538,114 @@ export default function ContractDetailPage() {
           </CardContent>
         </Card>
 
+        {/* Client & Contacts Card */}
         <Card>
           <CardHeader className="pb-4">
             <CardTitle className="flex items-center gap-2">
-              <FileText className="h-5 w-5" /> Factures
+              <Building2 className="h-5 w-5" /> Client
             </CardTitle>
-            <CardDescription>
-              Générez et suivez les factures pour ce contrat.
-            </CardDescription>
           </CardHeader>
-          <CardContent>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Facture</TableHead>
-                  <TableHead>Statut</TableHead>
-                  <TableHead className="text-right">Total</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {invoices.map((invoice) => (
-                  <TableRow key={invoice.id}>
-                    <TableCell className="font-medium"><Link href={`/invoices/${invoice.id}`} className="hover:underline">{invoice.invoiceNumber || invoice.id}</Link></TableCell>
-                    <TableCell>
-                      <Badge variant="outline">{invoice.status}</Badge>
-                    </TableCell>
-                    <TableCell className="text-right">
-                      {invoice.total.toFixed(2)} €
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+          <CardContent className="space-y-4">
+            <div>
+              <Link href={`/clients/${contract.clientId}`} className="font-semibold hover:underline text-sm">
+                {client?.name || contract.clientName}
+              </Link>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                {[client?.address, client?.postalCode, client?.city].filter(Boolean).join(', ') || 'Adresse non renseignée'}
+              </p>
+            </div>
+            <Separator />
+            <div className="space-y-3">
+              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Contacts</p>
+              {contacts.length === 0 ? (
+                <p className="text-sm text-muted-foreground">Aucun contact renseigné.</p>
+              ) : (
+                contacts.map(contact => (
+                  <div key={contact.id} className="text-sm space-y-1">
+                    <p className="font-medium flex items-center gap-1.5">
+                      <User className="h-3.5 w-3.5 text-muted-foreground" />
+                      {contact.name}
+                      <Badge variant="outline" className="ml-1 text-xs py-0">{contact.type}</Badge>
+                    </p>
+                    {contact.role && (
+                      <p className="text-xs text-muted-foreground pl-5">{contact.role}</p>
+                    )}
+                    {contact.phone && (
+                      <p className="flex items-center gap-1.5 text-xs text-muted-foreground pl-5">
+                        <Phone className="h-3 w-3" /> {contact.phone}
+                      </p>
+                    )}
+                    {contact.email && (
+                      <p className="flex items-center gap-1.5 text-xs text-muted-foreground pl-5">
+                        <Mail className="h-3 w-3" />
+                        <a href={`mailto:${contact.email}`} className="hover:underline">{contact.email}</a>
+                      </p>
+                    )}
+                  </div>
+                ))
+              )}
+            </div>
           </CardContent>
-          <CardFooter>
-            <Button size="sm" variant="outline" className="w-full gap-1" onClick={() => router.push('/billing')}>
-              <PlusCircle className="h-4 w-4" />
-              Générer une Facture
-            </Button>
-          </CardFooter>
         </Card>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-        {p1Activity && contract.activityIds.includes(p1Activity.id) && (
-          <Card className="lg:col-span-1">
-            <CardHeader><CardTitle className="flex items-center gap-2"><CheckCircle className="h-5 w-5 text-green-500" /> Prestation P1</CardTitle></CardHeader>
-            <CardContent className="space-y-4 text-sm">
-              {/* Prefer activitiesDetails if available, else fallback to legacy */}
-              {p1Detail ? (
-                <>
-                  <div className="flex items-center"><Settings className="mr-2 h-4 w-4" /> Révision: {p1Detail.revisionFormula || 'Non définie'}</div>
-                  {p1Detail.termId && <div className="flex items-center"><Clock className="mr-2 h-4 w-4" /> Terme: {termMap.get(p1Detail.termId) || p1Detail.termId}</div>}
-                  {p1Detail.scheduleId && <div className="flex items-center"><CalendarDays className="mr-2 h-4 w-4" /> Échéancier: {scheduleMap.get(p1Detail.scheduleId) || p1Detail.scheduleId}</div>}
+      {/* Invoices — full width */}
+      <Card>
+        <CardHeader className="pb-4">
+          <CardTitle className="flex items-center gap-2">
+            <FileText className="h-5 w-5" /> Factures
+          </CardTitle>
+          <CardDescription>
+            Générez et suivez les factures pour ce contrat.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Facture</TableHead>
+                <TableHead>Statut</TableHead>
+                <TableHead>Période</TableHead>
+                <TableHead className="text-right">Total</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {invoices.length > 0 ? invoices.map((invoice) => (
+                <TableRow key={invoice.id}>
+                  <TableCell className="font-medium">
+                    <Link href={`/invoices/${invoice.id}`} className="hover:underline">
+                      {invoice.invoiceNumber || invoice.id}
+                    </Link>
+                  </TableCell>
+                  <TableCell>
+                    <Badge variant="outline">{invoice.status}</Badge>
+                  </TableCell>
+                  <TableCell className="text-muted-foreground text-xs">
+                    {invoice.periodStartDate && invoice.periodEndDate
+                      ? `${new Date(invoice.periodStartDate).toLocaleDateString('fr-FR')} – ${new Date(invoice.periodEndDate).toLocaleDateString('fr-FR')}`
+                      : invoice.date ? new Date(invoice.date).toLocaleDateString('fr-FR') : '—'}
+                  </TableCell>
+                  <TableCell className="text-right font-medium">
+                    {invoice.total.toFixed(2)} €
+                  </TableCell>
+                </TableRow>
+              )) : (
+                <TableRow>
+                  <TableCell colSpan={4} className="text-center text-muted-foreground h-16">Aucune facture</TableCell>
+                </TableRow>
+              )}
+            </TableBody>
+          </Table>
+        </CardContent>
+        <CardFooter>
+          <Button size="sm" variant="outline" className="w-full gap-1" onClick={() => router.push('/billing')}>
+            <PlusCircle className="h-4 w-4" />
+            Générer une Facture
+          </Button>
+        </CardFooter>
+      </Card>
 
-                  {/* P1 Specifics from Detail */}
-                  <div className="p-3 border rounded-md space-y-2">
-                    <h4 className="font-semibold flex items-center gap-2"><Flame className="h-4 w-4 text-orange-500" /> Détails Techniques</h4>
-                    {p1Detail.contractualDJU !== undefined && <p>DJU Contractuel: {p1Detail.contractualDJU}</p>}
-                    {p1Detail.weatherStation && <p>Station Météo: {p1Detail.weatherStation}</p>}
-                    {p1Detail.contractualTemperature !== undefined && <p>Temp. Contractuelle: {p1Detail.contractualTemperature}°C</p>}
-                    {p1Detail.contractualNB !== undefined && <p>NB Contractuel: {p1Detail.contractualNB}</p>}
-                    {p1Detail.ecsSmallQ !== undefined && <p>Petit q (ECS): {p1Detail.ecsSmallQ}</p>}
-                  </div>
-                </>
-              ) : (
-                // Legacy Fallback - P1 fields now managed at Site level
-                <>
-                  <div className="flex items-center"><Settings className="mr-2 h-4 w-4" /> Révision: {renderRevisionInfo(contract.revisionP1)}</div>
-                  <div className="p-3 border rounded-md text-muted-foreground">
-                    <p className="text-sm">Les détails P1 (chauffage, ECS) sont désormais gérés au niveau du site.</p>
-                  </div>
-                </>
-              )}
-            </CardContent>
-          </Card>
-        )}
-        {p2Activity && contract.activityIds.includes(p2Activity.id) && (
-          <Card>
-            <CardHeader><CardTitle className="flex items-center gap-2"><CheckCircle className="h-5 w-5 text-green-500" /> Prestation P2</CardTitle></CardHeader>
-            <CardContent className="space-y-2 text-sm">
-              {p2Detail ? (
-                <>
-                  <div className="flex items-center"><Settings className="mr-2 h-4 w-4" /> Révision: {p2Detail.revisionFormula || 'Non définie'}</div>
-                  {p2Detail.termId && <div className="flex items-center"><Clock className="mr-2 h-4 w-4" /> Terme: {termMap.get(p2Detail.termId) || p2Detail.termId}</div>}
-                  {p2Detail.scheduleId && <div className="flex items-center"><CalendarDays className="mr-2 h-4 w-4" /> Échéancier: {scheduleMap.get(p2Detail.scheduleId) || p2Detail.scheduleId}</div>}
-                  {p2Detail.amount !== undefined && <div className="font-medium mt-2">Montant: {p2Detail.amount.toFixed(2)} €</div>}
-                </>
-              ) : (
-                <div className="flex items-center"><Settings className="mr-2 h-4 w-4" /> Révision: {renderRevisionInfo(contract.revisionP2)}</div>
-              )}
-            </CardContent>
-          </Card>
-        )}
-        {p3Activity && contract.activityIds.includes(p3Activity.id) && (
-          <Card>
-            <CardHeader><CardTitle className="flex items-center gap-2"><CheckCircle className="h-5 w-5 text-green-500" /> Prestation P3</CardTitle></CardHeader>
-            <CardContent className="space-y-2 text-sm">
-              {p3Detail ? (
-                <>
-                  <div className="flex items-center"><Settings className="mr-2 h-4 w-4" /> Révision: {p3Detail.revisionFormula || 'Non définie'}</div>
-                  {p3Detail.termId && <div className="flex items-center"><Clock className="mr-2 h-4 w-4" /> Terme: {termMap.get(p3Detail.termId) || p3Detail.termId}</div>}
-                  {p3Detail.scheduleId && <div className="flex items-center"><CalendarDays className="mr-2 h-4 w-4" /> Échéancier: {scheduleMap.get(p3Detail.scheduleId) || p3Detail.scheduleId}</div>}
-                  {p3Detail.amount !== undefined && <div className="font-medium mt-2">Montant: {p3Detail.amount.toFixed(2)} €</div>}
-                </>
-              ) : (
-                <div className="flex items-center"><Settings className="mr-2 h-4 w-4" /> Révision: {renderRevisionInfo(contract.revisionP3)}</div>
-              )}
-            </CardContent>
-          </Card>
-        )}
-      </div>
-
+      {/* Tabs */}
       <Tabs defaultValue="amendments" className="w-full">
         <TabsList>
           <TabsTrigger value="amendments">Avenants ({amendments.length})</TabsTrigger>
@@ -647,7 +668,7 @@ export default function ContractDetailPage() {
                 <TableBody>
                   {amendments.length > 0 ? amendments.map(a => (
                     <TableRow key={a.id}>
-                      <TableCell>{new Date(a.effectiveDate).toLocaleDateString()}</TableCell>
+                      <TableCell>{new Date(a.effectiveDate).toLocaleDateString('fr-FR')}</TableCell>
                       <TableCell>{a.description}</TableCell>
                       <TableCell>{a.impactP1 ? `${a.impactP1} (P1)` : ''} {a.impactP2 ? `${a.impactP2} (P2)` : ''}</TableCell>
                       <TableCell>{a.signed ? 'Oui' : 'Non'}</TableCell>
@@ -672,8 +693,8 @@ export default function ContractDetailPage() {
                 <TableBody>
                   {terminations.length > 0 ? terminations.map(t => (
                     <TableRow key={t.id}>
-                      <TableCell>{new Date(t.createdAt).toLocaleDateString()}</TableCell>
-                      <TableCell>{t.effectiveDate ? new Date(t.effectiveDate).toLocaleDateString() : '-'}</TableCell>
+                      <TableCell>{new Date(t.createdAt).toLocaleDateString('fr-FR')}</TableCell>
+                      <TableCell>{t.effectiveDate ? new Date(t.effectiveDate).toLocaleDateString('fr-FR') : '-'}</TableCell>
                       <TableCell>{t.reason}</TableCell>
                     </TableRow>
                   )) : <TableRow><TableCell colSpan={3} className="text-center">Aucune résiliation</TableCell></TableRow>}
@@ -696,8 +717,8 @@ export default function ContractDetailPage() {
                 <TableBody>
                   {renewals.length > 0 ? renewals.map(r => (
                     <TableRow key={r.id}>
-                      <TableCell>{new Date(r.createdAt).toLocaleDateString()}</TableCell>
-                      <TableCell>{new Date(r.newEndDate).toLocaleDateString()}</TableCell>
+                      <TableCell>{new Date(r.createdAt).toLocaleDateString('fr-FR')}</TableCell>
+                      <TableCell>{new Date(r.newEndDate).toLocaleDateString('fr-FR')}</TableCell>
                       <TableCell>{r.duration}</TableCell>
                     </TableRow>
                   )) : <TableRow><TableCell colSpan={3} className="text-center">Aucune reconduction</TableCell></TableRow>}
@@ -720,7 +741,7 @@ export default function ContractDetailPage() {
                 <TableBody>
                   {trusteeChanges.length > 0 ? trusteeChanges.map(t => (
                     <TableRow key={t.id}>
-                      <TableCell>{new Date(t.effectiveDate).toLocaleDateString()}</TableCell>
+                      <TableCell>{new Date(t.effectiveDate).toLocaleDateString('fr-FR')}</TableCell>
                       <TableCell>{t.newRepresentative}</TableCell>
                       <TableCell>{t.contactEmail}</TableCell>
                     </TableRow>
@@ -744,7 +765,7 @@ export default function ContractDetailPage() {
                 <TableBody>
                   {beChanges.length > 0 ? beChanges.map(b => (
                     <TableRow key={b.id}>
-                      <TableCell>{new Date(b.effectiveDate).toLocaleDateString()}</TableCell>
+                      <TableCell>{new Date(b.effectiveDate).toLocaleDateString('fr-FR')}</TableCell>
                       <TableCell>{b.newBe}</TableCell>
                       <TableCell>{b.contactEmail}</TableCell>
                     </TableRow>
@@ -949,7 +970,6 @@ export default function ContractDetailPage() {
         activities={activities}
         onComplete={reloadData}
       />
-
-    </div >
+    </div>
   );
 }
