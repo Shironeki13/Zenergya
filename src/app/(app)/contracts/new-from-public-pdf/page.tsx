@@ -1,13 +1,13 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useRef } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { ChevronLeft, Loader2, Wand2, X, FileText, CalendarIcon } from 'lucide-react';
+import { ChevronLeft, Loader2, X, FileText, CalendarIcon, FileUp, Sparkles, ChevronDown, ChevronUp } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
 import { useForm } from 'react-hook-form';
@@ -132,6 +132,11 @@ export default function NewContractFromPublicPdfPage() {
     const [analysisResult, setAnalysisResult] = useState<Partial<ClientFormValues> | null>(null);
     const [isSheetOpen, setIsSheetOpen] = useState(false);
     const [prompt, setPrompt] = useState(defaultPrompt);
+    const [draggingOver, setDraggingOver] = useState<DocumentType | null>(null);
+    const [isPromptExpanded, setIsPromptExpanded] = useState(false);
+    const fileInputRefs = useRef<Record<DocumentType, HTMLInputElement | null>>({
+        acteEngagement: null, ccap: null, cctp: null, notification: null, bpu: null, dpgf: null
+    });
 
     const { toast } = useToast();
     const router = useRouter();
@@ -201,7 +206,18 @@ export default function NewContractFromPublicPdfPage() {
 
     const removeFile = (type: DocumentType) => {
         setFiles(prev => ({ ...prev, [type]: null }));
-    }
+    };
+
+    const handleDrop = (e: React.DragEvent<HTMLDivElement>, type: DocumentType) => {
+        e.preventDefault();
+        setDraggingOver(null);
+        const droppedFile = e.dataTransfer.files[0];
+        if (droppedFile?.type === 'application/pdf') {
+            setFiles(prev => ({ ...prev, [type]: droppedFile }));
+        } else if (droppedFile) {
+            toast({ title: "Fichier invalide", description: "Seuls les fichiers PDF sont acceptés.", variant: "destructive" });
+        }
+    };
 
     const handleAnalyze = async () => {
         // Find the best file to analyze
@@ -305,73 +321,132 @@ export default function NewContractFromPublicPdfPage() {
                 </div>
             </div>
 
-            <div className="grid lg:grid-cols-2 gap-6">
-                <Card className="flex-1">
-                    <CardHeader>
-                        <CardTitle>1. Importer les documents</CardTitle>
-                        <CardDescription>
-                            Sélectionnez les fichiers PDF du marché. Le CCTP est prioritaire pour l'analyse technique.
-                        </CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                        <div className="space-y-4">
-                            {documentFields.map((doc) => (
-                                <div key={doc.id} className="space-y-2">
-                                    <Label htmlFor={doc.id} className="flex items-center gap-2">
-                                        {doc.label}
-                                        {doc.required && <span className="text-red-500">*</span>}
-                                    </Label>
-                                    <div className="flex items-center gap-2">
-                                        <Input
-                                            id={doc.id}
-                                            type="file"
-                                            accept="application/pdf"
-                                            onChange={(e) => handleFileChange(e, doc.id)}
-                                            className="flex-1"
-                                        />
-                                        {files[doc.id] && (
-                                            <Button variant="ghost" size="icon" onClick={() => removeFile(doc.id)}>
-                                                <X className="h-4 w-4" />
-                                            </Button>
-                                        )}
+            <div className="space-y-4">
+                {/* Grille 3×2 de cards de dépôt */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {documentFields.map((doc) => {
+                        const fileUploaded = files[doc.id];
+                        const isDraggingOver = draggingOver === doc.id;
+                        return (
+                            <div
+                                key={doc.id}
+                                onDragOver={(e) => { e.preventDefault(); setDraggingOver(doc.id); }}
+                                onDragLeave={() => setDraggingOver(null)}
+                                onDrop={(e) => handleDrop(e, doc.id)}
+                                className={cn(
+                                    "border-2 border-dashed rounded-xl p-4 transition-all flex flex-col min-h-[130px]",
+                                    isDraggingOver
+                                        ? "border-primary bg-primary/5"
+                                        : fileUploaded
+                                            ? "border-green-500/50 bg-green-50/50 dark:bg-green-950/20"
+                                            : "border-muted-foreground/25 hover:border-primary/50"
+                                )}
+                            >
+                                {/* En-tête de la card */}
+                                <div className="flex items-start justify-between gap-2 mb-3">
+                                    <div className="flex flex-col gap-1">
+                                        <span className="text-sm font-semibold leading-tight">{doc.label}</span>
+                                        {doc.required
+                                            ? <span className="text-xs w-fit bg-red-100 text-red-600 dark:bg-red-950/50 dark:text-red-400 px-1.5 py-0.5 rounded">Requis</span>
+                                            : <span className="text-xs w-fit bg-muted text-muted-foreground px-1.5 py-0.5 rounded">Optionnel</span>
+                                        }
                                     </div>
-                                    {files[doc.id] && <p className="text-xs text-muted-foreground flex items-center gap-1"><FileText className="h-3 w-3" /> {files[doc.id]?.name}</p>}
+                                    {fileUploaded && (
+                                        <Button variant="ghost" size="icon" className="h-6 w-6 shrink-0" type="button" onClick={() => removeFile(doc.id)}>
+                                            <X className="h-3 w-3" />
+                                        </Button>
+                                    )}
                                 </div>
-                            ))}
-                        </div>
-                    </CardContent>
-                </Card>
-                <Card className="flex-1">
-                    <CardHeader>
-                        <CardTitle>2. Personnaliser le Prompt</CardTitle>
-                        <CardDescription>
-                            Modifiez le prompt ci-dessous pour affiner l'extraction de données si nécessaire.
-                        </CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                        <Textarea
-                            value={prompt}
-                            onChange={(e) => setPrompt(e.target.value)}
-                            className="min-h-[400px] font-mono text-xs"
-                        />
-                    </CardContent>
-                </Card>
-            </div>
 
-            <div className="flex justify-center">
-                <Button onClick={handleAnalyze} disabled={isAnalyzing || !Object.values(files).some(f => f !== null)} size="lg">
-                    {isAnalyzing ? (
-                        <>
-                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                            Analyse en cours...
-                        </>
-                    ) : (
-                        <>
-                            <Wand2 className="mr-2 h-4 w-4" />
-                            Lancer l'analyse
-                        </>
+                                {/* Corps : fichier chargé ou zone de dépôt */}
+                                {fileUploaded ? (
+                                    <div className="flex-1 flex items-center gap-2 text-sm text-green-700 dark:text-green-400 min-w-0">
+                                        <FileText className="h-4 w-4 shrink-0" />
+                                        <div className="min-w-0">
+                                            <p className="truncate font-medium">{fileUploaded.name}</p>
+                                            <p className="text-xs text-muted-foreground">{(fileUploaded.size / 1024 / 1024).toFixed(2)} Mo</p>
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <div
+                                        className="flex-1 flex flex-col items-center justify-center gap-1.5 cursor-pointer py-2"
+                                        onClick={() => fileInputRefs.current[doc.id]?.click()}
+                                    >
+                                        <FileUp className="h-5 w-5 text-muted-foreground/40" />
+                                        <span className="text-xs text-muted-foreground text-center">Glisser ou cliquer</span>
+                                    </div>
+                                )}
+
+                                <input
+                                    ref={(el) => { fileInputRefs.current[doc.id] = el; }}
+                                    type="file"
+                                    accept="application/pdf"
+                                    className="hidden"
+                                    onChange={(e) => handleFileChange(e, doc.id)}
+                                />
+                            </div>
+                        );
+                    })}
+                </div>
+
+                {/* Configuration IA (accordéon) */}
+                <div className="border rounded-lg overflow-hidden">
+                    <button
+                        type="button"
+                        className="w-full flex items-center justify-between p-4 hover:bg-muted/50 transition-colors text-left"
+                        onClick={() => setIsPromptExpanded(!isPromptExpanded)}
+                    >
+                        <div className="flex items-center gap-2">
+                            <Sparkles className="h-4 w-4 text-primary" />
+                            <span className="text-sm font-medium">Configuration de l&apos;IA</span>
+                            <span className="text-xs text-muted-foreground">(paramètres avancés)</span>
+                        </div>
+                        {isPromptExpanded
+                            ? <ChevronUp className="h-4 w-4 text-muted-foreground" />
+                            : <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                        }
+                    </button>
+                    {isPromptExpanded && (
+                        <div className="p-4 border-t">
+                            <Textarea
+                                value={prompt}
+                                onChange={(e) => setPrompt(e.target.value)}
+                                className="min-h-[300px] font-mono text-xs"
+                            />
+                        </div>
                     )}
-                </Button>
+                </div>
+
+                {/* Boutons d'action */}
+                <div className="flex justify-end gap-3">
+                    <Button
+                        type="button"
+                        variant="secondary"
+                        onClick={() => { setAnalysisResult({}); form.reset(); setIsSheetOpen(true); }}
+                    >
+                        <FileText className="mr-2 h-4 w-4" />
+                        Saisie Manuelle
+                    </Button>
+                    <Button
+                        type="button"
+                        size="lg"
+                        onClick={handleAnalyze}
+                        disabled={isAnalyzing || !Object.values(files).some(f => f !== null)}
+                        className="min-w-[200px]"
+                    >
+                        {isAnalyzing ? (
+                            <>
+                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                Analyse en cours...
+                            </>
+                        ) : (
+                            <>
+                                <Sparkles className="mr-2 h-4 w-4" />
+                                Lancer l&apos;analyse
+                            </>
+                        )}
+                    </Button>
+                </div>
             </div>
 
             <Sheet open={isSheetOpen} onOpenChange={setIsSheetOpen}>
@@ -383,7 +458,7 @@ export default function NewContractFromPublicPdfPage() {
                         </SheetDescription>
                     </SheetHeader>
                     <div className="py-4 pr-6">
-                        {analysisResult && (
+                        {analysisResult !== null && (
                             <Form {...form}>
                                 <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-8">
                                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
