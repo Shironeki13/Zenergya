@@ -1,16 +1,15 @@
 "use client";
 
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Loader2, Upload, FileText, CheckCircle, AlertCircle, ArrowLeft, Trash2, Sparkles, Building, FileSignature, User, Euro, MapPin, Users } from "lucide-react";
+import { Loader2, FileText, ArrowLeft, Sparkles, Building, FileSignature, Euro, MapPin, Users, ChevronDown, ChevronUp, FileUp, X } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { extractContractInfo } from '@/ai/flows/extract-contract-info-flow';
 import { createClientAndContract } from '@/services/firestore';
@@ -193,6 +192,10 @@ export default function MarketPrivatePage() {
     const [prompt, setPrompt] = useState(defaultPrompt);
     const [isAnalyzing, setIsAnalyzing] = useState(false);
     const [isSheetOpen, setIsSheetOpen] = useState(false);
+    const [isDragging, setIsDragging] = useState(false);
+    const [pdfUrl, setPdfUrl] = useState<string | null>(null);
+    const [isPromptExpanded, setIsPromptExpanded] = useState(false);
+    const fileInputRef = useRef<HTMLInputElement>(null);
 
     const form = useForm<ClientFormValues>({
         resolver: zodResolver(ExtendedClientSchema),
@@ -250,13 +253,36 @@ export default function MarketPrivatePage() {
 
     const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         if (e.target.files && e.target.files[0]) {
-            setFile(e.target.files[0]);
+            const newFile = e.target.files[0];
+            setFile(newFile);
+            if (pdfUrl) URL.revokeObjectURL(pdfUrl);
+            setPdfUrl(URL.createObjectURL(newFile));
         }
     };
 
     const removeFile = () => {
         setFile(null);
+        if (pdfUrl) {
+            URL.revokeObjectURL(pdfUrl);
+            setPdfUrl(null);
+        }
     };
+
+    const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
+        e.preventDefault();
+        setIsDragging(false);
+        const droppedFile = e.dataTransfer.files[0];
+        if (droppedFile?.type === 'application/pdf') {
+            setFile(droppedFile);
+            if (pdfUrl) URL.revokeObjectURL(pdfUrl);
+            setPdfUrl(URL.createObjectURL(droppedFile));
+        }
+    };
+
+    useEffect(() => {
+        return () => { if (pdfUrl) URL.revokeObjectURL(pdfUrl); };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
 
     const findTypologyId = (name: string | undefined | null) => {
         if (!name) return "";
@@ -442,84 +468,127 @@ export default function MarketPrivatePage() {
                 </div>
             </div>
 
-            <div className="grid gap-6 lg:grid-cols-2">
-                <Card>
-                    <CardHeader>
-                        <CardTitle>Document</CardTitle>
-                        <CardDescription>
-                            Sélectionnez le contrat (PDF) à analyser.
-                        </CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                        <div className="grid w-full max-w-sm items-center gap-1.5">
-                            <Label htmlFor="contract">Contrat PDF</Label>
-                            <div className="flex items-center gap-2">
-                                <Input id="contract" type="file" accept=".pdf" onChange={handleFileChange} className="flex-1" />
-                                {file && (
-                                    <Button variant="ghost" size="icon" onClick={removeFile}>
-                                        <Trash2 className="h-4 w-4" />
-                                    </Button>
-                                )}
-                            </div>
-                        </div>
-                        {file && (
-                            <div className="mt-4 flex items-center gap-2 text-sm text-green-600">
-                                <CheckCircle className="h-4 w-4" />
-                                <span>{file.name} prêt à être analysé</span>
-                            </div>
-                        )}
-                    </CardContent>
-                </Card>
-
-                <Card>
-                    <CardHeader>
-                        <CardTitle>Configuration de l&apos;IA</CardTitle>
-                        <CardDescription>
-                            Vous pouvez ajuster le prompt utilisé pour l&apos;analyse.
-                        </CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                        <Textarea
-                            value={prompt}
-                            onChange={(e) => setPrompt(e.target.value)}
-                            className="min-h-[200px] font-mono text-xs"
-                        />
-                    </CardContent>
-                </Card>
-            </div>
-
-            <div className="flex justify-end">
-                <Button
-                    size="lg"
-                    onClick={handleAnalyze}
-                    disabled={!file || isAnalyzing}
-                    className="min-w-[200px]"
-                >
-                    {isAnalyzing ? (
-                        <>
-                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                            Analyse en cours...
-                        </>
-                    ) : (
-                        <>
-                            <Sparkles className="mr-2 h-4 w-4" />
-                            Lancer l&apos;analyse
-                        </>
+            <div className="space-y-4">
+                {/* Zone de dépôt / Prévisualisation PDF */}
+                <div
+                    onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
+                    onDragLeave={() => setIsDragging(false)}
+                    onDrop={handleDrop}
+                    className={cn(
+                        "border-2 border-dashed rounded-xl transition-all",
+                        isDragging ? "border-primary bg-primary/5" : "border-muted-foreground/25 hover:border-primary/50"
                     )}
-                </Button>
-
-                <Button
-                    size="lg"
-                    variant="secondary"
-                    onClick={() => {
-                        form.reset();
-                        setIsSheetOpen(true);
-                    }}
-                    className="min-w-[200px]"
                 >
-                    <FileText className="mr-2 h-4 w-4" />
-                    Saisie Manuelle
-                </Button>
+                    {!file ? (
+                        <div
+                            className="flex flex-col items-center gap-4 py-20 px-8 text-center cursor-pointer"
+                            onClick={() => fileInputRef.current?.click()}
+                        >
+                            <div className="rounded-full bg-muted p-5">
+                                <FileUp className="h-10 w-10 text-muted-foreground" />
+                            </div>
+                            <div>
+                                <p className="text-base font-medium">Glissez votre contrat PDF ici</p>
+                                <p className="text-sm text-muted-foreground mt-1">ou cliquez pour parcourir vos fichiers</p>
+                            </div>
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                type="button"
+                                onClick={(e) => { e.stopPropagation(); fileInputRef.current?.click(); }}
+                            >
+                                Parcourir...
+                            </Button>
+                            <input
+                                ref={fileInputRef}
+                                type="file"
+                                accept=".pdf"
+                                className="hidden"
+                                onChange={handleFileChange}
+                            />
+                        </div>
+                    ) : (
+                        <div className="p-4 space-y-3">
+                            <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-2 text-sm">
+                                    <FileText className="h-4 w-4 text-primary" />
+                                    <span className="font-medium">{file.name}</span>
+                                    <span className="text-muted-foreground">({(file.size / 1024 / 1024).toFixed(2)} Mo)</span>
+                                </div>
+                                <Button variant="ghost" size="icon" type="button" onClick={removeFile}>
+                                    <X className="h-4 w-4" />
+                                </Button>
+                            </div>
+                            {pdfUrl && (
+                                <iframe
+                                    src={pdfUrl}
+                                    className="w-full rounded-lg border bg-white"
+                                    style={{ height: '620px' }}
+                                    title="Prévisualisation du contrat"
+                                />
+                            )}
+                        </div>
+                    )}
+                </div>
+
+                {/* Configuration IA (accordéon) */}
+                <div className="border rounded-lg overflow-hidden">
+                    <button
+                        type="button"
+                        className="w-full flex items-center justify-between p-4 hover:bg-muted/50 transition-colors text-left"
+                        onClick={() => setIsPromptExpanded(!isPromptExpanded)}
+                    >
+                        <div className="flex items-center gap-2">
+                            <Sparkles className="h-4 w-4 text-primary" />
+                            <span className="text-sm font-medium">Configuration de l&apos;IA</span>
+                            <span className="text-xs text-muted-foreground">(paramètres avancés)</span>
+                        </div>
+                        {isPromptExpanded
+                            ? <ChevronUp className="h-4 w-4 text-muted-foreground" />
+                            : <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                        }
+                    </button>
+                    {isPromptExpanded && (
+                        <div className="p-4 border-t">
+                            <Textarea
+                                value={prompt}
+                                onChange={(e) => setPrompt(e.target.value)}
+                                className="min-h-[200px] font-mono text-xs"
+                            />
+                        </div>
+                    )}
+                </div>
+
+                {/* Boutons d'action */}
+                <div className="flex justify-end gap-3">
+                    <Button
+                        type="button"
+                        variant="secondary"
+                        onClick={() => { form.reset(); setIsSheetOpen(true); }}
+                    >
+                        <FileText className="mr-2 h-4 w-4" />
+                        Saisie Manuelle
+                    </Button>
+                    <Button
+                        type="button"
+                        size="lg"
+                        onClick={handleAnalyze}
+                        disabled={!file || isAnalyzing}
+                        className="min-w-[200px]"
+                    >
+                        {isAnalyzing ? (
+                            <>
+                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                Analyse en cours...
+                            </>
+                        ) : (
+                            <>
+                                <Sparkles className="mr-2 h-4 w-4" />
+                                Lancer l&apos;analyse
+                            </>
+                        )}
+                    </Button>
+                </div>
             </div>
 
             <Sheet open={isSheetOpen} onOpenChange={setIsSheetOpen}>
