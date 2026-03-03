@@ -842,11 +842,13 @@ export const ExtractContractInfoOutputSchema = z.object({
             name: z.string().optional(),
             email: z.string().optional(),
             phone: z.string().optional(),
+            role: z.string().optional().describe("Titre ou fonction (ex: Gardien, Gérant, Président CS)."),
         }).optional(),
         contactFacturation: z.object({
             name: z.string().optional(),
             email: z.string().optional(),
             phone: z.string().optional(),
+            role: z.string().optional().describe("Titre ou fonction (ex: Responsable comptabilité, DAF)."),
         }).optional(),
         invoicingType: z.enum(['multi-site', 'global']).optional().describe("Type de facturation (global ou multi-site)."),
     }),

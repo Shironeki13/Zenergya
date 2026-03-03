@@ -47,7 +47,11 @@ const defaultPrompt = `Agis comme un expert en saisie de données juridiques. An
     - "Industrie" (Usine, Site de production).
 4.  **Chorus (\`useChorus\`)** : Mets \`true\` UNIQUEMENT si le client est une entité publique (Mairie, Collectivité, État). Sinon \`false\`.
 5.  **Adresses** : L'\`address\` principale doit être le lieu d'exécution du contrat (l'adresse de l'immeuble chauffé).
-6.  **Contacts** : Identifie le contact technique et le contact facturation si mentionnés.
+6.  **Contacts** : Identifie et extrais les contacts mentionnés dans le contrat :
+    - **Contact Technique** (\`contactTechnique\`) : La personne à contacter pour les aspects techniques (gardien, gestionnaire technique, responsable technique, syndic opérationnel...). Extrais son nom, email, téléphone, et son rôle/fonction (ex: "Gardien", "Gestionnaire", "Responsable Technique").
+    - **Contact Facturation** (\`contactFacturation\`) : La personne ou service à contacter pour la facturation (comptable, service comptabilité, ordonnateur, trésorier...). Extrais son nom, email, téléphone, et son rôle/fonction (ex: "Comptable", "Service Facturation", "Gestionnaire").
+    - Si un seul contact est mentionné, utilise-le pour les deux.
+    - Si aucun contact explicite n'est mentionné mais qu'un représentant (Syndic) est identifié, utilise-le comme contact technique avec le rôle "Syndic".
 
 **Instructions Logiques pour le CONTRAT :**
 1.  **Nom & Libellé** :
@@ -98,8 +102,8 @@ const defaultPrompt = `Agis comme un expert en saisie de données juridiques. An
     "siret": "SIRET",
     "isBe": false,
     "useChorus": boolean,
-    "contactTechnique": { "name": "...", "email": "...", "phone": "..." },
-    "contactFacturation": { "name": "...", "email": "...", "phone": "..." }
+    "contactTechnique": { "name": "...", "email": "...", "phone": "...", "role": "..." },
+    "contactFacturation": { "name": "...", "email": "...", "phone": "...", "role": "..." }
   },
   "contrat": {
      "name": "Nom du contrat",
@@ -157,9 +161,11 @@ const ExtendedClientSchema = ClientBaseSchema.extend({
     technicalContactName: z.string().optional(),
     technicalContactEmail: z.string().optional(),
     technicalContactPhone: z.string().optional(),
+    technicalContactRole: z.string().optional(),
     billingContactName: z.string().optional(),
     billingContactEmail: z.string().optional(),
     billingContactPhone: z.string().optional(),
+    billingContactRole: z.string().optional(),
     // Contract fields
     startDate: z.date().optional(),
     endDate: z.date().optional(),
@@ -216,9 +222,11 @@ export default function MarketPrivatePage() {
             technicalContactName: "",
             technicalContactEmail: "",
             technicalContactPhone: "",
+            technicalContactRole: "",
             billingContactName: "",
             billingContactEmail: "",
             billingContactPhone: "",
+            billingContactRole: "",
             baseAmountP1: undefined,
             baseAmountP2: undefined,
             typologyId: "",
@@ -296,9 +304,11 @@ export default function MarketPrivatePage() {
                         technicalContactName: result.client?.contactTechnique?.name || "",
                         technicalContactEmail: result.client?.contactTechnique?.email || "",
                         technicalContactPhone: result.client?.contactTechnique?.phone || "",
+                        technicalContactRole: result.client?.contactTechnique?.role || "",
                         billingContactName: result.client?.contactFacturation?.name || "",
                         billingContactEmail: result.client?.contactFacturation?.email || "",
                         billingContactPhone: result.client?.contactFacturation?.phone || "",
+                        billingContactRole: result.client?.contactFacturation?.role || "",
 
                         // === TAB 3: Contrat ===
                         startDate: result.contrat?.startDate ? new Date(result.contrat.startDate) : undefined,
@@ -716,9 +726,12 @@ export default function MarketPrivatePage() {
                                     <TabsContent value="contacts" className="space-y-6 pt-4">
                                         <div className="space-y-3">
                                             <Label className="text-sm font-semibold">Contact Technique</Label>
-                                            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                                            <div className="grid grid-cols-2 gap-3">
                                                 <FormField control={form.control} name="technicalContactName" render={({ field }) => (
                                                     <FormItem><FormControl><Input placeholder="Nom" {...field} /></FormControl></FormItem>
+                                                )} />
+                                                <FormField control={form.control} name="technicalContactRole" render={({ field }) => (
+                                                    <FormItem><FormControl><Input placeholder="Rôle / Fonction (ex: Gardien)" {...field} /></FormControl></FormItem>
                                                 )} />
                                                 <FormField control={form.control} name="technicalContactEmail" render={({ field }) => (
                                                     <FormItem><FormControl><Input placeholder="Email" {...field} /></FormControl></FormItem>
@@ -733,9 +746,12 @@ export default function MarketPrivatePage() {
 
                                         <div className="space-y-3">
                                             <Label className="text-sm font-semibold">Contact Facturation</Label>
-                                            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                                            <div className="grid grid-cols-2 gap-3">
                                                 <FormField control={form.control} name="billingContactName" render={({ field }) => (
                                                     <FormItem><FormControl><Input placeholder="Nom" {...field} /></FormControl></FormItem>
+                                                )} />
+                                                <FormField control={form.control} name="billingContactRole" render={({ field }) => (
+                                                    <FormItem><FormControl><Input placeholder="Rôle / Fonction (ex: Comptable)" {...field} /></FormControl></FormItem>
                                                 )} />
                                                 <FormField control={form.control} name="billingContactEmail" render={({ field }) => (
                                                     <FormItem><FormControl><Input placeholder="Email" {...field} /></FormControl></FormItem>

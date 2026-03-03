@@ -62,6 +62,18 @@ Voici les informations à extraire:
         - ecsSmallQ: Le petit q ECS.
         - ecsNB: Le NB ECS.
 
+- Contacts : Cherche dans tout le document les personnes mentionnées (interlocuteurs, responsables, gardiens, gérants, contacts techniques ou administratifs).
+  - Contact Technique (contactTechnique) : La personne responsable techniquement chez le client. Cherche : "Responsable technique", "Interlocuteur technique", "Gardien", "Gérant", "Président du conseil syndical", "Contact site", etc.
+    - name : Nom complet du contact technique.
+    - email : Adresse email du contact technique.
+    - phone : Numéro de téléphone du contact technique.
+    - role : Titre ou fonction du contact (ex: "Gardien", "Gérant", "Président CS", "Responsable technique").
+  - Contact Facturation (contactFacturation) : La personne ou entité responsable de la facturation. Cherche : "Responsable facturation", "Service comptabilité", "Contact facturation", "Interlocuteur financier", adresse de facturation différente, etc.
+    - name : Nom complet du contact facturation.
+    - email : Adresse email du contact facturation.
+    - phone : Numéro de téléphone du contact facturation.
+    - role : Titre ou fonction (ex: "Responsable comptabilité", "DAF", "Gestionnaire").
+
 - Date de démarrage (startDate): La date de début du contrat, au format YYYY-MM-DD.
 - Date de fin (endDate): La date de fin du contrat, au format YYYY-MM-DD.
 - Reconduction (renewal): Indique si le contrat est à reconduction (true ou false).
@@ -86,6 +98,15 @@ const NewContractFormSchema = ClientBaseSchema.extend({
     tacitRenewal: z.boolean().default(false),
     renewalDuration: z.string().optional(),
     noticePeriod: z.string().optional(),
+    // Contacts
+    technicalContactName: z.string().optional(),
+    technicalContactEmail: z.string().email().optional().or(z.literal('')),
+    technicalContactPhone: z.string().optional(),
+    technicalContactRole: z.string().optional(),
+    billingContactName: z.string().optional(),
+    billingContactEmail: z.string().email().optional().or(z.literal('')),
+    billingContactPhone: z.string().optional(),
+    billingContactRole: z.string().optional(),
 });
 
 type ClientFormValues = z.infer<typeof NewContractFormSchema>;
@@ -220,6 +241,15 @@ export default function NewContractFromPdfPage() {
                 endDate: res.contrat?.endDate ? new Date(res.contrat.endDate) : undefined,
                 activityIds: res.activitiesDetails?.map((a: any) => a.activityId) ?? [],
                 invoicingType: res.contrat?.invoicingType || res.client?.invoicingType || 'multi-site',
+                // Flatten nested contacts
+                technicalContactName: res.client?.contactTechnique?.name || undefined,
+                technicalContactEmail: res.client?.contactTechnique?.email || undefined,
+                technicalContactPhone: res.client?.contactTechnique?.phone || undefined,
+                technicalContactRole: res.client?.contactTechnique?.role || undefined,
+                billingContactName: res.client?.contactFacturation?.name || undefined,
+                billingContactEmail: res.client?.contactFacturation?.email || undefined,
+                billingContactPhone: res.client?.contactFacturation?.phone || undefined,
+                billingContactRole: res.client?.contactFacturation?.role || undefined,
             };
 
             setAnalysisResult(mappedData);
@@ -498,6 +528,47 @@ export default function NewContractFromPdfPage() {
                                             <FormMessage />
                                         </FormItem>
                                     )} />}
+
+                                    {/* Contacts */}
+                                    <Separator />
+                                    <div className="space-y-4">
+                                        <h3 className="text-base font-medium">Contacts</h3>
+                                        <div className="space-y-3 p-4 border rounded-lg">
+                                            <h4 className="text-sm font-semibold">Contact Technique</h4>
+                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                                <FormField control={form.control} name="technicalContactName" render={({ field }) => (
+                                                    <FormItem><FormLabel>Nom</FormLabel><FormControl><Input placeholder="Jean Dupont" {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem>
+                                                )} />
+                                                <FormField control={form.control} name="technicalContactRole" render={({ field }) => (
+                                                    <FormItem><FormLabel>Rôle / Fonction</FormLabel><FormControl><Input placeholder="Gardien, Gérant..." {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem>
+                                                )} />
+                                                <FormField control={form.control} name="technicalContactEmail" render={({ field }) => (
+                                                    <FormItem><FormLabel>Email</FormLabel><FormControl><Input type="email" placeholder="contact@exemple.fr" {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem>
+                                                )} />
+                                                <FormField control={form.control} name="technicalContactPhone" render={({ field }) => (
+                                                    <FormItem><FormLabel>Téléphone</FormLabel><FormControl><Input placeholder="06 00 00 00 00" {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem>
+                                                )} />
+                                            </div>
+                                        </div>
+                                        <div className="space-y-3 p-4 border rounded-lg">
+                                            <h4 className="text-sm font-semibold">Contact Facturation</h4>
+                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                                <FormField control={form.control} name="billingContactName" render={({ field }) => (
+                                                    <FormItem><FormLabel>Nom</FormLabel><FormControl><Input placeholder="Marie Martin" {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem>
+                                                )} />
+                                                <FormField control={form.control} name="billingContactRole" render={({ field }) => (
+                                                    <FormItem><FormLabel>Rôle / Fonction</FormLabel><FormControl><Input placeholder="Responsable comptabilité..." {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem>
+                                                )} />
+                                                <FormField control={form.control} name="billingContactEmail" render={({ field }) => (
+                                                    <FormItem><FormLabel>Email</FormLabel><FormControl><Input type="email" placeholder="factu@exemple.fr" {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem>
+                                                )} />
+                                                <FormField control={form.control} name="billingContactPhone" render={({ field }) => (
+                                                    <FormItem><FormLabel>Téléphone</FormLabel><FormControl><Input placeholder="06 00 00 00 00" {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem>
+                                                )} />
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <Separator />
 
                                     <FormField
                                         control={form.control} name="activityIds" render={() => (
