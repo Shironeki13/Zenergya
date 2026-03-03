@@ -1032,6 +1032,7 @@ export async function createClientAndContract(data: any) {
             name: data.technicalContactName || '',
             email: data.technicalContactEmail || undefined,
             phone: data.technicalContactPhone || undefined,
+            role: data.technicalContactRole || undefined,
         });
         contacts.push(contact);
     }
@@ -1042,6 +1043,7 @@ export async function createClientAndContract(data: any) {
             name: data.billingContactName || '',
             email: data.billingContactEmail || undefined,
             phone: data.billingContactPhone || undefined,
+            role: data.billingContactRole || undefined,
         });
         contacts.push(contact);
     }

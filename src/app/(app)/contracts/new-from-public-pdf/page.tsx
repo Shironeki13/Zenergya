@@ -57,6 +57,18 @@ Voici les informations à extraire:
         - ecsSmallQ: Le petit q ECS.
         - ecsNB: Le NB ECS.
 
+- Contacts : Cherche dans l'Acte d'Engagement, le CCAP et le CCTP les personnes mentionnées comme interlocuteurs.
+  - Contact Technique (contactTechnique) : Le responsable technique ou d'exploitation chez le maître d'ouvrage. Cherche : "Responsable technique", "Responsable d'exploitation", "Directeur technique", "Interlocuteur technique", "Personne habilitée", références dans le CCTP.
+    - name : Nom complet du contact technique.
+    - email : Adresse email du contact technique.
+    - phone : Numéro de téléphone du contact technique.
+    - role : Titre ou fonction (ex: "Directeur technique", "Responsable d'exploitation", "Chargé de mission").
+  - Contact Facturation (contactFacturation) : La personne ou service responsable de la facturation (souvent dans l'AE ou le CCAP). Cherche : "Service comptable", "Responsable financier", "Ordonnateur", "Service des marchés", adresse de facturation spécifique, mentions Chorus Pro.
+    - name : Nom complet ou dénomination du service de facturation.
+    - email : Adresse email du service facturation.
+    - phone : Numéro de téléphone du service facturation.
+    - role : Titre ou fonction (ex: "Responsable financier", "Service comptable", "DAF").
+
 - Date de démarrage (startDate): La date de début du contrat ou de notification, au format YYYY-MM-DD.
 - Date de fin (endDate): La date de fin du contrat, au format YYYY-MM-DD.
 - Reconduction (renewal): Indique si le contrat est à reconduction (true ou false), souvent dans le CCAP.
@@ -79,6 +91,15 @@ const NewPublicContractFormSchema = ClientBaseSchema.extend({
     tacitRenewal: z.boolean().default(false),
     renewalDuration: z.string().optional(),
     noticePeriod: z.string().optional(),
+    // Contacts
+    technicalContactName: z.string().optional(),
+    technicalContactEmail: z.string().email().optional().or(z.literal('')),
+    technicalContactPhone: z.string().optional(),
+    technicalContactRole: z.string().optional(),
+    billingContactName: z.string().optional(),
+    billingContactEmail: z.string().email().optional().or(z.literal('')),
+    billingContactPhone: z.string().optional(),
+    billingContactRole: z.string().optional(),
 });
 
 type ClientFormValues = z.infer<typeof NewPublicContractFormSchema>;
@@ -207,14 +228,24 @@ export default function NewContractFromPublicPdfPage() {
                 terms: terms.map(({ id, name }) => ({ id, name }))
             });
 
+            const res = result as any;
             const mappedData: Partial<ClientFormValues> = {
-                ...result.client,
-                ...result.contrat,
+                ...res.client,
+                ...res.contrat,
                 clientType: "public",
                 useChorus: true,
-                startDate: result.contrat.startDate ? new Date(result.contrat.startDate) : undefined,
-                endDate: result.contrat.endDate ? new Date(result.contrat.endDate) : undefined,
-                activityIds: result.activitiesDetails?.map((a: any) => a.activityId) ?? [],
+                startDate: res.contrat?.startDate ? new Date(res.contrat.startDate) : undefined,
+                endDate: res.contrat?.endDate ? new Date(res.contrat.endDate) : undefined,
+                activityIds: res.activitiesDetails?.map((a: any) => a.activityId) ?? [],
+                // Flatten nested contacts
+                technicalContactName: res.client?.contactTechnique?.name || undefined,
+                technicalContactEmail: res.client?.contactTechnique?.email || undefined,
+                technicalContactPhone: res.client?.contactTechnique?.phone || undefined,
+                technicalContactRole: res.client?.contactTechnique?.role || undefined,
+                billingContactName: res.client?.contactFacturation?.name || undefined,
+                billingContactEmail: res.client?.contactFacturation?.email || undefined,
+                billingContactPhone: res.client?.contactFacturation?.phone || undefined,
+                billingContactRole: res.client?.contactFacturation?.role || undefined,
             };
 
             setAnalysisResult(mappedData);
@@ -437,6 +468,47 @@ export default function NewContractFromPublicPdfPage() {
                                             <FormMessage />
                                         </FormItem>
                                     )} />
+
+                                    {/* Contacts */}
+                                    <Separator />
+                                    <div className="space-y-4">
+                                        <h3 className="text-base font-medium">Contacts</h3>
+                                        <div className="space-y-3 p-4 border rounded-lg">
+                                            <h4 className="text-sm font-semibold">Contact Technique</h4>
+                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                                <FormField control={form.control} name="technicalContactName" render={({ field }) => (
+                                                    <FormItem><FormLabel>Nom</FormLabel><FormControl><Input placeholder="Jean Dupont" {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem>
+                                                )} />
+                                                <FormField control={form.control} name="technicalContactRole" render={({ field }) => (
+                                                    <FormItem><FormLabel>Rôle / Fonction</FormLabel><FormControl><Input placeholder="Directeur technique..." {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem>
+                                                )} />
+                                                <FormField control={form.control} name="technicalContactEmail" render={({ field }) => (
+                                                    <FormItem><FormLabel>Email</FormLabel><FormControl><Input type="email" placeholder="contact@mairie.fr" {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem>
+                                                )} />
+                                                <FormField control={form.control} name="technicalContactPhone" render={({ field }) => (
+                                                    <FormItem><FormLabel>Téléphone</FormLabel><FormControl><Input placeholder="06 00 00 00 00" {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem>
+                                                )} />
+                                            </div>
+                                        </div>
+                                        <div className="space-y-3 p-4 border rounded-lg">
+                                            <h4 className="text-sm font-semibold">Contact Facturation</h4>
+                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                                <FormField control={form.control} name="billingContactName" render={({ field }) => (
+                                                    <FormItem><FormLabel>Nom / Service</FormLabel><FormControl><Input placeholder="Service comptable" {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem>
+                                                )} />
+                                                <FormField control={form.control} name="billingContactRole" render={({ field }) => (
+                                                    <FormItem><FormLabel>Rôle / Fonction</FormLabel><FormControl><Input placeholder="Responsable financier..." {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem>
+                                                )} />
+                                                <FormField control={form.control} name="billingContactEmail" render={({ field }) => (
+                                                    <FormItem><FormLabel>Email</FormLabel><FormControl><Input type="email" placeholder="factu@mairie.fr" {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem>
+                                                )} />
+                                                <FormField control={form.control} name="billingContactPhone" render={({ field }) => (
+                                                    <FormItem><FormLabel>Téléphone</FormLabel><FormControl><Input placeholder="06 00 00 00 00" {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem>
+                                                )} />
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <Separator />
 
                                     <FormField
                                         control={form.control} name="activityIds" render={() => (
