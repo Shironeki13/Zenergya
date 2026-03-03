@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -8,9 +8,9 @@ import { useRouter } from "next/navigation";
 import { format } from "date-fns";
 import { fr } from "date-fns/locale";
 import {
-    Loader2, Upload, FileText, CheckCircle2, AlertCircle,
-    Calendar as CalendarIcon, X, Sparkles, ArrowLeft, Trash2,
-    Building, Users, FileSignature, MapPin, Euro
+    Loader2, FileText, Calendar as CalendarIcon, X, Sparkles, ArrowLeft,
+    Building, Users, FileSignature, MapPin, Euro,
+    ChevronDown, ChevronUp, FileUp
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -117,9 +117,11 @@ const MarketPublicFormSchema = ClientBaseSchema.extend({
     technicalContactName: z.string().optional(),
     technicalContactEmail: z.string().optional(),
     technicalContactPhone: z.string().optional(),
+    technicalContactRole: z.string().optional(),
     billingContactName: z.string().optional(),
     billingContactEmail: z.string().optional(),
     billingContactPhone: z.string().optional(),
+    billingContactRole: z.string().optional(),
     // Site (nested)
     site: SiteFormSchema.default({}),
 });
@@ -154,6 +156,11 @@ export default function PublicMarketAIPage() {
     const [analysisResult, setAnalysisResult] = useState<Partial<ClientFormValues> | null>(null);
     const [isSheetOpen, setIsSheetOpen] = useState(false);
     const [prompt, setPrompt] = useState(defaultPrompt);
+    const [draggingOver, setDraggingOver] = useState<DocumentType | null>(null);
+    const [isPromptExpanded, setIsPromptExpanded] = useState(false);
+    const fileInputRefs = useRef<Record<DocumentType, HTMLInputElement | null>>({
+        acteEngagement: null, ccap: null, cctp: null, notification: null, bpu: null, dpgf: null
+    });
 
     const { toast } = useToast();
     const router = useRouter();
@@ -190,9 +197,11 @@ export default function PublicMarketAIPage() {
             technicalContactName: "",
             technicalContactEmail: "",
             technicalContactPhone: "",
+            technicalContactRole: "",
             billingContactName: "",
             billingContactEmail: "",
             billingContactPhone: "",
+            billingContactRole: "",
 
             site: {
                 name: "",
@@ -237,7 +246,18 @@ export default function PublicMarketAIPage() {
 
     const removeFile = (type: DocumentType) => {
         setFiles(prev => ({ ...prev, [type]: null }));
-    }
+    };
+
+    const handleDrop = (e: React.DragEvent<HTMLDivElement>, type: DocumentType) => {
+        e.preventDefault();
+        setDraggingOver(null);
+        const droppedFile = e.dataTransfer.files[0];
+        if (droppedFile?.type === 'application/pdf') {
+            setFiles(prev => ({ ...prev, [type]: droppedFile }));
+        } else if (droppedFile) {
+            toast({ title: "Fichier invalide", description: "Seuls les fichiers PDF sont acceptés.", variant: "destructive" });
+        }
+    };
 
     const handleAnalyze = async () => {
         const fileToAnalyze = files.cctp || files.acteEngagement || files.ccap || Object.values(files).find(f => f !== null);
@@ -277,9 +297,11 @@ export default function PublicMarketAIPage() {
                 technicalContactName: result.client?.contactTechnique?.name || "",
                 technicalContactEmail: result.client?.contactTechnique?.email || "",
                 technicalContactPhone: result.client?.contactTechnique?.phone || "",
+                technicalContactRole: result.client?.contactTechnique?.role || "",
                 billingContactName: result.client?.contactFacturation?.name || "",
                 billingContactEmail: result.client?.contactFacturation?.email || "",
                 billingContactPhone: result.client?.contactFacturation?.phone || "",
+                billingContactRole: result.client?.contactFacturation?.role || "",
 
                 // === TAB 3: Contrat ===
                 startDate: result.contrat?.startDate ? new Date(result.contrat.startDate) : undefined,
@@ -376,92 +398,144 @@ export default function PublicMarketAIPage() {
 
     return (
         <div className="space-y-6">
-            <div className="flex items-center justify-between">
-                <div className="flex items-center gap-4">
-                    <Button variant="outline" size="icon" onClick={() => router.back()}>
-                        <ArrowLeft className="h-4 w-4" />
-                    </Button>
-                    <div>
-                        <h1 className="text-2xl font-bold tracking-tight">Nouveau Marché Public</h1>
-                        <p className="text-muted-foreground">
-                            Déposez les documents du marché (AE, CCAP, CCTP...) et lancez l&apos;analyse.
-                        </p>
-                    </div>
+            <div className="flex items-center gap-4">
+                <Button variant="outline" size="icon" onClick={() => router.back()}>
+                    <ArrowLeft className="h-4 w-4" />
+                </Button>
+                <div>
+                    <h1 className="text-2xl font-bold tracking-tight">Nouveau Marché Public</h1>
+                    <p className="text-muted-foreground">
+                        Déposez les documents du marché (AE, CCAP, CCTP...) et lancez l&apos;analyse.
+                    </p>
                 </div>
-                <Button asChild variant="default" className="bg-emerald-500 hover:bg-emerald-600">
-                    <Link href="/contracts/create">
-                        Saisie Manuelle
-                    </Link>
-                </Button>
             </div>
 
-            <div className="grid lg:grid-cols-2 gap-6">
-                <Card className="flex-1">
-                    <CardHeader>
-                        <CardTitle>1. Importer les documents</CardTitle>
-                        <CardDescription>
-                            Sélectionnez les fichiers PDF du marché. Le CCTP est prioritaire pour l&apos;analyse technique.
-                        </CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                        <div className="space-y-4">
-                            {documentFields.map((doc) => (
-                                <div key={doc.id} className="space-y-2">
-                                    <Label htmlFor={doc.id} className="flex items-center gap-2">
-                                        {doc.label}
-                                        {doc.required && <span className="text-red-500">*</span>}
-                                    </Label>
-                                    <div className="flex items-center gap-2">
-                                        <Input
-                                            id={doc.id}
-                                            type="file"
-                                            accept=".pdf"
-                                            onChange={(e) => handleFileChange(e, doc.id)}
-                                            className="flex-1 cursor-pointer"
-                                        />
-                                        {files[doc.id] && (
-                                            <Button variant="ghost" size="icon" onClick={() => removeFile(doc.id)}>
-                                                <Trash2 className="h-4 w-4" />
-                                            </Button>
-                                        )}
+            <div className="space-y-4">
+                {/* Grille 3×2 de cards de dépôt */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {documentFields.map((doc) => {
+                        const fileUploaded = files[doc.id];
+                        const isDraggingOver = draggingOver === doc.id;
+                        return (
+                            <div
+                                key={doc.id}
+                                onDragOver={(e) => { e.preventDefault(); setDraggingOver(doc.id); }}
+                                onDragLeave={() => setDraggingOver(null)}
+                                onDrop={(e) => handleDrop(e, doc.id)}
+                                className={cn(
+                                    "border-2 border-dashed rounded-xl p-4 transition-all flex flex-col min-h-[130px]",
+                                    isDraggingOver
+                                        ? "border-primary bg-primary/5"
+                                        : fileUploaded
+                                            ? "border-green-500/50 bg-green-50/50 dark:bg-green-950/20"
+                                            : "border-muted-foreground/25 hover:border-primary/50"
+                                )}
+                            >
+                                {/* En-tête de la card */}
+                                <div className="flex items-start justify-between gap-2 mb-3">
+                                    <div className="flex flex-col gap-1">
+                                        <span className="text-sm font-semibold leading-tight">{doc.label}</span>
+                                        {doc.required
+                                            ? <span className="text-xs w-fit bg-red-100 text-red-600 dark:bg-red-950/50 dark:text-red-400 px-1.5 py-0.5 rounded">Requis</span>
+                                            : <span className="text-xs w-fit bg-muted text-muted-foreground px-1.5 py-0.5 rounded">Optionnel</span>
+                                        }
                                     </div>
-                                    {files[doc.id] && <p className="text-xs text-muted-foreground flex items-center gap-1"><FileText className="h-3 w-3" /> {files[doc.id]?.name}</p>}
+                                    {fileUploaded && (
+                                        <Button variant="ghost" size="icon" className="h-6 w-6 shrink-0" type="button" onClick={() => removeFile(doc.id)}>
+                                            <X className="h-3 w-3" />
+                                        </Button>
+                                    )}
                                 </div>
-                            ))}
-                        </div>
-                    </CardContent>
-                </Card>
-                <Card className="flex-1">
-                    <CardHeader>
-                        <CardTitle>2. Personnaliser le Prompt</CardTitle>
-                        <CardDescription>
-                            Modifiez le prompt ci-dessous pour affiner l&apos;extraction de données si nécessaire.
-                        </CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                        <Textarea
-                            value={prompt}
-                            onChange={(e) => setPrompt(e.target.value)}
-                            className="min-h-[400px] font-mono text-xs"
-                        />
-                    </CardContent>
-                </Card>
-            </div>
 
-            <div className="flex justify-center pt-4">
-                <Button onClick={handleAnalyze} disabled={isAnalyzing || !Object.values(files).some(f => f !== null)} size="lg" className="gap-2 bg-indigo-600 hover:bg-indigo-700 text-white">
-                    {isAnalyzing ? (
-                        <>
-                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                            Analyse en cours...
-                        </>
-                    ) : (
-                        <>
-                            <Sparkles className="h-4 w-4" />
-                            Lancer l&apos;analyse
-                        </>
+                                {/* Corps : fichier chargé ou zone de dépôt */}
+                                {fileUploaded ? (
+                                    <div className="flex-1 flex items-center gap-2 text-sm text-green-700 dark:text-green-400 min-w-0">
+                                        <FileText className="h-4 w-4 shrink-0" />
+                                        <div className="min-w-0">
+                                            <p className="truncate font-medium">{fileUploaded.name}</p>
+                                            <p className="text-xs text-muted-foreground">{(fileUploaded.size / 1024 / 1024).toFixed(2)} Mo</p>
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <div
+                                        className="flex-1 flex flex-col items-center justify-center gap-1.5 cursor-pointer py-2"
+                                        onClick={() => fileInputRefs.current[doc.id]?.click()}
+                                    >
+                                        <FileUp className="h-5 w-5 text-muted-foreground/40" />
+                                        <span className="text-xs text-muted-foreground text-center">Glisser ou cliquer</span>
+                                    </div>
+                                )}
+
+                                <input
+                                    ref={(el) => { fileInputRefs.current[doc.id] = el; }}
+                                    type="file"
+                                    accept="application/pdf"
+                                    className="hidden"
+                                    onChange={(e) => handleFileChange(e, doc.id)}
+                                />
+                            </div>
+                        );
+                    })}
+                </div>
+
+                {/* Configuration IA (accordéon) */}
+                <div className="border rounded-lg overflow-hidden">
+                    <button
+                        type="button"
+                        className="w-full flex items-center justify-between p-4 hover:bg-muted/50 transition-colors text-left"
+                        onClick={() => setIsPromptExpanded(!isPromptExpanded)}
+                    >
+                        <div className="flex items-center gap-2">
+                            <Sparkles className="h-4 w-4 text-primary" />
+                            <span className="text-sm font-medium">Configuration de l&apos;IA</span>
+                            <span className="text-xs text-muted-foreground">(paramètres avancés)</span>
+                        </div>
+                        {isPromptExpanded
+                            ? <ChevronUp className="h-4 w-4 text-muted-foreground" />
+                            : <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                        }
+                    </button>
+                    {isPromptExpanded && (
+                        <div className="p-4 border-t">
+                            <Textarea
+                                value={prompt}
+                                onChange={(e) => setPrompt(e.target.value)}
+                                className="min-h-[300px] font-mono text-xs"
+                            />
+                        </div>
                     )}
-                </Button>
+                </div>
+
+                {/* Boutons d'action */}
+                <div className="flex justify-end gap-3">
+                    <Button
+                        type="button"
+                        variant="secondary"
+                        onClick={() => { setAnalysisResult({}); form.reset(); setIsSheetOpen(true); }}
+                    >
+                        <FileText className="mr-2 h-4 w-4" />
+                        Saisie Manuelle
+                    </Button>
+                    <Button
+                        type="button"
+                        size="lg"
+                        onClick={handleAnalyze}
+                        disabled={isAnalyzing || !Object.values(files).some(f => f !== null)}
+                        className="min-w-[200px]"
+                    >
+                        {isAnalyzing ? (
+                            <>
+                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                Analyse en cours...
+                            </>
+                        ) : (
+                            <>
+                                <Sparkles className="mr-2 h-4 w-4" />
+                                Lancer l&apos;analyse
+                            </>
+                        )}
+                    </Button>
+                </div>
             </div>
 
             <Sheet open={isSheetOpen} onOpenChange={setIsSheetOpen}>
@@ -473,7 +547,7 @@ export default function PublicMarketAIPage() {
                         </SheetDescription>
                     </SheetHeader>
                     <div className="py-4 pr-6">
-                        {analysisResult && (
+                        {analysisResult !== null && (
                             <Form {...form}>
                                 <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
                                     {/* Hierarchy (always visible) */}
@@ -611,9 +685,12 @@ export default function PublicMarketAIPage() {
                                         <TabsContent value="contacts" className="space-y-6 pt-4">
                                             <div className="space-y-3">
                                                 <Label className="text-sm font-semibold">Contact Technique</Label>
-                                                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                                                <div className="grid grid-cols-2 gap-3">
                                                     <FormField control={form.control} name="technicalContactName" render={({ field }) => (
                                                         <FormItem><FormControl><Input placeholder="Nom" {...field} /></FormControl></FormItem>
+                                                    )} />
+                                                    <FormField control={form.control} name="technicalContactRole" render={({ field }) => (
+                                                        <FormItem><FormControl><Input placeholder="Rôle / Fonction (ex: Directeur technique)" {...field} /></FormControl></FormItem>
                                                     )} />
                                                     <FormField control={form.control} name="technicalContactEmail" render={({ field }) => (
                                                         <FormItem><FormControl><Input placeholder="Email" {...field} /></FormControl></FormItem>
@@ -628,9 +705,12 @@ export default function PublicMarketAIPage() {
 
                                             <div className="space-y-3">
                                                 <Label className="text-sm font-semibold">Contact Facturation</Label>
-                                                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                                                <div className="grid grid-cols-2 gap-3">
                                                     <FormField control={form.control} name="billingContactName" render={({ field }) => (
-                                                        <FormItem><FormControl><Input placeholder="Nom" {...field} /></FormControl></FormItem>
+                                                        <FormItem><FormControl><Input placeholder="Nom / Service" {...field} /></FormControl></FormItem>
+                                                    )} />
+                                                    <FormField control={form.control} name="billingContactRole" render={({ field }) => (
+                                                        <FormItem><FormControl><Input placeholder="Rôle / Fonction (ex: Service comptable)" {...field} /></FormControl></FormItem>
                                                     )} />
                                                     <FormField control={form.control} name="billingContactEmail" render={({ field }) => (
                                                         <FormItem><FormControl><Input placeholder="Email" {...field} /></FormControl></FormItem>
