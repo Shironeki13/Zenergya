@@ -8,6 +8,7 @@ import {
   getTypologies, getVatRates, getRevisionFormulas, getPaymentTerms, getPricingRules,
   getMarkets, getRoles, getUsers, getIndices, getIndexValues, getRevisionRules, getServices,
   getAmendments, getTerminations, getRenewals, getTrusteeChanges, getBeChanges, getInterests, getSettlementRules,
+  getWeatherStations,
   initializeSettlementRules,
   getAdvWorkQuotes, getAdvWorkQuoteVersions, getAdvWorkQuoteLines, getAdvWorkAffairs, getAdvWorkBudgetLines,
   getAdvWorkLots, getAdvWorkPostes, getAdvWorkSituations, getAdvWorkSituationLines, getAdvPurchaseOrders,
@@ -15,7 +16,7 @@ import {
 } from '@/services/firestore';
 import { auth } from '@/lib/firebase';
 // import { signInAnonymously } from 'firebase/auth';
-import type { DataContextType, Client, Contact, Site, Contract, Invoice, CreditNote, Meter, MeterType, MeterReading, Company, Agency, Sector, Activity, Schedule, Term, Typology, VatRate, RevisionFormula, PaymentTerm, PricingRule, Market, Role, User, Index, IndexValue, RevisionRule, Service, Amendment, Termination, Renewal, TrusteeChange, BeChange, Interest, SettlementRule, WorkProject, WorkQuote, ProgressSituation, AdvWorkQuote, AdvWorkQuoteVersion, AdvWorkQuoteLine, AdvWorkAffair, AdvWorkBudgetLine, AdvWorkLot, AdvWorkPoste, AdvWorkSituation, AdvWorkSituationLine, AdvPurchaseOrder, AdvPurchaseOrderLine, AdvCatalogArticle, AdvCatalogOuvrage, AdvOuvrageComposant } from '@/lib/types';
+import type { DataContextType, Client, Contact, Site, Contract, Invoice, CreditNote, Meter, MeterType, MeterReading, Company, Agency, Sector, Activity, Schedule, Term, Typology, VatRate, RevisionFormula, PaymentTerm, PricingRule, Market, Role, User, Index, IndexValue, RevisionRule, Service, Amendment, Termination, Renewal, TrusteeChange, BeChange, Interest, SettlementRule, WorkProject, WorkQuote, ProgressSituation, AdvWorkQuote, AdvWorkQuoteVersion, AdvWorkQuoteLine, AdvWorkAffair, AdvWorkBudgetLine, AdvWorkLot, AdvWorkPoste, AdvWorkSituation, AdvWorkSituationLine, AdvPurchaseOrder, AdvPurchaseOrderLine, AdvCatalogArticle, AdvCatalogOuvrage, AdvOuvrageComposant, WeatherStation } from '@/lib/types';
 import { useToast } from '@/hooks/use-toast';
 
 const DataContext = createContext<DataContextType | undefined>(undefined);
@@ -54,8 +55,9 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     renewals: [] as Renewal[],
     trusteeChanges: [] as TrusteeChange[],
     beChanges: [] as BeChange[],
-    interests: [] as Interest[], // New State
+    interests: [] as Interest[],
     settlementRules: [] as SettlementRule[],
+    weatherStations: [] as WeatherStation[],
     // Legacy Works
     workProjects: [] as WorkProject[],
     workQuotes_legacy: [] as WorkQuote[],
@@ -106,7 +108,8 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         getAmendments(), getTerminations(), getRenewals(), getTrusteeChanges(), getBeChanges(), getInterests(), getSettlementRules(),
         getAdvWorkQuotes(), getAdvWorkQuoteVersions(), getAdvWorkQuoteLines(), getAdvWorkAffairs(), getAdvWorkBudgetLines(),
         getAdvWorkLots(), getAdvWorkPostes(), getAdvWorkSituations(), getAdvWorkSituationLines(), getAdvPurchaseOrders(),
-        getAdvPurchaseOrderLines(), getCatalogArticles(), getCatalogOuvrages(), getOuvrageComposants()
+        getAdvPurchaseOrderLines(), getCatalogArticles(), getCatalogOuvrages(), getOuvrageComposants(),
+        getWeatherStations()
       ]);
 
       const [
@@ -117,7 +120,8 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         amendments, terminations, renewals, trusteeChanges, beChanges, interests, settlementRules,
         advWorkQuotes, advWorkQuoteVersions, advWorkQuoteLines, advWorkAffairs, advWorkBudgetLines,
         advWorkLots, advWorkPostes, advWorkSituations, advWorkSituationLines, advPurchaseOrders,
-        advPurchaseOrderLines, advCatalogArticles, advCatalogOuvrages, advOuvrageComposants
+        advPurchaseOrderLines, advCatalogArticles, advCatalogOuvrages, advOuvrageComposants,
+        weatherStations
       ] = results;
 
       if (clients.status === 'rejected') console.error("Failed to load clients", clients.reason);
@@ -190,6 +194,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         beChanges: beChanges.status === 'fulfilled' ? beChanges.value : [],
         interests: interests.status === 'fulfilled' ? interests.value : [],
         settlementRules: settlementRules.status === 'fulfilled' ? settlementRules.value : [],
+        weatherStations: weatherStations.status === 'fulfilled' ? weatherStations.value : [],
         // Advanced
         advWorkQuotes: advWorkQuotes.status === 'fulfilled' ? advWorkQuotes.value : [],
         advWorkQuoteVersions: advWorkQuoteVersions.status === 'fulfilled' ? advWorkQuoteVersions.value : [],

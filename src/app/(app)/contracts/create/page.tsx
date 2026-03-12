@@ -41,6 +41,7 @@ import { useToast } from "@/hooks/use-toast"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { createContract, getActivities, getSchedules, getTerms, getClients, getSitesByClient, getMarkets, getRevisionFormulas } from "@/services/firestore"
 import type { Activity, Schedule, Term, Client, Site, Market, RevisionFormula } from "@/lib/types"
+import { useData } from "@/context/data-context"
 import { Separator } from "@/components/ui/separator"
 import { Slider } from "@/components/ui/slider"
 
@@ -170,6 +171,7 @@ const defaultValues: Partial<ContractFormValues> = {
 export default function NewContractPage() {
     const router = useRouter();
     const { toast } = useToast()
+    const { weatherStations } = useData();
 
     const [clients, setClients] = useState<Client[]>([]);
     const [sites, setSites] = useState<Site[]>([]);
@@ -816,7 +818,18 @@ export default function NewContractPage() {
                                                 )}
                                                 {showMeteoStation && (
                                                     <FormField control={form.control} name="heatingWeatherStation" render={({ field }) => (
-                                                        <FormItem><FormLabel>Station Météo</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>
+                                                        <FormItem>
+                                                            <FormLabel>Station Météo</FormLabel>
+                                                            <Select value={field.value ?? ''} onValueChange={field.onChange}>
+                                                                <FormControl><SelectTrigger><SelectValue placeholder="Sélectionner une station" /></SelectTrigger></FormControl>
+                                                                <SelectContent>
+                                                                    {weatherStations.filter(s => s.isActive).map(s => (
+                                                                        <SelectItem key={s.code} value={s.code}>{s.name} ({s.code})</SelectItem>
+                                                                    ))}
+                                                                </SelectContent>
+                                                            </Select>
+                                                            <FormMessage />
+                                                        </FormItem>
                                                     )} />
                                                 )}
                                             </div>

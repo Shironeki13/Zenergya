@@ -151,7 +151,11 @@ export default function ClientsPage() {
               ) : filteredClients.length > 0 ? (
                 filteredClients.map((client) => (
                   <TableRow key={client.id} className="hover:bg-muted/30 border-b border-border/50 last:border-0 transition-colors">
-                    <TableCell className="font-medium text-base">{client.name}</TableCell>
+                    <TableCell className="font-medium text-base">
+                      <Link href={`/clients/${client.id}`} className="hover:underline">
+                        {client.name}
+                      </Link>
+                    </TableCell>
                     <TableCell>
                       <Badge variant={client.clientType === 'public' ? 'secondary' : 'outline'} className="capitalize">
                         {client.clientType === 'public' ? 'Public' : 'Privé'}
@@ -174,7 +178,7 @@ export default function ClientsPage() {
                         <DropdownMenuContent align="end" className="w-[160px]">
                           <DropdownMenuLabel>Actions</DropdownMenuLabel>
                           <DropdownMenuItem asChild className="cursor-pointer">
-                            <Link href={`/clients/${client.id}`}>Voir les contrats</Link>
+                            <Link href={`/clients/${client.id}`}>Voir le client</Link>
                           </DropdownMenuItem>
                           <DropdownMenuItem asChild className="cursor-pointer">
                             <Link href={`/clients/${client.id}/edit`}>Modifier</Link>

@@ -91,7 +91,7 @@ export default function ContractsPage() {
   const filteredContracts = useMemo(() => {
     if (!selectedSectorId) return [];
 
-    let baseContracts = contracts.filter(c => c.validationStatus === 'validated');
+    let baseContracts = contracts.filter(c => c.validationStatus === 'validated' || !c.validationStatus);
 
     baseContracts = baseContracts.filter(contract => {
       const client = clients.find(c => c.id === contract.clientId);
@@ -497,7 +497,7 @@ export default function ContractsPage() {
               <TableBody>
                 {sitesToShow.length > 0 ? (
                   sitesToShow.map(site => (
-                    <TableRow key={site.id} className="cursor-pointer hover:bg-muted" onClick={() => router.push(`/clients/${site.clientId}`)}>
+                    <TableRow key={site.id} className="cursor-pointer hover:bg-muted" onClick={() => router.push(`/sites/${site.id}`)}>
                       <TableCell>{site.name}</TableCell>
                       <TableCell>{[site.address, site.postalCode, site.city].filter(Boolean).join(', ')}</TableCell>
                     </TableRow>
