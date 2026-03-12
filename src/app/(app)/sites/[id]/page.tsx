@@ -8,15 +8,15 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
-import { ArrowLeft, Plus, Trash2, Edit, Check, MoreHorizontal, Save, ChevronsUpDown, X, Calculator, Flame, Droplets, Snowflake, Wrench } from 'lucide-react';
+import { ArrowLeft, Plus, Trash2, Edit, Check, MoreHorizontal, Save, ChevronsUpDown, X, Calculator, Flame, Droplets, Snowflake, Wrench, ChevronDown, ChevronUp } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { toast } from '@/hooks/use-toast';
-import { updateSite, createService, updateService, deleteService, createMeter, updateMeter, deleteMeter, getWeatherStations } from '@/services/firestore';
-import type { Site, Contract, Service, Meter, RevisionRule, Activity, Term, Schedule, PricingRule, ServiceType, ServiceInitialIndexValue, Index, IndexValue } from '@/lib/types';
+import { updateSite, createService, updateService, deleteService, createMeter, updateMeter, deleteMeter } from '@/services/firestore';
+import type { Site, Contract, Service, Meter, RevisionRule, Activity, Term, Schedule, PricingRule, ServiceType, ServiceInitialIndexValue, Index, IndexValue, ServiceBillingLine, BillingLineType } from '@/lib/types';
 import { MeterReadingsDialog } from '@/components/meter-readings-dialog';
 import { Separator } from '@/components/ui/separator';
 import { Switch } from '@/components/ui/switch';
@@ -31,14 +31,13 @@ import { SettlementManager } from '@/components/settlement-manager';
 export default function SiteDetailsPage() {
     const params = useParams();
     const router = useRouter();
-    const { sites, contracts, meters, services, activities, revisionRules, pricingRules, terms, schedules, reloadData, isLoading, indices, indexValues, settlementRules, meterReadings, vatRates } = useData();
+    const { sites, contracts, meters, services, activities, revisionRules, pricingRules, terms, schedules, reloadData, isLoading, indices, indexValues, settlementRules, meterReadings, vatRates, invoices, weatherStations } = useData();
     const siteId = params.id as string;
 
     const [site, setSite] = useState<Site | null>(null);
     const [contract, setContract] = useState<Contract | null>(null);
     const [siteMeters, setSiteMeters] = useState<Meter[]>([]);
     const [siteServices, setSiteServices] = useState<Service[]>([]);
-    const [weatherStations, setWeatherStations] = useState<{ code: string, name: string }[]>([]);
 
     // Meter Dialog State
     const [isMeterDialogOpen, setIsMeterDialogOpen] = useState(false);
@@ -57,6 +56,7 @@ export default function SiteDetailsPage() {
     const [revisionRuleId, setRevisionRuleId] = useState<string>('');
     const [price, setPrice] = useState<number>(0);
     const [meterId, setMeterId] = useState<string>('');
+    const [isMeterComboOpen, setIsMeterComboOpen] = useState(false);
     const [startDate, setStartDate] = useState<string>('');
     const [endDate, setEndDate] = useState<string>('');
     const [description, setDescription] = useState<string>('');
@@ -82,7 +82,26 @@ export default function SiteDetailsPage() {
     const [interestUnitPrice, setInterestUnitPrice] = useState<number>(0);
     const [settlementRuleId, setSettlementRuleId] = useState<string>('');
 
+    // Billing Params State (P1) — used in service edit modal
+    const [includeAnnex, setIncludeAnnex] = useState<boolean>(false);
+    const [paymentTermDays, setPaymentTermDays] = useState<number>(30);
+    const [conversionCoefficient, setConversionCoefficient] = useState<number>(1);
+    const [billingLines, setBillingLines] = useState<ServiceBillingLine[]>([
+        { lineType: 'CONSOMMATION', label: '', vatRateId: '', isActive: true }
+    ]);
+
+    // Inline billing params edit (left sidebar)
+    const [isEditingBillingParams, setIsEditingBillingParams] = useState(false);
+    const [bpAnnex, setBpAnnex] = useState(false);
+    const [bpDays, setBpDays] = useState(30);
+    const [bpCoeff, setBpCoeff] = useState(1);
+    const [bpLines, setBpLines] = useState<ServiceBillingLine[]>([
+        { lineType: 'CONSOMMATION', label: '', vatRateId: '', isActive: true }
+    ]);
+
     const [openCombobox, setOpenCombobox] = useState(false);
+    const [showRevisionDetails, setShowRevisionDetails] = useState(false);
+    const [showBillingCalendar, setShowBillingCalendar] = useState(false);
 
     // Selected Service for Detail View
     const [selectedServiceId, setSelectedServiceId] = useState<string | null>(null);
@@ -94,16 +113,6 @@ export default function SiteDetailsPage() {
 
 
     useEffect(() => {
-        const loadWeatherStations = async () => {
-            try {
-                const loadedStations = await getWeatherStations();
-                setWeatherStations(loadedStations);
-            } catch (error) {
-                console.error("Failed to load weather stations:", error);
-                toast({ title: "Erreur", description: "Impossible de charger les stations météo.", variant: "destructive" });
-            }
-        };
-
         if (!isLoading && siteId) {
             const foundSite = sites.find(s => s.id === siteId);
             if (foundSite) {
@@ -111,13 +120,15 @@ export default function SiteDetailsPage() {
                 const foundContract = contracts.find(c => c.siteIds?.includes(siteId));
                 setContract(foundContract || null);
             }
-            loadWeatherStations();
         }
     }, [sites, contracts, siteId, isLoading]);
 
     useEffect(() => {
         if (siteId) {
-            setSiteMeters(meters.filter(m => m.siteId === siteId));
+            const siteServiceMeterIds = new Set(
+                services.filter(s => s.siteId === siteId).map(s => s.meterId).filter(Boolean)
+            );
+            setSiteMeters(meters.filter(m => m.siteId === siteId || siteServiceMeterIds.has(m.id)));
             setSiteServices(services.filter(s => s.siteId === siteId));
         }
     }, [meters, services, siteId]);
@@ -208,7 +219,61 @@ export default function SiteDetailsPage() {
         setSharingPercentage(0);
         setInterestUnitPrice(0);
 
+        // Reset billing params
+        setIncludeAnnex(false);
+        setPaymentTermDays(30);
+        setConversionCoefficient(1);
+        setBillingLines([{ lineType: 'CONSOMMATION', label: '', vatRateId: '', isActive: true }]);
+
         setEditingService(null);
+    };
+
+    const updateBillingLine = (lineType: BillingLineType, field: string, value: string | number | boolean) => {
+        setBillingLines(prev => {
+            const exists = prev.some(l => l.lineType === lineType);
+            if (exists) {
+                return prev.map(l => l.lineType === lineType ? { ...l, [field]: value } : l);
+            }
+            return [...prev, { lineType, label: '', vatRateId: '', isActive: true, [field]: value }];
+        });
+    };
+
+    const updateBpLine = (lineType: BillingLineType, field: string, value: string | number | boolean) => {
+        setBpLines(prev => {
+            const exists = prev.some(l => l.lineType === lineType);
+            if (exists) {
+                return prev.map(l => l.lineType === lineType ? { ...l, [field]: value } : l);
+            }
+            return [...prev, { lineType, label: '', vatRateId: '', isActive: true, [field]: value }];
+        });
+    };
+
+    const handleStartEditBillingParams = () => {
+        if (!activeService) return;
+        setBpAnnex(activeService.includeAnnex ?? false);
+        setBpDays(activeService.paymentTermDays ?? 30);
+        setBpCoeff(activeService.conversionCoefficient ?? 1);
+        const lines = activeService.billingLines ?? [];
+        const hasConsomm = lines.some(l => l.lineType === 'CONSOMMATION');
+        setBpLines(hasConsomm ? lines : [{ lineType: 'CONSOMMATION', label: '', vatRateId: '', isActive: true }, ...lines]);
+        setIsEditingBillingParams(true);
+    };
+
+    const handleSaveBillingParams = async () => {
+        if (!activeService) return;
+        try {
+            await updateService(activeService.id, {
+                includeAnnex: bpAnnex,
+                billingLines: bpLines.filter(l => l.vatRateId),
+                paymentTermDays: bpDays,
+                conversionCoefficient: bpCoeff,
+            });
+            await reloadData();
+            setIsEditingBillingParams(false);
+            toast({ title: 'Succès', description: 'Paramètres de facturation mis à jour.' });
+        } catch {
+            toast({ title: 'Erreur', description: 'Impossible de sauvegarder.', variant: 'destructive' });
+        }
     };
 
     const handleAddService = (type: ServiceType) => {
@@ -250,6 +315,14 @@ export default function SiteDetailsPage() {
         setSharingPercentage(service?.sharingPercentage || 0);
         setInterestUnitPrice(service?.interestUnitPrice || 0);
         setSettlementRuleId(service?.settlementRuleId || '');
+
+        // Billing Params
+        setIncludeAnnex(service.includeAnnex ?? false);
+        setPaymentTermDays(service.paymentTermDays ?? 30);
+        setConversionCoefficient(service.conversionCoefficient ?? 1);
+        const existingLines = service.billingLines ?? [];
+        const hasConsomm = existingLines.some(l => l.lineType === 'CONSOMMATION');
+        setBillingLines(hasConsomm ? existingLines : [{ lineType: 'CONSOMMATION', label: '', vatRateId: '', isActive: true }, ...existingLines]);
 
         setIsServiceDialogOpen(true);
     };
@@ -300,6 +373,12 @@ export default function SiteDetailsPage() {
             sharingPercentage: selectedType === 'P1' && p1Type === 'CHAUFFAGE' ? Number(sharingPercentage) : undefined,
             interestUnitPrice: selectedType === 'P1' && p1Type === 'CHAUFFAGE' ? Number(interestUnitPrice) : undefined,
             settlementRuleId: settlementRuleId || undefined,
+
+            // Billing Params (P1)
+            includeAnnex: selectedType === 'P1' ? includeAnnex : undefined,
+            billingLines: selectedType === 'P1' ? billingLines.filter(l => l.vatRateId) : undefined,
+            paymentTermDays: selectedType === 'P1' ? Number(paymentTermDays) : undefined,
+            conversionCoefficient: selectedType === 'P1' ? Number(conversionCoefficient) : undefined,
         };
 
         try {
@@ -340,13 +419,22 @@ export default function SiteDetailsPage() {
         return activities.filter(a => a.type === selectedType);
     }, [activities, selectedType]);
 
-    // Filter meters based on P1 Type
-    // Filter meters based on P1 Type
+    // Filter meters by P1 type keyword — matches against full MeterType label or simple type string
+    const p1TypeKeywords: Record<string, string[]> = {
+        CHAUFFAGE: ['chauffage'],
+        ECS: ['ecs', 'eau chaude'],
+        EAU_FROIDE: ['eau froide', 'froid'],
+    };
     const filteredMeters = useMemo(() => {
         if (selectedType !== 'P1') return [];
-        // Return all meters for P1 to allow flexibility (e.g. using an Electric meter for ECS)
+        const keywords = p1TypeKeywords[p1Type];
+        if (keywords) {
+            return siteMeters.filter(m =>
+                keywords.some(kw => m.type.toLowerCase().includes(kw))
+            );
+        }
         return siteMeters;
-    }, [siteMeters, selectedType]);
+    }, [siteMeters, selectedType, p1Type]);
 
     // Sorted indices for Combobox
     const sortedIndices = useMemo(() => {
@@ -496,6 +584,67 @@ export default function SiteDetailsPage() {
     const revisedUnitPrice = (activeService?.unitPrice != null && revisionCoefficient != null)
         ? activeService.unitPrice * revisionCoefficient
         : null;
+
+    // Détail de calcul du coefficient pour vérification
+    const revisionDetails = (() => {
+        if (!activeRevisionRule || activeRevisionRule.type === 'FIXE' || !activeService?.initialIndexValues?.length) return null;
+        return activeRevisionRule.indices.map(ruleIndex => {
+            const idx = indices.find(i => i.id === ruleIndex.indexId);
+            const i0Entry = activeService.initialIndexValues?.find(iv => iv.indexId === ruleIndex.indexId);
+            const sortedValues = [...expandedIndexValues]
+                .filter(iv => iv.indexId === ruleIndex.indexId)
+                .sort((a, b) => b.period.localeCompare(a.period))
+                .slice(0, activeRevisionRule.nbMonths);
+            const Ir = sortedValues.length > 0 ? sortedValues.reduce((s, v) => s + v.value, 0) / sortedValues.length : null;
+            const ratio = (Ir !== null && i0Entry?.value) ? Ir / i0Entry.value : null;
+            return {
+                code: idx?.code ?? '?',
+                coefficient: ruleIndex.coefficient,
+                i0: i0Entry?.value ?? null,
+                i0Period: i0Entry?.period ?? null,
+                periods: sortedValues,
+                Ir,
+                ratio,
+                partial: ratio !== null ? ruleIndex.coefficient * ratio : null,
+            };
+        });
+    })();
+
+    // Calendrier théorique de facturation
+    const scheduleToMonths: Record<string, number> = {
+        'mensuel': 1, 'trimestriel': 3, 'semestriel': 6, 'annuel': 12,
+    };
+    const billingPeriods = (() => {
+        if (!activeService || !activeTerm || !activeSchedule || !contract) return [];
+        const intervalMonths = scheduleToMonths[activeSchedule.name.toLowerCase()] ?? 0;
+        if (!intervalMonths) return [];
+        const termLower = activeTerm.name.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+        const isEchu = termLower.includes('echu') && !termLower.includes('echoir');
+        const start = new Date(activeService.startDate);
+        const end = activeService.endDate ? new Date(activeService.endDate) : (contract.endDate ? new Date(contract.endDate) : null);
+        const today = new Date();
+        const periods: { periodStart: Date; periodEnd: Date; dueDate: Date; invoice: typeof invoices[0] | null }[] = [];
+        let cursor = new Date(start);
+        const limit = end ?? today;
+        while (cursor <= limit) {
+            const periodStart = new Date(cursor);
+            const periodEnd = new Date(cursor);
+            periodEnd.setMonth(periodEnd.getMonth() + intervalMonths);
+            periodEnd.setDate(periodEnd.getDate() - 1);
+            const dueDate = isEchu
+                ? new Date(cursor.getFullYear(), cursor.getMonth() + intervalMonths, cursor.getDate())
+                : new Date(cursor);
+            const matched = invoices.find(inv =>
+                inv.contractId === contract.id &&
+                inv.periodStartDate &&
+                Math.abs(new Date(inv.periodStartDate).getTime() - periodStart.getTime()) < 3 * 86400000 &&
+                inv.lineItems?.some((li: any) => li.activityCode === activeService.type)
+            );
+            periods.push({ periodStart, periodEnd, dueDate, invoice: matched ?? null });
+            cursor.setMonth(cursor.getMonth() + intervalMonths);
+        }
+        return periods;
+    })();
 
     // Consommation = écart entre les deux derniers relevés réels du compteur
     const lastReal = lastMeterReadings.find(r => r.type === 'REEL' || r.type === 'CORRIGE');
@@ -661,6 +810,209 @@ export default function SiteDetailsPage() {
                             )}
                         </CardContent>
                     </Card>
+                    {/* Paramètres de facturation (P1 inline edit) */}
+                    {activeService?.type === 'P1' && (
+                        <Card>
+                            <CardHeader className="pb-2 flex flex-row items-center justify-between space-y-0">
+                                <CardTitle className="text-base font-medium">Paramètres de facturation</CardTitle>
+                                {!isEditingBillingParams ? (
+                                    <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={handleStartEditBillingParams}>
+                                        <Edit className="h-3.5 w-3.5 mr-1" /> Modifier
+                                    </Button>
+                                ) : (
+                                    <div className="flex gap-1">
+                                        <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={() => setIsEditingBillingParams(false)}>Annuler</Button>
+                                        <Button size="sm" className="h-7 px-2 text-xs" onClick={handleSaveBillingParams}>
+                                            <Save className="h-3.5 w-3.5 mr-1" /> Enregistrer
+                                        </Button>
+                                    </div>
+                                )}
+                            </CardHeader>
+                            <CardContent className="space-y-3">
+                                {!isEditingBillingParams ? (
+                                    <>
+                                        <div className="grid grid-cols-3 gap-2 text-xs">
+                                            <div>
+                                                <span className="text-muted-foreground block">Annexes</span>
+                                                <span className="font-medium">{activeService.includeAnnex ? 'Incluses' : 'Non incluses'}</span>
+                                            </div>
+                                            <div>
+                                                <span className="text-muted-foreground block">Délai règlement</span>
+                                                <span className="font-medium">{activeService.paymentTermDays ? `${activeService.paymentTermDays} j` : '—'}</span>
+                                            </div>
+                                            <div>
+                                                <span className="text-muted-foreground block">Coeff. conv.</span>
+                                                <span className="font-medium">{activeService.conversionCoefficient ?? 1}</span>
+                                            </div>
+                                        </div>
+                                        {activeService.billingLines && activeService.billingLines.length > 0 && (
+                                            <div className="space-y-1">
+                                                {activeService.billingLines.map((line, i) => {
+                                                    const vr = vatRates.find(v => v.id === line.vatRateId);
+                                                    return (
+                                                        <div key={i} className="flex items-center justify-between text-xs border rounded-md px-2 py-1">
+                                                            <Badge variant="outline" className="text-xs">{line.lineType === 'CONSOMMATION' ? 'Consommation' : 'Part fixe'}</Badge>
+                                                            <span className="text-muted-foreground truncate mx-2 flex-1">{line.label || '—'}</span>
+                                                            <span className="font-medium">{vr ? `${vr.rate} %` : '—'}</span>
+                                                        </div>
+                                                    );
+                                                })}
+                                            </div>
+                                        )}
+                                    </>
+                                ) : (
+                                    <div className="space-y-3">
+                                        <div className="grid grid-cols-2 gap-3">
+                                            <div className="flex items-center gap-2">
+                                                <Switch id="bpAnnex" checked={bpAnnex} onCheckedChange={setBpAnnex} />
+                                                <Label htmlFor="bpAnnex" className="text-xs">Inclure les annexes</Label>
+                                            </div>
+                                            <div className="space-y-1">
+                                                <Label className="text-xs">Délai de règlement</Label>
+                                                <Select value={String(bpDays)} onValueChange={v => setBpDays(Number(v))}>
+                                                    <SelectTrigger className="h-7 text-xs"><SelectValue /></SelectTrigger>
+                                                    <SelectContent>
+                                                        <SelectItem value="30">30 j</SelectItem>
+                                                        <SelectItem value="45">45 j</SelectItem>
+                                                        <SelectItem value="60">60 j</SelectItem>
+                                                        <SelectItem value="90">90 j</SelectItem>
+                                                    </SelectContent>
+                                                </Select>
+                                            </div>
+                                        </div>
+                                        <div className="space-y-1">
+                                            <Label className="text-xs">Coefficient de conversion</Label>
+                                            <Input
+                                                type="number"
+                                                step="0.0001"
+                                                value={bpCoeff}
+                                                onChange={e => setBpCoeff(parseFloat(e.target.value) || 1)}
+                                                className="h-7 text-xs"
+                                                placeholder="1.0"
+                                            />
+                                        </div>
+                                        <div className="space-y-2">
+                                            <div className="flex items-center justify-between">
+                                                <Label className="text-xs">Lignes de facturation</Label>
+                                                {!bpLines.some(l => l.lineType === 'PART_FIXE') && (
+                                                    <Button
+                                                        type="button"
+                                                        variant="outline"
+                                                        size="sm"
+                                                        className="h-6 text-xs px-2"
+                                                        onClick={() => setBpLines(prev => [...prev, { lineType: 'PART_FIXE', label: '', vatRateId: '', annualAmount: 0, isActive: true }])}
+                                                    >
+                                                        <Plus className="h-3 w-3 mr-1" /> Part fixe
+                                                    </Button>
+                                                )}
+                                            </div>
+                                            {['CONSOMMATION' as BillingLineType, ...bpLines.filter(l => l.lineType === 'PART_FIXE').map(l => l.lineType)].map((lineType) => {
+                                                const line = bpLines.find(l => l.lineType === lineType) ?? { lineType, label: '', vatRateId: '', isActive: true };
+                                                return (
+                                                    <div key={lineType} className="grid gap-1 items-center" style={{ gridTemplateColumns: 'auto 1fr 1fr auto' }}>
+                                                        <Badge variant="outline" className="text-xs whitespace-nowrap">
+                                                            {lineType === 'CONSOMMATION' ? 'Conso.' : 'Part fixe'}
+                                                        </Badge>
+                                                        <Input
+                                                            placeholder="Libellé"
+                                                            value={line.label ?? ''}
+                                                            onChange={e => updateBpLine(lineType, 'label', e.target.value)}
+                                                            className="h-7 text-xs"
+                                                        />
+                                                        <Select value={line.vatRateId} onValueChange={v => updateBpLine(lineType, 'vatRateId', v)}>
+                                                            <SelectTrigger className="h-7 text-xs"><SelectValue placeholder="TVA" /></SelectTrigger>
+                                                            <SelectContent>
+                                                                {vatRates.map(vr => (
+                                                                    <SelectItem key={vr.id} value={vr.id}>{vr.rate} %</SelectItem>
+                                                                ))}
+                                                            </SelectContent>
+                                                        </Select>
+                                                        {lineType === 'PART_FIXE' ? (
+                                                            <Button
+                                                                type="button"
+                                                                variant="ghost"
+                                                                size="icon"
+                                                                className="h-7 w-7 text-destructive"
+                                                                onClick={() => setBpLines(prev => prev.filter(l => l.lineType !== 'PART_FIXE'))}
+                                                            >
+                                                                <Trash2 className="h-3 w-3" />
+                                                            </Button>
+                                                        ) : <span />}
+                                                    </div>
+                                                );
+                                            })}
+                                            {bpLines.some(l => l.lineType === 'PART_FIXE') && (
+                                                <div className="space-y-1">
+                                                    <Label className="text-xs text-muted-foreground">Montant annuel part fixe (€ HT/an)</Label>
+                                                    <Input
+                                                        type="number"
+                                                        step="0.01"
+                                                        className="h-7 text-xs"
+                                                        value={bpLines.find(l => l.lineType === 'PART_FIXE')?.annualAmount ?? 0}
+                                                        onChange={e => updateBpLine('PART_FIXE', 'annualAmount', parseFloat(e.target.value) || 0)}
+                                                    />
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                )}
+                            </CardContent>
+                        </Card>
+                    )}
+
+                    {/* Calendrier de facturation */}
+                    {billingPeriods.length > 0 && (
+                        <Card className="border-dashed">
+                            <CardHeader className="pb-2 cursor-pointer" onClick={() => setShowBillingCalendar(v => !v)}>
+                                <CardTitle className="text-sm font-medium flex items-center justify-between">
+                                    <span>Calendrier de facturation</span>
+                                    <div className="flex items-center gap-1.5">
+                                        <Badge variant="outline" className="text-xs">{billingPeriods.length} période(s)</Badge>
+                                        {billingPeriods.filter(p => !p.invoice && p.dueDate <= new Date()).length > 0 && (
+                                            <Badge variant="destructive" className="text-xs">
+                                                {billingPeriods.filter(p => !p.invoice && p.dueDate <= new Date()).length} non facturée(s)
+                                            </Badge>
+                                        )}
+                                        {showBillingCalendar ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+                                    </div>
+                                </CardTitle>
+                            </CardHeader>
+                            {showBillingCalendar && (
+                                <CardContent className="p-0">
+                                    <Table>
+                                        <TableHeader>
+                                            <TableRow>
+                                                <TableHead className="text-xs">Période</TableHead>
+                                                <TableHead className="text-xs">Émission</TableHead>
+                                                <TableHead className="text-xs">Statut</TableHead>
+                                            </TableRow>
+                                        </TableHeader>
+                                        <TableBody>
+                                            {billingPeriods.map((p, i) => (
+                                                <TableRow key={i}>
+                                                    <TableCell className="text-xs py-1.5">
+                                                        {p.periodStart.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: '2-digit' })}
+                                                        {' → '}
+                                                        {p.periodEnd.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: '2-digit' })}
+                                                    </TableCell>
+                                                    <TableCell className="text-xs py-1.5">{p.dueDate.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: '2-digit' })}</TableCell>
+                                                    <TableCell className="py-1.5">
+                                                        {p.invoice
+                                                            ? <Link href={`/invoices/${p.invoice.id}`} className="text-xs text-green-600 hover:underline font-medium">
+                                                                {p.invoice.invoiceNumber ?? '✓'}
+                                                              </Link>
+                                                            : p.dueDate > new Date()
+                                                                ? <Badge variant="outline" className="text-xs px-1 py-0 text-muted-foreground">À venir</Badge>
+                                                                : <Badge variant="destructive" className="text-xs px-1 py-0">Non facturée</Badge>}
+                                                    </TableCell>
+                                                </TableRow>
+                                            ))}
+                                        </TableBody>
+                                    </Table>
+                                </CardContent>
+                            )}
+                        </Card>
+                    )}
                 </div>
 
                 {/* Right Column: Main Content */}
@@ -746,7 +1098,9 @@ export default function SiteDetailsPage() {
                                                     <div className="grid gap-2">
                                                         <Label className="text-xs text-muted-foreground">TVA</Label>
                                                         <div className="p-2 border rounded-md bg-muted/20 text-sm font-medium text-center">
-                                                            {activeVatRate ? `${activeVatRate.rate} %` : '-'}
+                                                            {activeService.billingLines && activeService.billingLines.length > 0
+                                                                ? activeService.billingLines.map(l => vatRates.find(v => v.id === l.vatRateId)?.rate).filter(Boolean).join(' / ') + ' %'
+                                                                : activeVatRate ? `${activeVatRate.rate} %` : '-'}
                                                         </div>
                                                     </div>
                                                 </div>
@@ -915,16 +1269,60 @@ export default function SiteDetailsPage() {
                                         </CardHeader>
                                         <CardContent className="space-y-2">
                                             {/* Coefficient révisé */}
-                                            <div className="flex justify-between items-center text-sm">
-                                                <span className="text-muted-foreground">
-                                                    Coefficient révisé
-                                                    {activeRevisionRule && ` (${activeRevisionRule.type}${activeRevisionRule.nbMonths > 1 ? `, moy. ${activeRevisionRule.nbMonths} mois` : ''})`}
-                                                </span>
-                                                <span className="font-bold">
-                                                    {revisionCoefficient != null
-                                                        ? revisionCoefficient.toFixed(4)
-                                                        : <span className="text-orange-500 italic text-xs">{revisionDiagnostic ?? '-'}</span>}
-                                                </span>
+                                            <div className="space-y-1">
+                                                <div className="flex justify-between items-center text-sm">
+                                                    <button
+                                                        type="button"
+                                                        className="flex items-center gap-1 text-muted-foreground hover:text-foreground transition-colors"
+                                                        onClick={() => setShowRevisionDetails(v => !v)}
+                                                    >
+                                                        {showRevisionDetails ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+                                                        Coefficient révisé
+                                                        {activeRevisionRule && ` (${activeRevisionRule.type}${activeRevisionRule.nbMonths > 1 ? `, moy. ${activeRevisionRule.nbMonths} mois` : ''})`}
+                                                    </button>
+                                                    <span className="font-bold">
+                                                        {revisionCoefficient != null
+                                                            ? revisionCoefficient.toFixed(4)
+                                                            : <span className="text-orange-500 italic text-xs">{revisionDiagnostic ?? '-'}</span>}
+                                                    </span>
+                                                </div>
+
+                                                {showRevisionDetails && revisionDetails && (
+                                                    <div className="ml-4 border-l-2 border-muted pl-3 space-y-2 text-xs text-muted-foreground">
+                                                        {revisionDetails.map((d, i) => (
+                                                            <div key={i} className="space-y-0.5">
+                                                                <div className="font-medium text-foreground">{d.code} <span className="font-normal text-muted-foreground">(coeff. {d.coefficient})</span></div>
+                                                                <div className="flex justify-between">
+                                                                    <span>I0 ({d.i0Period ?? '?'})</span>
+                                                                    <span className="font-mono">{d.i0 ?? '—'}</span>
+                                                                </div>
+                                                                {d.periods.map(p => (
+                                                                    <div key={p.period} className="flex justify-between text-muted-foreground/70">
+                                                                        <span>Ir {p.period}</span>
+                                                                        <span className="font-mono">{p.value}</span>
+                                                                    </div>
+                                                                ))}
+                                                                <div className="flex justify-between">
+                                                                    <span>Ir moyen</span>
+                                                                    <span className="font-mono">{d.Ir?.toFixed(4) ?? '—'}</span>
+                                                                </div>
+                                                                <div className="flex justify-between">
+                                                                    <span>Ir / I0</span>
+                                                                    <span className="font-mono">{d.ratio?.toFixed(4) ?? '—'}</span>
+                                                                </div>
+                                                                <div className="flex justify-between font-medium text-foreground">
+                                                                    <span>Contribution ({d.coefficient} × {d.ratio?.toFixed(4)})</span>
+                                                                    <span className="font-mono">{d.partial?.toFixed(4) ?? '—'}</span>
+                                                                </div>
+                                                            </div>
+                                                        ))}
+                                                        {activeRevisionRule?.type === 'PONDERE_A_B' && (
+                                                            <div className="pt-1 border-t border-muted text-foreground">
+                                                                Pa={activeRevisionRule.paramA ?? 0} + Pb={activeRevisionRule.paramB ?? 1} × Σ = {revisionCoefficient?.toFixed(4)}
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                )}
                                             </div>
 
                                             {/* Prix unitaire révisé */}
@@ -1018,6 +1416,7 @@ export default function SiteDetailsPage() {
                                     <SelectTrigger><SelectValue /></SelectTrigger>
                                     <SelectContent>
                                         <SelectItem value="Chauffage">Chauffage</SelectItem>
+                                        <SelectItem value="ECS">ECS</SelectItem>
                                         <SelectItem value="Eau Chaude">Eau Chaude</SelectItem>
                                         <SelectItem value="Electricité">Electricité</SelectItem>
                                         <SelectItem value="Eau Froide">Eau Froide</SelectItem>
@@ -1386,14 +1785,46 @@ export default function SiteDetailsPage() {
                         {selectedType === 'P1' && (
                             <div className="space-y-2">
                                 <Label>Compteur associé</Label>
-                                <Select value={meterId} onValueChange={setMeterId}>
-                                    <SelectTrigger><SelectValue placeholder="Sélectionner un compteur" /></SelectTrigger>
-                                    <SelectContent>
-                                        {filteredMeters.map(m => (
-                                            <SelectItem key={m.id} value={m.id}>{m.code} - {m.type}</SelectItem>
-                                        ))}
-                                    </SelectContent>
-                                </Select>
+                                {!isMeterComboOpen ? (
+                                    <Button
+                                        type="button"
+                                        variant="outline"
+                                        className="w-full justify-between font-normal"
+                                        onClick={() => setIsMeterComboOpen(true)}
+                                    >
+                                        {meterId
+                                            ? (() => { const m = filteredMeters.find(m => m.id === meterId); return m ? `${m.reference || m.name} — ${m.type}` : 'Compteur inconnu'; })()
+                                            : 'Rechercher un compteur...'}
+                                        <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                                    </Button>
+                                ) : (
+                                    <div className="border rounded-md shadow-sm bg-popover text-popover-foreground">
+                                        <Command filter={(value, search) => value.toLowerCase().includes(search.toLowerCase()) ? 1 : 0}>
+                                            <div className="flex items-center border-b px-3">
+                                                <CommandInput placeholder="Référence, nom ou type..." autoFocus className="flex h-9 w-full rounded-md bg-transparent py-3 text-sm outline-none placeholder:text-muted-foreground" />
+                                                <Button type="button" variant="ghost" size="icon" className="h-6 w-6 ml-1" onClick={() => setIsMeterComboOpen(false)}>
+                                                    <X className="h-3 w-3" />
+                                                </Button>
+                                            </div>
+                                            <CommandList className="max-h-[160px] overflow-y-auto">
+                                                <CommandEmpty>Aucun compteur trouvé.</CommandEmpty>
+                                                <CommandGroup>
+                                                    {filteredMeters.map(m => (
+                                                        <CommandItem
+                                                            key={m.id}
+                                                            value={`${m.reference || ''} ${m.name} ${m.type}`}
+                                                            onSelect={() => { setMeterId(m.id); setIsMeterComboOpen(false); }}
+                                                        >
+                                                            <span className="font-medium">{m.reference || m.name}</span>
+                                                            <span className="ml-2 text-muted-foreground text-xs">{m.type}</span>
+                                                            {meterId === m.id && <Check className="ml-auto h-4 w-4" />}
+                                                        </CommandItem>
+                                                    ))}
+                                                </CommandGroup>
+                                            </CommandList>
+                                        </Command>
+                                    </div>
+                                )}
                             </div>
                         )}
 
@@ -1433,6 +1864,115 @@ export default function SiteDetailsPage() {
                             </Select>
                             <p className="text-xs text-muted-foreground">Détermine comment le solde de fin d'exercice sera calculé.</p>
                         </div>
+
+                        {/* Billing Params — P1 only */}
+                        {selectedType === 'P1' && (
+                            <div className="space-y-4 border p-4 rounded-md">
+                                <h3 className="font-semibold text-sm">Paramètres de facturation</h3>
+
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div className="flex items-center gap-2 pt-5">
+                                        <Switch id="includeAnnex" checked={includeAnnex} onCheckedChange={setIncludeAnnex} />
+                                        <Label htmlFor="includeAnnex">Inclure les annexes</Label>
+                                    </div>
+                                    <div className="space-y-2">
+                                        <Label>Délai de règlement</Label>
+                                        <Select value={String(paymentTermDays)} onValueChange={v => setPaymentTermDays(Number(v))}>
+                                            <SelectTrigger><SelectValue /></SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="30">30 jours</SelectItem>
+                                                <SelectItem value="45">45 jours</SelectItem>
+                                                <SelectItem value="60">60 jours</SelectItem>
+                                                <SelectItem value="90">90 jours</SelectItem>
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
+                                </div>
+
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div className="space-y-2">
+                                        <Label>Coefficient de conversion</Label>
+                                        <Input
+                                            type="number"
+                                            step="0.0001"
+                                            value={conversionCoefficient}
+                                            onChange={e => setConversionCoefficient(parseFloat(e.target.value) || 1)}
+                                            placeholder="1.0"
+                                        />
+                                        <p className="text-xs text-muted-foreground">Ex : 11.6 pour m³→kWh (PCS gaz naturel)</p>
+                                    </div>
+                                </div>
+
+                                {/* Billing Lines */}
+                                <div className="space-y-2">
+                                    <div className="flex items-center justify-between">
+                                        <Label>Lignes de facturation</Label>
+                                        {!billingLines.some(l => l.lineType === 'PART_FIXE') && (
+                                            <Button
+                                                type="button"
+                                                variant="outline"
+                                                size="sm"
+                                                className="h-7 text-xs"
+                                                onClick={() => setBillingLines(prev => [...prev, { lineType: 'PART_FIXE', label: '', vatRateId: '', annualAmount: 0, isActive: true }])}
+                                            >
+                                                <Plus className="h-3 w-3 mr-1" /> Ajouter part fixe
+                                            </Button>
+                                        )}
+                                    </div>
+                                    <div className="space-y-2">
+                                        {['CONSOMMATION' as BillingLineType, ...billingLines.filter(l => l.lineType === 'PART_FIXE').map(l => l.lineType)].map((lineType) => {
+                                            const line = billingLines.find(l => l.lineType === lineType) ?? { lineType, label: '', vatRateId: '', isActive: true };
+                                            return (
+                                                <div key={lineType} className="grid gap-2 items-center" style={{ gridTemplateColumns: 'auto 1fr 1fr auto' }}>
+                                                    <Badge variant="outline" className="text-xs whitespace-nowrap">
+                                                        {lineType === 'CONSOMMATION' ? 'Consommation' : 'Part fixe'}
+                                                    </Badge>
+                                                    <Input
+                                                        placeholder="Libellé sur facture"
+                                                        value={line.label ?? ''}
+                                                        onChange={e => updateBillingLine(lineType, 'label', e.target.value)}
+                                                        className="h-8 text-xs"
+                                                    />
+                                                    <Select value={line.vatRateId} onValueChange={v => updateBillingLine(lineType, 'vatRateId', v)}>
+                                                        <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="TVA" /></SelectTrigger>
+                                                        <SelectContent>
+                                                            {vatRates.map(vr => (
+                                                                <SelectItem key={vr.id} value={vr.id}>{vr.rate} %</SelectItem>
+                                                            ))}
+                                                        </SelectContent>
+                                                    </Select>
+                                                    {lineType === 'PART_FIXE' ? (
+                                                        <Button
+                                                            type="button"
+                                                            variant="ghost"
+                                                            size="icon"
+                                                            className="h-8 w-8 text-destructive"
+                                                            onClick={() => setBillingLines(prev => prev.filter(l => l.lineType !== 'PART_FIXE'))}
+                                                        >
+                                                            <Trash2 className="h-3 w-3" />
+                                                        </Button>
+                                                    ) : (
+                                                        <span />
+                                                    )}
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                    {billingLines.some(l => l.lineType === 'PART_FIXE') && (
+                                        <div className="mt-1">
+                                            <Label className="text-xs text-muted-foreground">Montant annuel part fixe (€ HT/an)</Label>
+                                            <Input
+                                                type="number"
+                                                step="0.01"
+                                                className="mt-1 h-8 text-xs"
+                                                value={billingLines.find(l => l.lineType === 'PART_FIXE')?.annualAmount ?? 0}
+                                                onChange={e => updateBillingLine('PART_FIXE', 'annualAmount', parseFloat(e.target.value) || 0)}
+                                            />
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        )}
 
                         <DialogFooter>
                             <Button type="button" variant="outline" onClick={() => setIsServiceDialogOpen(false)}>Annuler</Button>

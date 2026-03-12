@@ -1,5 +1,5 @@
 import { db } from '@/lib/firebase';
-import type { Client, Contact, Site, Contract, Invoice, CreditNote, MeterReading, Company, Agency, Sector, Activity, User, Role, Schedule, Term, Typology, VatRate, RevisionFormula, PaymentTerm, PricingRule, Market, Meter, MeterType, Index, IndexValue, RevisionRule, Service, InvoiceStatus, Amendment, Termination, Renewal, TrusteeChange, BeChange, Interest, Dju, SettlementRule, ServiceSettlement, SettlementMethodType, SettlementTargetType, WorkProject, WorkQuote, ProgressSituation, AdvWorkQuote, AdvWorkQuoteVersion, AdvWorkQuoteLine, AdvWorkAffair, AdvWorkBudgetLine, AdvWorkLot, AdvWorkPoste, AdvWorkSituation, AdvWorkSituationLine, AdvPurchaseOrder, AdvPurchaseOrderLine, AdvCatalogArticle, AdvCatalogOuvrage, AdvOuvrageComposant } from '@/lib/types';
+import type { Client, Contact, Site, Contract, Invoice, CreditNote, MeterReading, Company, Agency, Sector, Activity, User, Role, Schedule, Term, Typology, VatRate, RevisionFormula, PaymentTerm, PricingRule, Market, Meter, MeterType, Index, IndexValue, RevisionRule, Service, InvoiceStatus, Amendment, Termination, Renewal, TrusteeChange, BeChange, Interest, Dju, DjuMonthly, WeatherStation, SettlementRule, ServiceSettlement, SettlementMethodType, SettlementTargetType, WorkProject, WorkQuote, ProgressSituation, AdvWorkQuote, AdvWorkQuoteVersion, AdvWorkQuoteLine, AdvWorkAffair, AdvWorkBudgetLine, AdvWorkLot, AdvWorkPoste, AdvWorkSituation, AdvWorkSituationLine, AdvPurchaseOrder, AdvPurchaseOrderLine, AdvCatalogArticle, AdvCatalogOuvrage, AdvOuvrageComposant } from '@/lib/types';
 import { collection, getDocs, doc, getDoc, addDoc, updateDoc, deleteDoc, query, where, DocumentData, writeBatch, runTransaction, Timestamp } from 'firebase/firestore';
 import { deleteFileFromUrl } from './storage';
 
@@ -193,7 +193,8 @@ export async function getSitesByContract(contractId: string): Promise<Site[]> {
 
 export async function createSite(data: Omit<Site, 'id'>) {
     const sitesCollection = collection(db, 'sites');
-    const docRef = await addDoc(sitesCollection, data);
+    const cleanData = Object.fromEntries(Object.entries(data).filter(([, v]) => v !== undefined));
+    const docRef = await addDoc(sitesCollection, cleanData);
     return { id: docRef.id, ...data };
 }
 
@@ -253,6 +254,7 @@ export async function createContract(data: Omit<Contract, 'id' | 'status' | 'val
         contractNumber: contractNumber, // Force the generated ID
         status: 'Brouillon',
         validationStatus: 'pending_validation',
+        createdAt: new Date().toISOString(),
     };
 
     // Remove undefined values
@@ -280,6 +282,7 @@ export async function updateContract(id: string, data: Partial<Omit<Contract, 'i
         }
     }
 
+    Object.keys(updateData).forEach(key => updateData[key] === undefined && delete updateData[key]);
     await updateDoc(contractDoc, updateData);
 }
 
@@ -536,8 +539,9 @@ export async function createMeterReading(data: Omit<MeterReading, 'id'>) {
 // --- Fonctions de Paramétrage (Firestore) ---
 async function createSettingItem(collectionName: string, data: DocumentData): Promise<any> {
     const collectionRef = collection(db, collectionName);
+    const cleanData = Object.fromEntries(Object.entries(data).filter(([, v]) => v !== undefined));
     try {
-        const docRef = await addDoc(collectionRef, data);
+        const docRef = await addDoc(collectionRef, cleanData);
         return { id: docRef.id, ...data };
     } catch (e: any) {
         console.error(`Firestore Error in createSettingItem (${collectionName}):`, e);
@@ -951,15 +955,97 @@ export async function getDjus(): Promise<Dju[]> {
     return getCollection<Dju>(collection(db, 'djus'));
 }
 
-export async function getWeatherStations(): Promise<{ code: string, name: string }[]> {
+// WeatherStation CRUD
+export async function getWeatherStations(): Promise<WeatherStation[]> {
+    const ws = await getCollection<WeatherStation>(collection(db, 'weatherStations'));
+    if (ws.length > 0) return ws;
+    // Fallback: derive from djus collection for backward compatibility
     const djus = await getDjus();
-    const stations = new Map<string, string>(); // code -> name
-    djus.forEach(d => {
-        if (!stations.has(d.stationCode)) {
-            stations.set(d.stationCode, d.stationName);
+    const stations = new Map<string, string>();
+    djus.forEach(d => { if (!stations.has(d.stationCode)) stations.set(d.stationCode, d.stationName); });
+    return Array.from(stations.entries()).map(([code, name]) => ({ id: code, code, name, isActive: true }));
+}
+
+export async function createWeatherStation(data: Omit<WeatherStation, 'id'>): Promise<WeatherStation> {
+    const docRef = await addDoc(collection(db, 'weatherStations'), data);
+    return { id: docRef.id, ...data };
+}
+
+export async function updateWeatherStation(id: string, data: Partial<Omit<WeatherStation, 'id'>>) {
+    return updateDoc(doc(db, 'weatherStations', id), data);
+}
+
+export async function deleteWeatherStation(id: string) {
+    return deleteDoc(doc(db, 'weatherStations', id));
+}
+
+// DjuMonthly
+export async function getDjuMonthliesByStation(stationCode: string): Promise<DjuMonthly[]> {
+    const q = query(collection(db, 'djuMonthly'), where('stationCode', '==', stationCode));
+    return getCollection<DjuMonthly>(q);
+}
+
+export async function upsertDjuMonthly(data: Omit<DjuMonthly, 'id'>): Promise<void> {
+    const q = query(
+        collection(db, 'djuMonthly'),
+        where('stationCode', '==', data.stationCode),
+        where('period', '==', data.period)
+    );
+    const snapshot = await getDocs(q);
+    if (snapshot.empty) {
+        await addDoc(collection(db, 'djuMonthly'), data);
+    } else {
+        await updateDoc(snapshot.docs[0].ref, { value: data.value, source: data.source });
+    }
+}
+
+// Batch import DJU (daily or monthly)
+export async function batchImportDjus(
+    rows: { stationCode: string; stationName?: string; date?: string; period?: string; value: number }[],
+    mode: 'daily' | 'monthly'
+): Promise<void> {
+    const BATCH_SIZE = 400;
+
+    if (mode === 'monthly') {
+        for (let i = 0; i < rows.length; i += BATCH_SIZE) {
+            const chunk = rows.slice(i, i + BATCH_SIZE);
+            const batch = writeBatch(db);
+            chunk.forEach(row => {
+                const ref = doc(collection(db, 'djuMonthly'));
+                batch.set(ref, { stationCode: row.stationCode, period: row.period!, value: row.value, source: 'IMPORT' });
+            });
+            await batch.commit();
         }
+        return;
+    }
+
+    // Daily: write djus + recompute monthly aggregates
+    for (let i = 0; i < rows.length; i += BATCH_SIZE) {
+        const chunk = rows.slice(i, i + BATCH_SIZE);
+        const batch = writeBatch(db);
+        chunk.forEach(row => {
+            const ref = doc(collection(db, 'djus'));
+            batch.set(ref, {
+                stationCode: row.stationCode,
+                stationName: row.stationName ?? row.stationCode,
+                date: row.date!,
+                value: row.value,
+            });
+        });
+        await batch.commit();
+    }
+
+    // Recompute monthly aggregates for affected station/periods
+    const monthMap = new Map<string, number>(); // "stationCode|YYYY-MM" -> total
+    rows.forEach(row => {
+        const period = row.date!.substring(0, 7); // YYYY-MM
+        const key = `${row.stationCode}|${period}`;
+        monthMap.set(key, (monthMap.get(key) ?? 0) + row.value);
     });
-    return Array.from(stations.entries()).map(([code, name]) => ({ code, name }));
+    for (const [key, value] of monthMap.entries()) {
+        const [stationCode, period] = key.split('|');
+        await upsertDjuMonthly({ stationCode, period, value, source: 'COMPUTED' });
+    }
 }
 
 export async function getDjuTotal(stationCode: string, startDate: string, endDate: string): Promise<number> {
@@ -969,7 +1055,6 @@ export async function getDjuTotal(stationCode: string, startDate: string, endDat
         where("date", ">=", startDate),
         where("date", "<=", endDate)
     );
-    // Note: This query assumes simple date string comparison works (true for YYYY-MM-DD)
     const snapshot = await getDocs(q);
     let total = 0;
     snapshot.forEach(doc => {
@@ -1078,41 +1163,155 @@ export async function createClientAndContract(data: any) {
 
         // Market type
         marketType: data.marketType,
+
+        // Requester
+        requesterEmail: data.requesterEmail,
     };
 
     // 5. Create Contract
     const newContract = await createContract(contractData);
 
-    // 6. Create initial Site (if site data provided)
-    let newSite = null;
-    if (data.site) {
+    // 6. Create Sites (supports mono and multi-site)
+    // Accept data.sites[] (new format) or fallback to data.site (legacy)
+    const sitesToCreate: any[] = data.sites && data.sites.length > 0
+        ? data.sites
+        : data.site ? [data.site] : [];
+
+    const createdSites: Site[] = [];
+    for (const site of sitesToCreate) {
         const siteData: Omit<Site, 'id'> = {
             contractId: newContract.id,
             clientId: newClient.id,
             clientName: newClient.name,
-            name: data.site.name || newClient.name,
-            address: data.site.address || data.address || '',
-            postalCode: data.site.postalCode || data.postalCode,
-            city: data.site.city || data.city,
-            billingSchedule: data.site.billingSchedule || 'Mensuel',
-            termId: data.site.term,
-            revisionP1: data.site.revisionP1 ? { formula: data.site.revisionP1 } : undefined,
-            revisionP2: data.site.revisionP2 ? { formula: data.site.revisionP2 } : undefined,
-            revisionP3: data.site.revisionP3 ? { formula: data.site.revisionP3 } : undefined,
-            hasHeating: data.site.hasHeating || false,
-            hasECS: data.site.hasECS || false,
-            hasInterest: data.site.hasInterest || false,
-            heatingReferenceDju: data.site.heatingReferenceDju,
-            heatingWeatherStation: data.site.heatingWeatherStation,
-            contractualNB: data.site.contractualNB,
-            smallQ: data.site.smallQ,
+            name: site.name || newClient.name,
+            address: site.address || data.address || '',
+            postalCode: site.postalCode || data.postalCode,
+            city: site.city || data.city,
+            billingSchedule: site.billingSchedule || 'Mensuel',
+            termId: site.term,
+            revisionP1: site.revisionP1 ? { formula: site.revisionP1 } : undefined,
+            revisionP2: site.revisionP2 ? { formula: site.revisionP2 } : undefined,
+            revisionP3: site.revisionP3 ? { formula: site.revisionP3 } : undefined,
+            hasHeating: site.hasHeating || false,
+            hasECS: site.hasECS || false,
+            hasInterest: site.hasInterest || false,
+            heatingReferenceDju: site.heatingReferenceDju,
+            heatingWeatherStation: site.heatingWeatherStation,
+            contractualNB: site.contractualNB,
+            smallQ: site.smallQ,
         };
-        newSite = await createSite(siteData);
-        // Update contract with siteIds
-        await updateContract(newContract.id, { siteIds: [newSite.id] });
+        const newSite = await createSite(siteData);
+        createdSites.push(newSite);
     }
 
-    return { client: newClient, contract: newContract, contacts, site: newSite };
+    if (createdSites.length > 0) {
+        await updateContract(newContract.id, { siteIds: createdSites.map(s => s.id) });
+    }
+
+    return { client: newClient, contract: newContract, contacts, sites: createdSites };
+}
+
+// Update an existing contract request (after refusal correction)
+export async function updateClientAndContract(contractId: string, clientId: string, data: any) {
+    // 1. Update client fields
+    await updateClient(clientId, {
+        name: data.name,
+        address: data.address,
+        postalCode: data.postalCode,
+        city: data.city,
+        clientType: data.clientType,
+        typologyId: data.typologyId,
+        representedBy: data.representedBy,
+        externalCode: data.externalCode,
+        isBe: data.isBe,
+        beName: data.beName,
+        beEmail: data.beEmail,
+        bePhone: data.bePhone,
+        useChorus: data.useChorus,
+        siret: data.siret,
+        chorusServiceCode: data.chorusServiceCode,
+        chorusLegalCommitmentNumber: data.chorusLegalCommitmentNumber,
+        chorusMarketNumber: data.chorusMarketNumber,
+        companyId: data.companyId,
+        agencyId: data.agencyId,
+        sectorId: data.sectorId,
+    });
+
+    // 2. Delete existing contacts and recreate
+    const existingContacts = await getContactsByClient(clientId);
+    for (const c of existingContacts) await deleteContact(c.id);
+
+    if (data.technicalContactName || data.technicalContactEmail || data.technicalContactPhone) {
+        await createContact({
+            clientId,
+            type: 'technique',
+            name: data.technicalContactName || '',
+            email: data.technicalContactEmail || undefined,
+            phone: data.technicalContactPhone || undefined,
+            role: data.technicalContactRole || undefined,
+        });
+    }
+    if (data.billingContactName || data.billingContactEmail || data.billingContactPhone) {
+        await createContact({
+            clientId,
+            type: 'facturation',
+            name: data.billingContactName || '',
+            email: data.billingContactEmail || undefined,
+            phone: data.billingContactPhone || undefined,
+            role: data.billingContactRole || undefined,
+        });
+    }
+
+    // 3. Delete existing sites and recreate
+    const existingSites = await getSitesByContract(contractId);
+    for (const s of existingSites) await deleteSite(s.id);
+
+    const sitesToCreate: any[] = data.sites && data.sites.length > 0 ? data.sites : [];
+    const newSiteIds: string[] = [];
+    for (const site of sitesToCreate) {
+        const newSite = await createSite({
+            contractId,
+            clientId,
+            clientName: data.name,
+            name: site.name || data.name,
+            address: site.address || data.address || '',
+            postalCode: site.postalCode || data.postalCode,
+            city: site.city || data.city,
+            billingSchedule: site.billingSchedule || 'Mensuel',
+            termId: site.term,
+            revisionP1: site.revisionP1 ? { formula: site.revisionP1 } : undefined,
+            revisionP2: site.revisionP2 ? { formula: site.revisionP2 } : undefined,
+            revisionP3: site.revisionP3 ? { formula: site.revisionP3 } : undefined,
+            hasHeating: site.hasHeating || false,
+            hasECS: site.hasECS || false,
+            hasInterest: site.hasInterest || false,
+            heatingReferenceDju: site.heatingReferenceDju,
+            heatingWeatherStation: site.heatingWeatherStation,
+            contractualNB: site.contractualNB,
+            smallQ: site.smallQ,
+        });
+        newSiteIds.push(newSite.id);
+    }
+
+    // 4. Update contract + reset validation status
+    await updateContract(contractId, {
+        clientName: data.name,
+        name: data.contractName,
+        label: data.label,
+        startDate: data.startDate instanceof Date ? data.startDate.toISOString() : data.startDate,
+        endDate: data.endDate instanceof Date ? data.endDate.toISOString() : data.endDate,
+        baseAmountP1: data.baseAmountP1,
+        baseAmountP2: data.baseAmountP2,
+        baseAmountP3: data.baseAmountP3,
+        baseAmountP3R: data.baseAmountP3R,
+        renewal: data.renewal,
+        tacitRenewal: data.tacitRenewal,
+        renewalDuration: data.renewalDuration,
+        noticePeriod: data.noticePeriod,
+        siteIds: newSiteIds,
+        validationStatus: 'pending_validation',
+        refusalReason: '',
+    });
 }
 
 // Relevés de Compteurs (Suite)

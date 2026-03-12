@@ -2,14 +2,14 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { useForm } from "react-hook-form";
+import { useForm, useFieldArray } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Loader2, FileText, ArrowLeft, Sparkles, Building, FileSignature, Euro, MapPin, Users, ChevronDown, ChevronUp, FileUp, X } from "lucide-react";
+import { Loader2, FileText, ArrowLeft, Sparkles, Building, FileSignature, Euro, MapPin, Users, ChevronDown, ChevronUp, FileUp, X, Plus, Trash2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { extractContractInfo } from '@/ai/flows/extract-contract-info-flow';
 import { createClientAndContract } from '@/services/firestore';
@@ -69,20 +69,21 @@ const defaultPrompt = `Agis comme un expert en saisie de données juridiques. An
     - \`tacitRenewal\` : \`true\` si reconduction tacite.
     - \`noticePeriod\` : Préavis de résiliation (ex: "3 mois", "6 mois").
 
-**Instructions Logiques pour le SITE :**
-1.  **Facturation** :
-    - \`billingSchedule\` : Périodicité de facturation (ex: "Mensuel", "Trimestriel", "Annuel").
-    - \`term\` : Terme de paiement (ex: "Échu", "Échoir").
-2.  **Révisions de Prix** :
+**Instructions Logiques pour les SITES :**
+1.  **Identification des sites** : Un contrat peut couvrir un ou plusieurs sites (immeubles, bâtiments, adresses distinctes). Identifie TOUS les sites mentionnés.
+2.  **Facturation** (par site) :
+    - \`billingSchedule\` : Périodicité de facturation (ex: "Mensuelle", "Trimestrielle", "Annuelle").
+    - \`term\` : Terme de facturation (ex: "Échu", "Échoir").
+3.  **Révisions de Prix** (par site) :
     - \`revisionP1\` : Formule complète de révision P1.
-    - \`revisionP2\` : Formule ou indice de révision P2.
-    - \`revisionP3\` : Formule de révision P3.
-3.  **Données Techniques P1** :
+    - \`revisionP2\` : Formule complète de révision P2.
+    - \`revisionP3\` : Formule complète de révision P3.
+4.  **Données Techniques P1** (par site) :
     - \`heatingReferenceDju\` : DJU de référence (ex: 1200, 2050).
     - \`heatingWeatherStation\` : Station météo de référence (ex: "Nice", "Le Bourget").
     - \`contractualNB\` : Valeur du NB contractuel.
     - \`smallQ\` : Valeur du petit q.
-4.  **Options P1** :
+5.  **Options P1** (par site) :
     - \`hasHeating\` : \`true\` si prestation de chauffage (P1 Chauffage).
     - \`hasECS\` : \`true\` si prestation d'Eau Chaude Sanitaire (P1 ECS).
     - \`hasInterest\` : \`true\` si mention d'intéressement ou de partage d'économies.
@@ -93,7 +94,7 @@ const defaultPrompt = `Agis comme un expert en saisie de données juridiques. An
   "client": {
     "name": "Nom du client final",
     "representativeName": "Nom du représentant/Syndic",
-    "address": "Adresse du site",
+    "address": "Adresse principale",
     "postalCode": "Code postal",
     "city": "Ville",
     "clientType": "private" ou "public",
@@ -118,20 +119,26 @@ const defaultPrompt = `Agis comme un expert en saisie de données juridiques. An
      "baseAmountP3": number,
      "baseAmountP3R": number
   },
-  "site": {
-     "billingSchedule": "Périodicité (ex: Mensuel, Trimestriel)",
-     "term": "Terme (ex: Échu, Échoir)",
-     "revisionP1": "Formule...",
-     "revisionP2": "Formule...",
-     "revisionP3": "Formule...",
-     "heatingReferenceDju": number,
-     "heatingWeatherStation": "Station...",
-     "hasInterest": boolean,
-     "hasHeating": boolean,
-     "hasECS": boolean,
-     "contractualNB": number,
-     "smallQ": number
-  }
+  "sites": [
+    {
+      "name": "Nom du site (ex: Résidence Le Bastion)",
+      "address": "Adresse du site",
+      "postalCode": "Code postal",
+      "city": "Ville",
+      "billingSchedule": "Périodicité (ex: Mensuel, Trimestriel)",
+      "term": "Terme (ex: Échu, Échoir)",
+      "revisionP1": "Formule...",
+      "revisionP2": "Formule...",
+      "revisionP3": "Formule...",
+      "heatingReferenceDju": number,
+      "heatingWeatherStation": "Station...",
+      "hasInterest": boolean,
+      "hasHeating": boolean,
+      "hasECS": boolean,
+      "contractualNB": number,
+      "smallQ": number
+    }
+  ]
 }`;
 
 // Site sub-schema for the Site tab
@@ -178,8 +185,8 @@ const ExtendedClientSchema = ClientBaseSchema.extend({
     tacitRenewal: z.boolean().default(false),
     renewalDuration: z.string().optional(),
     noticePeriod: z.string().optional(),
-    // Site (nested)
-    site: SiteFormSchema.default({}),
+    // Sites (liste)
+    sites: z.array(SiteFormSchema).default([{}]),
 });
 
 type ClientFormValues = z.infer<typeof ExtendedClientSchema>;
@@ -187,7 +194,7 @@ type ClientFormValues = z.infer<typeof ExtendedClientSchema>;
 export default function MarketPrivatePage() {
     const router = useRouter();
     const { toast } = useToast();
-    const { reloadData, typologies, companies, agencies, sectors, currentUser } = useData();
+    const { reloadData, typologies, companies, agencies, sectors, currentUser, weatherStations } = useData();
     const [file, setFile] = useState<File | null>(null);
     const [prompt, setPrompt] = useState(defaultPrompt);
     const [isAnalyzing, setIsAnalyzing] = useState(false);
@@ -234,7 +241,7 @@ export default function MarketPrivatePage() {
             baseAmountP2: undefined,
             typologyId: "",
 
-            site: {
+            sites: [{
                 name: "",
                 address: "",
                 postalCode: "",
@@ -247,8 +254,13 @@ export default function MarketPrivatePage() {
                 hasInterest: false,
                 hasHeating: false,
                 hasECS: false,
-            },
+            }],
         },
+    });
+
+    const { fields: siteFields, append: appendSite, remove: removeSite } = useFieldArray({
+        control: form.control,
+        name: "sites",
     });
 
     const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -350,25 +362,40 @@ export default function MarketPrivatePage() {
                         contractName: result.contrat?.name || "",
                         label: result.contrat?.label || "",
 
-                        // === TAB 4: Site ===
-                        site: {
-                            name: result.client?.name || "", // Default site name to client name
-                            address: result.client?.address || "",
-                            postalCode: result.client?.postalCode || "",
-                            city: result.client?.city || "",
-                            billingSchedule: result.site?.billingSchedule || "Mensuel",
-                            term: result.site?.term || "",
-                            revisionP1: result.site?.revisionP1 || "",
-                            revisionP2: result.site?.revisionP2 || "",
-                            revisionP3: result.site?.revisionP3 || "",
-                            heatingReferenceDju: result.site?.heatingReferenceDju,
-                            heatingWeatherStation: result.site?.heatingWeatherStation || "",
-                            hasInterest: result.site?.hasInterest || false,
-                            hasHeating: result.site?.hasHeating || false,
-                            hasECS: result.site?.hasECS || false,
-                            contractualNB: result.site?.contractualNB,
-                            smallQ: result.site?.smallQ,
-                        },
+                        // === TAB 4: Sites ===
+                        sites: result.sites && result.sites.length > 0
+                            ? result.sites.map(s => ({
+                                name: s.name || result.client?.name || "",
+                                address: s.address || result.client?.address || "",
+                                postalCode: s.postalCode || result.client?.postalCode || "",
+                                city: s.city || result.client?.city || "",
+                                billingSchedule: s.billingSchedule || "Mensuel",
+                                term: s.term || "",
+                                revisionP1: s.revisionP1 || "",
+                                revisionP2: s.revisionP2 || "",
+                                revisionP3: s.revisionP3 || "",
+                                heatingReferenceDju: s.heatingReferenceDju,
+                                heatingWeatherStation: s.heatingWeatherStation || "",
+                                hasInterest: s.hasInterest || false,
+                                hasHeating: s.hasHeating || false,
+                                hasECS: s.hasECS || false,
+                                contractualNB: s.contractualNB,
+                                smallQ: s.smallQ,
+                            }))
+                            : [{
+                                name: result.client?.name || "",
+                                address: result.client?.address || "",
+                                postalCode: result.client?.postalCode || "",
+                                city: result.client?.city || "",
+                                billingSchedule: "Mensuel",
+                                term: "",
+                                revisionP1: "",
+                                revisionP2: "",
+                                revisionP3: "",
+                                hasInterest: false,
+                                hasHeating: false,
+                                hasECS: false,
+                            }],
 
                         // Preserve hierarchy
                         companyId: form.getValues("companyId") || companies[0]?.id || "",
@@ -414,8 +441,8 @@ export default function MarketPrivatePage() {
                 downloadUrl = await uploadFile(file, path);
             }
 
-            // Separate site data from the rest
-            const { site: siteData, ...restData } = data;
+            // Separate sites data from the rest
+            const { sites: sitesData, ...restData } = data;
 
             const contractData = {
                 ...restData,
@@ -427,8 +454,7 @@ export default function MarketPrivatePage() {
                     type: 'application/pdf',
                     url: downloadUrl
                 }] : [],
-                // Pass site data for createClientAndContract to handle
-                site: siteData,
+                sites: sitesData,
             };
 
             await createClientAndContract(contractData);
@@ -966,129 +992,173 @@ export default function MarketPrivatePage() {
                                         </div>
                                     </TabsContent>
 
-                                    {/* ===== TAB 4: SITE ===== */}
+                                    {/* ===== TAB 4: SITES ===== */}
                                     <TabsContent value="site" className="space-y-4 pt-4">
-                                        <FormField control={form.control} name="site.name" render={({ field }) => (
-                                            <FormItem>
-                                                <FormLabel>Nom du Site</FormLabel>
-                                                <FormControl><Input placeholder="Ex: Résidence Le Bastion" {...field} /></FormControl>
-                                                <FormMessage />
-                                            </FormItem>
-                                        )} />
+                                        {siteFields.map((siteField, index) => (
+                                            <div key={siteField.id} className="space-y-4 rounded-lg border p-4">
+                                                <div className="flex items-center justify-between">
+                                                    <span className="text-sm font-semibold text-muted-foreground">
+                                                        Site {index + 1}
+                                                    </span>
+                                                    {siteFields.length > 1 && (
+                                                        <Button
+                                                            type="button"
+                                                            variant="ghost"
+                                                            size="icon"
+                                                            className="h-7 w-7 text-destructive hover:text-destructive"
+                                                            onClick={() => removeSite(index)}
+                                                        >
+                                                            <Trash2 className="h-4 w-4" />
+                                                        </Button>
+                                                    )}
+                                                </div>
 
-                                        <FormField control={form.control} name="site.address" render={({ field }) => (
-                                            <FormItem>
-                                                <FormLabel>Adresse du Site</FormLabel>
-                                                <FormControl><Input {...field} /></FormControl>
-                                                <FormMessage />
-                                            </FormItem>
-                                        )} />
+                                                <FormField control={form.control} name={`sites.${index}.name`} render={({ field }) => (
+                                                    <FormItem>
+                                                        <FormLabel>Nom du Site</FormLabel>
+                                                        <FormControl><Input placeholder="Ex: Résidence Le Bastion" {...field} /></FormControl>
+                                                        <FormMessage />
+                                                    </FormItem>
+                                                )} />
 
-                                        <div className="grid grid-cols-2 gap-4">
-                                            <FormField control={form.control} name="site.postalCode" render={({ field }) => (
-                                                <FormItem>
-                                                    <FormLabel>Code Postal</FormLabel>
-                                                    <FormControl><Input {...field} /></FormControl>
-                                                    <FormMessage />
-                                                </FormItem>
-                                            )} />
-                                            <FormField control={form.control} name="site.city" render={({ field }) => (
-                                                <FormItem>
-                                                    <FormLabel>Ville</FormLabel>
-                                                    <FormControl><Input {...field} /></FormControl>
-                                                    <FormMessage />
-                                                </FormItem>
-                                            )} />
-                                        </div>
+                                                <FormField control={form.control} name={`sites.${index}.address`} render={({ field }) => (
+                                                    <FormItem>
+                                                        <FormLabel>Adresse du Site</FormLabel>
+                                                        <FormControl><Input {...field} /></FormControl>
+                                                        <FormMessage />
+                                                    </FormItem>
+                                                )} />
 
-                                        <div className="grid grid-cols-2 gap-4">
-                                            <FormField control={form.control} name="site.billingSchedule" render={({ field }) => (
-                                                <FormItem>
-                                                    <FormLabel>Périodicité de Facturation</FormLabel>
-                                                    <FormControl><Input placeholder="Ex: Mensuel" {...field} /></FormControl>
-                                                    <FormMessage />
-                                                </FormItem>
-                                            )} />
-                                            <FormField control={form.control} name="site.term" render={({ field }) => (
-                                                <FormItem>
-                                                    <FormLabel>Terme / Échéance</FormLabel>
-                                                    <FormControl><Input placeholder="Ex: Échu" {...field} /></FormControl>
-                                                    <FormMessage />
-                                                </FormItem>
-                                            )} />
-                                        </div>
+                                                <div className="grid grid-cols-2 gap-4">
+                                                    <FormField control={form.control} name={`sites.${index}.postalCode`} render={({ field }) => (
+                                                        <FormItem>
+                                                            <FormLabel>Code Postal</FormLabel>
+                                                            <FormControl><Input {...field} /></FormControl>
+                                                            <FormMessage />
+                                                        </FormItem>
+                                                    )} />
+                                                    <FormField control={form.control} name={`sites.${index}.city`} render={({ field }) => (
+                                                        <FormItem>
+                                                            <FormLabel>Ville</FormLabel>
+                                                            <FormControl><Input {...field} /></FormControl>
+                                                            <FormMessage />
+                                                        </FormItem>
+                                                    )} />
+                                                </div>
 
-                                        <Separator />
+                                                <div className="grid grid-cols-2 gap-4">
+                                                    <FormField control={form.control} name={`sites.${index}.billingSchedule`} render={({ field }) => (
+                                                        <FormItem>
+                                                            <FormLabel>Périodicité de Facturation</FormLabel>
+                                                            <FormControl><Input placeholder="Ex: Mensuel" {...field} /></FormControl>
+                                                            <FormMessage />
+                                                        </FormItem>
+                                                    )} />
+                                                    <FormField control={form.control} name={`sites.${index}.term`} render={({ field }) => (
+                                                        <FormItem>
+                                                            <FormLabel>Terme / Échéance</FormLabel>
+                                                            <FormControl><Input placeholder="Ex: Échu" {...field} /></FormControl>
+                                                            <FormMessage />
+                                                        </FormItem>
+                                                    )} />
+                                                </div>
 
-                                        <div className="space-y-2">
-                                            <Label className="text-sm font-semibold">Formules de Révision</Label>
-                                            <FormField control={form.control} name="site.revisionP1" render={({ field }) => (
-                                                <FormItem><FormControl><Input placeholder="Formule P1" {...field} /></FormControl></FormItem>
-                                            )} />
-                                            <FormField control={form.control} name="site.revisionP2" render={({ field }) => (
-                                                <FormItem><FormControl><Input placeholder="Formule P2" {...field} /></FormControl></FormItem>
-                                            )} />
-                                            <FormField control={form.control} name="site.revisionP3" render={({ field }) => (
-                                                <FormItem><FormControl><Input placeholder="Formule P3" {...field} /></FormControl></FormItem>
-                                            )} />
-                                        </div>
+                                                <Separator />
 
-                                        <Separator />
+                                                <div className="space-y-2">
+                                                    <Label className="text-sm font-semibold">Formules de Révision</Label>
+                                                    <FormField control={form.control} name={`sites.${index}.revisionP1`} render={({ field }) => (
+                                                        <FormItem><FormControl><Input placeholder="Formule P1" {...field} /></FormControl></FormItem>
+                                                    )} />
+                                                    <FormField control={form.control} name={`sites.${index}.revisionP2`} render={({ field }) => (
+                                                        <FormItem><FormControl><Input placeholder="Formule P2" {...field} /></FormControl></FormItem>
+                                                    )} />
+                                                    <FormField control={form.control} name={`sites.${index}.revisionP3`} render={({ field }) => (
+                                                        <FormItem><FormControl><Input placeholder="Formule P3" {...field} /></FormControl></FormItem>
+                                                    )} />
+                                                </div>
 
-                                        <div className="grid grid-cols-2 gap-4">
-                                            <FormField control={form.control} name="site.heatingReferenceDju" render={({ field }) => (
-                                                <FormItem>
-                                                    <FormLabel>DJU Référence</FormLabel>
-                                                    <FormControl><Input type="number" {...field} onChange={e => field.onChange(e.target.value === '' ? undefined : e.target.valueAsNumber)} /></FormControl>
-                                                    <FormMessage />
-                                                </FormItem>
-                                            )} />
-                                            <FormField control={form.control} name="site.heatingWeatherStation" render={({ field }) => (
-                                                <FormItem>
-                                                    <FormLabel>Station Météo</FormLabel>
-                                                    <FormControl><Input {...field} /></FormControl>
-                                                    <FormMessage />
-                                                </FormItem>
-                                            )} />
-                                        </div>
+                                                <Separator />
 
-                                        <div className="grid grid-cols-2 gap-4">
-                                            <FormField control={form.control} name="site.contractualNB" render={({ field }) => (
-                                                <FormItem>
-                                                    <FormLabel>NB (Nombre de Base)</FormLabel>
-                                                    <FormControl><Input type="number" {...field} onChange={e => field.onChange(e.target.value === '' ? undefined : e.target.valueAsNumber)} /></FormControl>
-                                                    <FormMessage />
-                                                </FormItem>
-                                            )} />
-                                            <FormField control={form.control} name="site.smallQ" render={({ field }) => (
-                                                <FormItem>
-                                                    <FormLabel>Petit q</FormLabel>
-                                                    <FormControl><Input type="number" {...field} onChange={e => field.onChange(e.target.value === '' ? undefined : e.target.valueAsNumber)} /></FormControl>
-                                                    <FormMessage />
-                                                </FormItem>
-                                            )} />
-                                        </div>
+                                                <div className="grid grid-cols-2 gap-4">
+                                                    <FormField control={form.control} name={`sites.${index}.heatingReferenceDju`} render={({ field }) => (
+                                                        <FormItem>
+                                                            <FormLabel>DJU Référence</FormLabel>
+                                                            <FormControl><Input type="number" {...field} onChange={e => field.onChange(e.target.value === '' ? undefined : e.target.valueAsNumber)} /></FormControl>
+                                                            <FormMessage />
+                                                        </FormItem>
+                                                    )} />
+                                                    <FormField control={form.control} name={`sites.${index}.heatingWeatherStation`} render={({ field }) => (
+                                                        <FormItem>
+                                                            <FormLabel>Station Météo</FormLabel>
+                                                            <Select value={field.value ?? ''} onValueChange={field.onChange}>
+                                                                <FormControl><SelectTrigger><SelectValue placeholder="Sélectionner une station" /></SelectTrigger></FormControl>
+                                                                <SelectContent>
+                                                                    {weatherStations.filter(s => s.isActive).map(s => (
+                                                                        <SelectItem key={s.code} value={s.code}>{s.name} ({s.code})</SelectItem>
+                                                                    ))}
+                                                                </SelectContent>
+                                                            </Select>
+                                                            <FormMessage />
+                                                        </FormItem>
+                                                    )} />
+                                                </div>
 
-                                        <div className="flex flex-wrap gap-4">
-                                            <FormField control={form.control} name="site.hasInterest" render={({ field }) => (
-                                                <FormItem className="flex flex-row items-center space-x-2 space-y-0">
-                                                    <FormControl><Switch checked={field.value} onCheckedChange={field.onChange} /></FormControl>
-                                                    <FormLabel>Intéressement</FormLabel>
-                                                </FormItem>
-                                            )} />
-                                            <FormField control={form.control} name="site.hasHeating" render={({ field }) => (
-                                                <FormItem className="flex flex-row items-center space-x-2 space-y-0">
-                                                    <FormControl><Switch checked={field.value} onCheckedChange={field.onChange} /></FormControl>
-                                                    <FormLabel>Chauffage</FormLabel>
-                                                </FormItem>
-                                            )} />
-                                            <FormField control={form.control} name="site.hasECS" render={({ field }) => (
-                                                <FormItem className="flex flex-row items-center space-x-2 space-y-0">
-                                                    <FormControl><Switch checked={field.value} onCheckedChange={field.onChange} /></FormControl>
-                                                    <FormLabel>ECS</FormLabel>
-                                                </FormItem>
-                                            )} />
-                                        </div>
+                                                <div className="grid grid-cols-2 gap-4">
+                                                    <FormField control={form.control} name={`sites.${index}.contractualNB`} render={({ field }) => (
+                                                        <FormItem>
+                                                            <FormLabel>NB (Nombre de Base)</FormLabel>
+                                                            <FormControl><Input type="number" {...field} onChange={e => field.onChange(e.target.value === '' ? undefined : e.target.valueAsNumber)} /></FormControl>
+                                                            <FormMessage />
+                                                        </FormItem>
+                                                    )} />
+                                                    <FormField control={form.control} name={`sites.${index}.smallQ`} render={({ field }) => (
+                                                        <FormItem>
+                                                            <FormLabel>Petit q</FormLabel>
+                                                            <FormControl><Input type="number" {...field} onChange={e => field.onChange(e.target.value === '' ? undefined : e.target.valueAsNumber)} /></FormControl>
+                                                            <FormMessage />
+                                                        </FormItem>
+                                                    )} />
+                                                </div>
+
+                                                <div className="flex flex-wrap gap-4">
+                                                    <FormField control={form.control} name={`sites.${index}.hasInterest`} render={({ field }) => (
+                                                        <FormItem className="flex flex-row items-center space-x-2 space-y-0">
+                                                            <FormControl><Switch checked={field.value} onCheckedChange={field.onChange} /></FormControl>
+                                                            <FormLabel>Intéressement</FormLabel>
+                                                        </FormItem>
+                                                    )} />
+                                                    <FormField control={form.control} name={`sites.${index}.hasHeating`} render={({ field }) => (
+                                                        <FormItem className="flex flex-row items-center space-x-2 space-y-0">
+                                                            <FormControl><Switch checked={field.value} onCheckedChange={field.onChange} /></FormControl>
+                                                            <FormLabel>Chauffage</FormLabel>
+                                                        </FormItem>
+                                                    )} />
+                                                    <FormField control={form.control} name={`sites.${index}.hasECS`} render={({ field }) => (
+                                                        <FormItem className="flex flex-row items-center space-x-2 space-y-0">
+                                                            <FormControl><Switch checked={field.value} onCheckedChange={field.onChange} /></FormControl>
+                                                            <FormLabel>ECS</FormLabel>
+                                                        </FormItem>
+                                                    )} />
+                                                </div>
+                                            </div>
+                                        ))}
+
+                                        <Button
+                                            type="button"
+                                            variant="outline"
+                                            size="sm"
+                                            className="w-full gap-2"
+                                            onClick={() => appendSite({
+                                                name: "", address: "", postalCode: "", city: "",
+                                                billingSchedule: "Mensuel", term: "",
+                                                revisionP1: "", revisionP2: "", revisionP3: "",
+                                                hasInterest: false, hasHeating: false, hasECS: false,
+                                            })}
+                                        >
+                                            <Plus className="h-4 w-4" />
+                                            Ajouter un site
+                                        </Button>
                                     </TabsContent>
                                 </Tabs>
 

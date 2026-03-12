@@ -80,6 +80,7 @@ function MainAppLayout({ children }: { children: React.ReactNode }) {
     { href: '/billing', label: 'Facturation Manuelle', icon: CircleDollarSign },
     { href: '/billing/batch', label: 'Facturation Groupée', icon: Copy },
     { href: '/clients', label: 'Clients', icon: Building },
+    { href: '/contracts', label: 'Contrats', icon: FileSignature },
     { href: '/sites', label: 'Sites', icon: MapPin },
     { href: '/billing/indices', label: 'Indices', icon: CircleDollarSign },
   ];

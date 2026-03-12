@@ -3,18 +3,24 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { Loader2, AlertCircle, CheckCircle, Clock } from 'lucide-react';
+import { Loader2, AlertCircle, Clock, Trash2 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useData } from '@/context/data-context';
-import { cn } from '@/lib/utils';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { deleteClient } from '@/services/firestore';
+import { useToast } from '@/hooks/use-toast';
+import type { Contract } from '@/lib/types';
 
 export default function CommercePage() {
-    const { contracts, currentUser, isLoading } = useData();
+    const { contracts, currentUser, isLoading, reloadData } = useData();
     const router = useRouter();
+    const { toast } = useToast();
+    const [contractToDelete, setContractToDelete] = useState<Contract | null>(null);
+    const [isDeleting, setIsDeleting] = useState(false);
 
     if (isLoading) {
         return (
@@ -29,6 +35,21 @@ export default function CommercePage() {
         c.requesterEmail === currentUser?.email &&
         (c.validationStatus === 'pending_validation' || c.validationStatus === 'refused')
     );
+
+    const handleDelete = async () => {
+        if (!contractToDelete) return;
+        setIsDeleting(true);
+        try {
+            await deleteClient(contractToDelete.clientId);
+            toast({ title: "Demande supprimée", description: "Le contrat et le client associé ont été supprimés." });
+            await reloadData();
+        } catch {
+            toast({ title: "Erreur", description: "Impossible de supprimer la demande.", variant: "destructive" });
+        } finally {
+            setIsDeleting(false);
+            setContractToDelete(null);
+        }
+    };
 
     // Sort: Refused first, then Pending
     myRequests.sort((a, b) => {
@@ -113,11 +134,20 @@ export default function CommercePage() {
                                         </TableCell>
                                         <TableCell className="text-right">
                                             {contract.validationStatus === 'refused' && (
-                                                <Button size="sm" asChild>
-                                                    <Link href={`/contracts/${contract.id}/edit`}>
-                                                        Corriger
-                                                    </Link>
-                                                </Button>
+                                                <div className="flex justify-end gap-2">
+                                                    <Button size="sm" asChild>
+                                                        <Link href={`/contracts/${contract.id}/edit`}>
+                                                            Corriger
+                                                        </Link>
+                                                    </Button>
+                                                    <Button
+                                                        size="sm"
+                                                        variant="destructive"
+                                                        onClick={() => setContractToDelete(contract)}
+                                                    >
+                                                        <Trash2 className="h-4 w-4" />
+                                                    </Button>
+                                                </div>
                                             )}
                                         </TableCell>
                                     </TableRow>
@@ -133,6 +163,23 @@ export default function CommercePage() {
                     </Table>
                 </CardContent>
             </Card>
+            <Dialog open={!!contractToDelete} onOpenChange={(open) => !open && setContractToDelete(null)}>
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle>Supprimer la demande</DialogTitle>
+                        <DialogDescription>
+                            Voulez-vous vraiment supprimer définitivement la demande pour <strong>{contractToDelete?.clientName}</strong> ? Cette action est irréversible — le client, les contacts et les sites associés seront également supprimés.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => setContractToDelete(null)}>Annuler</Button>
+                        <Button variant="destructive" onClick={handleDelete} disabled={isDeleting}>
+                            {isDeleting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                            Supprimer définitivement
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
         </div>
     );
 }

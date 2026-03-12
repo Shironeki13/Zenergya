@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useMemo, useRef } from "react";
-import { useForm } from "react-hook-form";
+import { useForm, useFieldArray } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useRouter } from "next/navigation";
@@ -10,7 +10,7 @@ import { fr } from "date-fns/locale";
 import {
     Loader2, FileText, Calendar as CalendarIcon, X, Sparkles, ArrowLeft,
     Building, Users, FileSignature, MapPin, Euro,
-    ChevronDown, ChevronUp, FileUp
+    ChevronDown, ChevronUp, FileUp, Plus, Trash2
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -87,9 +87,14 @@ Si une information est introuvable, laisse le champ vide ou null.
         - ecsSmallQ: Le petit q ECS.
         - ecsNB: Le NB ECS.
 
-**SITE :**
-- Périodicité de facturation (billingSchedule): Périodicité générale (ex: "Mensuel", "Trimestriel").
-- Terme de paiement (term): Terme de paiement (ex: "Échu", "Échoir").
+**SITES :**
+- Identifie TOUS les sites couverts par le marché (adresses, bâtiments distincts...).
+- Pour chaque site, extrais :
+  - name: Nom du site.
+  - address, postalCode, city: Adresse complète.
+  - billingSchedule: Périodicité de facturation (ex: "Mensuel", "Trimestriel").
+  - term: Terme de paiement (ex: "Échu", "Échoir").
+- Si un seul site est mentionné, retourne un tableau d'un élément.
 `;
 
 // Site sub-schema for the Site tab
@@ -122,8 +127,8 @@ const MarketPublicFormSchema = ClientBaseSchema.extend({
     billingContactEmail: z.string().optional(),
     billingContactPhone: z.string().optional(),
     billingContactRole: z.string().optional(),
-    // Site (nested)
-    site: SiteFormSchema.default({}),
+    // Sites (liste)
+    sites: z.array(SiteFormSchema).default([{}]),
 });
 
 type ClientFormValues = z.infer<typeof MarketPublicFormSchema>;
@@ -164,7 +169,7 @@ export default function PublicMarketAIPage() {
 
     const { toast } = useToast();
     const router = useRouter();
-    const { clients, typologies, activities, terms, schedules, companies, agencies, sectors, currentUser } = useData();
+    const { clients, typologies, activities, terms, schedules, companies, agencies, sectors, currentUser, weatherStations } = useData();
 
     const form = useForm<ClientFormValues>({
         resolver: zodResolver(MarketPublicFormSchema),
@@ -203,15 +208,20 @@ export default function PublicMarketAIPage() {
             billingContactPhone: "",
             billingContactRole: "",
 
-            site: {
+            sites: [{
                 name: "",
                 address: "",
                 postalCode: "",
                 city: "",
                 billingSchedule: "Mensuel",
                 term: "",
-            },
+            }],
         },
+    });
+
+    const { fields: siteFields, append: appendSite, remove: removeSite } = useFieldArray({
+        control: form.control,
+        name: "sites",
     });
 
     const watchCompanyId = form.watch("companyId");
@@ -312,15 +322,24 @@ export default function PublicMarketAIPage() {
                 activityIds: result.activityIds ?? [],
                 activitiesDetails: result.activitiesDetails ?? [],
 
-                // === TAB 4: Site ===
-                site: {
-                    name: result.client?.name || "",
-                    address: result.client?.address || "",
-                    postalCode: result.client?.postalCode || "",
-                    city: result.client?.city || "",
-                    billingSchedule: result.site?.billingSchedule || "Mensuel",
-                    term: result.site?.term || "",
-                },
+                // === TAB 4: Sites ===
+                sites: result.sites && result.sites.length > 0
+                    ? result.sites.map(s => ({
+                        name: s.name || result.client?.name || "",
+                        address: s.address || result.client?.address || "",
+                        postalCode: s.postalCode || result.client?.postalCode || "",
+                        city: s.city || result.client?.city || "",
+                        billingSchedule: s.billingSchedule || "Mensuel",
+                        term: s.term || "",
+                    }))
+                    : [{
+                        name: result.client?.name || "",
+                        address: result.client?.address || "",
+                        postalCode: result.client?.postalCode || "",
+                        city: result.client?.city || "",
+                        billingSchedule: "Mensuel",
+                        term: "",
+                    }],
 
                 // Preserve hierarchy
                 companyId: form.getValues("companyId"),
@@ -367,8 +386,8 @@ export default function PublicMarketAIPage() {
                 }
             }
 
-            // Separate site data from the rest
-            const { site: siteData, ...restData } = data;
+            // Separate sites data from the rest
+            const { sites: sitesData, ...restData } = data;
 
             const finalData = {
                 ...restData,
@@ -376,7 +395,7 @@ export default function PublicMarketAIPage() {
                 validationStatus: 'pending_validation',
                 requesterEmail: currentUser?.email,
                 documents: uploadedDocs,
-                site: siteData,
+                sites: sitesData,
             };
 
             await createClientAndContract(finalData);
@@ -945,7 +964,19 @@ export default function PublicMarketAIPage() {
                                                                             <Separator className="my-4" />
                                                                             <h4 className="text-sm font-semibold mb-2">Données Techniques P1</h4>
                                                                             <div className="grid grid-cols-2 gap-4">
-                                                                                <FormField control={form.control} name={`activitiesDetails.${detailIndex}.weatherStation`} render={({ field }) => (<FormItem><FormLabel>Station Météo</FormLabel><FormControl><Input {...field} value={field.value ?? ''} /></FormControl></FormItem>)} />
+                                                                                <FormField control={form.control} name={`activitiesDetails.${detailIndex}.weatherStation`} render={({ field }) => (
+                                                                                    <FormItem>
+                                                                                        <FormLabel>Station Météo</FormLabel>
+                                                                                        <Select value={field.value ?? ''} onValueChange={field.onChange}>
+                                                                                            <FormControl><SelectTrigger><SelectValue placeholder="Sélectionner une station" /></SelectTrigger></FormControl>
+                                                                                            <SelectContent>
+                                                                                                {weatherStations.filter(s => s.isActive).map(s => (
+                                                                                                    <SelectItem key={s.code} value={s.code}>{s.name} ({s.code})</SelectItem>
+                                                                                                ))}
+                                                                                            </SelectContent>
+                                                                                        </Select>
+                                                                                    </FormItem>
+                                                                                )} />
                                                                                 <FormField control={form.control} name={`activitiesDetails.${detailIndex}.contractualTemperature`} render={({ field }) => (<FormItem><FormLabel>Temp. Contractuelle (°C)</FormLabel><FormControl><Input type="number" {...field} onChange={e => field.onChange(parseFloat(e.target.value))} /></FormControl></FormItem>)} />
                                                                                 <FormField control={form.control} name={`activitiesDetails.${detailIndex}.contractualDJU`} render={({ field }) => (<FormItem><FormLabel>DJU Contractuels</FormLabel><FormControl><Input type="number" {...field} onChange={e => field.onChange(parseFloat(e.target.value))} /></FormControl></FormItem>)} />
                                                                                 <FormField control={form.control} name={`activitiesDetails.${detailIndex}.contractualNB`} render={({ field }) => (<FormItem><FormLabel>NB Contractuels</FormLabel><FormControl><Input type="number" {...field} onChange={e => field.onChange(parseFloat(e.target.value))} /></FormControl></FormItem>)} />
@@ -962,54 +993,89 @@ export default function PublicMarketAIPage() {
                                             )}
                                         </TabsContent>
 
-                                        {/* ===== TAB 4: SITE ===== */}
+                                        {/* ===== TAB 4: SITES ===== */}
                                         <TabsContent value="site" className="space-y-4 pt-4">
-                                            <FormField control={form.control} name="site.name" render={({ field }) => (
-                                                <FormItem>
-                                                    <FormLabel>Nom du Site</FormLabel>
-                                                    <FormControl><Input placeholder="Ex: Mairie de..." {...field} /></FormControl>
-                                                    <FormMessage />
-                                                </FormItem>
-                                            )} />
-                                            <FormField control={form.control} name="site.address" render={({ field }) => (
-                                                <FormItem>
-                                                    <FormLabel>Adresse du Site</FormLabel>
-                                                    <FormControl><Input {...field} /></FormControl>
-                                                    <FormMessage />
-                                                </FormItem>
-                                            )} />
-                                            <div className="grid grid-cols-2 gap-4">
-                                                <FormField control={form.control} name="site.postalCode" render={({ field }) => (
-                                                    <FormItem>
-                                                        <FormLabel>Code Postal</FormLabel>
-                                                        <FormControl><Input {...field} /></FormControl>
-                                                        <FormMessage />
-                                                    </FormItem>
-                                                )} />
-                                                <FormField control={form.control} name="site.city" render={({ field }) => (
-                                                    <FormItem>
-                                                        <FormLabel>Ville</FormLabel>
-                                                        <FormControl><Input {...field} /></FormControl>
-                                                        <FormMessage />
-                                                    </FormItem>
-                                                )} />
-                                            </div>
-                                            <div className="grid grid-cols-2 gap-4">
-                                                <FormField control={form.control} name="site.billingSchedule" render={({ field }) => (
-                                                    <FormItem>
-                                                        <FormLabel>Périodicité de Facturation</FormLabel>
-                                                        <FormControl><Input placeholder="Ex: Mensuel" {...field} /></FormControl>
-                                                        <FormMessage />
-                                                    </FormItem>
-                                                )} />
-                                                <FormField control={form.control} name="site.term" render={({ field }) => (
-                                                    <FormItem>
-                                                        <FormLabel>Terme / Échéance</FormLabel>
-                                                        <FormControl><Input placeholder="Ex: Échu" {...field} /></FormControl>
-                                                        <FormMessage />
-                                                    </FormItem>
-                                                )} />
-                                            </div>
+                                            {siteFields.map((siteField, index) => (
+                                                <div key={siteField.id} className="space-y-4 rounded-lg border p-4">
+                                                    <div className="flex items-center justify-between">
+                                                        <span className="text-sm font-semibold text-muted-foreground">
+                                                            Site {index + 1}
+                                                        </span>
+                                                        {siteFields.length > 1 && (
+                                                            <Button
+                                                                type="button"
+                                                                variant="ghost"
+                                                                size="icon"
+                                                                className="h-7 w-7 text-destructive hover:text-destructive"
+                                                                onClick={() => removeSite(index)}
+                                                            >
+                                                                <Trash2 className="h-4 w-4" />
+                                                            </Button>
+                                                        )}
+                                                    </div>
+
+                                                    <FormField control={form.control} name={`sites.${index}.name`} render={({ field }) => (
+                                                        <FormItem>
+                                                            <FormLabel>Nom du Site</FormLabel>
+                                                            <FormControl><Input placeholder="Ex: Mairie de..." {...field} /></FormControl>
+                                                            <FormMessage />
+                                                        </FormItem>
+                                                    )} />
+                                                    <FormField control={form.control} name={`sites.${index}.address`} render={({ field }) => (
+                                                        <FormItem>
+                                                            <FormLabel>Adresse du Site</FormLabel>
+                                                            <FormControl><Input {...field} /></FormControl>
+                                                            <FormMessage />
+                                                        </FormItem>
+                                                    )} />
+                                                    <div className="grid grid-cols-2 gap-4">
+                                                        <FormField control={form.control} name={`sites.${index}.postalCode`} render={({ field }) => (
+                                                            <FormItem>
+                                                                <FormLabel>Code Postal</FormLabel>
+                                                                <FormControl><Input {...field} /></FormControl>
+                                                                <FormMessage />
+                                                            </FormItem>
+                                                        )} />
+                                                        <FormField control={form.control} name={`sites.${index}.city`} render={({ field }) => (
+                                                            <FormItem>
+                                                                <FormLabel>Ville</FormLabel>
+                                                                <FormControl><Input {...field} /></FormControl>
+                                                                <FormMessage />
+                                                            </FormItem>
+                                                        )} />
+                                                    </div>
+                                                    <div className="grid grid-cols-2 gap-4">
+                                                        <FormField control={form.control} name={`sites.${index}.billingSchedule`} render={({ field }) => (
+                                                            <FormItem>
+                                                                <FormLabel>Périodicité de Facturation</FormLabel>
+                                                                <FormControl><Input placeholder="Ex: Mensuel" {...field} /></FormControl>
+                                                                <FormMessage />
+                                                            </FormItem>
+                                                        )} />
+                                                        <FormField control={form.control} name={`sites.${index}.term`} render={({ field }) => (
+                                                            <FormItem>
+                                                                <FormLabel>Terme / Échéance</FormLabel>
+                                                                <FormControl><Input placeholder="Ex: Échu" {...field} /></FormControl>
+                                                                <FormMessage />
+                                                            </FormItem>
+                                                        )} />
+                                                    </div>
+                                                </div>
+                                            ))}
+
+                                            <Button
+                                                type="button"
+                                                variant="outline"
+                                                size="sm"
+                                                className="w-full gap-2"
+                                                onClick={() => appendSite({
+                                                    name: "", address: "", postalCode: "", city: "",
+                                                    billingSchedule: "Mensuel", term: "",
+                                                })}
+                                            >
+                                                <Plus className="h-4 w-4" />
+                                                Ajouter un site
+                                            </Button>
                                         </TabsContent>
                                     </Tabs>
 

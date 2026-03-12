@@ -46,7 +46,14 @@ import {
   Building2,
   TrendingUp,
   AlertTriangle,
+  ChevronDown,
 } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import {
   getContract, getSitesByContract,
   getInvoicesByContract, getActivities, getClient, getContactsByClient,
@@ -281,6 +288,17 @@ export default function ContractDetailPage() {
     );
   };
 
+  const handleStatusChange = async (newStatus: Contract['status']) => {
+    if (!contract || newStatus === contract.status) return;
+    try {
+      await updateContract(id, { status: newStatus });
+      setContract(prev => prev ? { ...prev, status: newStatus } : prev);
+      toast({ title: 'Statut mis à jour', description: `Contrat passé en "${newStatus}".` });
+    } catch {
+      toast({ title: 'Erreur', description: 'Impossible de mettre à jour le statut.', variant: 'destructive' });
+    }
+  };
+
   const getBadgeVariant = (status: Contract['status']): 'secondary' | 'destructive' | 'warning' | 'outline' => {
     switch (status) {
       case 'Actif': return 'secondary';
@@ -333,9 +351,25 @@ export default function ContractDetailPage() {
         <h1 className="flex-1 shrink-0 whitespace-nowrap text-xl font-semibold tracking-tight sm:grow-0">
           Contrat pour {contract.clientName}
         </h1>
-        <Badge variant={getBadgeVariant(contract.status)} className="ml-auto sm:ml-0">
-          {contract.status}
-        </Badge>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Badge variant={getBadgeVariant(contract.status)} className="ml-auto sm:ml-0 cursor-pointer gap-1 hover:opacity-80">
+              {contract.status}
+              <ChevronDown className="h-3 w-3" />
+            </Badge>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start">
+            {(['Brouillon', 'Actif', 'Terminé', 'Résilié'] as Contract['status'][]).map(s => (
+              <DropdownMenuItem
+                key={s}
+                onClick={() => handleStatusChange(s)}
+                className={contract.status === s ? 'font-semibold' : ''}
+              >
+                {s}
+              </DropdownMenuItem>
+            ))}
+          </DropdownMenuContent>
+        </DropdownMenu>
         <Button size="sm" asChild>
           <Link href={`/contracts/${id}/edit`}>Modifier</Link>
         </Button>
@@ -409,7 +443,7 @@ export default function ContractDetailPage() {
         <Card>
           <CardHeader className="pb-4">
             <CardTitle>Détails du Contrat</CardTitle>
-            <CardDescription>{contract.id}</CardDescription>
+            <CardDescription>{contract.contractNumber ?? contract.id}</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="space-y-2 text-sm">
@@ -431,6 +465,12 @@ export default function ContractDetailPage() {
                 <span>
                   Facturation : {contract.invoicingType === 'global' ? 'Globale' : 'Détaillée par site'}
                 </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <MapPin className="mr-2 h-4 w-4 text-muted-foreground" />
+                <Badge variant={sites.length > 1 ? "default" : "secondary"}>
+                  {sites.length > 1 ? `Multi-sites (${sites.length})` : 'Mono-site'}
+                </Badge>
               </div>
               <div className="flex items-start">
                 <Paperclip className="mr-2 h-4 w-4 mt-1 text-muted-foreground" />
@@ -562,11 +602,11 @@ export default function ContractDetailPage() {
               ) : (
                 contacts.map(contact => (
                   <div key={contact.id} className="text-sm space-y-1">
-                    <p className="font-medium flex items-center gap-1.5">
+                    <div className="font-medium flex items-center gap-1.5">
                       <User className="h-3.5 w-3.5 text-muted-foreground" />
                       {contact.name}
                       <Badge variant="outline" className="ml-1 text-xs py-0">{contact.type}</Badge>
-                    </p>
+                    </div>
                     {contact.role && (
                       <p className="text-xs text-muted-foreground pl-5">{contact.role}</p>
                     )}

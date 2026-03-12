@@ -130,7 +130,7 @@ export default function NewContractFromPdfPage() {
 
     const { toast } = useToast();
     const router = useRouter();
-    const { clients, typologies, activities, terms, schedules, companies, agencies, sectors, currentUser } = useData();
+    const { clients, typologies, activities, terms, schedules, companies, agencies, sectors, currentUser, weatherStations } = useData();
     const [showPrompt, setShowPrompt] = useState(false);
 
     const form = useForm<ClientFormValues>({
@@ -738,7 +738,19 @@ export default function NewContractFromPdfPage() {
                                                                     <Separator className="my-4" />
                                                                     <h4 className="text-sm font-semibold mb-2">Données Techniques P1</h4>
                                                                     <div className="grid grid-cols-2 gap-4">
-                                                                        <FormField control={form.control} name={`activitiesDetails.${detailIndex}.weatherStation`} render={({ field }) => (<FormItem><FormLabel>Station Météo</FormLabel><FormControl><Input {...field} value={field.value ?? ''} /></FormControl></FormItem>)} />
+                                                                        <FormField control={form.control} name={`activitiesDetails.${detailIndex}.weatherStation`} render={({ field }) => (
+                                                                            <FormItem>
+                                                                                <FormLabel>Station Météo</FormLabel>
+                                                                                <Select value={field.value ?? ''} onValueChange={field.onChange}>
+                                                                                    <FormControl><SelectTrigger><SelectValue placeholder="Sélectionner une station" /></SelectTrigger></FormControl>
+                                                                                    <SelectContent>
+                                                                                        {weatherStations.filter(s => s.isActive).map(s => (
+                                                                                            <SelectItem key={s.code} value={s.code}>{s.name} ({s.code})</SelectItem>
+                                                                                        ))}
+                                                                                    </SelectContent>
+                                                                                </Select>
+                                                                            </FormItem>
+                                                                        )} />
                                                                         <FormField control={form.control} name={`activitiesDetails.${detailIndex}.contractualTemperature`} render={({ field }) => (<FormItem><FormLabel>Temp. Contractuelle (°C)</FormLabel><FormControl><Input type="number" {...field} onChange={e => field.onChange(parseFloat(e.target.value))} /></FormControl></FormItem>)} />
                                                                         <FormField control={form.control} name={`activitiesDetails.${detailIndex}.contractualDJU`} render={({ field }) => (<FormItem><FormLabel>DJU Contractuels</FormLabel><FormControl><Input type="number" {...field} onChange={e => field.onChange(parseFloat(e.target.value))} /></FormControl></FormItem>)} />
                                                                         <FormField control={form.control} name={`activitiesDetails.${detailIndex}.contractualNB`} render={({ field }) => (<FormItem><FormLabel>NB Contractuels</FormLabel><FormControl><Input type="number" {...field} onChange={e => field.onChange(parseFloat(e.target.value))} /></FormControl></FormItem>)} />

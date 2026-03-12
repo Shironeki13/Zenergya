@@ -470,6 +470,24 @@ export type Dju = {
     value: number;
 };
 
+export type WeatherStation = {
+    id: string;
+    code: string;                   // Identifiant unique, ex: "NICE", "PARIS-MONTSOURIS"
+    name: string;                   // Nom affiché, ex: "Nice Côte d'Azur"
+    department?: string;            // Ex: "06"
+    region?: string;
+    referenceDjuAnnual?: number;    // DJU trentenaire (référence 30 ans)
+    isActive: boolean;
+};
+
+export type DjuMonthly = {
+    id: string;
+    stationCode: string;
+    period: string;                 // YYYY-MM
+    value: number;                  // Somme des DJU journaliers du mois
+    source: 'IMPORT' | 'COMPUTED' | 'MANUAL';
+};
+
 export type InvoiceStatus = "paid" | "due" | "overdue" | "proforma" | "cancelled";
 
 export type InvoiceLineItem = {
@@ -737,6 +755,16 @@ export type RevisionRule = {
 
 export type ServiceType = 'P1' | 'P2' | 'P3';
 
+export type BillingLineType = 'CONSOMMATION' | 'PART_FIXE';
+
+export type ServiceBillingLine = {
+    lineType: BillingLineType;
+    label?: string;          // Libellé personnalisé sur la facture
+    vatRateId: string;       // FK vers VatRate
+    annualAmount?: number;   // Montant annuel (uniquement pour PART_FIXE)
+    isActive: boolean;
+};
+
 export type Service = {
     id: string;
     contractId: string;
@@ -794,6 +822,12 @@ export type Service = {
     comment?: string; // commentaire (alias for description)
     description?: string; // kept for backward compatibility or mapped to comment
     initialIndexValues?: ServiceInitialIndexValue[];
+
+    // Paramètres de facturation (P1)
+    includeAnnex?: boolean;          // Inclure les annexes sur la facture
+    billingLines?: ServiceBillingLine[]; // Lignes de facturation avec TVA par ligne
+    paymentTermDays?: number;        // Délai de règlement en jours (30, 45, 60, 90)
+    conversionCoefficient?: number;  // Coefficient de conversion (ex: m³→MWh)
 }
 
 export type ServiceInitialIndexValue = {
@@ -867,8 +901,8 @@ export const ExtractContractInfoOutputSchema = z.object({
         baseAmountP3R: z.number().optional().describe("Montant P3R HT annuel."),
         invoicingType: z.enum(['multi-site', 'global']).optional().describe("Type de facturation (global ou multi-site)."),
     }),
-    site: z.object({
-        name: z.string().optional().describe("Nom du site (souvent identique au nom client)."),
+    sites: z.array(z.object({
+        name: z.string().optional().describe("Nom du site (ex: Résidence Le Bastion, Bâtiment A...)."),
         address: z.string().optional().describe("Adresse du site."),
         postalCode: z.string().optional().describe("Code postal du site."),
         city: z.string().optional().describe("Ville du site."),
@@ -884,7 +918,7 @@ export const ExtractContractInfoOutputSchema = z.object({
         hasECS: z.boolean().optional().describe("ECS inclus ?"),
         contractualNB: z.number().optional().describe("Valeur du NB (Nombre de Base)."),
         smallQ: z.number().optional().describe("Valeur du petit q."),
-    }).optional(),
+    })).optional().describe("Liste de tous les sites couverts par le contrat. Si un seul site, tableau d'un élément."),
     activityIds: z.array(z.string()).optional(),
     activitiesDetails: z.array(ActivityDetailSchema).optional(),
 });
@@ -928,6 +962,7 @@ export type DataContextType = {
     beChanges: BeChange[];
     interests: Interest[];
     settlementRules: SettlementRule[];
+    weatherStations: WeatherStation[];
 
     // Legacy Works (Keep for compatibility)
     workProjects: WorkProject[];

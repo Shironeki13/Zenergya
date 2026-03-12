@@ -51,12 +51,12 @@ export default function ValidationsPage() {
         try {
             await updateContract(contract.id, {
                 validationStatus: newStatus,
-                refusalReason: action === 'reject' ? refusalReason : undefined
+                refusalReason: action === 'reject' ? refusalReason : undefined,
             });
 
             toast({
                 title: action === 'validate' ? "Contrat validé" : "Contrat refusé",
-                description: `Le contrat pour ${contract.clientName} a été ${action === 'validate' ? 'validé' : 'refusé'}.`
+                description: `Le contrat pour ${contract.clientName} a été ${action === 'validate' ? 'validé' : 'refusé. Le demandeur peut le corriger et le renvoyer.'}.`
             });
             await reloadData();
         } catch (error) {
