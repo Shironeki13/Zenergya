@@ -8,6 +8,7 @@ import {
   FileSignature,
   FileText,
   Settings,
+  ListChecks,
   Menu,
   Users,
   Building,
@@ -75,6 +76,7 @@ function MainAppLayout({ children }: { children: React.ReactNode }) {
 
   const facturationLinks = [
     { href: '/dashboard', label: 'Tableau de bord', icon: LayoutDashboard },
+    { href: '/billing/suivi', label: 'Suivi facturation', icon: ListChecks },
     { href: '/invoices', label: 'Factures', icon: FileText },
     { href: '/credit-notes', label: 'Avoirs', icon: MinusCircle },
     { href: '/billing', label: 'Facturation Manuelle', icon: CircleDollarSign },
