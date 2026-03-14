@@ -79,64 +79,55 @@ export default function SuiviFacturationPage() {
             .sort((a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime());
     }, [invoices, today, in30Days]);
 
-    // ── Périodes à facturer dans 30j (même algo que Facturation Groupée) ─────
+    // ── Périodes à facturer dans 30j ─────────────────────────────────────────
+    // Algorithme : génère TOUTES les périodes depuis le début du contrat et
+    // matche chacune par periodStartDate ± 3j (même logique que le calendrier site).
+    // Cela évite le bug de "lastInvoice.periodEndDate" qui peut pointer loin dans
+    // le futur si une facture couvre une période non alignée avec le découpage.
     const upcomingPeriods = useMemo<UpcomingPeriod[]>(() => {
         if (isLoading) return [];
 
         const results: UpcomingPeriod[] = [];
         const activeContracts = contracts.filter(c => c.status === 'Actif');
+        const THREE_DAYS_MS = 3 * 86_400_000;
 
+        // Index des factures non-proforma par contrat
         const invoicesByContract = invoices.reduce<Record<string, Invoice[]>>((acc, inv) => {
-            if (inv.status !== 'proforma') {
+            if (inv.status !== 'proforma' && inv.status !== 'cancelled') {
                 if (!acc[inv.contractId]) acc[inv.contractId] = [];
                 acc[inv.contractId].push(inv);
             }
             return acc;
         }, {});
 
+        const scheduleMonths: Record<string, number> = {
+            'Mensuel': 1, 'Trimestriel': 3, 'Semestriel': 6, 'Annuel': 12,
+        };
+
         for (const contract of activeContracts) {
-            const contractInvoices = (invoicesByContract[contract.id] ?? [])
-                .sort((a, b) => new Date(b.periodEndDate!).getTime() - new Date(a.periodEndDate!).getTime());
+            const intervalMonths = scheduleMonths[contract.billingSchedule ?? ''] ?? 0;
+            if (!intervalMonths) continue;
 
-            const lastInvoice = contractInvoices[0];
-            let nextStart = lastInvoice
-                ? addDays(startOfDay(new Date(lastInvoice.periodEndDate!)), 1)
-                : startOfDay(new Date(contract.startDate));
-
+            const contractInvoices = invoicesByContract[contract.id] ?? [];
             const contractEnd = new Date(contract.endDate);
+            let cursor = startOfDay(new Date(contract.startDate));
 
-            while (nextStart < in30Days && nextStart < contractEnd) {
-                let factor = 1;
-                const nextEnd = new Date(nextStart);
+            // Parcourir toutes les périodes depuis le début du contrat
+            while (cursor <= contractEnd && cursor <= in30Days) {
+                const periodStart = new Date(cursor);
+                const periodEnd = new Date(cursor);
+                periodEnd.setMonth(periodEnd.getMonth() + intervalMonths);
+                periodEnd.setDate(periodEnd.getDate() - 1);
+                if (periodEnd > contractEnd) periodEnd.setTime(contractEnd.getTime());
 
-                switch (contract.billingSchedule) {
-                    case 'Mensuel':
-                        factor = 1 / 12;
-                        nextEnd.setMonth(nextEnd.getMonth() + 1);
-                        nextEnd.setDate(nextEnd.getDate() - 1);
-                        break;
-                    case 'Trimestriel':
-                        factor = 1 / 4;
-                        nextEnd.setMonth(nextEnd.getMonth() + 3);
-                        nextEnd.setDate(nextEnd.getDate() - 1);
-                        break;
-                    case 'Semestriel':
-                        factor = 1 / 2;
-                        nextEnd.setMonth(nextEnd.getMonth() + 6);
-                        nextEnd.setDate(nextEnd.getDate() - 1);
-                        break;
-                    default: // Annuel
-                        factor = 1;
-                        nextEnd.setFullYear(nextEnd.getFullYear() + 1);
-                        nextEnd.setDate(nextEnd.getDate() - 1);
-                        break;
-                }
+                // Chercher une facture dont le periodStartDate est à ±3j de ce début de période
+                const matched = contractInvoices.find(inv =>
+                    inv.periodStartDate &&
+                    Math.abs(new Date(inv.periodStartDate).getTime() - periodStart.getTime()) < THREE_DAYS_MS
+                );
 
-                if (nextEnd > contractEnd) nextEnd.setTime(contractEnd.getTime());
-                if (nextStart > nextEnd) break;
-
-                // N'inclure que les périodes qui se terminent dans les 30 prochains jours
-                if (nextEnd >= today && nextEnd <= in30Days) {
+                // N'inclure que les périodes qui se terminent dans les 30 prochains jours et sans facture
+                if (!matched && periodEnd >= today && periodEnd <= in30Days) {
                     const contractSites = sites.filter(s => contract.siteIds?.includes(s.id));
                     let amount = 0;
                     for (const site of contractSites) {
@@ -145,21 +136,21 @@ export default function SuiviFacturationPage() {
                             if (contract.activityIds?.includes(a.activityId)) amount += a.amount;
                         }
                     }
-                    amount *= factor;
+                    amount /= (12 / intervalMonths); // prorata
 
                     results.push({
-                        id: `${contract.id}-${nextStart.toISOString()}`,
+                        id: `${contract.id}-${periodStart.toISOString()}`,
                         contractId: contract.id,
                         contractRef: contract.contractNumber ?? contract.id.substring(0, 8),
                         clientName: contract.clientName ?? '—',
-                        periodStart: new Date(nextStart),
-                        periodEnd: new Date(nextEnd),
+                        periodStart,
+                        periodEnd,
                         schedule: contract.billingSchedule ?? 'Annuel',
                         estimatedAmount: amount,
                     });
                 }
 
-                nextStart = addDays(new Date(nextEnd), 1);
+                cursor.setMonth(cursor.getMonth() + intervalMonths);
             }
         }
 
