@@ -21,6 +21,8 @@ type UpcomingPeriod = {
     contractId: string;
     contractRef: string;
     clientName: string;
+    siteName: string;
+    serviceType: string; // P1, P2, P3
     periodStart: Date;
     periodEnd: Date;
     schedule: string;
@@ -50,7 +52,7 @@ function periodLabel(start: Date, end: Date) {
 
 // ── Page ──────────────────────────────────────────────────────────────────────
 export default function SuiviFacturationPage() {
-    const { invoices, contracts, sites, isLoading, reloadData } = useData();
+    const { invoices, contracts, sites, services, schedules, isLoading, reloadData } = useData();
     const { toast } = useToast();
     const [markingPaid, setMarkingPaid] = useState<string | null>(null);
 
@@ -80,18 +82,26 @@ export default function SuiviFacturationPage() {
     }, [invoices, today, in30Days]);
 
     // ── Périodes à facturer dans 30j ─────────────────────────────────────────
-    // Algorithme : génère TOUTES les périodes depuis le début du contrat et
-    // matche chacune par periodStartDate ± 3j (même logique que le calendrier site).
-    // Cela évite le bug de "lastInvoice.periodEndDate" qui peut pointer loin dans
-    // le futur si une facture couvre une période non alignée avec le découpage.
+    // La facturation est paramétrée au niveau du SERVICE (scheduleId, startDate,
+    // endDate, price). On itère sur les services actifs, on génère toutes leurs
+    // périodes depuis leur date de début et on matche chacune par
+    // periodStartDate ±3j + activityCode (même logique que le calendrier site).
     const upcomingPeriods = useMemo<UpcomingPeriod[]>(() => {
         if (isLoading) return [];
 
         const results: UpcomingPeriod[] = [];
-        const activeContracts = contracts.filter(c => c.status === 'Actif');
         const THREE_DAYS_MS = 3 * 86_400_000;
 
-        // Index des factures non-proforma par contrat
+        // Lookup maps
+        const contractById = Object.fromEntries(contracts.map(c => [c.id, c]));
+        const siteById = Object.fromEntries(sites.map(s => [s.id, s]));
+        const scheduleById = Object.fromEntries(schedules.map(s => [s.id, s]));
+
+        const scheduleMonths: Record<string, number> = {
+            'mensuel': 1, 'trimestriel': 3, 'semestriel': 6, 'annuel': 12,
+        };
+
+        // Index des factures non-proforma/non-annulées par contrat
         const invoicesByContract = invoices.reduce<Record<string, Invoice[]>>((acc, inv) => {
             if (inv.status !== 'proforma' && inv.status !== 'cancelled') {
                 if (!acc[inv.contractId]) acc[inv.contractId] = [];
@@ -100,53 +110,58 @@ export default function SuiviFacturationPage() {
             return acc;
         }, {});
 
-        const scheduleMonths: Record<string, number> = {
-            'Mensuel': 1, 'Trimestriel': 3, 'Semestriel': 6, 'Annuel': 12,
-        };
+        for (const service of services) {
+            if (!service.isActive) continue;
 
-        for (const contract of activeContracts) {
-            const intervalMonths = scheduleMonths[contract.billingSchedule ?? ''] ?? 0;
+            const contract = contractById[service.contractId];
+            if (!contract || contract.status !== 'Actif') continue;
+
+            const site = siteById[service.siteId];
+
+            // Résolution de l'échéancier : scheduleId du service en priorité
+            const schedule = service.scheduleId ? scheduleById[service.scheduleId] : null;
+            const scheduleNameRaw = (schedule?.name ?? contract.billingSchedule ?? '').toLowerCase();
+            const intervalMonths = scheduleMonths[scheduleNameRaw] ?? 0;
             if (!intervalMonths) continue;
 
+            const serviceEnd = service.endDate
+                ? new Date(service.endDate)
+                : new Date(contract.endDate);
             const contractInvoices = invoicesByContract[contract.id] ?? [];
-            const contractEnd = new Date(contract.endDate);
-            let cursor = startOfDay(new Date(contract.startDate));
+            let cursor = startOfDay(new Date(service.startDate));
 
-            // Parcourir toutes les périodes depuis le début du contrat
-            while (cursor <= contractEnd && cursor <= in30Days) {
+            // Parcourir toutes les périodes depuis le début du service
+            while (cursor <= serviceEnd && cursor <= in30Days) {
                 const periodStart = new Date(cursor);
                 const periodEnd = new Date(cursor);
                 periodEnd.setMonth(periodEnd.getMonth() + intervalMonths);
                 periodEnd.setDate(periodEnd.getDate() - 1);
-                if (periodEnd > contractEnd) periodEnd.setTime(contractEnd.getTime());
+                if (periodEnd > serviceEnd) periodEnd.setTime(serviceEnd.getTime());
 
-                // Chercher une facture dont le periodStartDate est à ±3j de ce début de période
+                // Matcher une facture : contractId + periodStartDate ±3j + activityCode === service.type
                 const matched = contractInvoices.find(inv =>
                     inv.periodStartDate &&
-                    Math.abs(new Date(inv.periodStartDate).getTime() - periodStart.getTime()) < THREE_DAYS_MS
+                    Math.abs(new Date(inv.periodStartDate).getTime() - periodStart.getTime()) < THREE_DAYS_MS &&
+                    inv.lineItems?.some((li: any) => li.activityCode === service.type)
                 );
 
-                // N'inclure que les périodes qui se terminent dans les 30 prochains jours et sans facture
+                // Inclure uniquement si : pas de facture + fin de période dans les 30 prochains jours
                 if (!matched && periodEnd >= today && periodEnd <= in30Days) {
-                    const contractSites = sites.filter(s => contract.siteIds?.includes(s.id));
-                    let amount = 0;
-                    for (const site of contractSites) {
-                        if (!site.amounts) continue;
-                        for (const a of site.amounts) {
-                            if (contract.activityIds?.includes(a.activityId)) amount += a.amount;
-                        }
-                    }
-                    amount /= (12 / intervalMonths); // prorata
+                    // Montant estimé : price annuel du service × prorata
+                    const factor = intervalMonths / 12;
+                    const estimatedAmount = (service.price ?? 0) * factor;
 
                     results.push({
-                        id: `${contract.id}-${periodStart.toISOString()}`,
+                        id: `${service.id}-${periodStart.toISOString()}`,
                         contractId: contract.id,
                         contractRef: contract.contractNumber ?? contract.id.substring(0, 8),
-                        clientName: contract.clientName ?? '—',
+                        clientName: contract.clientName ?? site?.clientName ?? '—',
+                        siteName: site?.name ?? '—',
+                        serviceType: service.type,
                         periodStart,
                         periodEnd,
-                        schedule: contract.billingSchedule ?? 'Annuel',
-                        estimatedAmount: amount,
+                        schedule: schedule?.name ?? contract.billingSchedule ?? 'Annuel',
+                        estimatedAmount,
                     });
                 }
 
@@ -155,7 +170,7 @@ export default function SuiviFacturationPage() {
         }
 
         return results.sort((a, b) => a.periodEnd.getTime() - b.periodEnd.getTime());
-    }, [isLoading, contracts, invoices, sites, today, in30Days]);
+    }, [isLoading, contracts, sites, services, schedules, invoices, today, in30Days]);
 
     // ── KPIs ──────────────────────────────────────────────────────────────────
     const overdueTotal = overdueInvoices.reduce((s, i) => s + (i.total ?? 0), 0);
@@ -450,7 +465,8 @@ export default function SuiviFacturationPage() {
                                     <TableHeader>
                                         <TableRow>
                                             <TableHead>Client</TableHead>
-                                            <TableHead>Contrat</TableHead>
+                                            <TableHead>Site</TableHead>
+                                            <TableHead>Prestation</TableHead>
                                             <TableHead>Période</TableHead>
                                             <TableHead>Périodicité</TableHead>
                                             <TableHead>Fin dans</TableHead>
@@ -461,7 +477,7 @@ export default function SuiviFacturationPage() {
                                     <TableBody>
                                         {upcomingPeriods.length === 0 ? (
                                             <TableRow>
-                                                <TableCell colSpan={7} className="text-center h-16 text-muted-foreground">
+                                                <TableCell colSpan={8} className="text-center h-16 text-muted-foreground">
                                                     Aucune période à facturer dans les 30 prochains jours.
                                                 </TableCell>
                                             </TableRow>
@@ -471,8 +487,11 @@ export default function SuiviFacturationPage() {
                                                 return (
                                                     <TableRow key={period.id}>
                                                         <TableCell className="font-medium">{period.clientName}</TableCell>
-                                                        <TableCell className="font-mono text-sm text-muted-foreground">
-                                                            {period.contractRef}
+                                                        <TableCell className="text-sm text-muted-foreground">
+                                                            {period.siteName}
+                                                        </TableCell>
+                                                        <TableCell>
+                                                            <Badge variant="outline" className="font-mono text-xs">{period.serviceType}</Badge>
                                                         </TableCell>
                                                         <TableCell className="text-sm">
                                                             {periodLabel(period.periodStart, period.periodEnd)}
