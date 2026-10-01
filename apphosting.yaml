@@ -5,3 +5,10 @@ runConfig:
   # Increase this value if you'd like to automatically spin up
   # more instances in response to increased traffic.
   maxInstances: 1
+
+# Variables de sécurité (voir docs/securite.md). Décommenter et adapter :
+# env:
+#   - variable: ADMIN_EMAILS
+#     value: prenom.nom@exemple.com
+#   - variable: CRON_SECRET
+#     secret: cron-secret   # créé avec : firebase apphosting:secrets:set cron-secret

@@ -1,4 +1,4 @@
-import { getIndices, createIndex, getIndexValues, createIndexValue, updateIndex, updateIndexValue } from './firestore';
+import { getIndices, createIndex, getIndexValues, createIndexValue, updateIndex, updateIndexValue } from './firestore-admin';
 import { indexFetchers } from '@/lib/indices/registry';
 import { Index, IndexValue } from '@/lib/types';
 

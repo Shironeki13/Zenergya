@@ -9,9 +9,11 @@ import { ai } from '@/ai/genkit';
 import { ExtractContractInfoInputSchema, ExtractContractInfoOutputSchema, type ExtractContractInfoInput, type ExtractContractInfoOutput } from '@/lib/types';
 
 import Handlebars from 'handlebars';
+import { requireUser } from '@/lib/auth/server';
 
 
 export async function extractContractInfo(input: ExtractContractInfoInput): Promise<ExtractContractInfoOutput> {
+  await requireUser();
   return extractContractInfoFlow(input);
 }
 

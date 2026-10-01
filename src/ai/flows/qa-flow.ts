@@ -8,6 +8,7 @@
  */
 import { ai } from '@/ai/genkit';
 import { z } from 'genkit';
+import { requireUser } from '@/lib/auth/server';
 
 const AskQuestionInputSchema = z.object({
   question: z.string().describe('La question à poser à lIA.'),
@@ -23,6 +24,7 @@ export type AskQuestionOutput = z.infer<typeof AskQuestionOutputSchema>;
 export async function askQuestion(
   input: AskQuestionInput
 ): Promise<AskQuestionOutput> {
+  await requireUser();
   return qaFlow(input);
 }
 

@@ -48,7 +48,7 @@ import { cn } from '@/lib/utils';
 
 function MainAppLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const { isLoading, currentUser } = useData();
+  const { isLoading, currentUser, isAdmin } = useData();
   const router = useRouter();
 
   useEffect(() => {
@@ -70,7 +70,7 @@ function MainAppLayout({ children }: { children: React.ReactNode }) {
 
   const navItems = [
     { href: '/meters', icon: Gauge, label: 'Compteurs' },
-    { href: '/users', icon: Users, label: 'Utilisateurs' },
+    ...(isAdmin ? [{ href: '/users', icon: Users, label: 'Utilisateurs' }] : []),
     { href: '/settings', icon: Settings, label: 'Paramétrage' },
   ];
 
