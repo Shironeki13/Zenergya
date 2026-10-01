@@ -1,12 +1,39 @@
 rules_version = '2';
 
+// Accès réservé aux utilisateurs autorisés de l'application.
+// Les droits sont portés par des custom claims Firebase posés par le serveur (/api/auth/session) :
+//   zen   = compte présent dans la collection `users` (ou dans ADMIN_EMAILS)
+//   admin = rôle marqué « Administrateur » (ou ADMIN_EMAILS)
+// Le serveur (Admin SDK) n'est pas soumis à ces règles.
 service cloud.firestore {
   match /databases/{database}/documents {
-    // This rule allows anyone with your Firestore project ID to read and write
-    // to all collections. This is useful for getting started, but it's
-    // important to secure your database once you've launched your app.
-    match /{document=**} {
-      allow read, write: if true;
+
+    function isAppUser() {
+      return request.auth != null && request.auth.token.zen == true;
     }
+
+    function isAdmin() {
+      return isAppUser() && request.auth.token.admin == true;
+    }
+
+    // Collections modifiables uniquement par un administrateur.
+    function isAdminOnly(coll) {
+      return coll in ['users', 'roles'];
+    }
+
+    // Documents comptables : jamais supprimés par un utilisateur standard (annulation par avoir).
+    function isUndeletable(coll) {
+      return coll in ['invoices', 'creditNotes', 'counters'];
+    }
+
+    // Attention : les règles qui correspondent à un même chemin s'additionnent (OU logique),
+    // d'où une seule règle générique avec des conditions par collection.
+    match /{coll}/{docId} {
+      allow read: if isAppUser();
+      allow create, update: if isAdmin() || (isAppUser() && !isAdminOnly(coll));
+      allow delete: if isAdmin() || (isAppUser() && !isAdminOnly(coll) && !isUndeletable(coll));
+    }
+
+    // Aucune sous-collection n'est utilisée : tout le reste est refusé par défaut.
   }
 }

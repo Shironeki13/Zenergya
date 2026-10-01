@@ -40,7 +40,7 @@ import { downloadCSV } from '@/lib/utils';
 import { deleteInvoice } from '@/services/firestore';
 
 export default function InvoicesPage() {
-  const { invoices, isLoading, reloadData, currentUser } = useData();
+  const { invoices, isLoading, reloadData, isAdmin } = useData();
   const { toast } = useToast();
   const [selectedInvoiceIds, setSelectedInvoiceIds] = useState<string[]>([]);
   const [isGenerating, setIsGenerating] = useState(false);
@@ -258,7 +258,7 @@ export default function InvoicesPage() {
                         {invoice.status === 'due' && <DropdownMenuItem>Marquer comme payée</DropdownMenuItem>}
                         {invoice.status === 'due' && <DropdownMenuItem>Envoyer un rappel</DropdownMenuItem>}
                         {invoice.status === 'proforma' && <DropdownMenuItem>Convertir en facture</DropdownMenuItem>}
-                        {currentUser?.email === 'jeremy.bani.fernandez@gmail.com' && (
+                        {isAdmin && (
                           <DropdownMenuItem
                             className="text-destructive focus:text-destructive"
                             onClick={async () => {

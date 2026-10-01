@@ -1,10 +1,18 @@
 
 import { NextRequest, NextResponse } from 'next/server';
-import { getInvoice, getClient, getCompanies } from '@/services/firestore';
+import { getInvoice, getClient, getCompany } from '@/services/firestore-admin';
+import { AuthError, requireUser } from '@/lib/auth/server';
 
 export const runtime = 'nodejs';
 
 export async function GET(request: NextRequest) {
+  try {
+    await requireUser();
+  } catch (error) {
+    const status = error instanceof AuthError ? error.status : 401;
+    return NextResponse.json({ error: (error as Error).message }, { status });
+  }
+
   const { searchParams } = new URL(request.url);
   const invoiceId = searchParams.get('invoiceId');
   const clientId = searchParams.get('clientId');
@@ -34,8 +42,7 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const companies = await getCompanies();
-    const company = companies.find(c => c.id === companyId);
+    const company = await getCompany(companyId);
     if (!company) {
       return new NextResponse(
         JSON.stringify({ error: `Société non trouvée avec ID: ${companyId}` }),
@@ -47,10 +54,9 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ invoice, client, company });
 
   } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : "Une erreur inconnue est survenue.";
-    console.error("Erreur API lors de la récupération des données de la facture:", errorMessage, error);
+    console.error("Erreur API lors de la récupération des données de la facture:", error);
     return new NextResponse(
-      JSON.stringify({ error: `Erreur serveur: ${errorMessage}` }),
+      JSON.stringify({ error: "Erreur serveur lors de la récupération de la facture." }),
       { status: 500, headers: { 'Content-Type': 'application/json' } }
     );
   }

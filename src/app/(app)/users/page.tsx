@@ -17,6 +17,19 @@ import {
     createRole, updateRole, deleteRole,
 } from "@/services/firestore";
 import { useData } from '@/context/data-context';
+import { Switch } from "@/components/ui/switch";
+import { syncUserAccess } from '@/lib/auth/actions';
+
+/** Réaligne les droits Firebase d'un compte ; en cas d'échec, ils seront recalculés à sa prochaine connexion. */
+async function syncAccess(...emails: (string | undefined)[]) {
+    for (const email of new Set(emails.filter(Boolean) as string[])) {
+        try {
+            await syncUserAccess(email);
+        } catch (error) {
+            console.error("Synchronisation des droits impossible pour", email, error);
+        }
+    }
+}
 
 
 // Section pour les Rôles
@@ -29,12 +42,14 @@ const RolesSection = () => {
     const [editingRole, setEditingRole] = useState<Role | null>(null);
     const [roleToDelete, setRoleToDelete] = useState<Role | null>(null);
     const [name, setName] = useState('');
+    const [isAdminRole, setIsAdminRole] = useState(false);
 
-    const resetForm = () => { setName(''); setEditingRole(null); };
+    const resetForm = () => { setName(''); setIsAdminRole(false); setEditingRole(null); };
 
     const handleOpenDialog = (role: Role | null = null) => {
         setEditingRole(role);
         setName(role ? role.name : '');
+        setIsAdminRole(role?.isAdmin === true);
         setDialogOpen(true);
     };
 
@@ -44,10 +59,10 @@ const RolesSection = () => {
         setIsSubmitting(true);
         try {
             if (editingRole) {
-                await updateRole(editingRole.id, name);
+                await updateRole(editingRole.id, { name, isAdmin: isAdminRole });
                 toast({ title: "Succès", description: "Rôle mis à jour." });
             } else {
-                await createRole(name);
+                await createRole({ name, isAdmin: isAdminRole });
                 toast({ title: "Succès", description: "Rôle créé." });
             }
             await reloadData();
@@ -95,7 +110,7 @@ const RolesSection = () => {
                             ) : (
                                 roles.map(role => (
                                     <TableRow key={role.id}>
-                                        <TableCell className="font-medium">{role.name}</TableCell>
+                                        <TableCell className="font-medium">{role.name}{role.isAdmin && <span className="ml-2 text-xs text-muted-foreground">(administrateur)</span>}</TableCell>
                                         <TableCell className="text-right">
                                             <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleOpenDialog(role)}><Edit className="h-4 w-4" /></Button>
                                             <Dialog open={!!roleToDelete && roleToDelete.id === role.id} onOpenChange={(isOpen) => !isOpen && setRoleToDelete(null)}>
@@ -122,6 +137,13 @@ const RolesSection = () => {
                         <DialogHeader><DialogTitle>{editingRole ? "Modifier le rôle" : "Nouveau Rôle"}</DialogTitle></DialogHeader>
                         <form onSubmit={handleSubmit} className="space-y-4">
                             <div className="space-y-2"><Label htmlFor="roleName">Nom du Rôle</Label><Input id="roleName" value={name} onChange={e => setName(e.target.value)} required /></div>
+                            <div className="flex items-center justify-between gap-4 rounded-md border p-3">
+                                <div className="space-y-0.5">
+                                    <Label htmlFor="roleIsAdmin">Administrateur</Label>
+                                    <p className="text-xs text-muted-foreground">Gestion des utilisateurs et des rôles, suppressions sensibles.</p>
+                                </div>
+                                <Switch id="roleIsAdmin" checked={isAdminRole} onCheckedChange={setIsAdminRole} />
+                            </div>
                             <DialogFooter>
                                 <DialogClose asChild><Button variant="outline">Annuler</Button></DialogClose>
                                 <Button type="submit" disabled={isSubmitting}>{isSubmitting ? "Enregistrement..." : "Enregistrer"}</Button>
@@ -195,10 +217,14 @@ const UsersSection = () => {
         if (!name.trim() || !email.trim() || !roleId) return;
         setIsSubmitting(true);
         try {
+            const normalizedEmail = email.trim().toLowerCase();
+            const emailChanged = !!editingUser && editingUser.email.trim().toLowerCase() !== normalizedEmail;
             const userData = {
                 name,
                 firstName,
-                email,
+                email: normalizedEmail,
+                // Nouvel email : la fiche sera rattachée au compte Firebase correspondant à sa prochaine connexion.
+                ...(emailChanged && { authUid: null }),
                 roleId,
                 modules: selectedModules,
                 scope: {
@@ -209,9 +235,11 @@ const UsersSection = () => {
             };
             if (editingUser) {
                 await updateUser(editingUser.id, userData);
+                await syncAccess(editingUser.email, normalizedEmail);
                 toast({ title: "Succès", description: "Utilisateur mis à jour." });
             } else {
                 await createUser(userData);
+                await syncAccess(normalizedEmail);
                 toast({ title: "Succès", description: "Utilisateur créé." });
             }
             await reloadData();
@@ -228,6 +256,7 @@ const UsersSection = () => {
         if (!userToDelete) return;
         try {
             await deleteUser(userToDelete.id);
+            await syncAccess(userToDelete.email);
             toast({ title: "Succès", description: "L'utilisateur a été supprimé." });
             await reloadData();
             setUserToDelete(null);
@@ -526,6 +555,17 @@ const UsersSection = () => {
 
 
 export default function UsersPage() {
+    const { isAdmin } = useData();
+    if (!isAdmin) {
+        return (
+            <Card>
+                <CardHeader>
+                    <CardTitle>Accès réservé</CardTitle>
+                    <CardDescription>La gestion des utilisateurs et des rôles est réservée aux administrateurs.</CardDescription>
+                </CardHeader>
+            </Card>
+        );
+    }
     return (
         <div className="space-y-6">
             <div>

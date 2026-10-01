@@ -657,6 +657,8 @@ export type Market = {
 export type Role = {
     id: string;
     name: string;
+    /** Accès administrateur : gestion des utilisateurs et des rôles, suppressions sensibles. */
+    isAdmin?: boolean;
 }
 
 export type UserScope = {
@@ -674,6 +676,8 @@ export type User = {
     roleName?: string; // Optional for display
     modules: string[]; // e.g., ['contracts', 'billing']
     scope: UserScope;
+    /** UID Firebase Auth rattaché à la première connexion (géré côté serveur). */
+    authUid?: string | null;
 }
 
 // Genkit Flow Schemas
@@ -985,12 +989,16 @@ export type DataContextType = {
     advCatalogOuvrages: AdvCatalogOuvrage[];
     advOuvrageComposants: AdvOuvrageComposant[];
 
+    /** Utilisateur réellement connecté (session serveur validée). */
+    authUser: User | null;
+    /** Utilisateur affiché (diffère de authUser en mode « Preview As »). */
     currentUser: User | null;
     setCurrentUser: (user: User | null) => void;
+    /** Droits administrateur de l'utilisateur réellement connecté. */
+    isAdmin: boolean;
     isLoading: boolean;
     reloadData: () => Promise<void>;
     login: (email: string, password: string) => Promise<void>;
-    signup: (email: string, password: string) => Promise<void>;
     loginWithGoogle: () => Promise<void>;
     logout: () => Promise<void>;
 };
