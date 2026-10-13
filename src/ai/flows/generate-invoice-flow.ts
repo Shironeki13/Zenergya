@@ -19,13 +19,19 @@ import {
   getClient,
   getCompanies,
   getInvoicesByContract,
-} from '@/services/firestore';
+} from '@/services/firestore-admin';
+import { requireUser } from '@/lib/auth/server';
 import type { InvoiceLineItem } from '@/lib/types';
 import { GenerateInvoiceInputSchema, GenerateInvoiceOutputSchema, type GenerateInvoiceInput, type GenerateInvoiceOutput } from '@/lib/types';
 
 
 // This is the exported function that the UI will call.
 export async function generateInvoice(input: GenerateInvoiceInput): Promise<GenerateInvoiceOutput> {
+  try {
+    await requireUser();
+  } catch (error) {
+    return { success: false, error: (error as Error).message };
+  }
   return generateInvoiceFlow(input);
 }
 

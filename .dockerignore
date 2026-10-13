@@ -1,0 +1,11 @@
+.git
+.next
+node_modules
+.env*
+!.env.example
+.idx
+.genkit
+tests
+*.log
+Dockerfile
+.dockerignore

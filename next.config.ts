@@ -1,6 +1,8 @@
 import type { NextConfig } from 'next';
 
 const nextConfig: NextConfig = {
+  // Serveur Node autonome (.next/standalone) pour l'image Docker / Cloud Run.
+  output: 'standalone',
   /* config options here */
   typescript: {
     ignoreBuildErrors: true,

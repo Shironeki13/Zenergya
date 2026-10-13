@@ -9,12 +9,18 @@
  */
 
 import { ai } from '@/ai/genkit';
-import { getInvoicesByIds, createCreditNote } from '@/services/firestore';
+import { getInvoicesByIds, createCreditNote } from '@/services/firestore-admin';
+import { requireUser } from '@/lib/auth/server';
 import type { InvoiceLineItem, Invoice } from '@/lib/types';
 import { GenerateCreditNoteInputSchema, GenerateCreditNoteOutputSchema, type GenerateCreditNoteInput, type GenerateCreditNoteOutput } from '@/lib/types';
 
 
 export async function generateCreditNote(input: GenerateCreditNoteInput): Promise<GenerateCreditNoteOutput> {
+  try {
+    await requireUser();
+  } catch (error) {
+    return { success: false, error: (error as Error).message };
+  }
   return generateCreditNoteFlow(input);
 }
 

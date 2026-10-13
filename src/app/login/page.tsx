@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useData } from '@/context/data-context';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
@@ -15,8 +15,19 @@ export default function LoginPage() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const { login, loginWithGoogle } = useData();
+  const { login, loginWithGoogle, authUser } = useData();
   const router = useRouter();
+
+  // Page demandée avant la redirection vers /login (chemins internes uniquement).
+  const redirectTarget = () => {
+    const next = new URLSearchParams(window.location.search).get('next');
+    return next && next.startsWith('/') && !next.startsWith('//') ? next : '/dashboard';
+  };
+
+  // Déjà connecté (ex. cookie de session expiré mais compte Firebase actif) : la session vient d'être rouverte.
+  useEffect(() => {
+    if (authUser) router.replace(redirectTarget());
+  }, [authUser, router]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -25,10 +36,12 @@ export default function LoginPage() {
 
     try {
       await login(email, password);
-      router.push('/dashboard');
+      router.push(redirectTarget());
     } catch (err: any) {
       console.error(err);
-      if (err.code === 'auth/invalid-credential' || err.code === 'auth/user-not-found' || err.code === 'auth/wrong-password') {
+      if (err.code === 'app/not-authorized') {
+        setError("Ce compte n'est pas autorisé. Contactez un administrateur.");
+      } else if (err.code === 'auth/invalid-credential' || err.code === 'auth/user-not-found' || err.code === 'auth/wrong-password') {
         setError('Email ou mot de passe incorrect.');
       } else if (err.code === 'auth/too-many-requests') {
         setError('Trop de tentatives. Veuillez réessayer plus tard.');
@@ -139,10 +152,12 @@ export default function LoginPage() {
             setIsLoading(true);
             try {
               await loginWithGoogle();
-              router.push('/dashboard');
+              router.push(redirectTarget());
             } catch (err: any) {
               console.error(err);
-              setError('Erreur lors de la connexion avec Google.');
+              setError(err.code === 'app/not-authorized'
+                ? "Ce compte n'est pas autorisé. Contactez un administrateur."
+                : 'Erreur lors de la connexion avec Google.');
             } finally {
               setIsLoading(false);
             }

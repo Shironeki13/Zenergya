@@ -1,0 +1,11 @@
+rules_version = '2';
+
+// Documents (contrats PDF, logos…) réservés aux utilisateurs autorisés de l'application.
+// Voir firestore.rules pour la signification des claims.
+service firebase.storage {
+  match /b/{bucket}/o {
+    match /{allPaths=**} {
+      allow read, write: if request.auth != null && request.auth.token.zen == true;
+    }
+  }
+}
