@@ -41,20 +41,11 @@ import { cn } from "@/lib/utils";
 
 export function UserNav() {
   const router = useRouter();
-  const { currentUser, setCurrentUser, users, logout } = useData();
+  const { authUser, currentUser, setCurrentUser, isAdmin, users, logout } = useData();
   const { setTheme, theme } = useTheme();
   const [open, setOpen] = useState(false);
 
-  // Default admin user (fallback)
-  const defaultAdmin = {
-    id: 'user-director',
-    name: 'Directeur Général',
-    email: 'director@zenergy.com',
-    roleId: 'role-admin',
-    roleName: 'Administrateur',
-    modules: ['contracts', 'billing', 'settings'],
-    scope: { companyIds: ['*'], agencyIds: ['*'], sectorIds: ['*'] }
-  };
+  const isPreviewing = !!authUser && !!currentUser && currentUser.id !== authUser.id;
 
   const handleUserSelect = (userId: string) => {
     const user = users.find(u => u.id === userId);
@@ -64,10 +55,10 @@ export function UserNav() {
     }
   };
 
+  // Revient à l'utilisateur réellement connecté. L'aperçu ne change que l'affichage :
+  // les droits d'accès aux données restent ceux de la session.
   const handleReset = () => {
-    // In a real app, this would revert to the actually authenticated session
-    // For now, we revert to our mock Director
-    setCurrentUser(defaultAdmin as any);
+    setCurrentUser(authUser);
   };
 
   if (!currentUser) return null;
@@ -90,7 +81,7 @@ export function UserNav() {
               <p className="text-xs leading-none text-muted-foreground">
                 {currentUser.email}
               </p>
-              {currentUser.id !== 'user-director' && (
+              {isPreviewing && (
                 <Badge variant="secondary" className="mt-1 w-fit text-[10px] h-5">
                   Preview Mode
                 </Badge>
@@ -107,10 +98,12 @@ export function UserNav() {
               <Settings className="mr-2 h-4 w-4" />
               <span>Paramètres</span>
             </DropdownMenuItem>
-            <DropdownMenuItem onSelect={() => setTimeout(() => setOpen(true), 50)}>
-              <Eye className="mr-2 h-4 w-4" />
-              <span>Preview As...</span>
-            </DropdownMenuItem>
+            {isAdmin && (
+              <DropdownMenuItem onSelect={() => setTimeout(() => setOpen(true), 50)}>
+                <Eye className="mr-2 h-4 w-4" />
+                <span>Preview As...</span>
+              </DropdownMenuItem>
+            )}
 
             <DropdownMenuSub>
               <DropdownMenuSubTrigger>
@@ -138,7 +131,7 @@ export function UserNav() {
               </DropdownMenuPortal>
             </DropdownMenuSub>
 
-            {currentUser.id !== 'user-director' && (
+            {isPreviewing && (
               <DropdownMenuItem onClick={handleReset} className="text-orange-600 focus:text-orange-600">
                 <LogOut className="mr-2 h-4 w-4" />
                 <span>Quitter Preview</span>

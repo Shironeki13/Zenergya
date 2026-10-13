@@ -812,14 +812,14 @@ export async function deleteService(id: string) {
 // --- Fonctions de Gestion des Utilisateurs (Firestore) ---
 
 // Rôles
-export async function createRole(name: string) {
-    return createSettingItem('roles', { name });
+export async function createRole(data: Omit<Role, 'id'>) {
+    return createSettingItem('roles', data);
 }
 export async function getRoles(): Promise<Role[]> {
     return getCollection<Role>(collection(db, 'roles'));
 }
-export async function updateRole(id: string, name: string) {
-    return updateSettingItem('roles', id, { name });
+export async function updateRole(id: string, data: Partial<Omit<Role, 'id'>>) {
+    return updateSettingItem('roles', id, data);
 }
 export async function deleteRole(id: string) {
     return deleteSettingItem('roles', id);

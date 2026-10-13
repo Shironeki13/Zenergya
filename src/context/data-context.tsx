@@ -1,7 +1,7 @@
 
 'use client';
 
-import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useRef, ReactNode } from 'react';
 import {
   getClients, getContacts, getSites, getContracts, getInvoices, getCreditNotes, getMeters, getMeterTypes, getMeterReadings,
   getCompanies, getAgencies, getSectors, getActivities, getSchedules, getTerms,
@@ -15,84 +15,86 @@ import {
   getAdvPurchaseOrderLines, getCatalogArticles, getCatalogOuvrages, getOuvrageComposants
 } from '@/services/firestore';
 import { auth } from '@/lib/firebase';
-// import { signInAnonymously } from 'firebase/auth';
 import type { DataContextType, Client, Contact, Site, Contract, Invoice, CreditNote, Meter, MeterType, MeterReading, Company, Agency, Sector, Activity, Schedule, Term, Typology, VatRate, RevisionFormula, PaymentTerm, PricingRule, Market, Role, User, Index, IndexValue, RevisionRule, Service, Amendment, Termination, Renewal, TrusteeChange, BeChange, Interest, SettlementRule, WorkProject, WorkQuote, ProgressSituation, AdvWorkQuote, AdvWorkQuoteVersion, AdvWorkQuoteLine, AdvWorkAffair, AdvWorkBudgetLine, AdvWorkLot, AdvWorkPoste, AdvWorkSituation, AdvWorkSituationLine, AdvPurchaseOrder, AdvPurchaseOrderLine, AdvCatalogArticle, AdvCatalogOuvrage, AdvOuvrageComposant, WeatherStation } from '@/lib/types';
 import { useToast } from '@/hooks/use-toast';
 
 const DataContext = createContext<DataContextType | undefined>(undefined);
 
-export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  const [data, setData] = useState({
-    clients: [] as Client[],
-    contacts: [] as Contact[],
-    sites: [] as Site[],
-    contracts: [] as Contract[],
-    invoices: [] as Invoice[],
-    creditNotes: [] as CreditNote[],
-    meters: [] as Meter[],
-    meterTypes: [] as MeterType[],
-    meterReadings: [] as MeterReading[],
-    companies: [] as Company[],
-    agencies: [] as Agency[],
-    sectors: [] as Sector[],
-    activities: [] as Activity[],
-    schedules: [] as Schedule[],
-    terms: [] as Term[],
-    typologies: [] as Typology[],
-    vatRates: [] as VatRate[],
-    revisionFormulas: [] as RevisionFormula[],
-    revisionRules: [] as RevisionRule[],
-    services: [] as Service[],
-    paymentTerms: [] as PaymentTerm[],
-    pricingRules: [] as PricingRule[],
-    markets: [] as Market[],
-    roles: [] as Role[],
-    users: [] as User[],
-    indices: [] as Index[],
-    indexValues: [] as IndexValue[],
-    amendments: [] as Amendment[],
-    terminations: [] as Termination[],
-    renewals: [] as Renewal[],
-    trusteeChanges: [] as TrusteeChange[],
-    beChanges: [] as BeChange[],
-    interests: [] as Interest[],
-    settlementRules: [] as SettlementRule[],
-    weatherStations: [] as WeatherStation[],
-    // Legacy Works
-    workProjects: [] as WorkProject[],
-    workQuotes_legacy: [] as WorkQuote[],
-    progressSituations: [] as ProgressSituation[],
-    // Advanced Works
-    advWorkQuotes: [] as AdvWorkQuote[],
-    advWorkQuoteVersions: [] as AdvWorkQuoteVersion[],
-    advWorkQuoteLines: [] as AdvWorkQuoteLine[],
-    advWorkAffairs: [] as AdvWorkAffair[],
-    advWorkBudgetLines: [] as AdvWorkBudgetLine[],
-    advWorkLots: [] as AdvWorkLot[],
-    advWorkPostes: [] as AdvWorkPoste[],
-    advWorkSituations: [] as AdvWorkSituation[],
-    advWorkSituationLines: [] as AdvWorkSituationLine[],
-    advPurchaseOrders: [] as AdvPurchaseOrder[],
-    advPurchaseOrderLines: [] as AdvPurchaseOrderLine[],
-    advCatalogArticles: [] as AdvCatalogArticle[],
-    advCatalogOuvrages: [] as AdvCatalogOuvrage[],
-    advOuvrageComposants: [] as AdvOuvrageComposant[],
-  });
+const createEmptyData = () => ({
+  clients: [] as Client[],
+  contacts: [] as Contact[],
+  sites: [] as Site[],
+  contracts: [] as Contract[],
+  invoices: [] as Invoice[],
+  creditNotes: [] as CreditNote[],
+  meters: [] as Meter[],
+  meterTypes: [] as MeterType[],
+  meterReadings: [] as MeterReading[],
+  companies: [] as Company[],
+  agencies: [] as Agency[],
+  sectors: [] as Sector[],
+  activities: [] as Activity[],
+  schedules: [] as Schedule[],
+  terms: [] as Term[],
+  typologies: [] as Typology[],
+  vatRates: [] as VatRate[],
+  revisionFormulas: [] as RevisionFormula[],
+  revisionRules: [] as RevisionRule[],
+  services: [] as Service[],
+  paymentTerms: [] as PaymentTerm[],
+  pricingRules: [] as PricingRule[],
+  markets: [] as Market[],
+  roles: [] as Role[],
+  users: [] as User[],
+  indices: [] as Index[],
+  indexValues: [] as IndexValue[],
+  amendments: [] as Amendment[],
+  terminations: [] as Termination[],
+  renewals: [] as Renewal[],
+  trusteeChanges: [] as TrusteeChange[],
+  beChanges: [] as BeChange[],
+  interests: [] as Interest[],
+  settlementRules: [] as SettlementRule[],
+  weatherStations: [] as WeatherStation[],
+  // Legacy Works
+  workProjects: [] as WorkProject[],
+  workQuotes_legacy: [] as WorkQuote[],
+  progressSituations: [] as ProgressSituation[],
+  // Advanced Works
+  advWorkQuotes: [] as AdvWorkQuote[],
+  advWorkQuoteVersions: [] as AdvWorkQuoteVersion[],
+  advWorkQuoteLines: [] as AdvWorkQuoteLine[],
+  advWorkAffairs: [] as AdvWorkAffair[],
+  advWorkBudgetLines: [] as AdvWorkBudgetLine[],
+  advWorkLots: [] as AdvWorkLot[],
+  advWorkPostes: [] as AdvWorkPoste[],
+  advWorkSituations: [] as AdvWorkSituation[],
+  advWorkSituationLines: [] as AdvWorkSituationLine[],
+  advPurchaseOrders: [] as AdvPurchaseOrder[],
+  advPurchaseOrderLines: [] as AdvPurchaseOrderLine[],
+  advCatalogArticles: [] as AdvCatalogArticle[],
+  advCatalogOuvrages: [] as AdvCatalogOuvrage[],
+  advOuvrageComposants: [] as AdvOuvrageComposant[],
+});
 
-  // Mock Current User (Director by default)
-  const [currentUser, setCurrentUser] = useState<User | null>({
-    id: 'user-director',
-    name: 'Directeur Général',
-    email: 'director@zenergy.com',
-    roleId: 'role-admin',
-    roleName: 'Administrateur',
-    modules: ['contracts', 'billing', 'settings'],
-    scope: {
-      companyIds: ['*'],
-      agencyIds: ['*'],
-      sectorIds: ['*'],
-    }
-  });
+type SessionInfo = { user: User; isAdmin: boolean };
+
+/** Erreur d'authentification applicative (compte non autorisé, session impossible à ouvrir). */
+class AppAuthError extends Error {
+  constructor(public code: 'app/not-authorized' | 'app/session-failed', message: string) {
+    super(message);
+  }
+}
+
+export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
+  const [data, setData] = useState(createEmptyData);
+
+  // Utilisateur réellement authentifié (session serveur validée).
+  const [authUser, setAuthUser] = useState<User | null>(null);
+  // Utilisateur affiché : identique à authUser, sauf en mode « Preview As » (admin).
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [isAdmin, setIsAdmin] = useState(false);
+  const sessionRef = useRef<{ uid: string; promise: Promise<SessionInfo> } | null>(null);
 
   const [isLoading, setIsLoading] = useState(true);
   const { toast } = useToast();
@@ -239,89 +241,83 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }
   }, [toast]); // Added toast dependency
 
+  /**
+   * Ouvre la session serveur (cookie httpOnly) pour l'utilisateur Firebase connecté.
+   * Le serveur vérifie qu'il est autorisé et positionne ses droits (custom claims) utilisés par les règles Firestore.
+   * Un seul appel par utilisateur, même si login() et onAuthStateChanged le demandent tous les deux.
+   */
+  const establishSession = useCallback((firebaseUser: any): Promise<SessionInfo> => {
+    const pending = sessionRef.current;
+    if (pending && pending.uid === firebaseUser.uid) return pending.promise;
+
+    const promise = (async () => {
+      const idToken = await firebaseUser.getIdToken();
+      const res = await fetch('/api/auth/session', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ idToken }),
+      });
+      if (!res.ok) {
+        if (res.status === 403) {
+          throw new AppAuthError('app/not-authorized', "Ce compte n'est pas autorisé à accéder à l'application.");
+        }
+        throw new AppAuthError('app/session-failed', "Impossible d'ouvrir la session.");
+      }
+      const body = await res.json();
+      // Les droits viennent d'être (re)positionnés : on force un nouveau jeton pour que Firestore les voie.
+      if (body.claimsUpdated) await firebaseUser.getIdToken(true);
+      return { user: body.user as User, isAdmin: body.isAdmin === true };
+    })();
+
+    sessionRef.current = { uid: firebaseUser.uid, promise };
+    promise.catch(() => {
+      if (sessionRef.current?.promise === promise) sessionRef.current = null;
+    });
+    return promise;
+  }, []);
+
   // Authentication Methods
   const login = async (email: string, password: string) => {
-    try {
-      await import('firebase/auth').then(({ signInWithEmailAndPassword }) =>
-        signInWithEmailAndPassword(auth, email, password)
-      );
-    } catch (error: any) {
-      console.error("Login failed:", error);
-      throw error;
-    }
-  };
-
-  const signup = async (email: string, password: string) => {
-    try {
-      await import('firebase/auth').then(({ createUserWithEmailAndPassword }) =>
-        createUserWithEmailAndPassword(auth, email, password)
-      );
-    } catch (error: any) {
-      console.error("Signup failed:", error);
-      throw error;
-    }
+    const { signInWithEmailAndPassword } = await import('firebase/auth');
+    const credential = await signInWithEmailAndPassword(auth, email, password);
+    await establishSession(credential.user);
   };
 
   const loginWithGoogle = async () => {
-    try {
-      const { signInWithPopup, GoogleAuthProvider } = await import('firebase/auth');
-      const provider = new GoogleAuthProvider();
-      await signInWithPopup(auth, provider);
-    } catch (error: any) {
-      console.error("Google Login failed:", error);
-      throw error;
-    }
+    const { signInWithPopup, GoogleAuthProvider } = await import('firebase/auth');
+    const credential = await signInWithPopup(auth, new GoogleAuthProvider());
+    await establishSession(credential.user);
   };
 
   const logout = async () => {
-    try {
-      await import('firebase/auth').then(({ signOut }) => signOut(auth));
-      setCurrentUser(null);
-    } catch (error) {
-      console.error("Logout failed:", error);
-      throw error;
-    }
+    await fetch('/api/auth/session', { method: 'DELETE' }).catch(() => undefined);
+    const { signOut } = await import('firebase/auth');
+    await signOut(auth);
   };
 
   useEffect(() => {
-    loadAllData();
-
-    // Listen for auth state changes
-    const unsubscribe = import('firebase/auth').then(({ onAuthStateChanged }) =>
+    const unsubscribe = import('firebase/auth').then(({ onAuthStateChanged, signOut }) =>
       onAuthStateChanged(auth, async (firebaseUser) => {
-        if (firebaseUser) {
-          setCurrentUser({
-            id: firebaseUser.uid,
-            name: firebaseUser.displayName || 'Utilisateur',
-            email: firebaseUser.email || '',
-            roleId: 'role-admin', // Default to admin for now
-            roleName: 'Administrateur',
-            modules: ['contracts', 'billing', 'settings'],
-            scope: {
-              companyIds: ['*'],
-              agencyIds: ['*'],
-              sectorIds: ['*'],
-            }
-          });
-        } else {
-          // Fallback to mock user ONLY in development
-          if (process.env.NODE_ENV === 'development') {
-            setCurrentUser({
-              id: 'user-director',
-              name: 'Directeur Général',
-              email: 'director@zenergy.com',
-              roleId: 'role-admin',
-              roleName: 'Administrateur',
-              modules: ['contracts', 'billing', 'settings'],
-              scope: {
-                companyIds: ['*'],
-                agencyIds: ['*'],
-                sectorIds: ['*'],
-              }
-            });
-          } else {
-            setCurrentUser(null);
-          }
+        if (!firebaseUser) {
+          sessionRef.current = null;
+          setAuthUser(null);
+          setCurrentUser(null);
+          setIsAdmin(false);
+          setData(createEmptyData());
+          setIsLoading(false);
+          return;
+        }
+
+        try {
+          const session = await establishSession(firebaseUser);
+          setAuthUser(session.user);
+          setCurrentUser(session.user);
+          setIsAdmin(session.isAdmin);
+          await loadAllData();
+        } catch (error) {
+          console.error('Session error:', error);
+          await fetch('/api/auth/session', { method: 'DELETE' }).catch(() => undefined);
+          await signOut(auth);
         }
       })
     );
@@ -329,10 +325,10 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     return () => {
       unsubscribe.then(unsub => unsub());
     };
-  }, [loadAllData]);
+  }, [loadAllData, establishSession]);
 
   return (
-    <DataContext.Provider value={{ ...data, isLoading, reloadData: loadAllData, currentUser, setCurrentUser, login, signup, loginWithGoogle, logout }}>
+    <DataContext.Provider value={{ ...data, isLoading, reloadData: loadAllData, authUser, currentUser, setCurrentUser, isAdmin, login, loginWithGoogle, logout }}>
       {children}
     </DataContext.Provider>
   );
