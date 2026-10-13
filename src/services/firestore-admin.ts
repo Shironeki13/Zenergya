@@ -63,60 +63,213 @@ export async function getInvoicesByIds(ids: string[]): Promise<Invoice[]> {
     return results;
 }
 
-// --- Factures ---
+// --- Numérotation des factures et avoirs ---
+//
+// Obligations (art. 242 nonies A, annexe II du CGI) : numérotation unique, chronologique et continue, par société émettrice.
+// - Le numéro est attribué dans la MÊME transaction que l'écriture de la facture / de l'avoir : pas de trou possible.
+// - Un compteur par préfixe (code société + période) : chaque société a sa propre série.
+// - Factures : {CODE}-{AAMM}-{NNNN} ; avoirs : {CODE}-AV{AAAA}-{NNNN}.
 
-export async function getNextInvoiceNumber(companyCode: string): Promise<string> {
-    const now = new Date();
-    const period = `${now.getFullYear().toString().slice(-2)}${String(now.getMonth() + 1).padStart(2, '0')}`;
-    const counterRef = adminDb.collection('counters').doc(`invoiceCounter_${period}`);
+type NumberedKind = 'invoice' | 'creditNote';
 
-    return adminDb.runTransaction(async (tx) => {
-        const counterDoc = await tx.get(counterRef);
-        const newCount = counterDoc.exists ? (counterDoc.get('current') as number) + 1 : 1;
-        tx.set(counterRef, { current: newCount }, { merge: true });
-        return `${companyCode}-${period}-${String(newCount).padStart(4, '0')}`;
-    });
+const NUMBERING = {
+    invoice: { collection: 'invoices', field: 'invoiceNumber' },
+    creditNote: { collection: 'creditNotes', field: 'creditNoteNumber' },
+} as const;
+
+function numberPrefix(kind: NumberedKind, companyCode: string, issueDate: Date): string {
+    const yyyy = issueDate.getFullYear().toString();
+    const mm = String(issueDate.getMonth() + 1).padStart(2, '0');
+    return kind === 'invoice' ? `${companyCode}-${yyyy.slice(-2)}${mm}-` : `${companyCode}-AV${yyyy}-`;
 }
 
-export async function createInvoice(data: Omit<Invoice, 'id'>) {
-    const invoiceData = {
+/**
+ * Réserve le numéro suivant dans une transaction (lectures uniquement : l'appelant écrit le compteur et le document).
+ * Si le compteur n'existe pas encore (nouvelle période, ou données antérieures à ce mécanisme),
+ * il repart du plus grand numéro déjà émis avec ce préfixe : jamais de doublon.
+ */
+async function reserveNumber(tx: FirebaseFirestore.Transaction, kind: NumberedKind, companyCode: string, issueDate: Date) {
+    const prefix = numberPrefix(kind, companyCode, issueDate);
+    const { collection, field } = NUMBERING[kind];
+    const counterRef = adminDb.collection('counters').doc(`${kind}_${encodeURIComponent(prefix)}`);
+
+    const counterSnap = await tx.get(counterRef);
+    let current: number;
+    if (counterSnap.exists) {
+        current = counterSnap.get('current') as number;
+    } else {
+        const last = await tx.get(
+            adminDb.collection(collection)
+                .where(field, '>=', prefix)
+                .where(field, '<', prefix + '')
+                .orderBy(field, 'desc')
+                .limit(1)
+        );
+        current = last.empty ? 0 : parseInt(String(last.docs[0].get(field)).slice(prefix.length), 10) || 0;
+    }
+
+    const next = current + 1;
+    return {
+        number: `${prefix}${String(next).padStart(4, '0')}`,
+        commit: () => tx.set(counterRef, { current: next, prefix, updatedAt: Timestamp.now() }, { merge: true }),
+    };
+}
+
+/**
+ * Société émettrice d'une facture : celle du contrat, sinon celle du client,
+ * sinon la seule société configurée. Refus explicite si elle ne peut pas être déterminée.
+ */
+export async function resolveIssuingCompany(contract: Contract | null, client: Client | null): Promise<Company> {
+    const companyId = contract?.companyId || client?.companyId;
+    if (companyId) {
+        const company = await getCompany(companyId);
+        if (!company) throw new Error(`Société émettrice introuvable (ID : ${companyId}).`);
+        return company;
+    }
+    const companies = await getCompanies();
+    if (companies.length === 1) return companies[0];
+    if (companies.length === 0) throw new Error("Aucune société n'est configurée dans les paramètres.");
+    throw new Error("Impossible de déterminer la société émettrice : renseignez la société du client ou du contrat.");
+}
+
+function assertCompanyCode(company: Company) {
+    if (!company.code?.trim()) {
+        throw new Error(`La société « ${company.name} » n'a pas de code : il est nécessaire pour numéroter ses factures.`);
+    }
+}
+
+// --- Factures ---
+
+type NewInvoice = Omit<Invoice, 'id' | 'invoiceNumber' | 'companyId' | 'issuedAt'>;
+
+function toInvoiceDoc(data: NewInvoice) {
+    return {
         ...data,
         date: new Date(data.date),
         dueDate: new Date(data.dueDate),
         periodStartDate: data.periodStartDate ? new Date(data.periodStartDate) : undefined,
         periodEndDate: data.periodEndDate ? new Date(data.periodEndDate) : undefined,
     };
-    const ref = await adminDb.collection('invoices').add(invoiceData);
-    return { id: ref.id, ...invoiceData };
+}
+
+/**
+ * Crée une facture. Hors proforma, le numéro est attribué dans la même transaction que l'écriture.
+ */
+export async function createInvoice(data: NewInvoice, company: Company): Promise<{ id: string; invoiceNumber?: string }> {
+    const ref = adminDb.collection('invoices').doc();
+    const doc = { ...toInvoiceDoc(data), companyId: company.id };
+
+    if (data.status === 'proforma') {
+        await ref.set(doc);
+        return { id: ref.id };
+    }
+
+    assertCompanyCode(company);
+    const invoiceNumber = await adminDb.runTransaction(async (tx) => {
+        const issuedAt = new Date();
+        const reserved = await reserveNumber(tx, 'invoice', company.code, issuedAt);
+        reserved.commit();
+        tx.set(ref, { ...doc, invoiceNumber: reserved.number, issuedAt });
+        return reserved.number;
+    });
+    return { id: ref.id, invoiceNumber };
+}
+
+/**
+ * Transforme un proforma en facture définitive : numéro attribué, date d'émission = aujourd'hui.
+ */
+export async function convertProformaToInvoice(invoiceId: string, paymentDelayDays = 30): Promise<string> {
+    const ref = adminDb.collection('invoices').doc(invoiceId);
+    const proforma = await getInvoice(invoiceId);
+    if (!proforma) throw new Error('Facture introuvable.');
+    if (proforma.status !== 'proforma') throw new Error("Cette facture n'est pas un proforma.");
+
+    const company = proforma.companyId
+        ? await getCompany(proforma.companyId)
+        : await resolveIssuingCompany(await getContract(proforma.contractId), await getClient(proforma.clientId));
+    if (!company) throw new Error('Société émettrice introuvable.');
+    assertCompanyCode(company);
+
+    return adminDb.runTransaction(async (tx) => {
+        const snap = await tx.get(ref);
+        if (!snap.exists || snap.get('status') !== 'proforma') {
+            throw new Error('Ce proforma a déjà été converti ou supprimé.');
+        }
+        const issuedAt = new Date();
+        const reserved = await reserveNumber(tx, 'invoice', company.code, issuedAt);
+        const date = new Date(issuedAt.toISOString().split('T')[0]);
+        const dueDate = new Date(date);
+        dueDate.setDate(dueDate.getDate() + paymentDelayDays);
+
+        reserved.commit();
+        tx.update(ref, {
+            invoiceNumber: reserved.number,
+            status: 'due',
+            companyId: company.id,
+            date,
+            dueDate,
+            issuedAt,
+        });
+        return reserved.number;
+    });
 }
 
 // --- Avoirs ---
 
-async function getNextCreditNoteNumber(): Promise<string> {
-    const year = new Date().getFullYear();
-    const counterRef = adminDb.collection('counters').doc(`creditNoteCounter_${year}`);
+type NewCreditNote = Omit<CreditNote, 'id' | 'creditNoteNumber' | 'companyId'>;
 
-    return adminDb.runTransaction(async (tx) => {
-        const counterDoc = await tx.get(counterRef);
-        const newCount = counterDoc.exists ? (counterDoc.get('current') as number) + 1 : 1;
-        tx.set(counterRef, { current: newCount }, { merge: true });
-        return `AV${year}-${String(newCount).padStart(4, '0')}`;
-    });
-}
+/**
+ * Crée un avoir annulant des factures, en une seule transaction :
+ * relecture des factures, contrôle de leur statut, numérotation, écriture de l'avoir et annulation des factures.
+ * `build` construit le contenu de l'avoir à partir des factures relues dans la transaction.
+ */
+export async function createCreditNote(
+    invoiceIds: string[],
+    build: (invoices: Invoice[]) => NewCreditNote,
+): Promise<{ id: string; creditNoteNumber: string }> {
+    const uniqueIds = [...new Set(invoiceIds)];
+    if (uniqueIds.length === 0) throw new Error('Aucun ID de facture fourni.');
 
-export async function createCreditNote(data: Omit<CreditNote, 'id' | 'creditNoteNumber'>): Promise<CreditNote> {
-    const creditNoteNumber = await getNextCreditNoteNumber();
-    const newCreditNoteData = { ...data, creditNoteNumber, date: new Date(data.date) };
+    // Société émettrice déterminée hors transaction (lecture des paramètres).
+    const first = await getInvoice(uniqueIds[0]);
+    if (!first) throw new Error('Aucune facture correspondante trouvée.');
+    const company = first.companyId
+        ? await getCompany(first.companyId)
+        : await resolveIssuingCompany(await getContract(first.contractId), await getClient(first.clientId));
+    if (!company) throw new Error('Société émettrice introuvable.');
+    assertCompanyCode(company);
 
-    const batch = adminDb.batch();
     const creditNoteRef = adminDb.collection('creditNotes').doc();
-    batch.set(creditNoteRef, newCreditNoteData);
-    for (const invoiceId of data.originalInvoiceIds) {
-        batch.update(adminDb.collection('invoices').doc(invoiceId), { status: 'cancelled' });
-    }
-    await batch.commit();
+    const refs = uniqueIds.map(id => adminDb.collection('invoices').doc(id));
 
-    return { id: creditNoteRef.id, ...newCreditNoteData, date: newCreditNoteData.date.toISOString() } as CreditNote;
+    const creditNoteNumber = await adminDb.runTransaction(async (tx) => {
+        const snaps = await tx.getAll(...refs);
+        const missing = snaps.filter(s => !s.exists).map(s => s.id);
+        if (missing.length) throw new Error(`Factures introuvables : ${missing.join(', ')}.`);
+
+        const invoices = snaps.map(s => convert({ id: s.id, ...s.data() }) as Invoice);
+        const otherCompany = invoices.find(inv => inv.companyId && inv.companyId !== company.id);
+        if (otherCompany) {
+            throw new Error(`Toutes les factures doivent être émises par la même société (${otherCompany.invoiceNumber || otherCompany.id}).`);
+        }
+        const creditNote = build(invoices);
+
+        const reserved = await reserveNumber(tx, 'creditNote', company.code, new Date());
+        reserved.commit();
+        tx.set(creditNoteRef, {
+            ...creditNote,
+            creditNoteNumber: reserved.number,
+            companyId: company.id,
+            date: new Date(creditNote.date),
+            issuedAt: new Date(),
+        });
+        for (const ref of refs) {
+            tx.update(ref, { status: 'cancelled', cancelledByCreditNoteId: creditNoteRef.id });
+        }
+        return reserved.number;
+    });
+
+    return { id: creditNoteRef.id, creditNoteNumber };
 }
 
 // --- Indices ---

@@ -325,52 +325,20 @@ export async function getInvoicesByContract(contractId: string): Promise<Invoice
     return getCollection<Invoice>(q);
 }
 
-export async function createInvoice(data: Omit<Invoice, 'id'>) {
-    const invoiceData = {
-        ...data,
-        date: new Date(data.date),
-        dueDate: new Date(data.dueDate),
-        periodStartDate: data.periodStartDate ? new Date(data.periodStartDate) : undefined,
-        periodEndDate: data.periodEndDate ? new Date(data.periodEndDate) : undefined,
-    };
-    const invoicesCollection = collection(db, 'invoices');
-    const docRef = await addDoc(invoicesCollection, invoiceData as any);
-    return { id: docRef.id, ...invoiceData };
-}
-
 export async function updateInvoiceStatus(id: string, status: InvoiceStatus) {
     const invoiceDoc = doc(db, 'invoices', id);
     await updateDoc(invoiceDoc, { status });
 }
 
-export async function deleteInvoice(id: string) {
-    const invoiceDoc = doc(db, 'invoices', id);
-    await deleteDoc(invoiceDoc);
-}
-
-
-export async function getNextInvoiceNumber(companyCode: string): Promise<string> {
-    const now = new Date();
-    const year = now.getFullYear().toString().slice(-2);
-    const month = String(now.getMonth() + 1).padStart(2, '0');
-    const period = `${year}${month}`;
-
-    const counterRef = doc(db, 'counters', `invoiceCounter_${period}`);
-
-    return runTransaction(db, async (transaction) => {
-        const counterDoc = await transaction.get(counterRef);
-
-        let newCount = 1;
-        if (counterDoc.exists()) {
-            newCount = counterDoc.data().current + 1;
-        }
-
-        transaction.set(counterRef, { current: newCount }, { merge: true });
-
-        const countPadded = String(newCount).padStart(4, '0');
-
-        return `${companyCode}-${period}-${countPadded}`;
-    });
+/**
+ * Supprime un proforma (sans numéro, sans valeur comptable).
+ * Une facture émise ne se supprime jamais : elle s'annule par un avoir (règles Firestore en appui).
+ */
+export async function deleteProformaInvoice(invoice: Pick<Invoice, 'id' | 'status'>) {
+    if (invoice.status !== 'proforma') {
+        throw new Error("Seul un proforma peut être supprimé. Une facture émise s'annule par un avoir.");
+    }
+    await deleteDoc(doc(db, 'invoices', invoice.id));
 }
 
 
@@ -379,49 +347,7 @@ export async function getCreditNotes(): Promise<CreditNote[]> {
     return getCollection<CreditNote>(collection(db, 'creditNotes'));
 }
 
-export async function createCreditNote(data: Omit<CreditNote, 'id' | 'creditNoteNumber'>): Promise<CreditNote> {
-    const batch = writeBatch(db);
-
-    const creditNoteNumber = await getNextCreditNoteNumber();
-
-    const newCreditNoteData = {
-        ...data,
-        creditNoteNumber,
-        date: new Date(data.date),
-    };
-    const creditNoteRef = doc(collection(db, 'creditNotes'));
-    batch.set(creditNoteRef, newCreditNoteData);
-
-    // Update status of original invoices
-    for (const invoiceId of data.originalInvoiceIds) {
-        const invoiceRef = doc(db, 'invoices', invoiceId);
-        batch.update(invoiceRef, { status: 'cancelled' });
-    }
-
-    await batch.commit();
-    // Date property in CreditNote type is string (ISO 8601)
-    const returnedCreditNote: any = { id: creditNoteRef.id, ...newCreditNoteData };
-    returnedCreditNote.date = newCreditNoteData.date.toISOString();
-
-    return returnedCreditNote as CreditNote;
-}
-
-export async function getNextCreditNoteNumber(): Promise<string> {
-    const year = new Date().getFullYear();
-    const counterRef = doc(db, 'counters', `creditNoteCounter_${year}`);
-
-    return runTransaction(db, async (transaction) => {
-        const counterDoc = await transaction.get(counterRef);
-        let newCount = 1;
-        if (counterDoc.exists()) {
-            newCount = counterDoc.data().current + 1;
-        }
-        transaction.set(counterRef, { current: newCount }, { merge: true });
-        const countPadded = String(newCount).padStart(4, '0');
-        return `AV${year}-${countPadded}`;
-    });
-}
-
+// La création des factures et des avoirs (numérotation comprise) se fait côté serveur : voir firestore-admin.ts.
 
 
 // Indices
