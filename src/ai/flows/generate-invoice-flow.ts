@@ -15,11 +15,11 @@ import {
   getSitesByClient,
   getActivities,
   createInvoice,
-  getNextInvoiceNumber,
   getClient,
-  getCompanies,
   getInvoicesByContract,
+  resolveIssuingCompany,
 } from '@/services/firestore-admin';
+import { roundCents, computeTotals } from '@/lib/money';
 import { requireUser } from '@/lib/auth/server';
 import type { InvoiceLineItem } from '@/lib/types';
 import { GenerateInvoiceInputSchema, GenerateInvoiceOutputSchema, type GenerateInvoiceInput, type GenerateInvoiceOutput } from '@/lib/types';
@@ -57,17 +57,13 @@ const generateInvoiceFlow = ai.defineFlow(
 
       const invoicingType = contract.invoicingType || 'multi-site';
 
-      // For now, let's assume one company for the whole system
-      const companies = await getCompanies();
-      if (companies.length === 0) {
-        throw new Error("Aucune société n'est configurée dans les paramètres.");
-      }
-      const company = companies[0];
+      const company = await resolveIssuingCompany(contract, client);
 
       const existingInvoices = await getInvoicesByContract(contractId);
       existingInvoices.sort((a, b) => new Date(b.periodEndDate || 0).getTime() - new Date(a.periodEndDate || 0).getTime());
 
-      const lastInvoice = existingInvoices.find(inv => inv.status !== 'proforma');
+      // Les factures annulées par avoir ne comptent pas : leur période peut être refacturée.
+      const lastInvoice = existingInvoices.find(inv => inv.status !== 'proforma' && inv.status !== 'cancelled');
       const contractStartDate = new Date(contract.startDate);
 
       let periodStartDate = lastInvoice ? new Date(lastInvoice.periodEndDate!) : contractStartDate;
@@ -135,7 +131,7 @@ const generateInvoiceFlow = ai.defineFlow(
           for (const amountInfo of site.amounts) {
             const activity = activityMap.get(amountInfo.activityId);
             if (activity && contract.activityIds.includes(activity.id)) {
-              const lineTotal = amountInfo.amount * billingFactor;
+              const lineTotal = roundCents(amountInfo.amount * billingFactor);
               lineItems.push({
                 description: `Prestation: ${activity.label} (${scheduleLabel}) - Site: ${site.name} - ${periodString}`,
                 quantity: 1,
@@ -165,7 +161,8 @@ const generateInvoiceFlow = ai.defineFlow(
         }
 
         for (const key in aggregatedAmounts) {
-          const { activity, total } = aggregatedAmounts[key];
+          const { activity } = aggregatedAmounts[key];
+          const total = roundCents(aggregatedAmounts[key].total);
           lineItems.push({
             description: `Prestation: ${activity.label} (${scheduleLabel}) - ${periodString}`,
             quantity: 1,
@@ -181,19 +178,15 @@ const generateInvoiceFlow = ai.defineFlow(
         throw new Error("Aucune prestation facturable trouvée pour les sites de ce contrat.");
       }
 
-      const subtotal = lineItems.reduce((acc, item) => acc + item.total, 0);
       const taxRate = 0.10; // Assuming 10% VAT
-      const tax = subtotal * taxRate;
-      const total = subtotal + tax;
+      const { subtotal, tax, total } = computeTotals(lineItems.map(item => item.total), taxRate);
 
       const invoiceDateObj = new Date(invoiceDate);
       const dueDate = new Date(invoiceDateObj);
       dueDate.setDate(dueDate.getDate() + 30); // 30 days to pay
 
-      const invoiceNumber = isProforma ? undefined : await getNextInvoiceNumber(company.code);
-
+      // Le numéro est attribué par createInvoice, dans la même transaction que l'écriture.
       const newInvoice = {
-        ...(invoiceNumber && { invoiceNumber }),
         contractId: contract.id,
         clientId: contract.clientId,
         clientName: contract.clientName,
@@ -208,7 +201,7 @@ const generateInvoiceFlow = ai.defineFlow(
         total,
       };
 
-      const savedInvoice = await createInvoice(newInvoice);
+      const savedInvoice = await createInvoice(newInvoice, company);
 
       return {
         success: true,

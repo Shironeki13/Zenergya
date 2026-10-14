@@ -16,7 +16,10 @@
 | Action | Utilisateur | Administrateur |
 | --- | --- | --- |
 | Lire / créer / modifier les données métier | ✅ | ✅ |
-| Supprimer factures, avoirs, compteurs de numérotation | ❌ | ✅ |
+| Créer / numéroter une facture ou un avoir | Serveur uniquement | Serveur uniquement |
+| Changer le statut d'encaissement d'une facture (due, en retard, payée) | ✅ | ✅ |
+| Supprimer un proforma | ✅ | ✅ |
+| Supprimer une facture émise, un avoir, un compteur | ❌ | ❌ (annulation par avoir) |
 | Gérer utilisateurs et rôles | ❌ | ✅ |
 | Lancer la synchronisation des indices | ❌ | ✅ (ou appel planifié avec `CRON_SECRET`) |
 | « Preview As » (aperçu de l'interface d'un autre utilisateur) | ❌ | ✅ (affichage seulement, les droits restent ceux de l'admin) |
@@ -53,4 +56,4 @@
 ## Limites connues (prochaines étapes)
 
 - Le périmètre (sociétés / agences / secteurs) et les modules d'un utilisateur filtrent l'interface, mais ne sont pas encore appliqués par les règles Firestore.
-- Un utilisateur autorisé peut encore créer une facture directement depuis le navigateur : la numérotation et la création des factures doivent passer entièrement côté serveur (chantier 2).
+- Numérotation et documents comptables : voir [facturation.md](facturation.md).

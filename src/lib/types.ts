@@ -243,6 +243,7 @@ export type ContractDocument = z.infer<typeof ContractDocumentSchema>;
 export type Contract = {
     id: string;
     clientId: string;
+    companyId?: string; // Société émettrice (sinon : celle du client)
     clientName: string; // Denormalized for easy display
     siteIds: string[];
     startDate: string; // ISO String date
@@ -514,6 +515,9 @@ export type Invoice = {
     total: number;
     periodStartDate?: string; // ISO String date
     periodEndDate?: string; // ISO String date
+    companyId?: string; // Société émettrice (absente sur les factures antérieures)
+    issuedAt?: string; // Horodatage d'attribution du numéro
+    cancelledByCreditNoteId?: string; // Avoir ayant annulé la facture
 };
 
 export type CreditNote = {
@@ -530,6 +534,7 @@ export type CreditNote = {
     tax: number;
     total: number;
     reason: string;
+    companyId?: string; // Société émettrice (absente sur les avoirs antérieurs)
 }
 
 // --- Travaux (Works) Types (Legacy) ---
@@ -705,6 +710,7 @@ export type GenerateCreditNoteInput = z.infer<typeof GenerateCreditNoteInputSche
 export const GenerateCreditNoteOutputSchema = z.object({
     success: z.boolean(),
     creditNoteId: z.string().optional(),
+    creditNoteNumber: z.string().optional(),
     error: z.string().optional(),
 });
 export type GenerateCreditNoteOutput = z.infer<typeof GenerateCreditNoteOutputSchema>;
