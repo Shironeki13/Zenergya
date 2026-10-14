@@ -4,6 +4,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { Inter } from 'next/font/google';
 import { DataProvider } from '@/context/data-context';
 import { TooltipProvider } from "@/components/ui/tooltip";
+import Script from 'next/script';
 
 const inter = Inter({
   subsets: ['latin'],
@@ -26,6 +27,8 @@ export default function RootLayout({
   return (
     <html lang="fr" className={inter.variable} suppressHydrationWarning>
       <body className="font-body antialiased" suppressHydrationWarning>
+        {/* Configuration Firebase lue à l'exécution, chargée avant le code de l'application. */}
+        <Script src="/api/firebase-config" strategy="beforeInteractive" />
         <ThemeProvider
           attribute="class"
           defaultTheme="system"

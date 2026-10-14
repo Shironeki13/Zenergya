@@ -14,7 +14,7 @@ import {
   getAdvWorkLots, getAdvWorkPostes, getAdvWorkSituations, getAdvWorkSituationLines, getAdvPurchaseOrders,
   getAdvPurchaseOrderLines, getCatalogArticles, getCatalogOuvrages, getOuvrageComposants
 } from '@/services/firestore';
-import { auth } from '@/lib/firebase';
+import { auth, firebaseReady } from '@/lib/firebase';
 import type { DataContextType, Client, Contact, Site, Contract, Invoice, CreditNote, Meter, MeterType, MeterReading, Company, Agency, Sector, Activity, Schedule, Term, Typology, VatRate, RevisionFormula, PaymentTerm, PricingRule, Market, Role, User, Index, IndexValue, RevisionRule, Service, Amendment, Termination, Renewal, TrusteeChange, BeChange, Interest, SettlementRule, WorkProject, WorkQuote, ProgressSituation, AdvWorkQuote, AdvWorkQuoteVersion, AdvWorkQuoteLine, AdvWorkAffair, AdvWorkBudgetLine, AdvWorkLot, AdvWorkPoste, AdvWorkSituation, AdvWorkSituationLine, AdvPurchaseOrder, AdvPurchaseOrderLine, AdvCatalogArticle, AdvCatalogOuvrage, AdvOuvrageComposant, WeatherStation } from '@/lib/types';
 import { useToast } from '@/hooks/use-toast';
 
@@ -278,12 +278,14 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   // Authentication Methods
   const login = async (email: string, password: string) => {
+    await firebaseReady;
     const { signInWithEmailAndPassword } = await import('firebase/auth');
     const credential = await signInWithEmailAndPassword(auth, email, password);
     await establishSession(credential.user);
   };
 
   const loginWithGoogle = async () => {
+    await firebaseReady;
     const { signInWithPopup, GoogleAuthProvider } = await import('firebase/auth');
     const credential = await signInWithPopup(auth, new GoogleAuthProvider());
     await establishSession(credential.user);
@@ -291,12 +293,14 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   const logout = async () => {
     await fetch('/api/auth/session', { method: 'DELETE' }).catch(() => undefined);
+    await firebaseReady;
     const { signOut } = await import('firebase/auth');
     await signOut(auth);
   };
 
   useEffect(() => {
-    const unsubscribe = import('firebase/auth').then(({ onAuthStateChanged, signOut }) =>
+    // Firebase est initialisé dès que la configuration (lue à l'exécution) est disponible.
+    const unsubscribe = firebaseReady.then(() => import('firebase/auth')).then(({ onAuthStateChanged, signOut }) =>
       onAuthStateChanged(auth, async (firebaseUser) => {
         if (!firebaseUser) {
           sessionRef.current = null;
