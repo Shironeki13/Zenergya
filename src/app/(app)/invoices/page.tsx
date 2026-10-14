@@ -37,10 +37,11 @@ import { Input } from '@/components/ui/input';
 import { downloadCSV } from '@/lib/utils';
 
 
-import { deleteInvoice } from '@/services/firestore';
+import { deleteProformaInvoice } from '@/services/firestore';
+import { convertProforma } from '@/lib/billing/actions';
 
 export default function InvoicesPage() {
-  const { invoices, isLoading, reloadData, isAdmin } = useData();
+  const { invoices, isLoading, reloadData } = useData();
   const { toast } = useToast();
   const [selectedInvoiceIds, setSelectedInvoiceIds] = useState<string[]>([]);
   const [isGenerating, setIsGenerating] = useState(false);
@@ -103,7 +104,7 @@ export default function InvoicesPage() {
         creditNoteDate: new Date().toISOString(),
       });
       if (result.success && result.creditNoteId) {
-        toast({ title: "Avoir généré", description: `L'avoir ${result.creditNoteId} a été créé.` });
+        toast({ title: "Avoir généré", description: `L'avoir ${result.creditNoteNumber || result.creditNoteId} a été créé.` });
         setSelectedInvoiceIds([]);
         await reloadData();
       } else {
@@ -116,6 +117,28 @@ export default function InvoicesPage() {
     }
   };
 
+
+  const handleConvertProforma = async (invoiceId: string) => {
+    if (!confirm('Convertir ce proforma en facture définitive ? Un numéro lui sera attribué et elle ne pourra plus être supprimée.')) return;
+    const result = await convertProforma(invoiceId);
+    if (result.success) {
+      toast({ title: "Facture émise", description: `Numéro attribué : ${result.invoiceNumber}.` });
+      await reloadData();
+    } else {
+      toast({ title: "Conversion impossible", description: result.error, variant: 'destructive' });
+    }
+  };
+
+  const handleDeleteProforma = async (invoice: Invoice) => {
+    if (!confirm('Supprimer ce proforma ?')) return;
+    try {
+      await deleteProformaInvoice(invoice);
+      toast({ title: "Proforma supprimé" });
+      await reloadData();
+    } catch (error) {
+      toast({ title: "Suppression impossible", description: error instanceof Error ? error.message : String(error), variant: 'destructive' });
+    }
+  };
 
   const getBadgeVariant = (status: InvoiceStatus) => {
     switch (status) {
@@ -257,19 +280,18 @@ export default function InvoicesPage() {
                         </DropdownMenuItem>
                         {invoice.status === 'due' && <DropdownMenuItem>Marquer comme payée</DropdownMenuItem>}
                         {invoice.status === 'due' && <DropdownMenuItem>Envoyer un rappel</DropdownMenuItem>}
-                        {invoice.status === 'proforma' && <DropdownMenuItem>Convertir en facture</DropdownMenuItem>}
-                        {isAdmin && (
+                        {invoice.status === 'proforma' && (
+                          <DropdownMenuItem onClick={() => handleConvertProforma(invoice.id)}>
+                            Convertir en facture
+                          </DropdownMenuItem>
+                        )}
+                        {/* Une facture émise ne se supprime pas : elle s'annule par un avoir (sélection + « Générer un avoir »). */}
+                        {invoice.status === 'proforma' && (
                           <DropdownMenuItem
                             className="text-destructive focus:text-destructive"
-                            onClick={async () => {
-                              if (confirm('Êtes-vous sûr de vouloir SUPPRIMER DÉFINITIVEMENT cette facture ? Cela est irréversible.')) {
-                                await deleteInvoice(invoice.id);
-                                toast({ title: "Facture supprimée", description: "La facture a été supprimée définitivement." });
-                                await reloadData();
-                              }
-                            }}
+                            onClick={() => handleDeleteProforma(invoice)}
                           >
-                            Supprimer (Admin)
+                            Supprimer le proforma
                           </DropdownMenuItem>
                         )}
                       </DropdownMenuContent>

@@ -21,17 +21,27 @@ service cloud.firestore {
       return coll in ['users', 'roles'];
     }
 
-    // Documents comptables : jamais supprimés par un utilisateur standard (annulation par avoir).
-    function isUndeletable(coll) {
+    // Documents comptables : écrits uniquement par le serveur (Admin SDK), qui attribue les numéros
+    // dans la même transaction. Côté navigateur, seules les exceptions ci-dessous sont permises.
+    function isAccounting(coll) {
       return coll in ['invoices', 'creditNotes', 'counters'];
     }
 
     // Attention : les règles qui correspondent à un même chemin s'additionnent (OU logique),
-    // d'où une seule règle générique avec des conditions par collection.
+    // d'où une règle générique qui exclut explicitement les collections traitées à part.
     match /{coll}/{docId} {
       allow read: if isAppUser();
-      allow create, update: if isAdmin() || (isAppUser() && !isAdminOnly(coll));
-      allow delete: if isAdmin() || (isAppUser() && !isAdminOnly(coll) && !isUndeletable(coll));
+      allow create, update, delete: if !isAccounting(coll) && (isAdmin() || (isAppUser() && !isAdminOnly(coll)));
+    }
+
+    match /invoices/{invoiceId} {
+      // Suivi des encaissements : seul le statut d'une facture émise et non annulée peut changer, entre ces valeurs.
+      allow update: if isAppUser()
+        && resource.data.status in ['due', 'overdue', 'paid']
+        && request.resource.data.status in ['due', 'overdue', 'paid']
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status']);
+      // Un proforma (sans numéro) peut être supprimé ; une facture émise s'annule par un avoir.
+      allow delete: if isAppUser() && resource.data.status == 'proforma';
     }
 
     // Aucune sous-collection n'est utilisée : tout le reste est refusé par défaut.

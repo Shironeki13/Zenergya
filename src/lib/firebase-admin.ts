@@ -14,7 +14,9 @@ import { getFirestore } from 'firebase-admin/firestore';
 function createAdminApp(): App {
     if (getApps().length) return getApp();
 
-    const projectId = process.env.FIREBASE_PROJECT_ID || process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID;
+    // Clé dynamique : lue à l'exécution (Next.js remplacerait process.env.NEXT_PUBLIC_… par sa valeur au build).
+    const env = process.env as Record<string, string | undefined>;
+    const projectId = env.FIREBASE_PROJECT_ID || env['NEXT_PUBLIC_FIREBASE_PROJECT_ID'];
     const serviceAccountKey = process.env.FIREBASE_SERVICE_ACCOUNT_KEY;
 
     if (serviceAccountKey) {

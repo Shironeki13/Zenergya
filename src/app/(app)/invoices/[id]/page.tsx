@@ -53,10 +53,14 @@ export default function InvoiceDetailPage() {
           setClient(clientData);
         }
         
-        if (companiesData && companiesData.length > 0) {
-            setCompany(companiesData[0]);
+        // Société émettrice : celle enregistrée sur la facture, sinon celle du client (factures antérieures).
+        const companyId = invoiceData.companyId || clientData?.companyId;
+        const issuingCompany = companiesData?.find(c => c.id === companyId)
+          ?? (companiesData?.length === 1 ? companiesData[0] : undefined);
+        if (issuingCompany) {
+            setCompany(issuingCompany);
         } else {
-            console.error("No company configured.");
+            console.error("Issuing company not found for this invoice.");
         }
 
       } catch (error) {
