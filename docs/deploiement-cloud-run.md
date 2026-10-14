@@ -5,44 +5,31 @@ Le dépôt contient :
 - `Dockerfile` : image de production (Next.js en mode `standalone`, Node 20, utilisateur non root, port 8080) ;
 - `cloudbuild.yaml` : build de l'image, push vers Artifact Registry et déploiement sur le service Cloud Run.
 
-## Pourquoi un `cloudbuild.yaml` ?
+## Configuration Firebase : lue au démarrage, pas au build
 
-La configuration web Firebase (`NEXT_PUBLIC_FIREBASE_*`) est intégrée au JavaScript du navigateur **au moment du build**.
-Elle doit donc être passée au `docker build` ; la définir seulement comme variable d'environnement du service Cloud Run ne suffit pas.
-Le déclencheur créé automatiquement par Cloud Run ne transmet pas ces valeurs ; le `Dockerfile` s'arrête alors avec un message explicite
-plutôt que de déployer une application qui ne peut pas se connecter.
+La configuration web Firebase (`NEXT_PUBLIC_FIREBASE_*`) est lue **à l'exécution** dans les variables du service Cloud Run,
+puis transmise au navigateur par `/api/firebase-config`. L'image n'a donc besoin d'aucune variable au build :
+**le déclencheur créé automatiquement par Cloud Run (type « Dockerfile ») fonctionne tel quel.**
+
+`cloudbuild.yaml` reste disponible si vous préférez un déclencheur basé sur un fichier ; les substitutions
+`_NEXT_PUBLIC_FIREBASE_*` y sont alors facultatives.
 
 ## Configuration (une seule fois)
 
 ### 1. Déclencheur Cloud Build
 
-Console Google Cloud → Cloud Build → Déclencheurs → déclencheur du service `zenergy` → Modifier :
-
-- **Branche** : celle qui contient le `Dockerfile` (après fusion, `master`).
-- **Configuration** : « Fichier de configuration Cloud Build (YAML ou JSON) », emplacement `/cloudbuild.yaml`.
-- **Variables de substitution** (valeurs : console Firebase → Paramètres du projet → Vos applications → application Web → Configuration) :
-
-| Variable | Exemple |
-| --- | --- |
-| `_NEXT_PUBLIC_FIREBASE_API_KEY` | `AIza…` |
-| `_NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN` | `zenergy-f8276.firebaseapp.com` |
-| `_NEXT_PUBLIC_FIREBASE_PROJECT_ID` | `zenergy-f8276` |
-| `_NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET` | `zenergy-f8276.appspot.com` |
-| `_NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID` | `123456789` |
-| `_NEXT_PUBLIC_FIREBASE_APP_ID` | `1:123456789:web:…` |
-| `_NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID` | `G-…` (facultatif) |
-
-Les valeurs par défaut de `cloudbuild.yaml` (`_SERVICE_NAME=zenergy`, `_DEPLOY_REGION=europe-west9`, dépôt `cloud-run-source-deploy`)
-correspondent au service existant ; les surcharger dans le déclencheur si besoin.
-
-Le compte de service du déclencheur doit avoir : Cloud Run Admin, Service Account User, Artifact Registry Writer
-(c'est normalement déjà le cas pour un déclencheur créé depuis Cloud Run).
+Le déclencheur créé par Cloud Run (« Déployer en continu depuis un dépôt », type Dockerfile) convient : rien à modifier,
+il suffit qu'il surveille la bonne branche (`master`).
 
 ### 2. Service Cloud Run
 
 Cloud Run → `zenergy` → Modifier et déployer une nouvelle révision :
 
 - **Variables et secrets** (lus à l'exécution, conservés d'un déploiement à l'autre) :
+  - configuration web Firebase : `NEXT_PUBLIC_FIREBASE_API_KEY`, `NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN`,
+    `NEXT_PUBLIC_FIREBASE_PROJECT_ID`, `NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET`,
+    `NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID`, `NEXT_PUBLIC_FIREBASE_APP_ID`
+    (valeurs : console Firebase → Paramètres du projet → Vos applications → application Web) ;
   - `GEMINI_API_KEY` → secret Secret Manager ;
   - `ADMIN_EMAILS` → votre email (voir `docs/securite.md`) ;
   - `CRON_SECRET` → secret Secret Manager.
@@ -62,5 +49,6 @@ Suivre ensuite `docs/securite.md` (inscription libre désactivée, utilisateurs,
 ## Remarques
 
 - Au premier build, l'étape « Pull » du déclencheur automatique affiche `manifest … not found` : c'est normal (pas encore d'image en cache).
-- Build local : `docker build --build-arg NEXT_PUBLIC_FIREBASE_API_KEY=… [autres --build-arg] -t zenergya .` puis
-  `docker run -p 8080:8080 -e GOOGLE_APPLICATION_CREDENTIALS=/key.json -v $PWD/key.json:/key.json zenergya`.
+- Build local : `docker build -t zenergya .` puis
+  `docker run -p 8080:8080 --env-file .env.local -e GOOGLE_APPLICATION_CREDENTIALS=/key.json -v $PWD/key.json:/key.json zenergya`.
+- Vérifier la configuration servie : `https://<service>/api/firebase-config` doit afficher les valeurs du projet.

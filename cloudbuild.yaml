@@ -1,6 +1,7 @@
 # Build + déploiement Cloud Run (déclencheur Cloud Build sur le dépôt GitHub).
-# Dans le déclencheur : Configuration = « Fichier de configuration Cloud Build », emplacement /cloudbuild.yaml,
-# puis renseigner les variables de substitution _NEXT_PUBLIC_FIREBASE_* (voir docs/deploiement-cloud-run.md).
+# Facultatif : le déclencheur « Dockerfile » créé par Cloud Run suffit (configuration Firebase lue à l'exécution).
+# Pour l'utiliser : Configuration = « Fichier de configuration Cloud Build », emplacement /cloudbuild.yaml.
+# Les substitutions _NEXT_PUBLIC_FIREBASE_* sont facultatives (valeurs de repli intégrées au build).
 
 substitutions:
   _SERVICE_NAME: zenergy
