@@ -37,6 +37,7 @@ async function getCollection<T>(q: Query<DocumentData>): Promise<T[]> {
 export const getContract = (id: string) => getDocument<Contract>('contracts', id);
 export const getClient = (id: string) => getDocument<Client>('clients', id);
 export const getInvoice = (id: string) => getDocument<Invoice>('invoices', id);
+export const getCreditNote = (id: string) => getDocument<CreditNote>('creditNotes', id);
 export const getCompany = (id: string) => getDocument<Company>('companies', id);
 
 export const getCompanies = () => getCollection<Company>(adminDb.collection('companies'));
@@ -83,35 +84,45 @@ function numberPrefix(kind: NumberedKind, companyCode: string, issueDate: Date):
     return kind === 'invoice' ? `${companyCode}-${yyyy.slice(-2)}${mm}-` : `${companyCode}-AV${yyyy}-`;
 }
 
+type PreparedSeries = { prefix: string; counterRef: FirebaseFirestore.DocumentReference; seed: number };
+
 /**
- * Réserve le numéro suivant dans une transaction (lectures uniquement : l'appelant écrit le compteur et le document).
- * Si le compteur n'existe pas encore (nouvelle période, ou données antérieures à ce mécanisme),
- * il repart du plus grand numéro déjà émis avec ce préfixe : jamais de doublon.
+ * Prépare une série de numérotation, HORS transaction.
+ * Si son compteur n'existe pas encore (nouvelle période, ou données antérieures à ce mécanisme), on relève
+ * le plus grand numéro déjà émis avec ce préfixe. Ce relevé reste exact jusqu'à la transaction : tout numéro
+ * émis par l'application crée le compteur dans la même transaction, qui l'utilisera alors à la place.
+ * (Faire cette recherche dans la transaction verrouillerait une plage de la collection et ferait échouer
+ * les émissions simultanées.)
  */
-async function reserveNumber(tx: FirebaseFirestore.Transaction, kind: NumberedKind, companyCode: string, issueDate: Date) {
+async function prepareSeries(kind: NumberedKind, companyCode: string, issueDate: Date): Promise<PreparedSeries> {
     const prefix = numberPrefix(kind, companyCode, issueDate);
     const { collection, field } = NUMBERING[kind];
     const counterRef = adminDb.collection('counters').doc(`${kind}_${encodeURIComponent(prefix)}`);
 
-    const counterSnap = await tx.get(counterRef);
-    let current: number;
-    if (counterSnap.exists) {
-        current = counterSnap.get('current') as number;
-    } else {
-        const last = await tx.get(
-            adminDb.collection(collection)
-                .where(field, '>=', prefix)
-                .where(field, '<', prefix + '')
-                .orderBy(field, 'desc')
-                .limit(1)
-        );
-        current = last.empty ? 0 : parseInt(String(last.docs[0].get(field)).slice(prefix.length), 10) || 0;
+    let seed = 0;
+    if (!(await counterRef.get()).exists) {
+        const last = await adminDb.collection(collection)
+            .where(field, '>=', prefix)
+            .where(field, '<', prefix + '\uf8ff')
+            .orderBy(field, 'desc')
+            .limit(1)
+            .get();
+        seed = last.empty ? 0 : parseInt(String(last.docs[0].get(field)).slice(prefix.length), 10) || 0;
     }
+    return { prefix, counterRef, seed };
+}
 
+/**
+ * Réserve le numéro suivant dans une transaction (lecture du compteur uniquement ;
+ * l'appelant écrit le compteur via `commit` et le document dans la même transaction).
+ */
+async function reserveNumber(tx: FirebaseFirestore.Transaction, series: PreparedSeries) {
+    const counterSnap = await tx.get(series.counterRef);
+    const current = counterSnap.exists ? (counterSnap.get('current') as number) : series.seed;
     const next = current + 1;
     return {
-        number: `${prefix}${String(next).padStart(4, '0')}`,
-        commit: () => tx.set(counterRef, { current: next, prefix, updatedAt: Timestamp.now() }, { merge: true }),
+        number: `${series.prefix}${String(next).padStart(4, '0')}`,
+        commit: () => tx.set(series.counterRef, { current: next, prefix: series.prefix, updatedAt: Timestamp.now() }, { merge: true }),
     };
 }
 
@@ -165,9 +176,10 @@ export async function createInvoice(data: NewInvoice, company: Company): Promise
     }
 
     assertCompanyCode(company);
+    const issuedAt = new Date();
+    const series = await prepareSeries('invoice', company.code, issuedAt);
     const invoiceNumber = await adminDb.runTransaction(async (tx) => {
-        const issuedAt = new Date();
-        const reserved = await reserveNumber(tx, 'invoice', company.code, issuedAt);
+        const reserved = await reserveNumber(tx, series);
         reserved.commit();
         tx.set(ref, { ...doc, invoiceNumber: reserved.number, issuedAt });
         return reserved.number;
@@ -189,14 +201,15 @@ export async function convertProformaToInvoice(invoiceId: string, paymentDelayDa
         : await resolveIssuingCompany(await getContract(proforma.contractId), await getClient(proforma.clientId));
     if (!company) throw new Error('Société émettrice introuvable.');
     assertCompanyCode(company);
+    const issuedAt = new Date();
+    const series = await prepareSeries('invoice', company.code, issuedAt);
 
     return adminDb.runTransaction(async (tx) => {
         const snap = await tx.get(ref);
         if (!snap.exists || snap.get('status') !== 'proforma') {
             throw new Error('Ce proforma a déjà été converti ou supprimé.');
         }
-        const issuedAt = new Date();
-        const reserved = await reserveNumber(tx, 'invoice', company.code, issuedAt);
+        const reserved = await reserveNumber(tx, series);
         const date = new Date(issuedAt.toISOString().split('T')[0]);
         const dueDate = new Date(date);
         dueDate.setDate(dueDate.getDate() + paymentDelayDays);
@@ -241,6 +254,8 @@ export async function createCreditNote(
 
     const creditNoteRef = adminDb.collection('creditNotes').doc();
     const refs = uniqueIds.map(id => adminDb.collection('invoices').doc(id));
+    const issuedAt = new Date();
+    const series = await prepareSeries('creditNote', company.code, issuedAt);
 
     const creditNoteNumber = await adminDb.runTransaction(async (tx) => {
         const snaps = await tx.getAll(...refs);
@@ -254,14 +269,14 @@ export async function createCreditNote(
         }
         const creditNote = build(invoices);
 
-        const reserved = await reserveNumber(tx, 'creditNote', company.code, new Date());
+        const reserved = await reserveNumber(tx, series);
         reserved.commit();
         tx.set(creditNoteRef, {
             ...creditNote,
             creditNoteNumber: reserved.number,
             companyId: company.id,
             date: new Date(creditNote.date),
-            issuedAt: new Date(),
+            issuedAt,
         });
         for (const ref of refs) {
             tx.update(ref, { status: 'cancelled', cancelledByCreditNoteId: creditNoteRef.id });

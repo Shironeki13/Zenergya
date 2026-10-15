@@ -4,8 +4,15 @@ rules_version = '2';
 // Voir firestore.rules pour la signification des claims.
 service firebase.storage {
   match /b/{bucket}/o {
-    match /{allPaths=**} {
-      allow read, write: if request.auth != null && request.auth.token.zen == true;
+    function isAppUser() {
+      return request.auth != null && request.auth.token.zen == true;
+    }
+
+    // Archives légales des factures et avoirs : écrites et lues uniquement par le serveur (Admin SDK),
+    // jamais modifiables depuis le navigateur. Téléchargement via /api/documents/… après contrôle de session.
+    // Les règles s'additionnant (OU logique), le dossier « archives » est exclu de la règle générale.
+    match /{folder}/{allPaths=**} {
+      allow read, write: if folder != 'archives' && isAppUser();
     }
   }
 }
