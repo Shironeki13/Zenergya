@@ -278,6 +278,9 @@ export default function InvoicesPage() {
                         <DropdownMenuItem asChild>
                           <Link href={`/invoices/${invoice.id}`}>Voir les détails</Link>
                         </DropdownMenuItem>
+                        <DropdownMenuItem asChild>
+                          <a href={`/api/documents/invoices/${invoice.id}`} target="_blank" rel="noopener noreferrer">Ouvrir le PDF</a>
+                        </DropdownMenuItem>
                         {invoice.status === 'due' && <DropdownMenuItem>Marquer comme payée</DropdownMenuItem>}
                         {invoice.status === 'due' && <DropdownMenuItem>Envoyer un rappel</DropdownMenuItem>}
                         {invoice.status === 'proforma' && (

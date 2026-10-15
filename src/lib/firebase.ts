@@ -1,8 +1,8 @@
 // Import the functions you need from the SDKs you need
 import { initializeApp, getApps, getApp } from "firebase/app";
-import { getFirestore } from "firebase/firestore";
-import { getStorage } from "firebase/storage";
-import { getAuth } from "firebase/auth";
+import { getFirestore, connectFirestoreEmulator } from "firebase/firestore";
+import { getStorage, connectStorageEmulator } from "firebase/storage";
+import { getAuth, connectAuthEmulator } from "firebase/auth";
 
 import { BROWSER_CONFIG_GLOBAL, readFirebaseConfigFromEnv, type FirebaseWebConfig } from './firebase-config';
 
@@ -26,11 +26,33 @@ export let db: any;
 export let storage: any;
 export let auth: any;
 
-let resolveReady: () => void;
-/** Résolue quand Firebase est initialisé (côté navigateur, à l'arrivée de la configuration). */
-export const firebaseReady = new Promise<void>(resolve => { resolveReady = resolve; });
+/** Configuration web Firebase absente côté serveur (variables NEXT_PUBLIC_FIREBASE_* du service non définies). */
+export class FirebaseConfigError extends Error {
+  code = 'app/config-missing';
+  constructor() {
+    super("Configuration Firebase absente sur le serveur : les variables NEXT_PUBLIC_FIREBASE_* du service ne sont pas définies (voir /api/firebase-config).");
+  }
+}
 
-function initFirebase(config: FirebaseWebConfig) {
+let resolveReady: () => void;
+let rejectReady: (error: Error) => void;
+let initialized = false;
+/**
+ * Résolue quand Firebase est initialisé (côté navigateur, à l'arrivée de la configuration),
+ * rejetée avec FirebaseConfigError si la configuration est absente.
+ */
+export const firebaseReady = new Promise<void>((resolve, reject) => { resolveReady = resolve; rejectReady = reject; });
+// Évite l'avertissement « promesse rejetée non gérée » : chaque utilisateur de firebaseReady gère l'erreur.
+firebaseReady.catch(() => undefined);
+
+function failMissingConfig() {
+  const error = new FirebaseConfigError();
+  console.error(error.message);
+  rejectReady(error);
+}
+
+function initFirebase({ emulatorHost, ...config }: FirebaseWebConfig) {
+  initialized = true;
   const app = !getApps().length ? initializeApp(config) : getApp();
   try {
     db = getFirestore(app);
@@ -47,6 +69,12 @@ function initFirebase(config: FirebaseWebConfig) {
   } catch (e) {
     console.warn("Firebase Auth not initialized (likely on server):", e);
   }
+  if (emulatorHost && typeof window !== 'undefined') {
+    // Développement / tests uniquement (FIREBASE_WEB_EMULATOR_HOST).
+    connectAuthEmulator(auth, `http://${emulatorHost}:9099`, { disableWarnings: true });
+    connectFirestoreEmulator(db, emulatorHost, 8080);
+    connectStorageEmulator(storage, emulatorHost, 9199);
+  }
   resolveReady();
 }
 
@@ -60,6 +88,9 @@ if (typeof window === 'undefined') {
     initFirebase(w[BROWSER_CONFIG_GLOBAL]);
   } else if (buildTimeConfig.apiKey) {
     initFirebase(buildTimeConfig);
+  } else if (BROWSER_CONFIG_GLOBAL in w) {
+    // Le script /api/firebase-config a déjà répondu, sans configuration.
+    failMissingConfig();
   } else {
     // Le script /api/firebase-config n'a pas encore été exécuté : on initialise dès qu'il pose la configuration.
     Object.defineProperty(w, BROWSER_CONFIG_GLOBAL, {
@@ -70,9 +101,11 @@ if (typeof window === 'undefined') {
         if (config?.apiKey) {
           initFirebase(config);
         } else {
-          console.error('Configuration Firebase absente : définissez les variables NEXT_PUBLIC_FIREBASE_* du service (voir /api/firebase-config).');
+          failMissingConfig();
         }
       },
     });
+    // Script de configuration jamais exécuté (erreur réseau…) : on n'attend pas indéfiniment.
+    setTimeout(() => { if (!initialized) failMissingConfig(); }, 15000);
   }
 }

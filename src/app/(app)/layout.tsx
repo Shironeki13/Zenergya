@@ -26,7 +26,8 @@ import {
   Calculator,
   ShieldAlert,
   Store,
-  Loader2
+  Loader2,
+  Send
 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
@@ -79,6 +80,7 @@ function MainAppLayout({ children }: { children: React.ReactNode }) {
     { href: '/billing/suivi', label: 'Suivi facturation', icon: ListChecks },
     { href: '/invoices', label: 'Factures', icon: FileText },
     { href: '/credit-notes', label: 'Avoirs', icon: MinusCircle },
+    { href: '/billing/rfe', label: 'Facturation électronique', icon: Send },
     { href: '/billing', label: 'Facturation Manuelle', icon: CircleDollarSign },
     { href: '/billing/batch', label: 'Facturation Groupée', icon: Copy },
     { href: '/clients', label: 'Clients', icon: Building },

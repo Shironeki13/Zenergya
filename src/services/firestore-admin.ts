@@ -1,7 +1,8 @@
 import 'server-only';
 import { Timestamp, FieldPath, type DocumentData, type Query } from 'firebase-admin/firestore';
 import { adminDb } from '@/lib/firebase-admin';
-import type { Activity, Client, Company, Contract, CreditNote, Index, IndexValue, Invoice, Site } from '@/lib/types';
+import type { Activity, Client, Company, Contract, CreditNote, EInvoicingState, Index, IndexValue, Invoice, Site, Typology } from '@/lib/types';
+import { canRecompute, canTransition, initialEInvoicingState, resolveEInvoicing, STATUS_LABELS } from '@/lib/einvoicing';
 
 /**
  * Accès Firestore côté serveur (Admin SDK).
@@ -37,7 +38,9 @@ async function getCollection<T>(q: Query<DocumentData>): Promise<T[]> {
 export const getContract = (id: string) => getDocument<Contract>('contracts', id);
 export const getClient = (id: string) => getDocument<Client>('clients', id);
 export const getInvoice = (id: string) => getDocument<Invoice>('invoices', id);
+export const getCreditNote = (id: string) => getDocument<CreditNote>('creditNotes', id);
 export const getCompany = (id: string) => getDocument<Company>('companies', id);
+export const getTypology = (id: string) => getDocument<Typology>('typologies', id);
 
 export const getCompanies = () => getCollection<Company>(adminDb.collection('companies'));
 export const getActivities = () => getCollection<Activity>(adminDb.collection('activities'));
@@ -83,35 +86,45 @@ function numberPrefix(kind: NumberedKind, companyCode: string, issueDate: Date):
     return kind === 'invoice' ? `${companyCode}-${yyyy.slice(-2)}${mm}-` : `${companyCode}-AV${yyyy}-`;
 }
 
+type PreparedSeries = { prefix: string; counterRef: FirebaseFirestore.DocumentReference; seed: number };
+
 /**
- * Réserve le numéro suivant dans une transaction (lectures uniquement : l'appelant écrit le compteur et le document).
- * Si le compteur n'existe pas encore (nouvelle période, ou données antérieures à ce mécanisme),
- * il repart du plus grand numéro déjà émis avec ce préfixe : jamais de doublon.
+ * Prépare une série de numérotation, HORS transaction.
+ * Si son compteur n'existe pas encore (nouvelle période, ou données antérieures à ce mécanisme), on relève
+ * le plus grand numéro déjà émis avec ce préfixe. Ce relevé reste exact jusqu'à la transaction : tout numéro
+ * émis par l'application crée le compteur dans la même transaction, qui l'utilisera alors à la place.
+ * (Faire cette recherche dans la transaction verrouillerait une plage de la collection et ferait échouer
+ * les émissions simultanées.)
  */
-async function reserveNumber(tx: FirebaseFirestore.Transaction, kind: NumberedKind, companyCode: string, issueDate: Date) {
+async function prepareSeries(kind: NumberedKind, companyCode: string, issueDate: Date): Promise<PreparedSeries> {
     const prefix = numberPrefix(kind, companyCode, issueDate);
     const { collection, field } = NUMBERING[kind];
     const counterRef = adminDb.collection('counters').doc(`${kind}_${encodeURIComponent(prefix)}`);
 
-    const counterSnap = await tx.get(counterRef);
-    let current: number;
-    if (counterSnap.exists) {
-        current = counterSnap.get('current') as number;
-    } else {
-        const last = await tx.get(
-            adminDb.collection(collection)
-                .where(field, '>=', prefix)
-                .where(field, '<', prefix + '')
-                .orderBy(field, 'desc')
-                .limit(1)
-        );
-        current = last.empty ? 0 : parseInt(String(last.docs[0].get(field)).slice(prefix.length), 10) || 0;
+    let seed = 0;
+    if (!(await counterRef.get()).exists) {
+        const last = await adminDb.collection(collection)
+            .where(field, '>=', prefix)
+            .where(field, '<', prefix + '\uf8ff')
+            .orderBy(field, 'desc')
+            .limit(1)
+            .get();
+        seed = last.empty ? 0 : parseInt(String(last.docs[0].get(field)).slice(prefix.length), 10) || 0;
     }
+    return { prefix, counterRef, seed };
+}
 
+/**
+ * Réserve le numéro suivant dans une transaction (lecture du compteur uniquement ;
+ * l'appelant écrit le compteur via `commit` et le document dans la même transaction).
+ */
+async function reserveNumber(tx: FirebaseFirestore.Transaction, series: PreparedSeries) {
+    const counterSnap = await tx.get(series.counterRef);
+    const current = counterSnap.exists ? (counterSnap.get('current') as number) : series.seed;
     const next = current + 1;
     return {
-        number: `${prefix}${String(next).padStart(4, '0')}`,
-        commit: () => tx.set(counterRef, { current: next, prefix, updatedAt: Timestamp.now() }, { merge: true }),
+        number: `${series.prefix}${String(next).padStart(4, '0')}`,
+        commit: () => tx.set(series.counterRef, { current: next, prefix: series.prefix, updatedAt: Timestamp.now() }, { merge: true }),
     };
 }
 
@@ -138,9 +151,98 @@ function assertCompanyCode(company: Company) {
     }
 }
 
+// --- Facturation électronique (RFE) ---
+
+/**
+ * État de transmission électronique d'une facture / d'un avoir, calculé à partir de la configuration
+ * du client, de sa typologie, du contrat et de la société émettrice au moment de l'émission.
+ */
+export async function computeEInvoicingState(params: { clientId: string; contractId?: string; company: Company; documentDate: string }): Promise<EInvoicingState | undefined> {
+    const client = await getClient(params.clientId);
+    if (!client) return undefined;
+    const [typology, contract] = await Promise.all([
+        client.typologyId ? getTypology(client.typologyId) : Promise.resolve(null),
+        params.contractId ? getContract(params.contractId) : Promise.resolve(null),
+    ]);
+    return initialEInvoicingState(resolveEInvoicing({ client, typology, contract, company: params.company, documentDate: params.documentDate }));
+}
+
+export type EInvoicingKind = 'invoice' | 'creditNote';
+const EINVOICING_COLLECTIONS: Record<EInvoicingKind, string> = { invoice: 'invoices', creditNote: 'creditNotes' };
+
+/**
+ * Change le statut de transmission (transitions contrôlées : voir ALLOWED_TRANSITIONS).
+ * Les documents sans état figé (antérieurs à la RFE) sont d'abord calculés.
+ */
+export async function setEInvoicingStatus(
+    kind: EInvoicingKind, id: string, status: EInvoicingState['status'],
+    meta: { by: string; platformReference?: string; comment?: string },
+): Promise<EInvoicingState> {
+    if (!(await getEInvoicingDoc(kind, id))?.einvoicing) await recomputeEInvoicingState(kind, id);
+    const ref = adminDb.collection(EINVOICING_COLLECTIONS[kind]).doc(id);
+    return adminDb.runTransaction(async (tx) => {
+        const snap = await tx.get(ref);
+        const current = snap.get('einvoicing') as EInvoicingState | undefined;
+        if (!current) throw new Error('Document introuvable ou sans état de transmission.');
+        if (!canTransition(current.status, status)) {
+            throw new Error(`Passage de « ${STATUS_LABELS[current.status]} » à « ${STATUS_LABELS[status]} » non autorisé.`);
+        }
+        const next: EInvoicingState = {
+            ...current,
+            status,
+            statusAt: new Date().toISOString(),
+            statusBy: meta.by,
+            ...(meta.platformReference !== undefined && { platformReference: meta.platformReference }),
+            ...(meta.comment !== undefined && { comment: meta.comment }),
+        };
+        tx.update(ref, { einvoicing: next });
+        return next;
+    });
+}
+
+async function getEInvoicingDoc(kind: EInvoicingKind, id: string) {
+    return kind === 'invoice' ? getInvoice(id) : getCreditNote(id);
+}
+
+/**
+ * Recalcule l'adressage et le canal (après correction de la fiche client ou du contrat), tant que le document
+ * n'a pas été transmis. Un document rejeté le reste ; les références de plateforme et commentaires sont conservés.
+ */
+export async function recomputeEInvoicingState(kind: EInvoicingKind, id: string): Promise<EInvoicingState | undefined> {
+    const record = await getEInvoicingDoc(kind, id);
+    if (!record) throw new Error('Document introuvable.');
+    if (kind === 'invoice' && (record as Invoice).status === 'proforma') throw new Error("Un proforma n'est pas transmis.");
+    if (!canRecompute(record.einvoicing)) throw new Error('Document déjà transmis : adressage figé.');
+
+    const company = record.companyId
+        ? await getCompany(record.companyId)
+        : await resolveIssuingCompany(await getContract(record.contractId), await getClient(record.clientId));
+    if (!company) throw new Error('Société émettrice introuvable.');
+    const computed = await computeEInvoicingState({ clientId: record.clientId, contractId: record.contractId, company, documentDate: record.date });
+    if (!computed) throw new Error('Client introuvable.');
+
+    const previous = record.einvoicing;
+    const next: EInvoicingState = {
+        ...computed,
+        ...(previous?.status === 'rejected' && computed.status === 'to_send' && { status: 'rejected' as const }),
+        ...(previous?.platformReference && { platformReference: previous.platformReference }),
+        ...(previous?.comment && { comment: previous.comment }),
+        ...(previous?.statusAt && { statusAt: previous.statusAt, statusBy: previous.statusBy }),
+    };
+    const ref = adminDb.collection(EINVOICING_COLLECTIONS[kind]).doc(id);
+    await adminDb.runTransaction(async (tx) => {
+        const snap = await tx.get(ref);
+        if ((snap.get('einvoicing') as EInvoicingState | undefined)?.status === 'sent') {
+            throw new Error('Document transmis entre-temps : adressage figé.');
+        }
+        tx.update(ref, { einvoicing: next });
+    });
+    return next;
+}
+
 // --- Factures ---
 
-type NewInvoice = Omit<Invoice, 'id' | 'invoiceNumber' | 'companyId' | 'issuedAt'>;
+type NewInvoice = Omit<Invoice, 'id' | 'invoiceNumber' | 'companyId' | 'issuedAt' | 'pdf' | 'einvoicing'>;
 
 function toInvoiceDoc(data: NewInvoice) {
     return {
@@ -165,11 +267,13 @@ export async function createInvoice(data: NewInvoice, company: Company): Promise
     }
 
     assertCompanyCode(company);
+    const issuedAt = new Date();
+    const series = await prepareSeries('invoice', company.code, issuedAt);
+    const einvoicing = await computeEInvoicingState({ clientId: data.clientId, contractId: data.contractId, company, documentDate: data.date });
     const invoiceNumber = await adminDb.runTransaction(async (tx) => {
-        const issuedAt = new Date();
-        const reserved = await reserveNumber(tx, 'invoice', company.code, issuedAt);
+        const reserved = await reserveNumber(tx, series);
         reserved.commit();
-        tx.set(ref, { ...doc, invoiceNumber: reserved.number, issuedAt });
+        tx.set(ref, { ...doc, invoiceNumber: reserved.number, issuedAt, einvoicing });
         return reserved.number;
     });
     return { id: ref.id, invoiceNumber };
@@ -189,14 +293,18 @@ export async function convertProformaToInvoice(invoiceId: string, paymentDelayDa
         : await resolveIssuingCompany(await getContract(proforma.contractId), await getClient(proforma.clientId));
     if (!company) throw new Error('Société émettrice introuvable.');
     assertCompanyCode(company);
+    const issuedAt = new Date();
+    const series = await prepareSeries('invoice', company.code, issuedAt);
+    const einvoicing = await computeEInvoicingState({
+        clientId: proforma.clientId, contractId: proforma.contractId, company, documentDate: issuedAt.toISOString(),
+    });
 
     return adminDb.runTransaction(async (tx) => {
         const snap = await tx.get(ref);
         if (!snap.exists || snap.get('status') !== 'proforma') {
             throw new Error('Ce proforma a déjà été converti ou supprimé.');
         }
-        const issuedAt = new Date();
-        const reserved = await reserveNumber(tx, 'invoice', company.code, issuedAt);
+        const reserved = await reserveNumber(tx, series);
         const date = new Date(issuedAt.toISOString().split('T')[0]);
         const dueDate = new Date(date);
         dueDate.setDate(dueDate.getDate() + paymentDelayDays);
@@ -209,6 +317,7 @@ export async function convertProformaToInvoice(invoiceId: string, paymentDelayDa
             date,
             dueDate,
             issuedAt,
+            einvoicing,
         });
         return reserved.number;
     });
@@ -216,7 +325,7 @@ export async function convertProformaToInvoice(invoiceId: string, paymentDelayDa
 
 // --- Avoirs ---
 
-type NewCreditNote = Omit<CreditNote, 'id' | 'creditNoteNumber' | 'companyId'>;
+type NewCreditNote = Omit<CreditNote, 'id' | 'creditNoteNumber' | 'companyId' | 'pdf' | 'einvoicing'>;
 
 /**
  * Crée un avoir annulant des factures, en une seule transaction :
@@ -241,6 +350,11 @@ export async function createCreditNote(
 
     const creditNoteRef = adminDb.collection('creditNotes').doc();
     const refs = uniqueIds.map(id => adminDb.collection('invoices').doc(id));
+    const issuedAt = new Date();
+    const series = await prepareSeries('creditNote', company.code, issuedAt);
+    const einvoicing = await computeEInvoicingState({
+        clientId: first.clientId, contractId: first.contractId, company, documentDate: issuedAt.toISOString(),
+    });
 
     const creditNoteNumber = await adminDb.runTransaction(async (tx) => {
         const snaps = await tx.getAll(...refs);
@@ -254,14 +368,15 @@ export async function createCreditNote(
         }
         const creditNote = build(invoices);
 
-        const reserved = await reserveNumber(tx, 'creditNote', company.code, new Date());
+        const reserved = await reserveNumber(tx, series);
         reserved.commit();
         tx.set(creditNoteRef, {
             ...creditNote,
             creditNoteNumber: reserved.number,
             companyId: company.id,
             date: new Date(creditNote.date),
-            issuedAt: new Date(),
+            issuedAt,
+            einvoicing,
         });
         for (const ref of refs) {
             tx.update(ref, { status: 'cancelled', cancelledByCreditNoteId: creditNoteRef.id });
