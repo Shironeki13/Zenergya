@@ -2,6 +2,7 @@ import 'server-only';
 import { initializeApp, getApps, getApp, cert, type App } from 'firebase-admin/app';
 import { getAuth } from 'firebase-admin/auth';
 import { getFirestore } from 'firebase-admin/firestore';
+import { getStorage } from 'firebase-admin/storage';
 
 /**
  * Firebase Admin SDK (serveur uniquement).
@@ -34,4 +35,17 @@ try {
     adminDb.settings({ ignoreUndefinedProperties: true });
 } catch {
     // Déjà configuré (rechargement à chaud en développement).
+}
+
+/**
+ * Bucket Cloud Storage du projet (archives des factures et avoirs).
+ * Nom lu à l'exécution : FIREBASE_STORAGE_BUCKET, sinon NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET (configuration web).
+ */
+export function adminBucket() {
+    const env = process.env as Record<string, string | undefined>;
+    const name = env.FIREBASE_STORAGE_BUCKET || env['NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET'];
+    if (!name) {
+        throw new Error('Bucket de stockage non configuré : définissez FIREBASE_STORAGE_BUCKET ou NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET.');
+    }
+    return getStorage(adminApp).bucket(name);
 }

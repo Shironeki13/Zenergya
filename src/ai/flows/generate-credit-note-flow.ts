@@ -11,6 +11,7 @@
 import { ai } from '@/ai/genkit';
 import { createCreditNote } from '@/services/firestore-admin';
 import { roundCents, sumCents } from '@/lib/money';
+import { archiveDocumentSafely } from '@/services/document-archive';
 import { requireUser } from '@/lib/auth/server';
 import type { InvoiceLineItem, Invoice } from '@/lib/types';
 import { GenerateCreditNoteInputSchema, GenerateCreditNoteOutputSchema, type GenerateCreditNoteInput, type GenerateCreditNoteOutput } from '@/lib/types';
@@ -89,6 +90,9 @@ const generateCreditNoteFlow = ai.defineFlow(
           reason,
         };
       });
+
+      // Copie conforme archivée dès l'émission.
+      await archiveDocumentSafely('creditNote', savedCreditNote.id);
 
       return {
         success: true,

@@ -12,9 +12,11 @@ export type FirebaseWebConfig = {
     messagingSenderId?: string;
     appId?: string;
     measurementId?: string;
+    /** Développement / tests uniquement : hôte des émulateurs Firebase (ports par défaut de firebase.json). */
+    emulatorHost?: string;
 };
 
-const ENV_KEYS: Record<keyof FirebaseWebConfig, string> = {
+const ENV_KEYS: Record<Exclude<keyof FirebaseWebConfig, 'emulatorHost'>, string> = {
     apiKey: 'NEXT_PUBLIC_FIREBASE_API_KEY',
     authDomain: 'NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN',
     projectId: 'NEXT_PUBLIC_FIREBASE_PROJECT_ID',
@@ -36,7 +38,10 @@ export function readFirebaseConfigFromEnv(): FirebaseWebConfig {
     const config: FirebaseWebConfig = {};
     for (const [key, name] of Object.entries(ENV_KEYS) as [keyof FirebaseWebConfig, string][]) {
         const value = env[name]?.trim();
-        if (value) config[key] = value;
+        if (value) config[key as keyof typeof ENV_KEYS] = value;
     }
+    // Jamais défini en production : connecte le navigateur aux émulateurs (auth 9099, firestore 8080, storage 9199).
+    const emulatorHost = env.FIREBASE_WEB_EMULATOR_HOST?.trim();
+    if (emulatorHost) config.emulatorHost = emulatorHost;
     return config;
 }

@@ -20,6 +20,7 @@ import {
   resolveIssuingCompany,
 } from '@/services/firestore-admin';
 import { roundCents, computeTotals } from '@/lib/money';
+import { archiveDocumentSafely } from '@/services/document-archive';
 import { requireUser } from '@/lib/auth/server';
 import type { InvoiceLineItem } from '@/lib/types';
 import { GenerateInvoiceInputSchema, GenerateInvoiceOutputSchema, type GenerateInvoiceInput, type GenerateInvoiceOutput } from '@/lib/types';
@@ -199,9 +200,13 @@ const generateInvoiceFlow = ai.defineFlow(
         subtotal,
         tax,
         total,
+        taxRate,
       };
 
       const savedInvoice = await createInvoice(newInvoice, company);
+
+      // Copie conforme archivée dès l'émission (un proforma n'est pas archivé).
+      if (!isProforma) await archiveDocumentSafely('invoice', savedInvoice.id);
 
       return {
         success: true,

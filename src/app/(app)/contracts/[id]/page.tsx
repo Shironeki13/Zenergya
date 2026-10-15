@@ -71,6 +71,7 @@ import { RenewalDialog } from "@/components/contracts/events/RenewalDialog";
 import { TrusteeChangeDialog } from "@/components/contracts/events/TrusteeChangeDialog";
 import { BeChangeDialog } from "@/components/contracts/events/BeChangeDialog";
 import { SiteImportDialog } from "@/components/contracts/SiteImportDialog";
+import { ContractEInvoicingCard } from "@/components/contracts/EInvoicingCard";
 
 export default function ContractDetailPage() {
   const params = useParams();
@@ -684,6 +685,8 @@ export default function ContractDetailPage() {
           </Button>
         </CardFooter>
       </Card>
+
+      <ContractEInvoicingCard contract={contract} client={client} onSaved={reloadData} />
 
       {/* Tabs */}
       <Tabs defaultValue="amendments" className="w-full">

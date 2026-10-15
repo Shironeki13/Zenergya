@@ -35,7 +35,8 @@ Cloud Run → `zenergy` → Modifier et déployer une nouvelle révision :
   - `CRON_SECRET` → secret Secret Manager.
 - **Ressources** : 1 Gio de mémoire conseillé ; `min-instances=1` évite le démarrage à froid (facturé en continu).
 - **Compte de service du service** : rôles « Firebase Authentication Admin », « Cloud Datastore User »,
-  « Secret Manager Secret Accessor ».
+  « Secret Manager Secret Accessor » et « Storage Object User » (archivage des PDF de factures dans le bucket
+  `NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET`, ou `FIREBASE_STORAGE_BUCKET` s'il est différent).
 
 ### 3. Firebase Authentication
 

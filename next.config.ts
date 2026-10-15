@@ -3,6 +3,8 @@ import type { NextConfig } from 'next';
 const nextConfig: NextConfig = {
   // Serveur Node autonome (.next/standalone) pour l'image Docker / Cloud Run.
   output: 'standalone',
+  // Moteur PDF chargé depuis node_modules (avec son React) plutôt qu'embarqué dans le bundle serveur.
+  serverExternalPackages: ['@react-pdf/renderer'],
   /* config options here */
   typescript: {
     ignoreBuildErrors: true,
