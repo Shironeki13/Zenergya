@@ -1,7 +1,6 @@
 
 'use client';
 
-import Link from 'next/link';
 import { MoreHorizontal, Loader2, PlusCircle, Search, Download } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -139,7 +138,7 @@ export default function CreditNotesPage() {
                       <DropdownMenuContent align="end">
                         <DropdownMenuLabel>Actions</DropdownMenuLabel>
                         <DropdownMenuItem asChild>
-                          <Link href={`/invoices/${cn.id}`}>Voir les détails</Link>
+                          <a href={`/api/documents/credit-notes/${cn.id}`} target="_blank" rel="noopener noreferrer">Ouvrir le PDF</a>
                         </DropdownMenuItem>
                       </DropdownMenuContent>
                     </DropdownMenu>

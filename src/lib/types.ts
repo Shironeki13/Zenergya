@@ -518,6 +518,16 @@ export type Invoice = {
     companyId?: string; // Société émettrice (absente sur les factures antérieures)
     issuedAt?: string; // Horodatage d'attribution du numéro
     cancelledByCreditNoteId?: string; // Avoir ayant annulé la facture
+    taxRate?: number; // Taux de TVA appliqué (ex. 0.1)
+    pdf?: ArchivedPdf; // PDF archivé à l'émission (copie conforme)
+};
+
+/** PDF d'une facture ou d'un avoir, archivé une seule fois dans Cloud Storage puis jamais réécrit. */
+export type ArchivedPdf = {
+    path: string; // Chemin dans le bucket (archives/…)
+    sha256: string; // Empreinte du fichier : preuve d'intégrité
+    size: number; // Octets
+    generatedAt: string; // ISO
 };
 
 export type CreditNote = {
@@ -535,6 +545,7 @@ export type CreditNote = {
     total: number;
     reason: string;
     companyId?: string; // Société émettrice (absente sur les avoirs antérieurs)
+    pdf?: ArchivedPdf; // PDF archivé à l'émission (copie conforme)
 }
 
 // --- Travaux (Works) Types (Legacy) ---

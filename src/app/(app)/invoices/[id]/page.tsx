@@ -17,7 +17,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { ChevronLeft, Mail, Printer, Loader2 } from 'lucide-react';
+import { ChevronLeft, Mail, FileDown, Loader2 } from 'lucide-react';
 import { Logo } from '@/components/logo';
 import { Separator } from '@/components/ui/separator';
 
@@ -72,10 +72,10 @@ export default function InvoiceDetailPage() {
     fetchData();
   }, [invoiceId]);
   
-  const handlePrint = () => {
-    if (!invoice || !client || !company) return;
-    const url = `/invoice/print?invoiceId=${invoice.id}&clientId=${client.id}&companyId=${company.id}`;
-    window.open(url, '_blank');
+  // PDF officiel : copie archivée à l'émission (généré à la demande pour un proforma).
+  const handleOpenPdf = () => {
+    if (!invoice) return;
+    window.open(`/api/documents/invoices/${invoice.id}`, '_blank');
   };
 
   const groupedLineItems = useMemo(() => {
@@ -159,9 +159,9 @@ export default function InvoiceDetailPage() {
             <Mail className="h-4 w-4 mr-2" />
             Envoyer par email
           </Button>
-          <Button size="sm" onClick={handlePrint}>
-            <Printer className="h-4 w-4 mr-2" />
-            Imprimer / PDF
+          <Button size="sm" onClick={handleOpenPdf}>
+            <FileDown className="h-4 w-4 mr-2" />
+            PDF
           </Button>
         </div>
       </div>
