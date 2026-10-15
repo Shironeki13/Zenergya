@@ -1,8 +1,8 @@
 // Import the functions you need from the SDKs you need
 import { initializeApp, getApps, getApp } from "firebase/app";
-import { getFirestore } from "firebase/firestore";
-import { getStorage } from "firebase/storage";
-import { getAuth } from "firebase/auth";
+import { getFirestore, connectFirestoreEmulator } from "firebase/firestore";
+import { getStorage, connectStorageEmulator } from "firebase/storage";
+import { getAuth, connectAuthEmulator } from "firebase/auth";
 
 import { BROWSER_CONFIG_GLOBAL, readFirebaseConfigFromEnv, type FirebaseWebConfig } from './firebase-config';
 
@@ -51,7 +51,7 @@ function failMissingConfig() {
   rejectReady(error);
 }
 
-function initFirebase(config: FirebaseWebConfig) {
+function initFirebase({ emulatorHost, ...config }: FirebaseWebConfig) {
   initialized = true;
   const app = !getApps().length ? initializeApp(config) : getApp();
   try {
@@ -68,6 +68,12 @@ function initFirebase(config: FirebaseWebConfig) {
     auth = getAuth(app);
   } catch (e) {
     console.warn("Firebase Auth not initialized (likely on server):", e);
+  }
+  if (emulatorHost && typeof window !== 'undefined') {
+    // Développement / tests uniquement (FIREBASE_WEB_EMULATOR_HOST).
+    connectAuthEmulator(auth, `http://${emulatorHost}:9099`, { disableWarnings: true });
+    connectFirestoreEmulator(db, emulatorHost, 8080);
+    connectStorageEmulator(storage, emulatorHost, 9199);
   }
   resolveReady();
 }

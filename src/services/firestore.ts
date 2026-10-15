@@ -614,14 +614,14 @@ export async function deleteTerm(id: string) {
 }
 
 // Typologies
-export async function createTypology(name: string) {
-    return createSettingItem('typologies', { name });
+export async function createTypology(name: string, extra: Partial<Omit<Typology, 'id' | 'name'>> = {}) {
+    return createSettingItem('typologies', { name, ...extra });
 }
 export async function getTypologies(): Promise<Typology[]> {
     return getCollection<Typology>(collection(db, 'typologies'));
 }
-export async function updateTypology(id: string, name: string) {
-    return updateSettingItem('typologies', id, { name });
+export async function updateTypology(id: string, name: string, extra: Partial<Omit<Typology, 'id' | 'name'>> = {}) {
+    return updateSettingItem('typologies', id, { name, ...extra });
 }
 export async function deleteTypology(id: string) {
     return deleteSettingItem('typologies', id);
