@@ -13,6 +13,7 @@ import { PlusCircle, Trash2, Edit, UploadCloud, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Textarea } from '@/components/ui/textarea';
 import type { Company, Agency, Sector, Activity, Schedule, Term, VatRate, Typology, RevisionRule, RevisionRuleType, PaymentTerm, PricingRule, Market, MeterType, WeatherStation, DjuMonthly } from "@/lib/types";
+import { TypologiesSection } from "@/components/settings/typologies-section";
 import {
     updateCompany, deleteCompany,
     updateAgency, deleteAgency,
@@ -62,6 +63,7 @@ const CompaniesSection = ({ onCompaniesUpdate }: { onCompaniesUpdate: (companies
     const [siret, setSiret] = useState('');
     const [siren, setSiren] = useState('');
     const [vatNumber, setVatNumber] = useState('');
+    const [einvoicingStartDate, setEinvoicingStartDate] = useState('');
     const [logoFile, setLogoFile] = useState<File | null>(null);
     const [logoPreview, setLogoPreview] = useState<string | null>(null);
 
@@ -82,6 +84,7 @@ const CompaniesSection = ({ onCompaniesUpdate }: { onCompaniesUpdate: (companies
         setSiret('');
         setSiren('');
         setVatNumber('');
+        setEinvoicingStartDate('');
         setLogoFile(null);
         setLogoPreview(null);
         setEditingCompany(null);
@@ -98,6 +101,7 @@ const CompaniesSection = ({ onCompaniesUpdate }: { onCompaniesUpdate: (companies
             setSiret(company.siret || '');
             setSiren(company.siren || '');
             setVatNumber(company.vatNumber || '');
+            setEinvoicingStartDate(company.einvoicingStartDate || '');
             setLogoPreview(company.logoUrl || null);
         } else {
             resetForm();
@@ -125,7 +129,7 @@ const CompaniesSection = ({ onCompaniesUpdate }: { onCompaniesUpdate: (companies
                 logoUrl = await fileToDataUrl(logoFile);
             }
 
-            const companyData = { name, code, address, postalCode, city, siret, siren, vatNumber, logoUrl };
+            const companyData = { name, code, address, postalCode, city, siret, siren, vatNumber, logoUrl, einvoicingStartDate };
 
             if (editingCompany) {
                 await updateCompany(editingCompany.id, companyData);
@@ -283,6 +287,14 @@ const CompaniesSection = ({ onCompaniesUpdate }: { onCompaniesUpdate: (companies
                             <div className="space-y-2">
                                 <Label htmlFor="vatNumber">N° TVA Intracommunautaire</Label>
                                 <Input id="vatNumber" value={vatNumber} onChange={(e) => setVatNumber(e.target.value)} />
+                            </div>
+                            <div className="space-y-2">
+                                <Label htmlFor="einvoicingStartDate">Facturation électronique obligatoire à partir du</Label>
+                                <Input id="einvoicingStartDate" type="date" value={einvoicingStartDate} onChange={(e) => setEinvoicingStartDate(e.target.value)} />
+                                <p className="text-xs text-muted-foreground">
+                                    Selon la taille de la société : 01/09/2026 (grandes entreprises, ETI) ou 01/09/2027 (PME, micro-entreprises).
+                                    À confirmer avec votre expert-comptable. Les factures B2B émises avant cette date ne sont pas « à transmettre ».
+                                </p>
                             </div>
                             <div className="space-y-2">
                                 <Label>Logo</Label>
@@ -2298,15 +2310,7 @@ export default function SettingsPage() {
                     <MarketsSection />
                 </TabsContent>
                 <TabsContent value="typologies">
-                    <SimpleCrudSection
-                        title="Typologies"
-                        description="Gérez les typologies de clients."
-                        dataType="typology"
-                        items={typologies}
-                        createItem={createTypology}
-                        updateItem={updateTypology}
-                        deleteItem={deleteTypology}
-                    />
+                    <TypologiesSection />
                 </TabsContent>
                 <TabsContent value="schedules">
                     <SimpleCrudSection

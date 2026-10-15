@@ -29,6 +29,7 @@ import { Separator } from "@/components/ui/separator"
 import { Badge } from "@/components/ui/badge"
 import type { Typology, Client, Contract } from "@/lib/types"
 import { ClientSchema } from "@/lib/types"
+import { ClientEInvoicingFields } from "@/components/clients/einvoicing-fields"
 import { AttachContractDialog } from "@/components/attach-contract-dialog"
 
 type ClientFormValues = z.infer<typeof ClientSchema>
@@ -59,6 +60,8 @@ export default function EditClientPage() {
       beEmail: "",
       bePhone: "",
       useChorus: false,
+      einvoicingRegime: 'auto',
+      einvoicingAddress: '',
       siret: "",
       chorusServiceCode: "",
       chorusLegalCommitmentNumber: "",
@@ -100,6 +103,9 @@ export default function EditClientPage() {
 
         form.reset({
           ...clientData,
+          // Champs ajoutés après la création de certaines fiches : jamais « undefined » (refusé par Firestore).
+          einvoicingRegime: clientData.einvoicingRegime || 'auto',
+          einvoicingAddress: clientData.einvoicingAddress || '',
         });
       } catch (error) {
         console.error(error);
@@ -333,6 +339,10 @@ export default function EditClientPage() {
                 </>)}
               </div>
             </div>
+
+            <Separator />
+
+            <ClientEInvoicingFields typologies={typologies} />
 
             <Button type="submit">Enregistrer les modifications</Button>
           </form>

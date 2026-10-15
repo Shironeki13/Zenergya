@@ -11,8 +11,8 @@
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
     "test:rules": "npx --yes firebase-tools@14 emulators:exec --only firestore --project demo-zenergya \"node tests/firestore-rules.test.mjs\"",
-    "test": "tsx --test tests/money.test.ts",
-    "test:billing": "FIREBASE_PROJECT_ID=demo-zenergya FIREBASE_STORAGE_BUCKET=demo-zenergya.appspot.com npx --yes firebase-tools@14 emulators:exec --only firestore,storage --project demo-zenergya \"tsx --require ./tests/setup-server.cjs --test tests/billing.test.ts tests/archive.test.ts\""
+    "test": "tsx --test tests/money.test.ts tests/einvoicing.test.ts",
+    "test:billing": "FIREBASE_PROJECT_ID=demo-zenergya FIREBASE_STORAGE_BUCKET=demo-zenergya.appspot.com npx --yes firebase-tools@14 emulators:exec --only firestore,storage --project demo-zenergya \"tsx --require ./tests/setup-server.cjs --test tests/billing.test.ts tests/archive.test.ts tests/einvoicing-flow.test.ts\""
   },
   "dependencies": {
     "@genkit-ai/google-genai": "^1.24.0",

@@ -65,6 +65,34 @@ export const ActivityDetailSchema = z.object({
 });
 export type ActivityDetail = z.infer<typeof ActivityDetailSchema>;
 
+// --- Facturation électronique (réforme RFE) ---
+
+/** Régime de facturation électronique d'un client. */
+export const EINVOICING_REGIMES = ['b2b', 'b2g', 'b2c', 'international', 'excluded'] as const;
+export type EInvoicingRegime = typeof EINVOICING_REGIMES[number];
+/** Réglage sur la fiche client : « auto » = déduit de la typologie et du type privé / public. */
+export type EInvoicingRegimeSetting = 'auto' | EInvoicingRegime;
+
+/** Canal de transmission : plateforme agréée, Chorus Pro, e-reporting (données de transaction), aucun. */
+export type EInvoicingChannel = 'pa' | 'chorus' | 'ereporting' | 'none';
+export type EInvoicingStatus = 'to_send' | 'sent' | 'rejected' | 'not_applicable';
+
+/** État de transmission figé sur une facture / un avoir à l'émission (recalculable tant qu'il n'est pas transmis). */
+export type EInvoicingState = {
+    regime: EInvoicingRegime;
+    channel: EInvoicingChannel;
+    address?: string; // Adresse électronique de facturation utilisée
+    addressSource?: 'contract' | 'client' | 'siren';
+    status: EInvoicingStatus;
+    blocking?: string[]; // Anomalies empêchant la transmission
+    warnings?: string[];
+    computedAt: string;
+    statusAt?: string;
+    statusBy?: string;
+    platformReference?: string; // Identifiant attribué par la plateforme agréée / Chorus Pro
+    comment?: string;
+};
+
 export const ClientBaseSchema = z.object({
     name: z.string().min(2, "La raison sociale est requise."),
     address: z.string().min(1, "L'adresse est requise."),
@@ -87,6 +115,10 @@ export const ClientBaseSchema = z.object({
     chorusServiceCode: z.string().optional(),
     chorusLegalCommitmentNumber: z.string().optional(),
     chorusMarketNumber: z.string().optional(),
+    // Facturation électronique
+    einvoicingRegime: z.enum(['auto', ...EINVOICING_REGIMES]).optional(), // absent = « auto »
+    einvoicingAddress: z.string().trim().optional()
+        .refine(v => !v || /^\d{9}(_[A-Za-z0-9.-]+){0,2}$/.test(v), "Format attendu : SIREN (9 chiffres), éventuellement suivi de _SIRET et/ou _code de routage."),
 });
 
 export const ClientSchema = ClientBaseSchema.superRefine((data, ctx) => {
@@ -244,6 +276,7 @@ export type Contract = {
     id: string;
     clientId: string;
     companyId?: string; // Société émettrice (sinon : celle du client)
+    einvoicingAddress?: string; // Adresse électronique de facturation propre au contrat (prioritaire sur celle du client)
     clientName: string; // Denormalized for easy display
     siteIds: string[];
     startDate: string; // ISO String date
@@ -520,6 +553,7 @@ export type Invoice = {
     cancelledByCreditNoteId?: string; // Avoir ayant annulé la facture
     taxRate?: number; // Taux de TVA appliqué (ex. 0.1)
     pdf?: ArchivedPdf; // PDF archivé à l'émission (copie conforme)
+    einvoicing?: EInvoicingState; // Facturation électronique (RFE)
 };
 
 /** PDF d'une facture ou d'un avoir, archivé une seule fois dans Cloud Storage puis jamais réécrit. */
@@ -546,6 +580,7 @@ export type CreditNote = {
     reason: string;
     companyId?: string; // Société émettrice (absente sur les avoirs antérieurs)
     pdf?: ArchivedPdf; // PDF archivé à l'émission (copie conforme)
+    einvoicing?: EInvoicingState; // Facturation électronique (RFE)
 }
 
 // --- Travaux (Works) Types (Legacy) ---
@@ -593,6 +628,8 @@ export type Company = {
     siret?: string;
     siren?: string;
     vatNumber?: string;
+    /** Date d'entrée en vigueur de l'obligation d'émission électronique pour cette société (ISO, ex. 2027-09-01). */
+    einvoicingStartDate?: string;
 }
 
 export type Agency = {
@@ -629,6 +666,8 @@ export type Term = {
 export type Typology = {
     id: string;
     name: string;
+    /** Régime de facturation électronique par défaut des clients de cette typologie (ex. Particulier → b2c). */
+    einvoicingRegime?: EInvoicingRegime | null;
 }
 
 export type VatRate = {

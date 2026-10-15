@@ -29,6 +29,7 @@ import { Switch } from "@/components/ui/switch"
 import { Separator } from "@/components/ui/separator"
 import type { Typology, Company, Agency, Sector } from "@/lib/types"
 import { ClientSchema } from "@/lib/types"
+import { ClientEInvoicingFields } from "@/components/clients/einvoicing-fields"
 import { useData } from "@/context/data-context"
 
 
@@ -70,6 +71,8 @@ export default function NewClientPage() {
       beEmail: "",
       bePhone: "",
       useChorus: false,
+      einvoicingRegime: 'auto',
+      einvoicingAddress: '',
       siret: "",
       chorusServiceCode: "",
       chorusLegalCommitmentNumber: "",
@@ -332,6 +335,10 @@ export default function NewClientPage() {
               </div>
 
 
+
+              <Separator />
+
+              <ClientEInvoicingFields typologies={typologies} />
 
               <Button type="submit">Créer le Client</Button>
             </form>
