@@ -324,7 +324,12 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           await signOut(auth);
         }
       })
-    );
+    ).catch((error) => {
+      // Configuration Firebase absente : on affiche la page de connexion, qui expliquera l'erreur.
+      console.error('Firebase indisponible :', error);
+      setIsLoading(false);
+      return () => undefined;
+    });
 
     return () => {
       unsubscribe.then(unsub => unsub());

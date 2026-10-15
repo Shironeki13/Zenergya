@@ -41,6 +41,8 @@ export default function LoginPage() {
       console.error(err);
       if (err.code === 'app/not-authorized') {
         setError("Ce compte n'est pas autorisé. Contactez un administrateur.");
+      } else if (err.code === 'app/config-missing') {
+        setError("L'application n'est pas configurée (Firebase). Contactez un administrateur.");
       } else if (err.code === 'auth/invalid-credential' || err.code === 'auth/user-not-found' || err.code === 'auth/wrong-password') {
         setError('Email ou mot de passe incorrect.');
       } else if (err.code === 'auth/too-many-requests') {
@@ -157,7 +159,9 @@ export default function LoginPage() {
               console.error(err);
               setError(err.code === 'app/not-authorized'
                 ? "Ce compte n'est pas autorisé. Contactez un administrateur."
-                : 'Erreur lors de la connexion avec Google.');
+                : err.code === 'app/config-missing'
+                  ? "L'application n'est pas configurée (Firebase). Contactez un administrateur."
+                  : 'Erreur lors de la connexion avec Google.');
             } finally {
               setIsLoading(false);
             }
