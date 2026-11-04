@@ -1048,6 +1048,8 @@ export async function createClientAndContract(data: any) {
         chorusServiceCode: data.chorusServiceCode,
         chorusLegalCommitmentNumber: data.chorusLegalCommitmentNumber,
         chorusMarketNumber: data.chorusMarketNumber,
+        chorusServiceCodeRequired: data.chorusServiceCodeRequired,
+        chorusLegalCommitmentRequired: data.chorusLegalCommitmentRequired,
         // Hierarchy
         companyId: data.companyId,
         agencyId: data.agencyId,

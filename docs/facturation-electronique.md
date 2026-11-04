@@ -36,6 +36,31 @@ L'adresse doit correspondre à celle que le client a déclarée dans l'annuaire 
 **Société émettrice → « Facturation électronique obligatoire à partir du »** : les factures B2B antérieures à cette date
 sont « non concernées ». Sans date, toutes les factures B2B sont considérées comme à transmettre (un bandeau le signale).
 
+## Chorus Pro (B2G)
+
+**Fiche client** : SIRET de la structure publique (destinataire), dépôt Chorus activé, et par défaut code service,
+numéro d'engagement juridique et numéro de marché. Deux indicateurs reprennent les exigences de la structure dans
+l'annuaire Chorus Pro : **code service obligatoire** et **numéro d'engagement obligatoire**.
+
+**Fiche contrat → Facturation électronique** (prioritaire sur la fiche client) :
+
+| Paramètre | Rôle |
+| --- | --- |
+| Cadre de facturation | **A1** facture du titulaire ou d'un fournisseur (par défaut) ; **A9** facture d'un sous-traitant en paiement direct, validée d'abord par le titulaire ; **A12** facture d'un cotraitant, validée d'abord par le mandataire du groupement |
+| SIRET (et code service) du valideur | A9 : titulaire ; A12 : mandataire. Obligatoire pour ces cadres |
+| Code service, numéro de marché | Propres au contrat ; vides = ceux du client |
+| Engagements juridiques par période | Numéro, début, fin (incluse). La facture prend l'engagement dont la période couvre sa date (le plus récent en cas de recouvrement), à défaut celui du client |
+
+Les cadres des marchés de travaux (A4, A10, A13…) ne sont pas encore gérés.
+
+**Anomalies bloquantes** : SIRET du destinataire manquant ; SIRET de la société émettrice manquant (identifiant du
+fournisseur) ; cadre A9 / A12 sans valideur, ou valideur au SIRET invalide ; code service ou engagement exigé par la
+structure mais absent. Sur la fiche client, sans contrat, ces deux derniers points ne sont que des avertissements :
+le contrat peut encore les porter.
+
+L'adressage Chorus (cadre, destinataire, code service, engagement, marché, valideur) est figé sur la facture à
+l'émission (`einvoicing.chorus`) et repris dans l'export CSV du tableau de bord.
+
 ## À l'émission
 
 L'état de transmission est **figé sur la facture / l'avoir** (champ `einvoicing`) : régime, canal, adresse utilisée et sa

@@ -91,6 +91,50 @@ export type EInvoicingState = {
     statusBy?: string;
     platformReference?: string; // Identifiant attribué par la plateforme agréée / Chorus Pro
     comment?: string;
+    chorus?: ChorusAddressing; // Adressage Chorus Pro figé à l'émission (canal « chorus »)
+};
+
+// --- Chorus Pro ---
+
+/**
+ * Cadre de facturation Chorus Pro (marchés de services et de fournitures) :
+ *   A1  facture du titulaire ou d'un fournisseur ;
+ *   A9  facture d'un sous-traitant en paiement direct : validée d'abord par le titulaire ;
+ *   A12 facture d'un cotraitant : validée d'abord par le mandataire du groupement.
+ * Les cadres des marchés de travaux (A4, A10, A13…) ne sont pas encore gérés.
+ */
+export const CHORUS_FRAMEWORKS = ['A1', 'A9', 'A12'] as const;
+export type ChorusFramework = typeof CHORUS_FRAMEWORKS[number];
+
+/** Engagement juridique (bon de commande) émis par l'acheteur, valable sur une période. */
+export type ChorusLegalCommitment = {
+    number: string;
+    startDate: string;  // YYYY-MM-DD
+    endDate?: string;   // YYYY-MM-DD, incluse ; vide = sans fin
+    comment?: string;
+};
+
+/** Paramètres Chorus Pro propres à un contrat (prioritaires sur ceux du client). */
+export type ContractChorusSettings = {
+    framework?: ChorusFramework;     // absent = A1
+    validatorSiret?: string;         // A9 : titulaire ; A12 : mandataire
+    validatorServiceCode?: string;
+    serviceCode?: string;            // code service du destinataire pour ce contrat
+    marketNumber?: string;
+    legalCommitments?: ChorusLegalCommitment[];
+};
+
+/** Adressage Chorus Pro d'une facture : ce qui sera déposé. */
+export type ChorusAddressing = {
+    framework: ChorusFramework;
+    recipientSiret?: string;
+    serviceCode?: string;
+    serviceCodeSource?: 'contract' | 'client';
+    legalCommitment?: string;
+    legalCommitmentSource?: 'contract' | 'client';
+    marketNumber?: string;
+    validatorSiret?: string;
+    validatorServiceCode?: string;
 };
 
 export const ClientBaseSchema = z.object({
@@ -115,6 +159,9 @@ export const ClientBaseSchema = z.object({
     chorusServiceCode: z.string().optional(),
     chorusLegalCommitmentNumber: z.string().optional(),
     chorusMarketNumber: z.string().optional(),
+    // Exigences de la structure destinataire dans l'annuaire Chorus Pro
+    chorusServiceCodeRequired: z.boolean().optional(),
+    chorusLegalCommitmentRequired: z.boolean().optional(),
     // Facturation électronique
     einvoicingRegime: z.enum(['auto', ...EINVOICING_REGIMES]).optional(), // absent = « auto »
     einvoicingAddress: z.string().trim().optional()
@@ -278,6 +325,7 @@ export type Contract = {
     clientId: string;
     companyId?: string; // Société émettrice (sinon : celle du client)
     einvoicingAddress?: string; // Adresse électronique de facturation propre au contrat (prioritaire sur celle du client)
+    chorus?: ContractChorusSettings; // Chorus Pro : cadre de facturation, valideur, code service, engagements
     clientName: string; // Denormalized for easy display
     siteIds: string[];
     startDate: string; // ISO String date

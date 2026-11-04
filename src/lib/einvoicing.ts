@@ -1,5 +1,6 @@
 import type {
-    Client, Company, Contract, CreditNote, EInvoicingChannel, EInvoicingRegime, EInvoicingState, EInvoicingStatus, Invoice, Typology,
+    ChorusAddressing, ChorusFramework, ChorusLegalCommitment, Client, Company, Contract, CreditNote, EInvoicingChannel, EInvoicingRegime,
+    EInvoicingState, EInvoicingStatus, Invoice, Typology,
 } from '@/lib/types';
 
 /**
@@ -48,12 +49,51 @@ export const CHANNEL_BY_REGIME: Record<EInvoicingRegime, EInvoicingChannel> = {
     excluded: 'none',
 };
 
+/** Cadres de facturation Chorus Pro : libellé, et qui valide la facture avant l'acheteur public. */
+export const CHORUS_FRAMEWORK_INFO: Record<ChorusFramework, { label: string; description: string; validator: string | null }> = {
+    A1: {
+        label: 'A1 – Facture du titulaire / fournisseur',
+        description: "Cadre standard : la facture va directement à l'acheteur public.",
+        validator: null,
+    },
+    A9: {
+        label: 'A9 – Facture de sous-traitant (paiement direct)',
+        description: "La facture est d'abord validée par le titulaire du marché, puis transmise à l'acheteur.",
+        validator: 'titulaire du marché',
+    },
+    A12: {
+        label: 'A12 – Facture de cotraitant',
+        description: "La facture est d'abord validée par le mandataire du groupement, puis transmise à l'acheteur.",
+        validator: 'mandataire du groupement',
+    },
+};
+
+/** Le cadre exige-t-il une validation préalable (valideur désigné au dépôt) ? */
+export function chorusNeedsValidator(framework: ChorusFramework): boolean {
+    return CHORUS_FRAMEWORK_INFO[framework].validator !== null;
+}
+
+/**
+ * Engagement juridique en vigueur à une date : celui dont la période couvre la date,
+ * le plus récent s'ils se recouvrent.
+ */
+export function legalCommitmentAt(commitments: ChorusLegalCommitment[] | undefined, date: string): ChorusLegalCommitment | undefined {
+    const day = date.slice(0, 10);
+    return (commitments ?? [])
+        .filter(c => c.number?.trim() && c.startDate && c.startDate <= day && (!c.endDate || day <= c.endDate))
+        .sort((a, b) => b.startDate.localeCompare(a.startDate))[0];
+}
+
+const isSiret = (v?: string) => !!v && /^\d{14}$/.test(v.replace(/\s/g, '')) && luhnValid(v.replace(/\s/g, ''));
+
 export type EInvoicingResolution = {
     regime: EInvoicingRegime;
     regimeSource: 'client' | 'clientType' | 'typology' | 'default';
     channel: EInvoicingChannel;
     address?: string;
     addressSource?: 'contract' | 'client' | 'siren';
+    /** Adressage Chorus Pro (canal « chorus »). */
+    chorus?: ChorusAddressing;
     /** Faux si la facture est antérieure à l'entrée en vigueur de l'obligation pour la société émettrice. */
     inScope: boolean;
     blocking: string[];
@@ -61,7 +101,8 @@ export type EInvoicingResolution = {
 };
 
 type ClientLike = Pick<Client, 'clientType' | 'typologyId' | 'siret' | 'useChorus'> &
-    Partial<Pick<Client, 'einvoicingRegime' | 'einvoicingAddress' | 'chorusServiceCode'>>;
+    Partial<Pick<Client, 'einvoicingRegime' | 'einvoicingAddress' | 'chorusServiceCode' | 'chorusLegalCommitmentNumber'
+        | 'chorusMarketNumber' | 'chorusServiceCodeRequired' | 'chorusLegalCommitmentRequired'>>;
 
 /** SIREN (9 chiffres) déduit du SIRET. */
 export function sirenOf(siret?: string): string | undefined {
@@ -92,8 +133,12 @@ export function resolveRegime(client: ClientLike, typology?: Pick<Typology, 'ein
 export function resolveEInvoicing(params: {
     client: ClientLike;
     typology?: Pick<Typology, 'einvoicingRegime'> | null;
-    contract?: Pick<Contract, 'einvoicingAddress'> | null;
-    company?: Pick<Company, 'einvoicingStartDate'> | null;
+    /**
+     * Contrat de la facture. `undefined` : aperçu au niveau du client, sans contrat ; les paramètres
+     * Chorus pouvant venir du contrat, leur absence n'y est alors qu'un avertissement.
+     */
+    contract?: Pick<Contract, 'einvoicingAddress' | 'chorus'> | null;
+    company?: Pick<Company, 'einvoicingStartDate' | 'siret'> | null;
     /** Date de la facture (ISO). */
     documentDate?: string;
 }): EInvoicingResolution {
@@ -125,9 +170,11 @@ export function resolveEInvoicing(params: {
         }
     }
 
+    let chorus: ChorusAddressing | undefined;
     if (channel === 'chorus') {
         if (!client.siret) blocking.push('SIRET du client public manquant (obligatoire pour Chorus Pro).');
         if (!client.useChorus) warnings.push('Dépôt Chorus non activé sur la fiche client.');
+        chorus = resolveChorus({ client, contract, company, documentDate, blocking, warnings });
     }
 
     // Obligation d'émission : B2G toujours concerné (Chorus Pro) ; sinon selon la date propre à la société.
@@ -140,7 +187,72 @@ export function resolveEInvoicing(params: {
         }
     }
 
-    return { regime, regimeSource, channel, address, addressSource, inScope, blocking, warnings };
+    return { regime, regimeSource, channel, address, addressSource, ...(chorus && { chorus }), inScope, blocking, warnings };
+}
+
+/** Adressage Chorus Pro : cadre, destinataire, code service, engagement, marché, valideur. Complète blocking / warnings. */
+function resolveChorus(params: {
+    client: ClientLike;
+    contract?: Pick<Contract, 'einvoicingAddress' | 'chorus'> | null;
+    company?: Pick<Company, 'einvoicingStartDate' | 'siret'> | null;
+    documentDate?: string;
+    blocking: string[];
+    warnings: string[];
+}): ChorusAddressing {
+    const { client, contract, company, blocking, warnings } = params;
+    const settings = contract?.chorus ?? {};
+    const date = (params.documentDate || new Date().toISOString()).slice(0, 10);
+    // Sans contrat (aperçu client), ce qui peut venir du contrat ne bloque pas.
+    const missing = (message: string) => (contract === undefined ? warnings : blocking).push(message);
+
+    const framework: ChorusFramework = settings.framework ?? 'A1';
+    const chorus: ChorusAddressing = { framework };
+    if (client.siret) chorus.recipientSiret = client.siret.replace(/\s/g, '');
+
+    const contractService = settings.serviceCode?.trim();
+    const clientService = client.chorusServiceCode?.trim();
+    if (contractService) { chorus.serviceCode = contractService; chorus.serviceCodeSource = 'contract'; }
+    else if (clientService) { chorus.serviceCode = clientService; chorus.serviceCodeSource = 'client'; }
+    if (client.chorusServiceCodeRequired && !chorus.serviceCode) {
+        missing('Code service exigé par le destinataire sur Chorus Pro, non renseigné (contrat ou client).');
+    }
+
+    const commitment = legalCommitmentAt(settings.legalCommitments, date);
+    const clientCommitment = client.chorusLegalCommitmentNumber?.trim();
+    if (commitment) { chorus.legalCommitment = commitment.number.trim(); chorus.legalCommitmentSource = 'contract'; }
+    else {
+        if ((settings.legalCommitments ?? []).length > 0) {
+            warnings.push(`Aucun engagement juridique du contrat ne couvre le ${date}.`);
+        }
+        if (clientCommitment) { chorus.legalCommitment = clientCommitment; chorus.legalCommitmentSource = 'client'; }
+    }
+    if (client.chorusLegalCommitmentRequired && !chorus.legalCommitment) {
+        missing("Numéro d'engagement juridique exigé par le destinataire sur Chorus Pro, non renseigné (contrat ou client).");
+    }
+
+    const marketNumber = settings.marketNumber?.trim() || client.chorusMarketNumber?.trim();
+    if (marketNumber) chorus.marketNumber = marketNumber;
+
+    if (chorusNeedsValidator(framework)) {
+        const validator = settings.validatorSiret?.replace(/\s/g, '');
+        const role = CHORUS_FRAMEWORK_INFO[framework].validator;
+        if (!validator) {
+            blocking.push(`Cadre ${framework} : SIRET du valideur (${role}) manquant sur le contrat.`);
+        } else {
+            chorus.validatorSiret = validator;
+            if (!isSiret(validator)) blocking.push(`Cadre ${framework} : SIRET du valideur invalide (${validator}).`);
+            if (company?.siret && validator === company.siret.replace(/\s/g, '')) {
+                warnings.push(`Cadre ${framework} : le valideur est la société émettrice elle-même.`);
+            }
+        }
+        if (settings.validatorServiceCode?.trim()) chorus.validatorServiceCode = settings.validatorServiceCode.trim();
+    }
+
+    // Réglage de la société, pas du client : signalé pour une facture ou un contrat, pas dans l'aperçu client.
+    if (contract !== undefined && company && !company.siret) {
+        blocking.push('SIRET de la société émettrice manquant (identifiant du fournisseur sur Chorus Pro).');
+    }
+    return chorus;
 }
 
 /** État initial figé sur une facture à l'émission. */
@@ -151,6 +263,7 @@ export function initialEInvoicingState(resolution: EInvoicingResolution, now = n
         channel: resolution.channel,
         ...(resolution.address && { address: resolution.address }),
         ...(resolution.addressSource && { addressSource: resolution.addressSource }),
+        ...(resolution.chorus && { chorus: resolution.chorus }),
         status: transmissible ? 'to_send' : 'not_applicable',
         ...(resolution.blocking.length > 0 && { blocking: resolution.blocking }),
         ...(resolution.warnings.length > 0 && { warnings: resolution.warnings }),

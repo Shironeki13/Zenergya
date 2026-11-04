@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -11,7 +11,8 @@ import { useToast } from '@/hooks/use-toast';
 import { useData } from '@/context/data-context';
 import { updateContract } from '@/services/firestore';
 import { CHANNEL_LABELS, REGIME_SHORT_LABELS, resolveEInvoicing } from '@/lib/einvoicing';
-import type { Client, Contract } from '@/lib/types';
+import type { Client, Contract, ContractChorusSettings } from '@/lib/types';
+import { ContractChorusPanel } from '@/components/contracts/ChorusSettings';
 
 const ADDRESS_FORMAT = /^\d{9}(_[A-Za-z0-9.-]+){0,2}$/;
 
@@ -24,6 +25,9 @@ export function ContractEInvoicingCard({ contract, client, onSaved }: { contract
     const { toast } = useToast();
     const [address, setAddress] = useState(contract.einvoicingAddress ?? '');
     const [isSaving, setIsSaving] = useState(false);
+    // Paramètres Chorus en cours de saisie, pour que l'aperçu suive la saisie.
+    const [chorusDraft, setChorusDraft] = useState<ContractChorusSettings | undefined>(contract.chorus);
+    const onChorusDraftChange = useCallback((s: ContractChorusSettings) => setChorusDraft(s), []);
 
     useEffect(() => { setAddress(contract.einvoicingAddress ?? ''); }, [contract.einvoicingAddress]);
 
@@ -31,7 +35,7 @@ export function ContractEInvoicingCard({ contract, client, onSaved }: { contract
 
     const typology = typologies.find(t => t.id === client.typologyId);
     const company = companies.find(c => c.id === (contract.companyId || client.companyId));
-    const resolution = resolveEInvoicing({ client, typology, contract: { einvoicingAddress: address }, company });
+    const resolution = resolveEInvoicing({ client, typology, contract: { einvoicingAddress: address, chorus: chorusDraft }, company });
     const invalid = address.trim() !== '' && !ADDRESS_FORMAT.test(address.trim());
     const dirty = address.trim() !== (contract.einvoicingAddress ?? '');
 
@@ -83,9 +87,10 @@ export function ContractEInvoicingCard({ contract, client, onSaved }: { contract
                             {resolution.addressSource === 'siren' && ' (SIREN du client)'}.
                         </p>
                     </>
+                ) : resolution.channel === 'chorus' ? (
+                    <ContractChorusPanel contract={contract} resolution={resolution} onSaved={onSaved} onDraftChange={onChorusDraftChange} />
                 ) : (
                     <p className="text-sm text-muted-foreground">
-                        {resolution.channel === 'chorus' && 'Factures déposées sur Chorus Pro (client public).'}
                         {resolution.channel === 'ereporting' && "Pas de facture électronique pour ce client : e-reporting."}
                         {resolution.channel === 'none' && 'Aucune transmission électronique.'}
                     </p>

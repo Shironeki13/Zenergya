@@ -1,7 +1,7 @@
 // Tests de la logique de facturation électronique (RFE) : npm test
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { resolveEInvoicing, initialEInvoicingState, sirenOf, luhnValid, canTransition, canRecompute } from '../src/lib/einvoicing';
+import { resolveEInvoicing, initialEInvoicingState, sirenOf, luhnValid, canTransition, canRecompute, legalCommitmentAt } from '../src/lib/einvoicing';
 
 // SIRET valides (clé de Luhn) : 732 829 320 00074, 552 100 554 00025
 const B2B = { clientType: 'private' as const, typologyId: 't', siret: '73282932000074', useChorus: false };
@@ -125,4 +125,89 @@ test('tableau de bord : proformas exclus, état figé prioritaire, documents ant
     assert.equal(byNumber['A-3'].state.status, 'sent');
     assert.equal(byNumber['AV-1'].kind, 'creditNote');
     assert.equal(byNumber['AV-1'].state.channel, 'ereporting');
+});
+
+// --- Chorus Pro ---
+
+const PUBLIC = { ...B2B, clientType: 'public' as const, siret: '55210055400025', useChorus: true };
+const SOCIETE = { siret: '73282932000074' };
+
+test('Chorus : cadre A1 par défaut, code service et marché repris du client', () => {
+    const r = resolveEInvoicing({
+        client: { ...PUBLIC, chorusServiceCode: 'SERV-01', chorusMarketNumber: 'M-2025-12' },
+        contract: null, company: SOCIETE, documentDate: '2026-10-15',
+    });
+    assert.equal(r.channel, 'chorus');
+    assert.deepEqual(r.chorus, {
+        framework: 'A1', recipientSiret: '55210055400025',
+        serviceCode: 'SERV-01', serviceCodeSource: 'client', marketNumber: 'M-2025-12',
+    });
+    assert.deepEqual(r.blocking, []);
+    assert.deepEqual(initialEInvoicingState(r).chorus, r.chorus);
+});
+
+test('Chorus : le contrat prime sur le client (code service, marché)', () => {
+    const r = resolveEInvoicing({
+        client: { ...PUBLIC, chorusServiceCode: 'SERV-01', chorusMarketNumber: 'M-CLIENT' },
+        contract: { chorus: { serviceCode: 'SERV-CHAUFF', marketNumber: 'M-CONTRAT' } },
+        company: SOCIETE, documentDate: '2026-10-15',
+    });
+    assert.equal(r.chorus?.serviceCode, 'SERV-CHAUFF');
+    assert.equal(r.chorus?.serviceCodeSource, 'contract');
+    assert.equal(r.chorus?.marketNumber, 'M-CONTRAT');
+});
+
+test("Chorus : engagement juridique du contrat selon la date, repli sur celui du client", () => {
+    const contract = { chorus: { legalCommitments: [
+        { number: 'EJ-2025', startDate: '2025-01-01', endDate: '2025-12-31' },
+        { number: 'EJ-2026', startDate: '2026-01-01' },
+    ] } };
+    const client = { ...PUBLIC, chorusLegalCommitmentNumber: 'EJ-CLIENT' };
+    const in2025 = resolveEInvoicing({ client, contract, company: SOCIETE, documentDate: '2025-06-30' });
+    assert.equal(in2025.chorus?.legalCommitment, 'EJ-2025');
+    assert.equal(in2025.chorus?.legalCommitmentSource, 'contract');
+    assert.equal(resolveEInvoicing({ client, contract, company: SOCIETE, documentDate: '2026-02-01' }).chorus?.legalCommitment, 'EJ-2026');
+    const before = resolveEInvoicing({ client, contract, company: SOCIETE, documentDate: '2024-06-30' });
+    assert.equal(before.chorus?.legalCommitment, 'EJ-CLIENT');
+    assert.equal(before.chorus?.legalCommitmentSource, 'client');
+    assert.ok(before.warnings.some(w => w.includes('Aucun engagement juridique du contrat')));
+    assert.equal(legalCommitmentAt(contract.chorus.legalCommitments, '2025-12-31')?.number, 'EJ-2025');
+});
+
+test('Chorus : code service et engagement exigés par le destinataire', () => {
+    const client = { ...PUBLIC, chorusServiceCodeRequired: true, chorusLegalCommitmentRequired: true };
+    const facture = resolveEInvoicing({ client, contract: null, company: SOCIETE, documentDate: '2026-10-15' });
+    assert.equal(facture.blocking.length, 2);
+    // Aperçu au niveau du client (sans contrat) : le contrat peut encore les porter, simple avertissement.
+    const apercu = resolveEInvoicing({ client });
+    assert.deepEqual(apercu.blocking, []);
+    assert.equal(apercu.warnings.filter(w => w.includes('exigé')).length, 2);
+});
+
+test('Chorus : A12 et A9 exigent un valideur au SIRET valide', () => {
+    const sans = resolveEInvoicing({ client: PUBLIC, contract: { chorus: { framework: 'A12' } }, company: SOCIETE, documentDate: '2026-10-15' });
+    assert.equal(sans.chorus?.framework, 'A12');
+    assert.ok(sans.blocking.some(b => b.includes('mandataire')));
+
+    const invalide = resolveEInvoicing({ client: PUBLIC, contract: { chorus: { framework: 'A9', validatorSiret: '12345678901234' } }, company: SOCIETE });
+    assert.ok(invalide.blocking.some(b => b.includes('invalide')));
+
+    const ok = resolveEInvoicing({
+        client: PUBLIC,
+        contract: { chorus: { framework: 'A12', validatorSiret: '552 100 554 00013', validatorServiceCode: 'MAND-01' } },
+        company: SOCIETE, documentDate: '2026-10-15',
+    });
+    assert.deepEqual(ok.blocking, []);
+    assert.equal(ok.chorus?.validatorSiret, '55210055400013');
+    assert.equal(ok.chorus?.validatorServiceCode, 'MAND-01');
+
+    const soiMeme = resolveEInvoicing({ client: PUBLIC, contract: { chorus: { framework: 'A12', validatorSiret: SOCIETE.siret } }, company: SOCIETE });
+    assert.ok(soiMeme.warnings.some(w => w.includes('société émettrice elle-même')));
+});
+
+test('Chorus : SIRET de la société émettrice obligatoire ; rien de Chorus hors canal Chorus', () => {
+    const r = resolveEInvoicing({ client: PUBLIC, contract: null, company: { siret: '' }, documentDate: '2026-10-15' });
+    assert.ok(r.blocking.some(b => b.includes('société émettrice')));
+    assert.ok(!resolveEInvoicing({ client: PUBLIC, company: { siret: '' } }).blocking.some(b => b.includes('société émettrice')));
+    assert.equal(resolveEInvoicing({ client: B2B, contract: { chorus: { framework: 'A12' } } }).chorus, undefined);
 });
