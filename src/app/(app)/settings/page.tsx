@@ -64,6 +64,8 @@ const CompaniesSection = ({ onCompaniesUpdate }: { onCompaniesUpdate: (companies
     const [siren, setSiren] = useState('');
     const [vatNumber, setVatNumber] = useState('');
     const [einvoicingStartDate, setEinvoicingStartDate] = useState('');
+    // Devis : valeurs par défaut, saisies en texte (vide = non renseigné)
+    const [quoteDefaults, setQuoteDefaults] = useState({ coefficient: '', laborRate: '', laborCost: '', validityDays: '', vatRate: '' });
     const [logoFile, setLogoFile] = useState<File | null>(null);
     const [logoPreview, setLogoPreview] = useState<string | null>(null);
 
@@ -85,6 +87,7 @@ const CompaniesSection = ({ onCompaniesUpdate }: { onCompaniesUpdate: (companies
         setSiren('');
         setVatNumber('');
         setEinvoicingStartDate('');
+        setQuoteDefaults({ coefficient: '', laborRate: '', laborCost: '', validityDays: '', vatRate: '' });
         setLogoFile(null);
         setLogoPreview(null);
         setEditingCompany(null);
@@ -102,6 +105,11 @@ const CompaniesSection = ({ onCompaniesUpdate }: { onCompaniesUpdate: (companies
             setSiren(company.siren || '');
             setVatNumber(company.vatNumber || '');
             setEinvoicingStartDate(company.einvoicingStartDate || '');
+            const s = (v?: number | null) => (v === null || v === undefined ? '' : String(v));
+            setQuoteDefaults({
+                coefficient: s(company.quoteCoefficient), laborRate: s(company.quoteLaborRate), laborCost: s(company.quoteLaborCost),
+                validityDays: s(company.quoteValidityDays), vatRate: s(company.quoteDefaultVatRate),
+            });
             setLogoPreview(company.logoUrl || null);
         } else {
             resetForm();
@@ -129,7 +137,13 @@ const CompaniesSection = ({ onCompaniesUpdate }: { onCompaniesUpdate: (companies
                 logoUrl = await fileToDataUrl(logoFile);
             }
 
-            const companyData = { name, code, address, postalCode, city, siret, siren, vatNumber, logoUrl, einvoicingStartDate };
+            const num = (v: string) => (v.trim() === '' || Number.isNaN(Number(v.replace(',', '.'))) ? null : Number(v.replace(',', '.')));
+            const companyData = {
+                name, code, address, postalCode, city, siret, siren, vatNumber, logoUrl, einvoicingStartDate,
+                quoteCoefficient: num(quoteDefaults.coefficient), quoteLaborRate: num(quoteDefaults.laborRate),
+                quoteLaborCost: num(quoteDefaults.laborCost), quoteValidityDays: num(quoteDefaults.validityDays),
+                quoteDefaultVatRate: num(quoteDefaults.vatRate),
+            };
 
             if (editingCompany) {
                 await updateCompany(editingCompany.id, companyData);
@@ -294,6 +308,28 @@ const CompaniesSection = ({ onCompaniesUpdate }: { onCompaniesUpdate: (companies
                                 <p className="text-xs text-muted-foreground">
                                     Selon la taille de la société : 01/09/2026 (grandes entreprises, ETI) ou 01/09/2027 (PME, micro-entreprises).
                                     À confirmer avec votre expert-comptable. Les factures B2B émises avant cette date ne sont pas « à transmettre ».
+                                </p>
+                            </div>
+                            <div className="space-y-2">
+                                <Label>Devis : valeurs par défaut</Label>
+                                <div className="grid grid-cols-2 gap-2">
+                                    {([
+                                        ['coefficient', 'Coefficient de vente', 'ex. 1,35'],
+                                        ['laborRate', "Taux horaire MO facturé (€ HT/h)", 'ex. 58'],
+                                        ['laborCost', "Coût horaire MO interne (€/h)", 'ex. 36,50'],
+                                        ['validityDays', 'Validité (jours)', 'ex. 30'],
+                                        ['vatRate', 'TVA par défaut (%)', 'ex. 20'],
+                                    ] as const).map(([key, label, placeholder]) => (
+                                        <div key={key} className="space-y-1">
+                                            <Label htmlFor={`quote-${key}`} className="text-xs font-normal">{label}</Label>
+                                            <Input id={`quote-${key}`} inputMode="decimal" placeholder={placeholder} value={quoteDefaults[key]}
+                                                onChange={(e) => setQuoteDefaults(q => ({ ...q, [key]: e.target.value }))} />
+                                        </div>
+                                    ))}
+                                </div>
+                                <p className="text-xs text-muted-foreground">
+                                    Un client peut avoir son propre coefficient et son propre taux horaire (fiche client).
+                                    Recopiés sur chaque devis à sa création.
                                 </p>
                             </div>
                             <div className="space-y-2">

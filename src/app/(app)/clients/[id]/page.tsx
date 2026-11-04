@@ -83,9 +83,18 @@ export default function ClientDetailPage() {
           </Button>
         </Link>
         <div className="flex-1">
-          <h1 className="text-2xl font-bold tracking-tight">{client.name}</h1>
+          <h1 className="text-2xl font-bold tracking-tight">
+            {client.name}
+            {client.relation === 'prospect' && <Badge variant="outline" className="ml-2 align-middle">Prospect</Badge>}
+          </h1>
           <p className="text-sm text-muted-foreground">{client.clientNumber ?? '—'}</p>
         </div>
+        <Button variant="outline" size="sm" asChild>
+          <Link href={`/quotes?clientId=${id}`}>Devis</Link>
+        </Button>
+        <Button variant="outline" size="sm" asChild>
+          <Link href={`/quotes/new?clientId=${id}`}>Nouveau devis</Link>
+        </Button>
         <Button variant="outline" size="sm" asChild>
           <Link href={`/clients/${id}/edit`}>
             <Pencil className="h-4 w-4 mr-2" /> Modifier

@@ -79,6 +79,8 @@ export default function NewClientPage() {
       chorusServiceCode: "",
       chorusLegalCommitmentNumber: "",
       chorusMarketNumber: "",
+      quoteCoefficient: null,
+      quoteLaborRate: null,
       chorusServiceCodeRequired: false,
       chorusLegalCommitmentRequired: false,
       // Pre-fill hierarchy from current user scope if possible, or default to empty/first available
@@ -371,6 +373,31 @@ export default function NewClientPage() {
 
               <Separator />
 
+              <div className="space-y-4">
+                <div>
+                  <h2 className="text-xl font-semibold">Devis</h2>
+                  <p className="text-sm text-muted-foreground">Conditions de chiffrage propres à ce client. Vides : celles de la société (Paramétrage → Sociétés).</p>
+                </div>
+                <div className="grid md:grid-cols-3 gap-8 items-start">
+                  <FormField control={form.control} name="quoteCoefficient" render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Coefficient de vente</FormLabel>
+                      <FormControl><Input inputMode="decimal" placeholder="ex. 1,35" value={field.value ?? ''}
+                        onChange={e => field.onChange(e.target.value.replace(',', '.'))} /></FormControl>
+                      <FormDescription>Appliqué au déboursé des fournitures et de la sous-traitance.</FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )} />
+                  <FormField control={form.control} name="quoteLaborRate" render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Taux horaire main-d'œuvre (€ HT/h)</FormLabel>
+                      <FormControl><Input inputMode="decimal" placeholder="ex. 58" value={field.value ?? ''}
+                        onChange={e => field.onChange(e.target.value.replace(',', '.'))} /></FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )} />
+                </div>
+              </div>
               <ClientEInvoicingFields typologies={typologies} />
 
               <Button type="submit">Créer le Client</Button>

@@ -138,6 +138,12 @@ export type ChorusAddressing = {
     validatorServiceCode?: string;
 };
 
+/** Nombre facultatif saisi dans un champ : vide = null (Firestore refuse « undefined »). */
+const optionalPositiveNumber = z.preprocess(
+    v => (v === '' || v === null || v === undefined || (typeof v === 'number' && Number.isNaN(v)) ? null : Number(v)),
+    z.number({ invalid_type_error: 'Nombre attendu.' }).positive('Doit être positif.').nullable(),
+).optional();
+
 export const ClientBaseSchema = z.object({
     name: z.string().min(2, "La raison sociale est requise."),
     address: z.string().min(1, "L'adresse est requise."),
@@ -163,6 +169,11 @@ export const ClientBaseSchema = z.object({
     // Exigences de la structure destinataire dans l'annuaire Chorus Pro
     chorusServiceCodeRequired: z.boolean().optional(),
     chorusLegalCommitmentRequired: z.boolean().optional(),
+    // Relation commerciale : un prospect devient client à l'acceptation d'un devis (absent = client)
+    relation: z.enum(['prospect', 'client']).optional(),
+    // Devis : conditions propres au client (vides = celles de la société)
+    quoteCoefficient: optionalPositiveNumber,
+    quoteLaborRate: optionalPositiveNumber,
     // Facturation électronique
     einvoicingRegime: z.enum(['auto', ...EINVOICING_REGIMES]).optional(), // absent = « auto »
     einvoicingAddress: z.string().trim().optional()
@@ -681,6 +692,12 @@ export type Company = {
     vatNumber?: string;
     /** Date d'entrée en vigueur de l'obligation d'émission électronique pour cette société (ISO, ex. 2027-09-01). */
     einvoicingStartDate?: string;
+    // Devis : valeurs par défaut (la fiche client peut fixer son coefficient et son taux horaire)
+    quoteCoefficient?: number | null;     // coefficient de vente sur le déboursé
+    quoteLaborRate?: number | null;       // taux horaire de main-d'œuvre facturé (€ HT / h)
+    quoteLaborCost?: number | null;       // coût horaire interne de la main-d'œuvre (€ / h)
+    quoteValidityDays?: number | null;    // durée de validité d'un devis (jours)
+    quoteDefaultVatRate?: number | null;  // TVA proposée pour une nouvelle ligne (%)
 }
 
 export type Agency = {
