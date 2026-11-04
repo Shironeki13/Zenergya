@@ -112,4 +112,4 @@ Carte **Facturation** d'un devis accepté : factures émises, montant facturé e
 ## À venir
 
 Envoi par email depuis l'application, signature électronique, bibliothèque de prix (articles et ouvrages),
-transformation en affaire avec situations d'avancement (P6).
+bibliothèque de prix. Les devis P6 se facturent à l'avancement : voir [affaires-p6.md](affaires-p6.md).

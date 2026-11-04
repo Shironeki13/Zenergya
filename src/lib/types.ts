@@ -1,5 +1,6 @@
 
 import type { SireneCheck } from '@/lib/entreprises';
+import type { SituationSnapshot } from '@/lib/projects/types';
 import { z } from 'zod';
 import type {
     WorkQuote as AdvWorkQuote,
@@ -635,6 +636,8 @@ export type Invoice = {
     vatBreakdown?: VatBreakdown; // TVA par taux (factures multi-taux)
     quoteId?: string; // Devis d'origine (requêtes)
     quote?: InvoiceQuoteLink;
+    projectId?: string; // Affaire P6 (requêtes)
+    situation?: SituationSnapshot; // Facture de situation : état cumulé après cette situation
     pdf?: ArchivedPdf; // PDF archivé à l'émission (copie conforme)
     einvoicing?: EInvoicingState; // Facturation électronique (RFE)
 };

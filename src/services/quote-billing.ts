@@ -44,6 +44,7 @@ export async function invoiceQuote(quoteId: string, request: QuoteBillingRequest
         const snap = await tx.get(quoteRef);
         const q = { id: snap.id, ...snap.data() } as Quote;
         if (q.status !== 'accepte') throw new Error('Seul un devis accepté se facture.');
+        if (q.projectId) throw new Error(`Ce devis est facturé à l'avancement par l'affaire ${q.projectCode ?? q.projectId}.`);
         const previousSnap = await tx.get(adminDb.collection('invoices').where('quoteId', '==', quoteId));
         const previous = previousSnap.docs.map(d => {
             const data = d.data() as Invoice;

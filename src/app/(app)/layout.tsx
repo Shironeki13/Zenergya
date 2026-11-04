@@ -97,9 +97,8 @@ function MainAppLayout({ children }: { children: React.ReactNode }) {
 
   const travauxLinks = [
     { href: '/works', label: 'Accueil Travaux', icon: Home },
-    { href: '/works/p5', label: 'Interventions (P5)', icon: Briefcase },
-    { href: '/works/p6', label: 'Projets (P6)', icon: Calculator },
     { href: '/quotes', label: 'Devis', icon: MessageSquareQuote },
+    { href: '/projects', label: 'Affaires (P6)', icon: Calculator },
   ];
 
 

@@ -81,6 +81,7 @@ async function load(kind: ArchivedKind, id: string): Promise<Loaded> {
                 taxRate: invoice.taxRate,
                 ...(invoice.vatBreakdown && { vatBreakdown: invoice.vatBreakdown }),
                 ...(invoice.quote && { quote: invoice.quote }),
+                ...(invoice.situation && { situation: invoice.situation }),
             },
         };
     }
