@@ -33,7 +33,7 @@ function download(content: BlobPart, name: string, type: string) {
 
 export default function ImportsPage() {
     const { toast } = useToast();
-    const { isAdmin, companies, agencies, sectors, typologies, meterTypes, reloadData } = useData();
+    const { isAdmin, companies, agencies, sectors, typologies, meterTypes, activities, markets, schedules, reloadData } = useData();
     const [entityKey, setEntityKey] = useState<ImportEntityKey>('clients');
     const [file, setFile] = useState<{ name: string; table: unknown[][] } | null>(null);
     const [preview, setPreview] = useState<Preview | null>(null);
@@ -54,7 +54,10 @@ export default function ImportsPage() {
         sectors: [...new Set(sectors.map(s => s.name))].sort(),
         typologies: typologies.map(t => t.name).sort(),
         meterTypes: meterTypes.map(t => t.code || t.label),
-    }), [companies, agencies, sectors, typologies, meterTypes]);
+        activities: activities.map(a => a.code || a.label),
+        markets: markets.map(m => m.code || m.label),
+        schedules: schedules.map(s => s.name).sort(),
+    }), [companies, agencies, sectors, typologies, meterTypes, activities, markets, schedules]);
 
     const reset = () => { setFile(null); setPreview(null); setReport(null); setFilter('all'); };
 

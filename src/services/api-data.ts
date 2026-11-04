@@ -3,7 +3,7 @@ import { FieldPath, Timestamp } from 'firebase-admin/firestore';
 import { adminDb } from '@/lib/firebase-admin';
 import { IMPORT_ENTITIES } from '@/lib/imports/definitions';
 import type { ApiResource } from '@/lib/api/scopes';
-import { applyImport, readingMillis } from '@/services/imports-admin';
+import { applyImport, dateMillis } from '@/services/imports-admin';
 import { parseDateTime } from '@/lib/imports/engine';
 import { ApiError } from '@/services/api-admin';
 
@@ -13,10 +13,11 @@ import { ApiError } from '@/services/api-admin';
  * Les noms de champs sont ceux de la description des imports : ce qui se lit peut se renvoyer tel quel.
  */
 
-const COLLECTIONS: Record<ApiResource, string> = { clients: 'clients', sites: 'sites', contacts: 'contacts', meters: 'meters', readings: 'meterReadings' };
+const COLLECTIONS: Record<ApiResource, string> = { clients: 'clients', contracts: 'contracts', sites: 'sites', contacts: 'contacts', meters: 'meters', readings: 'meterReadings' };
 export const MAX_PAGE = 200;
 /** Champs de lecture seule de la représentation : acceptés et ignorés à l'écriture (renvoi tel quel possible). */
-export const READ_ONLY: Record<ApiResource, string[]> = { clients: [], sites: [], contacts: ['id'], meters: ['unit'], readings: ['id', 'unit', 'source', 'contract'] };
+export const READ_ONLY: Record<ApiResource, string[]> = {
+    clients: [], contracts: ['name', 'validationStatus', 'sites', 'chorusLegalCommitments'], sites: [], contacts: ['id'], meters: ['unit'], readings: ['id', 'unit', 'source', 'contract'] };
 /** Ressources sans code Zenergya : désignées par leur identifiant. */
 const BY_ID: ApiResource[] = ['contacts', 'readings'];
 export const MAX_BATCH = 500;
@@ -24,6 +25,7 @@ export const MAX_BATCH = 500;
 type Lookups = {
     companies: Map<string, string>; agencies: Map<string, string>; sectors: Map<string, string>; typologies: Map<string, string>;
     clients: Map<string, string>; contracts: Map<string, string>; sites: Map<string, string>; meters: Map<string, string>;
+    activities: Map<string, string>; markets: Map<string, string>;
 };
 
 let cache: { at: number; value: Lookups } | null = null;
@@ -33,14 +35,21 @@ async function lookups(): Promise<Lookups> {
     if (cache && Date.now() - cache.at < 60_000) return cache.value;
     const map = async (collection: string, field: (d: FirebaseFirestore.DocumentData) => string) =>
         new Map((await adminDb.collection(collection).get()).docs.map(d => [d.id, field(d.data())]));
-    const [companies, agencies, sectors, typologies, clients, contracts, sites, meters] = await Promise.all([
+    const [companies, agencies, sectors, typologies, clients, contracts, sites, meters, activities, markets] = await Promise.all([
         map('companies', d => d.code || d.name), map('agencies', d => d.name), map('sectors', d => d.name),
         map('typologies', d => d.name), map('clients', d => d.externalCode || d.clientNumber || ''),
         map('contracts', d => d.contractNumber || ''), map('sites', d => d.code || ''), map('meters', d => d.code || ''),
+        map('activities', d => d.code || d.label), map('markets', d => d.code || d.label),
     ]);
-    cache = { at: Date.now(), value: { companies, agencies, sectors, typologies, clients, contracts, sites, meters } };
+    cache = { at: Date.now(), value: { companies, agencies, sectors, typologies, clients, contracts, sites, meters, activities, markets } };
     return cache.value;
 }
+
+/** Date « AAAA-MM-JJ » (heure de Paris) d'une date stockée ; relue telle quelle à l'écriture. */
+const day = (v: unknown) => {
+    const ms = dateMillis(v);
+    return Number.isNaN(ms) ? undefined : new Date(ms).toLocaleDateString('en-CA', { timeZone: 'Europe/Paris' });
+};
 
 /** Supprime les valeurs vides pour une sortie compacte. */
 const compact = (o: Record<string, unknown>) => Object.fromEntries(Object.entries(o).filter(([, v]) => v !== undefined && v !== null && v !== ''));
@@ -48,7 +57,7 @@ const compact = (o: Record<string, unknown>) => Object.fromEntries(Object.entrie
 function serialize(resource: ApiResource, id: string, d: FirebaseFirestore.DocumentData, l: Lookups): Record<string, unknown> {
     switch (resource) {
         case 'clients': return compact({
-            code: d.externalCode || d.clientNumber, name: d.name, clientType: d.clientType, relation: d.relation ?? 'client', siret: d.siret,
+            code: d.externalCode || d.clientNumber, externalRef: d.externalRef, name: d.name, clientType: d.clientType, relation: d.relation ?? 'client', siret: d.siret,
             address: d.address, postalCode: d.postalCode, city: d.city,
             company: l.companies.get(d.companyId), agency: l.agencies.get(d.agencyId), sector: l.sectors.get(d.sectorId), typology: l.typologies.get(d.typologyId),
             representedBy: d.representedBy, useChorus: d.useChorus, chorusServiceCode: d.chorusServiceCode, chorusServiceCodeRequired: d.chorusServiceCodeRequired,
@@ -56,17 +65,31 @@ function serialize(resource: ApiResource, id: string, d: FirebaseFirestore.Docum
             chorusMarketNumber: d.chorusMarketNumber, einvoicingRegime: d.einvoicingRegime, einvoicingAddress: d.einvoicingAddress,
             quoteCoefficient: d.quoteCoefficient, quoteLaborRate: d.quoteLaborRate,
         });
+        case 'contracts': return compact({
+            code: d.contractNumber, externalRef: d.externalRef, client: l.clients.get(d.clientId), label: d.label, name: d.name,
+            company: d.companyId ? l.companies.get(d.companyId) : undefined,
+            startDate: day(d.startDate), endDate: day(d.endDate), status: d.status, terminationDate: day(d.terminationDate),
+            validationStatus: d.validationStatus, marketType: d.marketType, market: d.marketId ? l.markets.get(d.marketId) : undefined,
+            activities: (d.activityIds ?? []).map((id: string) => l.activities.get(id) ?? id).join('; ') || undefined,
+            baseAmountP1: d.baseAmountP1, baseAmountP2: d.baseAmountP2, baseAmountP3: d.baseAmountP3, baseAmountP3R: d.baseAmountP3R,
+            billingSchedule: d.billingSchedule, invoicingType: d.invoicingType, renewal: d.renewal, tacitRenewal: d.tacitRenewal,
+            renewalDuration: d.renewalDuration, noticePeriod: d.noticePeriod, signedByCompany: d.signedByCompany, signedByClient: d.signedByClient,
+            chorusFramework: d.chorus?.framework, chorusValidatorSiret: d.chorus?.validatorSiret, chorusServiceCode: d.chorus?.serviceCode,
+            chorusMarketNumber: d.chorus?.marketNumber, chorusLegalCommitments: d.chorus?.legalCommitments?.length ? d.chorus.legalCommitments : undefined,
+            einvoicingAddress: d.einvoicingAddress,
+            sites: (d.siteIds ?? []).map((id: string) => l.sites.get(id)).filter(Boolean),
+        });
         case 'sites': return compact({
-            code: d.code, client: l.clients.get(d.clientId), contract: d.contractId ? l.contracts.get(d.contractId) : undefined, name: d.name,
+            code: d.code, externalRef: d.externalRef, client: l.clients.get(d.clientId), contract: d.contractId ? l.contracts.get(d.contractId) : undefined, name: d.name,
             siteNumber: d.siteNumber, address: d.address, postalCode: d.postalCode, city: d.city, heatingWeatherStation: d.heatingWeatherStation,
         });
         case 'contacts': return compact({ id, client: l.clients.get(d.clientId), type: d.type, name: d.name, email: d.email, phone: d.phone, role: d.role });
         case 'meters': return compact({
-            code: d.code, site: l.sites.get(d.siteId), name: d.name, meterType: d.type, unit: d.unit, reference: d.reference,
+            code: d.code, externalRef: d.externalRef, site: l.sites.get(d.siteId), name: d.name, meterType: d.type, unit: d.unit, reference: d.reference,
             location: d.location, status: d.status,
         });
         case 'readings': return compact({
-            id, meter: l.meters.get(d.meterId), date: new Date(readingMillis(d.date)).toISOString(), value: d.value, unit: d.unit,
+            id, meter: l.meters.get(d.meterId), date: new Date(dateMillis(d.date)).toISOString(), value: d.value, unit: d.unit,
             type: d.type, source: d.source, comment: d.comment, contract: d.contractId ? l.contracts.get(d.contractId) : undefined,
         });
     }
@@ -74,7 +97,7 @@ function serialize(resource: ApiResource, id: string, d: FirebaseFirestore.Docum
 
 /** Filtres de liste acceptés par ressource (paramètres de requête). */
 export const LIST_FILTERS: Record<ApiResource, string[]> = {
-    clients: ['siret', 'relation'], sites: ['client'], contacts: ['client'], meters: ['site'], readings: ['meter', 'site', 'from', 'to'],
+    clients: ['siret', 'relation'], contracts: ['client', 'status'], sites: ['client'], contacts: ['client'], meters: ['site'], readings: ['meter', 'site', 'from', 'to'],
 };
 
 const reverse = (map: Map<string, string>, value: string) => [...map.entries()].find(([, v]) => v.toUpperCase() === value.toUpperCase())?.[0];
@@ -166,7 +189,7 @@ export async function getResource(resource: ApiResource, ref: string) {
     if (BY_ID.includes(resource)) {
         doc = /^[A-Za-z0-9]{1,128}$/.test(ref) ? await coll.doc(ref).get() : undefined;
     } else {
-        const field = resource === 'clients' ? 'externalCode' : 'code';
+        const field = resource === 'clients' ? 'externalCode' : resource === 'contracts' ? 'contractNumber' : 'code';
         doc = (await coll.where(field, '==', ref.toUpperCase()).limit(1).get()).docs[0];
     }
     if (!doc?.exists) throw new ApiError(404, 'not_found', `${IMPORT_ENTITIES[resource].label} : « ${ref} » introuvable.`);

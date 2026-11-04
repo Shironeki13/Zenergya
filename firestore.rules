@@ -28,13 +28,17 @@ service cloud.firestore {
       return coll in ['invoices', 'creditNotes', 'counters', 'quoteVersions', 'projects', 'projectSituations', 'imports'];
     }
 
-    // Code Zenergya d'un site ou d'un compteur (SIT-00001, CPT-00001) : identifiant maître,
-    // immuable une fois attribué. Le rattrapage des anciens documents passe par l'Admin SDK.
+    // Code Zenergya d'un client, d'un contrat, d'un site ou d'un compteur (CLI-00001, CTN-00001, SIT-00001,
+    // CPT-00001) : identifiant maître, immuable une fois attribué. Le rattrapage des anciens documents passe
+    // par l'Admin SDK.
+    function codeField(coll) {
+      return coll == 'clients' ? 'externalCode' : coll == 'contracts' ? 'contractNumber' : 'code';
+    }
     function codeInchange(coll) {
-      return !(coll in ['sites', 'meters'])
+      return !(coll in ['clients', 'contracts', 'sites', 'meters'])
         || request.method != 'update'
-        || !('code' in resource.data)
-        || request.resource.data.get('code', null) == resource.data.code;
+        || !(codeField(coll) in resource.data)
+        || request.resource.data.get(codeField(coll), null) == resource.data.get(codeField(coll), null);
     }
 
     // API externe : clés (empreintes), débit, idempotence, journal. Serveur uniquement, même en lecture.

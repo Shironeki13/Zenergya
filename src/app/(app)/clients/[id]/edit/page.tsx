@@ -57,6 +57,7 @@ export default function EditClientPage() {
       clientType: "private",
       representedBy: "",
       externalCode: "",
+      externalRef: "",
       isBe: false,
       beName: "",
       beEmail: "",
@@ -125,6 +126,7 @@ export default function EditClientPage() {
           einvoicingAddress: clientData.einvoicingAddress || '',
           chorusServiceCodeRequired: clientData.chorusServiceCodeRequired ?? false,
           relation: clientData.relation ?? 'client',
+          externalRef: clientData.externalRef ?? '',
           quoteCoefficient: clientData.quoteCoefficient ?? null,
           quoteLaborRate: clientData.quoteLaborRate ?? null,
           chorusLegalCommitmentRequired: clientData.chorusLegalCommitmentRequired ?? false,
@@ -154,7 +156,9 @@ export default function EditClientPage() {
 
   async function onSubmit(data: ClientFormValues) {
     try {
-      await updateClient(id, data);
+      // Le code client (CLI-…) est l'identifiant maître : jamais modifié depuis ce formulaire.
+      const { externalCode: _code, ...changes } = data;
+      await updateClient(id, changes);
       toast({
         title: "Client Mis à Jour",
         description: "Le client a été mis à jour avec succès.",
@@ -262,11 +266,16 @@ export default function EditClientPage() {
                   <FormMessage />
                 </FormItem>
               )} />}
-              <FormField control={form.control} name="externalCode" render={({ field }) => (
+              <FormItem>
+                <FormLabel>Code client</FormLabel>
+                <Input value={form.watch('externalCode') ?? ''} readOnly disabled className="font-mono" />
+                <FormDescription>Attribué par Zenergya, non modifiable.</FormDescription>
+              </FormItem>
+              <FormField control={form.control} name="externalRef" render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Code externe</FormLabel>
-                  <FormControl><Input placeholder="Code informatif" {...field} /></FormControl>
-                  <FormDescription>Champ informatif non obligatoire.</FormDescription>
+                  <FormLabel>Réf. externe</FormLabel>
+                  <FormControl><Input placeholder="Code dans l'ancien système" {...field} value={field.value ?? ''} /></FormControl>
+                  <FormDescription>Ancienne codification (facultatif) : retrouve la fiche lors des imports.</FormDescription>
                   <FormMessage />
                 </FormItem>
               )} />

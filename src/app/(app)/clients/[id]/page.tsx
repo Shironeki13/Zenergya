@@ -161,10 +161,16 @@ export default function ClientDetailPage() {
               <>
                 <Separator />
                 <div className="flex justify-between">
-                  <span className="text-muted-foreground">Référence externe</span>
+                  <span className="text-muted-foreground">Code client</span>
                   <span className="font-mono text-xs">{client.externalCode}</span>
                 </div>
               </>
+            )}
+            {client.externalRef && (
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Réf. externe</span>
+                <span className="font-mono text-xs">{client.externalRef}</span>
+              </div>
             )}
           </CardContent>
         </Card>

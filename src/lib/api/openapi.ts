@@ -8,6 +8,7 @@ import { API_RESOURCES, API_RESOURCE_LABELS, type ApiResource } from '@/lib/api/
 
 const LIST_FILTERS: Record<ApiResource, Record<string, string>> = {
     clients: { siret: 'SIRET exact', relation: 'client ou prospect' },
+    contracts: { client: 'Code client (CLI-…)', status: 'Actif, Brouillon, Résilié ou Terminé' },
     sites: { client: 'Code client (CLI-…)' },
     contacts: { client: 'Code client (CLI-…)' },
     meters: { site: 'Code site (SIT-…)' },
@@ -17,7 +18,17 @@ const LIST_FILTERS: Record<ApiResource, Record<string, string>> = {
     },
 };
 const READ_ONLY_PROPS: Record<ApiResource, Record<string, object>> = {
-    clients: {}, sites: {}, contacts: { id: { type: 'string', readOnly: true, description: 'Identifiant du contact.' } },
+    clients: {},
+    contracts: {
+        name: { type: 'string', readOnly: true, description: 'Nom : « client - libellé ».' },
+        validationStatus: { type: 'string', readOnly: true, enum: ['pending_validation', 'validated', 'refused'] },
+        sites: { type: 'array', items: { type: 'string' }, readOnly: true, description: 'Codes des sites rattachés (le lien se fait par la ressource sites).' },
+        chorusLegalCommitments: {
+            type: 'array', readOnly: true,
+            items: { type: 'object', properties: { number: { type: 'string' }, startDate: { type: 'string' }, endDate: { type: 'string' } } },
+        },
+    },
+    sites: {}, contacts: { id: { type: 'string', readOnly: true, description: 'Identifiant du contact.' } },
     meters: { unit: { type: 'string', readOnly: true, description: 'Unité (du type de compteur).' } },
     readings: {
         id: { type: 'string', readOnly: true, description: 'Identifiant du relevé.' },
@@ -115,7 +126,7 @@ export function buildOpenApi(serverUrl: string) {
         openapi: '3.1.0',
         info: {
             title: 'Zenergya — API externe', version: '1.0.0',
-            description: 'Lecture et écriture des clients, sites, contacts, compteurs et relevés de compteurs. Authentification : en-tête '
+            description: 'Lecture et écriture des clients, contrats, sites, contacts, compteurs et relevés de compteurs. Authentification : en-tête '
                 + '« Authorization: Bearer <clé> » (clé créée par un administrateur, droits par ressource). '
                 + 'Limite de débit par clé (en-têtes X-RateLimit-*). Erreurs : { "error": { "code", "message", "details" } }.',
         },

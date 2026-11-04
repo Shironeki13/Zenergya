@@ -182,8 +182,8 @@ export function parseTable(entity: ImportEntity, table: unknown[][]): ParsedFile
         rows.push({ line: i + 2, values, errors });
     });
 
-    // Doublons dans le fichier : un même code (ou SIRET de client) sur deux lignes.
-    const dupKeys = ['code', ...(entity.key === 'clients' ? ['siret'] : [])];
+    // Doublons dans le fichier : un même code, une même réf. externe (ou SIRET de client) sur deux lignes.
+    const dupKeys = ['code', 'externalRef', ...(entity.key === 'clients' ? ['siret'] : [])];
     for (const key of dupKeys) {
         const seen = new Map<string, number>();
         for (const row of rows) {

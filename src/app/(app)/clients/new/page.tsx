@@ -68,6 +68,7 @@ export default function NewClientPage() {
       clientType: "private",
       representedBy: "",
       externalCode: "",
+      externalRef: "",
       isBe: false,
       beName: "",
       beEmail: "",
@@ -297,11 +298,11 @@ export default function NewClientPage() {
                     <FormMessage />
                   </FormItem>
                 )} />}
-                <FormField control={form.control} name="externalCode" render={({ field }) => (
+                <FormField control={form.control} name="externalRef" render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Code externe</FormLabel>
-                    <FormControl><Input placeholder="Code informatif" {...field} /></FormControl>
-                    <FormDescription>Champ informatif non obligatoire.</FormDescription>
+                    <FormLabel>Réf. externe</FormLabel>
+                    <FormControl><Input placeholder="Code dans l'ancien système" {...field} value={field.value ?? ''} /></FormControl>
+                    <FormDescription>Ancienne codification (facultatif) : retrouve la fiche lors des imports.</FormDescription>
                     <FormMessage />
                   </FormItem>
                 )} />

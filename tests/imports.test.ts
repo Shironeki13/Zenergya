@@ -109,3 +109,11 @@ test('dates des relevés : heure de Paris par défaut (hiver, été), formats fr
     assert.match(parseValue(READINGS.fields.find(f => f.key === 'date')!, '30/02/2025').error!, /date invalide/);
     assert.deepEqual(parseValue(READINGS.fields.find(f => f.key === 'type')!, 'télérelève'), { value: 'AUTO' });
 });
+
+test('correction d\'un contrat : sites existants mis à jour en place, nouveaux créés, retirés listés', async () => {
+    const { planSiteSync } = await import('../src/lib/contracts/site-sync');
+    const plan = planSiteSync(['s1', 's2', 's3'], [{ id: 's2', name: 'B' }, { name: 'Nouveau' }, { id: 'inconnu', name: 'X' }, { id: 's2', name: 'B bis' }]);
+    assert.deepEqual(plan.update, [{ id: 's2', values: { name: 'B' } }]);
+    assert.deepEqual(plan.create, [{ name: 'Nouveau' }, { name: 'X' }, { name: 'B bis' }]);
+    assert.deepEqual(plan.remove, ['s1', 's3']);
+});

@@ -158,6 +158,7 @@ export const ClientBaseSchema = z.object({
     sectorId: z.string({ required_error: "Le secteur est requis." }).min(1, "Le secteur est requis."),
     representedBy: z.string().optional(),
     externalCode: z.string().optional(),
+    externalRef: z.string().optional(), // Réf. externe (ancienne codification) ; externalCode porte le code client CLI
     isBe: z.boolean().default(false),
     beName: z.string().optional(),
     beEmail: z.string().email({ message: "Email BE invalide." }).optional().or(z.literal('')),
@@ -204,6 +205,7 @@ export type Client = z.infer<typeof ClientSchema> & {
     sireneCheck?: SireneCheck; // Dernier contrôle du SIRET dans le répertoire des entreprises (API de l'État)
     typologyName?: string; // denormalized for display
     clientNumber?: string; // N° Chrono
+    externalRef?: string; // Réf. externe : code du client dans un autre système (ancienne codification)
     createdAt?: string; // Timestamp
     createdBy?: string; // User ID/Name
 };
@@ -228,6 +230,7 @@ export type Site = {
     name: string;
     code?: string; // Code Zenergya (SIT-00001) : attribué à la création, immuable. Identifiant maître du site.
     siteNumber?: string; // Numéro libre du site (client, ancien système…), distinct du code
+    externalRef?: string; // Réf. externe : code du site dans un autre système (ancienne codification)
     address: string;
     postalCode?: string;
     city?: string;
@@ -277,6 +280,7 @@ export type Meter = {
     code: string; // Code Zenergya (CPT-00001) : attribué à la création, immuable. Identifiant maître du compteur.
     name: string;
     reference?: string; // PDL / PCE
+    externalRef?: string; // Réf. externe : code du compteur dans un autre système (ancienne codification)
     siteId: string;
     siteName?: string; // denormalized
     clientName?: string; // denormalized from site
@@ -359,7 +363,9 @@ export type Contract = {
     refusalReason?: string; // Reason for refusal by admin
     label?: string; // Libellé (= Localité / Spécificité)
     name?: string; // Nom Contrat (= Nom Client + '-' + Libellé Contrat)
-    externalRef?: string;
+    externalRef?: string; // Réf. externe : n° du contrat dans un autre système (ancienne codification)
+    validatedAt?: string;
+    validatedBy?: string;
 
     // Global amounts
     baseAmountP1?: number; // Montant global base marché P1 HT/AN

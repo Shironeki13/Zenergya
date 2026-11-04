@@ -9,7 +9,7 @@
 export type FieldType = 'text' | 'number' | 'boolean' | 'enum' | 'siret' | 'email' | 'postalCode' | 'date';
 
 /** Listes de référence, lues dans le paramétrage (onglet « Listes » du modèle XLSX). */
-export type RefList = 'companies' | 'agencies' | 'sectors' | 'typologies' | 'meterTypes';
+export type RefList = 'companies' | 'agencies' | 'sectors' | 'typologies' | 'meterTypes' | 'activities' | 'markets' | 'schedules';
 
 export type ImportField = {
     key: string;
@@ -26,7 +26,7 @@ export type ImportField = {
     allowZero?: boolean;
 };
 
-export type ImportEntityKey = 'clients' | 'sites' | 'contacts' | 'meters' | 'readings';
+export type ImportEntityKey = 'clients' | 'contracts' | 'sites' | 'contacts' | 'meters' | 'readings';
 
 export type ImportEntity = {
     key: ImportEntityKey;
@@ -39,14 +39,22 @@ export type ImportEntity = {
 
 const OUI_NON = 'oui / non';
 
+/** Référence dans un autre système (ancienne codification, TWIMM…) : 2e clé de correspondance, après le code Zenergya. */
+const externalRef = (what: string): ImportField => ({
+    key: 'externalRef', label: 'Réf. externe', type: 'text', aliases: ['ref externe', 'reference externe', 'externalRef'],
+    help: `Code ${what} dans un autre système (ancienne codification). Retrouve ${what === 'du client' ? 'la fiche' : 'l\'élément'} au réimport et permet de le désigner dans les autres fichiers. Unique.`,
+});
+
 export const IMPORT_ENTITIES: Record<ImportEntityKey, ImportEntity> = {
     clients: {
         key: 'clients',
         label: 'Clients et prospects',
         description: 'Fiches clients et prospects, avec leur rattachement, la facturation électronique, Chorus Pro et les conditions de devis.',
-        matching: 'Code client (CLI-…), sinon SIRET : la fiche existante est mise à jour ; sinon une fiche est créée (code CLI attribué).',
+        matching: 'Code client (CLI-…), sinon réf. externe, sinon SIRET : la fiche existante est mise à jour ; sinon une fiche est créée (code CLI attribué). '
+            + 'Sans aucune de ces clés, une fiche de même nom et même code postal est un doublon probable : ligne refusée.',
         fields: [
             { key: 'code', label: 'Code client', type: 'text', example: '', aliases: ['code', 'cli'], help: 'Vide pour une création (attribué : CLI-00001). Renseigné : met à jour cette fiche.' },
+            externalRef('du client'),
             { key: 'name', label: 'Raison sociale', type: 'text', required: 'create', example: 'SCI Les Lilas', aliases: ['nom', 'client', 'societe'] },
             {
                 key: 'clientType', label: 'Type', type: 'enum', required: 'create', example: 'Privé',
@@ -84,15 +92,81 @@ export const IMPORT_ENTITIES: Record<ImportEntityKey, ImportEntity> = {
             { key: 'quoteLaborRate', label: 'Taux horaire MO devis', type: 'number', example: '58', help: '€ HT / h (vide : celui de la société).' },
         ],
     },
+    contracts: {
+        key: 'contracts',
+        label: 'Contrats',
+        description: 'Contrats des clients : période, statut, activités, montants de base, facturation, reconduction, Chorus Pro. '
+            + 'Les sites se rattachent aux contrats dans l\'import des sites (colonne Contrat). Un contrat importé est validé (trace : validé par import).',
+        matching: 'N° de contrat (CTN-…), sinon réf. externe : le contrat existant est mis à jour ; sinon il est créé (n° CTN attribué). '
+            + 'Sans ces clés, un contrat du même client, de même libellé et de période qui se recouvre est un doublon probable : ligne refusée.',
+        fields: [
+            { key: 'code', label: 'N° de contrat', type: 'text', aliases: ['ctn', 'numero contrat', 'contractNumber'], help: 'Vide pour une création (attribué : CTN-00001).' },
+            externalRef('du contrat'),
+            { key: 'client', label: 'Client', type: 'text', required: 'create', example: 'CLI-00012', help: 'Code client (CLI-…), SIRET ou réf. externe du client.' },
+            { key: 'label', label: 'Libellé', type: 'text', required: 'create', example: 'Chauffage résidence Les Lilas', aliases: ['libelle'], help: 'Nom du contrat : « client - libellé ».' },
+            { key: 'company', label: 'Société émettrice', type: 'text', refList: 'companies', example: 'VEF', help: 'Code ou nom (vide : celle du client).' },
+            { key: 'startDate', label: 'Date de début', type: 'date', required: 'create', example: '2025-07-01', aliases: ['debut'] },
+            { key: 'endDate', label: 'Date de fin', type: 'date', required: 'create', example: '2030-06-30', aliases: ['fin'] },
+            {
+                key: 'status', label: 'Statut', type: 'enum', example: 'Actif',
+                options: [
+                    { value: 'Actif', label: 'Actif' }, { value: 'Brouillon', label: 'Brouillon' },
+                    { value: 'Résilié', label: 'Résilié', aliases: ['resilie'] }, { value: 'Terminé', label: 'Terminé', aliases: ['termine'] },
+                ],
+                help: 'Vide à la création : Actif.',
+            },
+            { key: 'terminationDate', label: 'Date de résiliation', type: 'date', help: 'Obligatoire si le statut est Résilié.' },
+            {
+                key: 'marketType', label: 'Type de marché', type: 'enum', example: 'Privé',
+                options: [{ value: 'Marché Privé', label: 'Privé', aliases: ['marche prive', 'prive'] }, { value: 'Marché Public', label: 'Public', aliases: ['marche public'] }],
+            },
+            { key: 'market', label: 'Marché', type: 'text', refList: 'markets', example: 'MCI', help: 'Code du marché (paramétrage : MC, MCI, MT, MTI, CP, CPI, PFI, PF…).' },
+            {
+                key: 'activities', label: 'Activités', type: 'text', refList: 'activities', example: 'CHAUF; P2',
+                help: 'Codes des activités, séparés par « ; ». Renseignées : remplacent la liste existante.',
+            },
+            { key: 'baseAmountP1', label: 'Montant base P1', type: 'number', allowZero: true, help: '€ HT / an.' },
+            { key: 'baseAmountP2', label: 'Montant base P2', type: 'number', allowZero: true, example: '12000', help: '€ HT / an.' },
+            { key: 'baseAmountP3', label: 'Montant base P3', type: 'number', allowZero: true, help: '€ HT / an.' },
+            { key: 'baseAmountP3R', label: 'Montant base P3R', type: 'number', allowZero: true, help: '€ HT / an.' },
+            { key: 'billingSchedule', label: 'Échéancier de facturation', type: 'text', refList: 'schedules', example: 'Trimestriel', aliases: ['echeancier', 'periodicite'] },
+            {
+                key: 'invoicingType', label: 'Facturation', type: 'enum', example: 'Multi-site',
+                options: [{ value: 'multi-site', label: 'Multi-site', aliases: ['par site'] }, { value: 'global', label: 'Globale', aliases: ['global'] }],
+                help: 'Vide à la création : Multi-site.',
+            },
+            { key: 'renewal', label: 'Reconduction', type: 'boolean', help: OUI_NON },
+            { key: 'tacitRenewal', label: 'Tacite reconduction', type: 'boolean', help: OUI_NON },
+            { key: 'renewalDuration', label: 'Durée de reconduction', type: 'text', example: '1 an' },
+            { key: 'noticePeriod', label: 'Préavis', type: 'text', example: '3 mois' },
+            { key: 'signedByCompany', label: 'Signé par la société', type: 'boolean', help: OUI_NON },
+            { key: 'signedByClient', label: 'Signé par le client', type: 'boolean', help: OUI_NON },
+            {
+                key: 'chorusFramework', label: 'Cadre Chorus', type: 'enum',
+                options: [{ value: 'A1', label: 'A1' }, { value: 'A9', label: 'A9' }, { value: 'A12', label: 'A12' }],
+                help: 'A1 : titulaire ; A9 : sous-traitant (validé par le titulaire) ; A12 : cotraitant (validé par le mandataire).',
+            },
+            { key: 'chorusValidatorSiret', label: 'SIRET du valideur Chorus', type: 'siret', help: 'Obligatoire en A9 (titulaire) et A12 (mandataire).' },
+            { key: 'chorusServiceCode', label: 'Code service Chorus', type: 'text', help: 'Prioritaire sur celui du client.' },
+            { key: 'chorusMarketNumber', label: 'N° de marché Chorus', type: 'text' },
+            { key: 'chorusLegalCommitment', label: "N° d'engagement juridique", type: 'text', help: 'Engagement valable sur toute la durée du contrat (ajouté s\'il est nouveau).' },
+            { key: 'einvoicingAddress', label: 'Adresse de facturation électronique', type: 'text', help: 'Propre au contrat (prioritaire sur celle du client).' },
+        ],
+    },
     sites: {
         key: 'sites',
         label: 'Sites',
         description: "Sites des clients, rattachés le cas échéant à un contrat.",
-        matching: 'Code site (SIT-…), sinon client + n° de site : le site existant est mis à jour ; sinon un site est créé (code SIT attribué).',
+        matching: 'Code site (SIT-…), sinon réf. externe, sinon client + n° de site : le site existant est mis à jour ; sinon un site est créé (code SIT attribué). '
+            + 'Sans aucune de ces clés, un site du même client à la même adresse est un doublon probable : ligne refusée.',
         fields: [
             { key: 'code', label: 'Code site', type: 'text', aliases: ['sit'], help: 'Vide pour une création (attribué : SIT-00001).' },
-            { key: 'client', label: 'Client', type: 'text', required: 'create', example: 'CLI-00012', help: 'Code client (CLI-…) ou SIRET du client.' },
-            { key: 'contract', label: 'Contrat', type: 'text', example: 'CTN-00034', help: 'N° de contrat (CTN-…), facultatif ; il doit appartenir au client.' },
+            externalRef('du site'),
+            { key: 'client', label: 'Client', type: 'text', required: 'create', example: 'CLI-00012', help: 'Code client (CLI-…), SIRET ou réf. externe du client.' },
+            {
+                key: 'contract', label: 'Contrat', type: 'text', example: 'CTN-00034',
+                help: 'N° de contrat (CTN-…) ou réf. externe du contrat, qui doit appartenir au client. Seul endroit où se fait le lien contrat ↔ site.',
+            },
             { key: 'name', label: 'Nom du site', type: 'text', required: 'create', example: 'Résidence Les Lilas', aliases: ['nom', 'site'] },
             { key: 'siteNumber', label: 'N° de site', type: 'text', example: '0042', help: 'Numéro libre (client, ancien système).' },
             { key: 'address', label: 'Adresse', type: 'text', required: 'create', example: '5 rue des Lilas' },
@@ -107,7 +181,7 @@ export const IMPORT_ENTITIES: Record<ImportEntityKey, ImportEntity> = {
         description: 'Interlocuteurs des clients.',
         matching: 'Client + email (sinon client + nom) : le contact existant est mis à jour ; sinon il est créé.',
         fields: [
-            { key: 'client', label: 'Client', type: 'text', required: 'create', example: 'CLI-00012', help: 'Code client (CLI-…) ou SIRET du client.' },
+            { key: 'client', label: 'Client', type: 'text', required: 'create', example: 'CLI-00012', help: 'Code client (CLI-…), SIRET ou réf. externe du client.' },
             {
                 key: 'type', label: 'Type', type: 'enum', required: 'create', example: 'Principal',
                 options: [
@@ -125,10 +199,12 @@ export const IMPORT_ENTITIES: Record<ImportEntityKey, ImportEntity> = {
         key: 'meters',
         label: 'Compteurs',
         description: 'Compteurs des sites.',
-        matching: 'Code compteur (CPT-…), sinon site + PDL/PCE : le compteur existant est mis à jour ; sinon il est créé (code CPT attribué).',
+        matching: 'Code compteur (CPT-…), sinon réf. externe, sinon site + PDL/PCE : le compteur existant est mis à jour ; sinon il est créé (code CPT attribué). '
+            + 'Sans aucune de ces clés, un compteur du même site et de même nom est un doublon probable : ligne refusée.',
         fields: [
             { key: 'code', label: 'Code compteur', type: 'text', aliases: ['cpt'], help: 'Vide pour une création (attribué : CPT-00001).' },
-            { key: 'site', label: 'Site', type: 'text', required: 'create', example: 'SIT-00021', help: 'Code du site (SIT-…).' },
+            externalRef('du compteur'),
+            { key: 'site', label: 'Site', type: 'text', required: 'create', example: 'SIT-00021', help: 'Code du site (SIT-…) ou réf. externe du site.' },
             { key: 'name', label: 'Nom', type: 'text', required: 'create', example: 'Gaz chaufferie' },
             { key: 'meterType', label: 'Type de compteur', type: 'text', required: 'create', refList: 'meterTypes', example: 'GAZ', help: 'Code ou libellé d\'un type de compteur (onglet Listes).' },
             { key: 'reference', label: 'PDL / PCE', type: 'text', example: 'GI123456', aliases: ['pdl', 'pce', 'reference'] },
@@ -146,7 +222,7 @@ export const IMPORT_ENTITIES: Record<ImportEntityKey, ImportEntity> = {
         description: 'Index relevés sur les compteurs : télérelève, relevés terrain, reprise d\'historique.',
         matching: 'Compteur + date et heure : le relevé existant à ce moment est mis à jour (index, type, commentaire) ; sinon il est créé.',
         fields: [
-            { key: 'meter', label: 'Compteur', type: 'text', required: 'create', example: 'CPT-00012', aliases: ['cpt', 'code compteur'], help: 'Code du compteur (CPT-…).' },
+            { key: 'meter', label: 'Compteur', type: 'text', required: 'create', example: 'CPT-00012', aliases: ['cpt', 'code compteur'], help: 'Code du compteur (CPT-…) ou réf. externe du compteur.' },
             {
                 key: 'date', label: 'Date du relevé', type: 'date', required: 'create', example: '2025-01-31', aliases: ['date'],
                 help: 'AAAA-MM-JJ ou JJ/MM/AAAA, heure facultative (HH:MM), heure de Paris ; ou date ISO 8601 avec fuseau. Sans heure : minuit.',

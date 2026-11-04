@@ -18,6 +18,8 @@ await env.withSecurityRulesDisabled(async (ctx) => {
   await setDoc(doc(db, 'sites', 's'), { name: 'Site', code: 'SIT-00001' });
   await setDoc(doc(db, 'sites', 'ancien'), { name: 'Ancien site' });
   await setDoc(doc(db, 'meters', 'm'), { name: 'Compteur', code: 'CPT-00001' });
+  await setDoc(doc(db, 'clients', 'cli'), { name: 'Client', externalCode: 'CLI-00001' });
+  await setDoc(doc(db, 'contracts', 'ctn'), { label: 'Contrat', contractNumber: 'CTN-00001', siteIds: [] });
   await setDoc(doc(db, 'quotes', 'brouillon'), { number: 'VEF-DEV2026-0001', status: 'brouillon', version: 1, title: 'A' });
   await setDoc(doc(db, 'quoteVersions', 'v'), { quoteId: 'envoye', version: 1 });
   await setDoc(doc(db, 'projects', 'p'), { code: 'VEF-AFF2026-0001', status: 'en_cours' });
@@ -78,6 +80,11 @@ await t('admin cannot change site code', assertFails(updateDoc(doc(admin, 'sites
 await t('user cannot remove site code', assertFails(setDoc(doc(user, 'sites', 's'), { name: 'Sans code' })));
 await t('user cannot change meter code', assertFails(updateDoc(doc(user, 'meters', 'm'), { code: 'CPT-09999' })));
 await t('user updates meter keeping its code', assertSucceeds(updateDoc(doc(user, 'meters', 'm'), { name: 'Compteur 2' })));
+await t('user cannot change client code', assertFails(updateDoc(doc(user, 'clients', 'cli'), { externalCode: 'X-1' })));
+await t('admin cannot change client code', assertFails(updateDoc(doc(admin, 'clients', 'cli'), { externalCode: 'CLI-09999' })));
+await t('user updates client keeping its code', assertSucceeds(updateDoc(doc(user, 'clients', 'cli'), { name: 'Client 2', externalRef: 'TW-1' })));
+await t('user cannot change contract number', assertFails(updateDoc(doc(user, 'contracts', 'ctn'), { contractNumber: 'CTN-09999' })));
+await t('user updates contract keeping its number', assertSucceeds(updateDoc(doc(user, 'contracts', 'ctn'), { clientName: 'Client 2' })));
 await t('user creates site with code', assertSucceeds(setDoc(doc(user, 'sites', 'nouveau'), { name: 'N', code: 'SIT-00002' })));
 await t('user updates site without code', assertSucceeds(updateDoc(doc(user, 'sites', 'ancien'), { name: 'Ancien site 2' })));
 await t('user deletes site', assertSucceeds(deleteDoc(doc(user, 'sites', 'nouveau'))));
