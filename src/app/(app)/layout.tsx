@@ -20,6 +20,7 @@ import {
   ChevronDown,
   Library,
   Upload,
+  KeyRound,
   MessageSquareQuote,
   ShieldCheck,
   Home,
@@ -74,6 +75,7 @@ function MainAppLayout({ children }: { children: React.ReactNode }) {
     { href: '/meters', icon: Gauge, label: 'Compteurs' },
     ...(isAdmin ? [{ href: '/users', icon: Users, label: 'Utilisateurs' }] : []),
     ...(isAdmin ? [{ href: '/imports', icon: Upload, label: 'Imports' }] : []),
+    ...(isAdmin ? [{ href: '/api-keys', icon: KeyRound, label: 'Accès API' }] : []),
     { href: '/settings', icon: Settings, label: 'Paramétrage' },
   ];
 

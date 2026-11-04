@@ -106,25 +106,25 @@ function planClient(ctx: Context, row: ParsedRow): PlanItem {
         'einvoicingRegime', 'einvoicingAddress', 'quoteCoefficient', 'quoteLaborRate']);
 
     // Rattachement : société, puis agence de cette société, puis secteur de cette agence.
-    const companyId = v.companyId
-        ? ctx.companies.find(c => norm(c.code) === norm(v.companyId) || norm(c.name) === norm(v.companyId))?.id
+    const companyId = v.company
+        ? ctx.companies.find(c => norm(c.code) === norm(v.company) || norm(c.name) === norm(v.company))?.id
         : existing?.companyId;
-    if (v.companyId && !companyId) item.messages.push(`Société « ${v.companyId} » inconnue.`);
-    else if (v.companyId) data.companyId = companyId;
-    const agencyId = v.agencyId
-        ? ctx.agencies.find(a => a.companyId === companyId && norm(a.name) === norm(v.agencyId))?.id
+    if (v.company && !companyId) item.messages.push(`Société « ${v.company} » inconnue.`);
+    else if (v.company) data.companyId = companyId;
+    const agencyId = v.agency
+        ? ctx.agencies.find(a => a.companyId === companyId && norm(a.name) === norm(v.agency))?.id
         : existing?.agencyId;
-    if (v.agencyId && !agencyId) item.messages.push(`Agence « ${v.agencyId} » inconnue pour cette société.`);
-    else if (v.agencyId) data.agencyId = agencyId;
-    if (!v.agencyId && v.companyId && existing && companyId !== existing.companyId) item.messages.push("Changement de société : indiquez aussi l'agence et le secteur.");
-    if (v.sectorId) {
-        const sectorId = ctx.sectors.find(s => s.agencyId === agencyId && norm(s.name) === norm(v.sectorId))?.id;
-        if (!sectorId) item.messages.push(`Secteur « ${v.sectorId} » inconnu pour cette agence.`);
+    if (v.agency && !agencyId) item.messages.push(`Agence « ${v.agency} » inconnue pour cette société.`);
+    else if (v.agency) data.agencyId = agencyId;
+    if (!v.agency && v.company && existing && companyId !== existing.companyId) item.messages.push("Changement de société : indiquez aussi l'agence et le secteur.");
+    if (v.sector) {
+        const sectorId = ctx.sectors.find(s => s.agencyId === agencyId && norm(s.name) === norm(v.sector))?.id;
+        if (!sectorId) item.messages.push(`Secteur « ${v.sector} » inconnu pour cette agence.`);
         else data.sectorId = sectorId;
     }
-    if (v.typologyId) {
-        const typologyId = ctx.typologies.find(t => norm(t.name) === norm(v.typologyId))?.id;
-        if (!typologyId) item.messages.push(`Typologie « ${v.typologyId} » inconnue.`);
+    if (v.typology) {
+        const typologyId = ctx.typologies.find(t => norm(t.name) === norm(v.typology))?.id;
+        if (!typologyId) item.messages.push(`Typologie « ${v.typology} » inconnue.`);
         else data.typologyId = typologyId;
     }
     if (v.einvoicingAddress && !/^\d{9}(_[A-Za-z0-9.-]+){0,2}$/.test(String(v.einvoicingAddress))) {
@@ -134,8 +134,10 @@ function planClient(ctx: Context, row: ParsedRow): PlanItem {
     // État final (existant + ligne) : contrôles de cohérence.
     const final = { ...(existing ?? {}), ...data } as Partial<Client>;
     if (!existing) {
+        const DOC_FIELD: Record<string, keyof Client> = { company: 'companyId', agency: 'agencyId', sector: 'sectorId', typology: 'typologyId' };
         for (const f of IMPORT_ENTITIES.clients.fields.filter(f => f.required === 'create')) {
-            if (final[f.key as keyof Client] === undefined || final[f.key as keyof Client] === null || final[f.key as keyof Client] === '') {
+            const docField = DOC_FIELD[f.key] ?? (f.key as keyof Client);
+            if (final[docField] === undefined || final[docField] === null || final[docField] === '') {
                 if (!item.messages.some(m => m.startsWith(f.label))) item.messages.push(`${f.label} obligatoire pour créer une fiche.`);
             }
         }
@@ -304,10 +306,12 @@ export type ImportReport = {
     updated: number;
     unchanged: number;
     errors: { line: number; messages: string[] }[];
+    /** Résultat par ligne valide : élément créé, mis à jour ou inchangé (identifiant et code). */
+    results: { line: number; action: 'create' | 'update' | 'unchanged'; id: string; code?: string }[];
 };
 
 /** Applique un import : lignes valides écrites, lignes en erreur ignorées et rapportées. */
-export async function applyImport(entity: ImportEntityKey, table: unknown[][], meta: { fileName?: string; by?: string }): Promise<ImportReport> {
+export async function applyImport(entity: ImportEntityKey, table: unknown[][], meta: { fileName?: string; by?: string; source?: 'file' | 'api' }): Promise<ImportReport> {
     const plan = await planImport(entity, table);
     if (plan.fileErrors.length) throw new Error(plan.fileErrors.join(' '));
     const creates = plan.items.filter(i => i.action === 'create');
@@ -319,6 +323,7 @@ export async function applyImport(entity: ImportEntityKey, table: unknown[][], m
 
     type Write = (b: FirebaseFirestore.WriteBatch) => void;
     const writes: Write[] = [];
+    const results: ImportReport['results'] = [];
     creates.forEach((item, i) => {
         const ref = coll.doc();
         const stamp = entity === 'meters'
@@ -326,6 +331,7 @@ export async function applyImport(entity: ImportEntityKey, table: unknown[][], m
             : entity === 'clients' ? { createdAt: now, ...(meta.by && { createdBy: meta.by }) } : {};
         const doc = { ...item.data, ...stamp, ...(spec && { [spec.field]: codes[i] }) };
         writes.push(b => b.set(ref, doc));
+        results.push({ line: item.line, action: 'create', id: ref.id, ...(spec && { code: codes[i] }) });
         // Le contrat d'un site créé le compte parmi ses sites.
         if (entity === 'sites' && item.data?.contractId) {
             const contractRef = adminDb.collection('contracts').doc(String(item.data.contractId));
@@ -336,6 +342,7 @@ export async function applyImport(entity: ImportEntityKey, table: unknown[][], m
         const ref = coll.doc(item.targetId!);
         const stamp = entity === 'meters' ? { lastModified: now, modifiedBy: meta.by ?? 'import' } : {};
         writes.push(b => b.update(ref, { ...item.data, ...stamp }));
+        results.push({ line: item.line, action: 'update', id: ref.id });
         if (entity === 'sites' && item.data?.contractId) {
             const contractRef = adminDb.collection('contracts').doc(String(item.data.contractId));
             writes.push(b => b.update(contractRef, { siteIds: FieldValue.arrayUnion(ref.id) }));
@@ -347,11 +354,13 @@ export async function applyImport(entity: ImportEntityKey, table: unknown[][], m
         await batch.commit();
     }
 
+    for (const item of plan.items.filter(i => i.action === 'unchanged')) results.push({ line: item.line, action: 'unchanged', id: item.targetId! });
+    results.sort((a, b) => a.line - b.line);
     const errors = plan.items.filter(i => i.action === 'error').map(i => ({ line: i.line, messages: i.messages }));
     const log = await adminDb.collection('imports').add({
-        entity, fileName: meta.fileName ?? '', at: now, ...(meta.by && { by: meta.by }),
+        entity, fileName: meta.fileName ?? '', at: now, ...(meta.by && { by: meta.by }), source: meta.source ?? 'file',
         created: creates.length, updated: updates.length, unchanged: plan.counts.unchanged, rejected: errors.length,
         errors: errors.slice(0, 200),
     });
-    return { importId: log.id, created: creates.length, updated: updates.length, unchanged: plan.counts.unchanged, errors };
+    return { importId: log.id, created: creates.length, updated: updates.length, unchanged: plan.counts.unchanged, errors, results };
 }
