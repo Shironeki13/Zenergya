@@ -16,6 +16,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { getQuotes } from '@/services/quotes';
 import { QUOTE_STATUSES, QUOTE_STATUS_LABELS, type Quote, type QuoteStatus } from '@/lib/quotes/types';
 import { formatEur, formatPct, StatusBadge } from '@/components/quotes/format';
+import { effectiveStatus } from '@/lib/quotes/lifecycle';
 
 export default function QuotesPage() {
     // useSearchParams exige une frontière Suspense (pré-rendu Next.js).
@@ -44,7 +45,7 @@ function QuotesList() {
     const visible = useMemo(() => {
         const s = search.trim().toLowerCase();
         return quotes
-            .filter(q => status === 'all' || q.status === status)
+            .filter(q => status === 'all' || effectiveStatus(q) === status)
             .filter(q => !siteId || q.siteId === siteId)
             .filter(q => !clientId || q.clientId === clientId)
             .filter(q => !mine || q.authorId === currentUser?.id)
@@ -111,7 +112,7 @@ function QuotesList() {
                                 <TableCell className="text-sm">{q.siteName || [q.interventionAddress?.postalCode, q.interventionAddress?.city].filter(Boolean).join(' ') || '—'}</TableCell>
                                 <TableCell>{q.title}</TableCell>
                                 <TableCell className="text-sm">{q.authorName ?? '—'}</TableCell>
-                                <TableCell><StatusBadge status={q.status} /></TableCell>
+                                <TableCell><StatusBadge status={effectiveStatus(q)} /></TableCell>
                                 <TableCell className="text-right">{formatEur(q.totals.totalHT)}</TableCell>
                                 <TableCell className="text-right">{formatPct(q.totals.marginRate)}</TableCell>
                             </TableRow>

@@ -698,6 +698,11 @@ export type Company = {
     quoteLaborCost?: number | null;       // coût horaire interne de la main-d'œuvre (€ / h)
     quoteValidityDays?: number | null;    // durée de validité d'un devis (jours)
     quoteDefaultVatRate?: number | null;  // TVA proposée pour une nouvelle ligne (%)
+    // Assurance professionnelle (décennale pour les travaux) : mentionnée sur les devis
+    insurer?: string;                     // assureur et coordonnées
+    insurancePolicy?: string;             // n° de contrat
+    insuranceCoverage?: string;           // couverture géographique
+    quoteFooterText?: string;             // mentions complémentaires en pied de devis
 }
 
 export type Agency = {

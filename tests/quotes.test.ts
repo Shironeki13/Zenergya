@@ -84,3 +84,17 @@ test('numéro et validité', () => {
     assert.equal(addDays('2026-11-04', 30), '2026-12-04');
     assert.equal(addDays('2026-12-15', 30), '2027-01-14');
 });
+
+import { availableActions, effectiveStatus } from '../src/lib/quotes/lifecycle';
+
+test('cycle de vie : expiration déduite, actions possibles par statut', () => {
+    const sent = { status: 'envoye' as const, validUntil: '2026-11-30' };
+    assert.equal(effectiveStatus(sent, '2026-11-30'), 'envoye');
+    assert.equal(effectiveStatus(sent, '2026-12-01'), 'expire');
+    assert.deepEqual(availableActions({ status: 'brouillon', validUntil: '2026-11-30' }, '2026-11-04'), ['send', 'cancel']);
+    assert.deepEqual(availableActions(sent, '2026-11-04'), ['accept', 'refuse', 'newVersion', 'cancel']);
+    assert.deepEqual(availableActions(sent, '2026-12-01'), ['accept', 'newVersion', 'cancel']);
+    assert.deepEqual(availableActions({ status: 'refuse', validUntil: '2026-11-30' }), ['newVersion']);
+    assert.deepEqual(availableActions({ status: 'accepte', validUntil: '2026-11-30' }), []);
+    assert.deepEqual(availableActions({ status: 'annule', validUntil: '2026-11-30' }), []);
+});

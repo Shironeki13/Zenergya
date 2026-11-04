@@ -19,6 +19,8 @@ import { formatEur, formatPct, StatusBadge } from '@/components/quotes/format';
 import { computeLines, computeQuoteTotals, isPriced, newLineId, quoteIssues, addDays } from '@/lib/quotes/pricing';
 import { QUOTE_LINE_KIND_LABELS, type Quote, type QuoteLine, type QuoteLineKind, type QuotePricing } from '@/lib/quotes/types';
 import { deleteQuoteDraft, getQuote, updateQuoteDraft, type QuoteDraftPatch } from '@/services/quotes';
+import { QuoteActions, QuoteHistory } from '@/components/quotes/lifecycle-panel';
+import { effectiveStatus } from '@/lib/quotes/lifecycle';
 
 type Draft = Required<Pick<Quote, 'title' | 'date' | 'validityDays' | 'pricing' | 'lines'>> &
     Pick<Quote, 'paymentTerms' | 'estimatedStart' | 'estimatedDuration' | 'notes' | 'internalNotes'
@@ -144,7 +146,7 @@ export default function QuoteEditorPage() {
                     <div className="flex items-center gap-2">
                         <Link href="/quotes" className="text-muted-foreground hover:text-primary"><ChevronLeft className="h-4 w-4" /></Link>
                         <h1 className="text-2xl font-bold tracking-tight font-mono">{quote.number}{quote.version > 1 && ` V${quote.version}`}</h1>
-                        <StatusBadge status={quote.status} />
+                        <StatusBadge status={effectiveStatus(quote)} />
                         <Badge variant="outline">{quote.mode}</Badge>
                     </div>
                     <p className="text-sm text-muted-foreground mt-1">
@@ -154,14 +156,21 @@ export default function QuoteEditorPage() {
                 </div>
                 {!readOnly && (
                     <div className="flex gap-2">
-                        <Button variant="outline" onClick={remove}><Trash2 className="mr-2 h-4 w-4" />Supprimer</Button>
+                        {quote.version === 1 && <Button variant="outline" onClick={remove}><Trash2 className="mr-2 h-4 w-4" />Supprimer</Button>}
                         <Button onClick={save} disabled={!dirty || saving || !/^\d{4}-\d{2}-\d{2}$/.test(draft.date)}>
                             {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}Enregistrer
                         </Button>
                     </div>
                 )}
             </div>
-            {readOnly && <p className="text-sm text-muted-foreground">Ce devis n'est plus un brouillon : il est figé. Une modification passera par une nouvelle version.</p>}
+            <QuoteActions quote={quote} dirty={dirty} issues={issues} onChange={q => { setQuote(q); setDraft(toDraft(q)); }} />
+            {readOnly && (
+                <p className="text-sm text-muted-foreground">
+                    Ce devis n'est plus un brouillon : il est figé{quote.sentAt ? ` depuis son envoi le ${new Date(quote.sentAt).toLocaleDateString('fr-FR')}` : ''}.
+                    {effectiveStatus(quote) === 'expire' && ` Sa validité a pris fin le ${new Date(quote.validUntil).toLocaleDateString('fr-FR')}.`}
+                </p>
+            )}
+            {(quote.version > 1 || quote.sentAt || quote.cancellation) && <QuoteHistory quote={quote} />}
 
             <Card>
                 <CardHeader><CardTitle className="text-base">Suivi</CardTitle></CardHeader>

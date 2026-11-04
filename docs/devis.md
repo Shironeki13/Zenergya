@@ -52,8 +52,43 @@ main-d'œuvre.
 `{CODE}-DEV{AAAA}-{NNNN}` (ex. `VEF-DEV2026-0001`) : série par société et par année, numéro attribué à la création
 dans la même transaction que l'écriture (pas de doublon). Le code de la société est obligatoire.
 
-## Statuts
+## Cycle de vie
 
-brouillon → envoyé → accepté / refusé / expiré, ou annulé. Ce lot couvre le **brouillon** ; l'envoi (PDF avec les
-mentions obligatoires, archivé), les versions, l'acceptation (signataire, bon de commande, prospect → client, création
-du site) et la transformation en facture (P5) ou en affaire (P6) viennent dans les lots suivants.
+```
+brouillon ──Envoyer──▶ envoyé ──▶ accepté
+    ▲                    │  ├──▶ refusé
+    └──Nouvelle version──┘  └──▶ expiré (validité dépassée : déduit de la date, rien à lancer)
+brouillon / envoyé ──Annuler (motif)──▶ annulé
+```
+
+| Action | Effet |
+| --- | --- |
+| **Envoyer** | Exige un brouillon enregistré et complet. Le devis prend la **date du jour** (la validité court à partir de là), passe « envoyé » et est **figé** : PDF généré une fois, archivé dans Cloud Storage sans écrasement possible (`archives/{société}/quotes/{année}/{numéro}-V{version}.pdf`), empreinte SHA-256 vérifiée à chaque téléchargement, copie complète du devis dans `quoteVersions` |
+| **Accepté** | Date de l'accord, signataire et qualité, n° de bon de commande, commentaire. Le **prospect devient client** ; sur demande, le **site est créé** depuis l'adresse d'intervention (code `SIT` attribué). Un devis expiré ne s'accepte qu'avec une confirmation explicite |
+| **Refusé** | Date et motif (obligatoire) |
+| **Nouvelle version** | Depuis un devis envoyé, expiré ou refusé : la version envoyée reste archivée (PDF consultable), le devis redevient un brouillon modifiable sous le **même numéro**, version + 1 |
+| **Annuler** | Motif obligatoire ; le devis reste consultable avec ses versions |
+
+Un brouillon jamais envoyé (version 1) peut être supprimé ; au-delà, il s'annule.
+
+**Sécurité** : le navigateur ne modifie qu'un brouillon, qui reste un brouillon (même numéro, même version). Toutes les
+transitions passent par le serveur (`src/services/quotes-admin.ts`, actions `src/lib/quotes/actions.ts`, session
+requise) ; `quoteVersions` n'est écrit que par le serveur.
+
+## PDF
+
+`/api/quotes/{id}/pdf` (session requise) : la version envoyée archivée, ou l'**aperçu** d'un brouillon (marqué
+« APERÇU — DEVIS NON ENVOYÉ », jamais archivé). `?version=N` pour une version précédente.
+
+Le PDF ne montre que les prix (ni déboursé, ni coefficient, ni marge) et porte : identification de la société (SIRET,
+TVA) et du client, date, fin de validité, référence et date de la demande du client, interlocuteur, rédacteur, objet,
+lieu d'intervention, lignes (titres et sous-totaux avec leur montant, remises), totaux HT / TVA par taux / TTC,
+options à part, début et durée estimés, conditions de paiement, « devis gratuit », conditions particulières,
+**assurance professionnelle** (assureur, n° de contrat, couverture géographique — Paramétrage → Sociétés),
+mentions complémentaires de la société, et le cadre « Bon pour accord — devis reçu avant l'exécution des travaux ».
+Liste à faire valider par le service juridique.
+
+## À venir
+
+Envoi par email depuis l'application, signature électronique, bibliothèque de prix (articles et ouvrages),
+transformation en facture (P5, acompte puis solde) ou en affaire avec situations (P6).

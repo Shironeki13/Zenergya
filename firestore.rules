@@ -21,10 +21,10 @@ service cloud.firestore {
       return coll in ['users', 'roles'];
     }
 
-    // Documents comptables : écrits uniquement par le serveur (Admin SDK), qui attribue les numéros
-    // dans la même transaction. Côté navigateur, seules les exceptions ci-dessous sont permises.
+    // Documents comptables et versions de devis envoyées : écrits uniquement par le serveur (Admin SDK).
+    // Pour les documents comptables, il attribue les numéros dans la même transaction. Côté navigateur, seules les exceptions ci-dessous sont permises.
     function isAccounting(coll) {
-      return coll in ['invoices', 'creditNotes', 'counters'];
+      return coll in ['invoices', 'creditNotes', 'counters', 'quoteVersions'];
     }
 
     // Code Zenergya d'un site ou d'un compteur (SIT-00001, CPT-00001) : identifiant maître,
@@ -50,12 +50,15 @@ service cloud.firestore {
     }
 
     match /quotes/{quoteId} {
-      // Seul un brouillon se modifie, sans changer de numéro ; un devis envoyé est figé (nouvelle version).
+      // Seul un brouillon se modifie, et reste un brouillon (même numéro, même version) : envoi, acceptation,
+      // refus, annulation et nouvelle version passent par le serveur (services/quotes-admin.ts).
       allow update: if isAppUser()
         && resource.data.status == 'brouillon'
-        && request.resource.data.number == resource.data.number;
-      // Seul un brouillon se supprime ; un devis envoyé s'annule.
-      allow delete: if isAppUser() && resource.data.status == 'brouillon';
+        && request.resource.data.status == 'brouillon'
+        && request.resource.data.number == resource.data.number
+        && request.resource.data.version == resource.data.version;
+      // Seul un brouillon jamais envoyé (version 1) se supprime ; sinon le devis s'annule.
+      allow delete: if isAppUser() && resource.data.status == 'brouillon' && resource.data.version == 1;
     }
 
     match /invoices/{invoiceId} {

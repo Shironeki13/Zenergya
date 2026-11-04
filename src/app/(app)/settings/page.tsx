@@ -66,6 +66,7 @@ const CompaniesSection = ({ onCompaniesUpdate }: { onCompaniesUpdate: (companies
     const [einvoicingStartDate, setEinvoicingStartDate] = useState('');
     // Devis : valeurs par défaut, saisies en texte (vide = non renseigné)
     const [quoteDefaults, setQuoteDefaults] = useState({ coefficient: '', laborRate: '', laborCost: '', validityDays: '', vatRate: '' });
+    const [quoteTexts, setQuoteTexts] = useState({ insurer: '', insurancePolicy: '', insuranceCoverage: '', quoteFooterText: '' });
     const [logoFile, setLogoFile] = useState<File | null>(null);
     const [logoPreview, setLogoPreview] = useState<string | null>(null);
 
@@ -88,6 +89,7 @@ const CompaniesSection = ({ onCompaniesUpdate }: { onCompaniesUpdate: (companies
         setVatNumber('');
         setEinvoicingStartDate('');
         setQuoteDefaults({ coefficient: '', laborRate: '', laborCost: '', validityDays: '', vatRate: '' });
+        setQuoteTexts({ insurer: '', insurancePolicy: '', insuranceCoverage: '', quoteFooterText: '' });
         setLogoFile(null);
         setLogoPreview(null);
         setEditingCompany(null);
@@ -109,6 +111,10 @@ const CompaniesSection = ({ onCompaniesUpdate }: { onCompaniesUpdate: (companies
             setQuoteDefaults({
                 coefficient: s(company.quoteCoefficient), laborRate: s(company.quoteLaborRate), laborCost: s(company.quoteLaborCost),
                 validityDays: s(company.quoteValidityDays), vatRate: s(company.quoteDefaultVatRate),
+            });
+            setQuoteTexts({
+                insurer: company.insurer || '', insurancePolicy: company.insurancePolicy || '',
+                insuranceCoverage: company.insuranceCoverage || '', quoteFooterText: company.quoteFooterText || '',
             });
             setLogoPreview(company.logoUrl || null);
         } else {
@@ -143,6 +149,8 @@ const CompaniesSection = ({ onCompaniesUpdate }: { onCompaniesUpdate: (companies
                 quoteCoefficient: num(quoteDefaults.coefficient), quoteLaborRate: num(quoteDefaults.laborRate),
                 quoteLaborCost: num(quoteDefaults.laborCost), quoteValidityDays: num(quoteDefaults.validityDays),
                 quoteDefaultVatRate: num(quoteDefaults.vatRate),
+                insurer: quoteTexts.insurer.trim(), insurancePolicy: quoteTexts.insurancePolicy.trim(),
+                insuranceCoverage: quoteTexts.insuranceCoverage.trim(), quoteFooterText: quoteTexts.quoteFooterText.trim(),
             };
 
             if (editingCompany) {
@@ -330,6 +338,24 @@ const CompaniesSection = ({ onCompaniesUpdate }: { onCompaniesUpdate: (companies
                                 <p className="text-xs text-muted-foreground">
                                     Un client peut avoir son propre coefficient et son propre taux horaire (fiche client).
                                     Recopiés sur chaque devis à sa création.
+                                </p>
+                            </div>
+                            <div className="space-y-2">
+                                <Label>Devis : assurance professionnelle et mentions</Label>
+                                {([
+                                    ['insurer', 'Assureur (nom et coordonnées)'],
+                                    ['insurancePolicy', 'N° de contrat'],
+                                    ['insuranceCoverage', 'Couverture géographique'],
+                                    ['quoteFooterText', 'Mentions complémentaires en pied de devis'],
+                                ] as const).map(([key, label]) => (
+                                    <div key={key} className="space-y-1">
+                                        <Label htmlFor={`quote-${key}`} className="text-xs font-normal">{label}</Label>
+                                        <Input id={`quote-${key}`} value={quoteTexts[key]}
+                                            onChange={(e) => setQuoteTexts(q => ({ ...q, [key]: e.target.value }))} />
+                                    </div>
+                                ))}
+                                <p className="text-xs text-muted-foreground">
+                                    Imprimés sur les devis. L'assurance décennale (assureur, couverture géographique) est à mentionner pour des travaux.
                                 </p>
                             </div>
                             <div className="space-y-2">

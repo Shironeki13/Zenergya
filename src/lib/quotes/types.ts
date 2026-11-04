@@ -1,3 +1,5 @@
+import type { ArchivedPdf } from '@/lib/types';
+
 /**
  * Devis : modèle de données.
  *
@@ -130,8 +132,48 @@ export type Quote = {
     pricing: QuotePricing;
     lines: QuoteLine[];
     totals: QuoteTotals;
+    // Envoi : la version envoyée est figée (PDF archivé, empreinte) et conservée dans `quoteVersions`.
+    sentAt?: string;
+    sentBy?: string;
+    pdf?: ArchivedPdf;
+    acceptance?: QuoteAcceptance;
+    refusal?: QuoteRefusal;
+    cancellation?: QuoteCancellation;
     createdAt: string;
     createdBy?: string;
     updatedAt: string;
     updatedBy?: string;
+};
+
+export type QuoteAcceptance = {
+    acceptedAt: string;             // date de l'accord (YYYY-MM-DD)
+    signatoryName: string;          // signataire du « bon pour accord »
+    signatoryRole?: string;
+    purchaseOrderNumber?: string;   // bon de commande du client (engagement juridique pour Chorus)
+    comment?: string;
+    acceptedExpired?: boolean;      // accepté après la fin de validité, en connaissance de cause
+    recordedAt: string;
+    recordedBy?: string;
+    /** Effets : prospect devenu client, site créé depuis l'adresse d'intervention. */
+    clientConverted?: boolean;
+    createdSiteId?: string;
+};
+
+export type QuoteRefusal = { refusedAt: string; reason: string; recordedAt: string; recordedBy?: string };
+export type QuoteCancellation = { cancelledAt: string; reason: string; previousStatus: QuoteStatus; recordedBy?: string };
+
+/** Une version envoyée : figée, avec son PDF. Collection `quoteVersions`, écrite par le serveur seulement. */
+export type QuoteVersionRecord = {
+    id: string;
+    quoteId: string;
+    number: string;
+    version: number;
+    sentAt: string;
+    sentBy?: string;
+    totalHT: number;
+    totalTTC: number;
+    pdf: ArchivedPdf;
+    snapshot: Omit<Quote, 'id'>;
+    /** Remplacée par une version suivante. */
+    supersededAt?: string;
 };
