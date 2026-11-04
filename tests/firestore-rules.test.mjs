@@ -21,6 +21,8 @@ await env.withSecurityRulesDisabled(async (ctx) => {
   await setDoc(doc(db, 'quotes', 'brouillon'), { number: 'VEF-DEV2026-0001', status: 'brouillon', version: 1, title: 'A' });
   await setDoc(doc(db, 'quoteVersions', 'v'), { quoteId: 'envoye', version: 1 });
   await setDoc(doc(db, 'projects', 'p'), { code: 'VEF-AFF2026-0001', status: 'en_cours' });
+  await setDoc(doc(db, 'apiKeys', 'k'), { name: 'ERP', prefix: 'abc', hash: 'h' });
+  await setDoc(doc(db, 'apiLogs', 'l'), { status: 200 });
   await setDoc(doc(db, 'projectSituations', 's'), { projectId: 'p', status: 'brouillon' });
   await setDoc(doc(db, 'quotes', 'envoye'), { number: 'VEF-DEV2026-0002', status: 'envoye', title: 'B' });
   await setDoc(doc(db, 'quotes', 'jetable'), { number: 'VEF-DEV2026-0003', status: 'brouillon', version: 1, title: 'C' });
@@ -91,6 +93,11 @@ await t('admin cannot create project', assertFails(setDoc(doc(admin, 'projects',
 await t('user reads situations', assertSucceeds(getDoc(doc(user, 'projectSituations', 's'))));
 await t('user cannot write situations', assertFails(updateDoc(doc(user, 'projectSituations', 's'), { progress: { a: 100 } })));
 await t('user cannot delete situation', assertFails(deleteDoc(doc(user, 'projectSituations', 's'))));
+await t('user cannot read api keys', assertFails(getDoc(doc(user, 'apiKeys', 'k'))));
+await t('admin cannot read api keys', assertFails(getDoc(doc(admin, 'apiKeys', 'k'))));
+await t('admin cannot create api key', assertFails(setDoc(doc(admin, 'apiKeys', 'n'), { name: 'X' })));
+await t('admin cannot read api logs', assertFails(getDoc(doc(admin, 'apiLogs', 'l'))));
+await t('admin cannot write api usage', assertFails(setDoc(doc(admin, 'apiUsage', 'k'), { count: 0 })));
 await t('user cannot write import log', assertFails(setDoc(doc(user, 'imports', 'x'), { created: 1 })));
 await t('admin cannot write import log', assertFails(setDoc(doc(admin, 'imports', 'x'), { created: 1 })));
 await t('user cannot write quote versions', assertFails(setDoc(doc(user, 'quoteVersions', 'v'), { version: 9 })));

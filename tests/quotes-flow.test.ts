@@ -119,7 +119,9 @@ test("acceptation : le prospect devient client, le site est créé depuis l'adre
     const client = (await adminDb.collection('clients').doc('qf-prospect').get()).data()!;
     assert.equal(client.relation, 'client');
     const site = (await adminDb.collection('sites').doc(accepted.acceptance!.createdSiteId!).get()).data()!;
-    assert.equal(site.code, 'SIT-00042');
+    // Compteur partagé avec d'autres tests (imports) : un code SIT au-delà du compteur de départ (41).
+    assert.match(site.code, /^SIT-\d{5}$/);
+    assert.ok(Number(site.code.slice(4)) > 41);
     assert.equal(site.clientId, 'qf-prospect');
     assert.equal(site.city, 'Lyon');
     assert.equal(accepted.siteId, accepted.acceptance!.createdSiteId);

@@ -28,7 +28,7 @@ test('en-têtes : libellés, sans accents ni astérisque, alias ; colonnes incon
     const { index, ignored, missing } = mapHeaders(CLIENTS, ['RAISON SOCIALE *', 'cp', 'Societe', 'Commentaire', 'Type']);
     assert.equal(index.get('name'), 0);
     assert.equal(index.get('postalCode'), 1);
-    assert.equal(index.get('companyId'), 2);
+    assert.equal(index.get('company'), 2);
     assert.deepEqual(ignored, ['Commentaire']);
     assert.ok(missing.includes('Adresse'));
 });
@@ -74,4 +74,20 @@ test('version de SheetJS : lecture réservée aux versions corrigées', () => {
     assert.equal(versionAtLeast('0.19.3', '0.19.3'), true);
     assert.equal(versionAtLeast('0.20.3', '0.19.3'), true);
     assert.equal(versionAtLeast('1.0.0', '0.19.3'), true);
+});
+
+import { buildOpenApi } from '../src/lib/api/openapi';
+import { API_RESOURCES } from '../src/lib/api/scopes';
+
+test('OpenAPI : chemins et schémas générés depuis la description des imports', () => {
+    const spec = buildOpenApi('https://zenergya.example/api/v1') as any;
+    assert.equal(spec.openapi, '3.1.0');
+    for (const r of API_RESOURCES) {
+        assert.ok(spec.paths[`/${r}`].get && spec.paths[`/${r}`].post && spec.paths[`/${r}/{ref}`].get, r);
+        const schema = spec.components.schemas[r[0].toUpperCase() + r.slice(1)];
+        for (const f of IMPORT_ENTITIES[r].fields) assert.ok(schema.properties[f.key], `${r}.${f.key}`);
+    }
+    assert.deepEqual(spec.components.schemas.Clients.properties.clientType.enum, ['private', 'public']);
+    assert.equal(spec.components.schemas.Clients.properties.siret.pattern, '^\\d{14}$');
+    assert.equal(spec.components.securitySchemes.apiKey.scheme, 'bearer');
 });

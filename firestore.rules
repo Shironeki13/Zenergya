@@ -37,6 +37,11 @@ service cloud.firestore {
         || request.resource.data.get('code', null) == resource.data.code;
     }
 
+    // API externe : clés (empreintes), débit, idempotence, journal. Serveur uniquement, même en lecture.
+    function isServerOnly(coll) {
+      return coll in ['apiKeys', 'apiUsage', 'apiIdempotency', 'apiLogs'];
+    }
+
     // Devis : modification et suppression traitées à part (voir match /quotes).
     function isQuoteChange(coll) {
       return coll == 'quotes' && request.method in ['update', 'delete'];
@@ -45,8 +50,8 @@ service cloud.firestore {
     // Attention : les règles qui correspondent à un même chemin s'additionnent (OU logique),
     // d'où une règle générique qui exclut explicitement les collections traitées à part.
     match /{coll}/{docId} {
-      allow read: if isAppUser();
-      allow create, update, delete: if !isAccounting(coll) && codeInchange(coll) && !isQuoteChange(coll)
+      allow read: if isAppUser() && !isServerOnly(coll);
+      allow create, update, delete: if !isAccounting(coll) && !isServerOnly(coll) && codeInchange(coll) && !isQuoteChange(coll)
         && (isAdmin() || (isAppUser() && !isAdminOnly(coll)));
     }
 
