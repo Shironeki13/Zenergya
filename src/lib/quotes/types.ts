@@ -105,6 +105,18 @@ export type Quote = {
     interventionAddress?: QuoteAddress;
     title: string;                  // objet du devis
     mode: QuoteMode;
+    // Suivi commercial
+    authorId?: string;              // rédacteur du devis (utilisateur responsable, chargé d'affaires)
+    authorName?: string;            // copie : reste lisible si l'utilisateur change ou part
+    authorEmail?: string;
+    agencyId?: string;              // analytique et périmètre (repris du client)
+    sectorId?: string;
+    contactId?: string;             // interlocuteur chez le client (destinataire du devis)
+    contactName?: string;           // copie au moment du devis
+    contactEmail?: string;
+    contactPhone?: string;
+    clientReference?: string;       // référence du client : n° de consultation, de demande…
+    requestDate?: string;           // date de la demande du client (YYYY-MM-DD)
     status: QuoteStatus;
     version: number;                // 1, 2… (une nouvelle version à chaque modification après envoi)
     date: string;                   // YYYY-MM-DD

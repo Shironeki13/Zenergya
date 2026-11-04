@@ -11,6 +11,8 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { useToast } from '@/hooks/use-toast';
+import { useData } from '@/context/data-context';
+import { Checkbox } from '@/components/ui/checkbox';
 import { getQuotes } from '@/services/quotes';
 import { QUOTE_STATUSES, QUOTE_STATUS_LABELS, type Quote, type QuoteStatus } from '@/lib/quotes/types';
 import { formatEur, formatPct, StatusBadge } from '@/components/quotes/format';
@@ -27,6 +29,8 @@ function QuotesList() {
     const [loading, setLoading] = useState(true);
     const [search, setSearch] = useState('');
     const [status, setStatus] = useState<QuoteStatus | 'all'>('all');
+    const [mine, setMine] = useState(false);
+    const { currentUser } = useData();
     const siteId = params.get('siteId');
     const clientId = params.get('clientId');
 
@@ -43,10 +47,11 @@ function QuotesList() {
             .filter(q => status === 'all' || q.status === status)
             .filter(q => !siteId || q.siteId === siteId)
             .filter(q => !clientId || q.clientId === clientId)
-            .filter(q => !s || [q.number, q.title, q.clientName, q.siteName, q.interventionAddress?.city]
+            .filter(q => !mine || q.authorId === currentUser?.id)
+            .filter(q => !s || [q.number, q.title, q.clientName, q.siteName, q.interventionAddress?.city, q.authorName, q.clientReference]
                 .some(v => (v ?? '').toLowerCase().includes(s)))
             .sort((a, b) => b.number.localeCompare(a.number));
-    }, [quotes, search, status, siteId, clientId]);
+    }, [quotes, search, status, siteId, clientId, mine, currentUser]);
 
     const newHref = `/quotes/new${clientId || siteId ? `?${new URLSearchParams({ ...(clientId && { clientId }), ...(siteId && { siteId }) })}` : ''}`;
 
@@ -72,6 +77,9 @@ function QuotesList() {
                             {QUOTE_STATUSES.map(s => <SelectItem key={s} value={s}>{QUOTE_STATUS_LABELS[s]}</SelectItem>)}
                         </SelectContent>
                     </Select>
+                    <label className="flex items-center gap-2 text-sm">
+                        <Checkbox checked={mine} onCheckedChange={v => setMine(v === true)} />Mes devis
+                    </label>
                 </div>
                 <Table>
                     <TableHeader>
@@ -81,6 +89,7 @@ function QuotesList() {
                             <TableHead>Client</TableHead>
                             <TableHead>Lieu</TableHead>
                             <TableHead>Objet</TableHead>
+                            <TableHead>Rédacteur</TableHead>
                             <TableHead>Statut</TableHead>
                             <TableHead className="text-right">Total HT</TableHead>
                             <TableHead className="text-right">Marge</TableHead>
@@ -88,9 +97,9 @@ function QuotesList() {
                     </TableHeader>
                     <TableBody>
                         {loading ? (
-                            <TableRow><TableCell colSpan={8} className="h-24 text-center"><Loader2 className="mx-auto h-6 w-6 animate-spin" /></TableCell></TableRow>
+                            <TableRow><TableCell colSpan={9} className="h-24 text-center"><Loader2 className="mx-auto h-6 w-6 animate-spin" /></TableCell></TableRow>
                         ) : visible.length === 0 ? (
-                            <TableRow><TableCell colSpan={8} className="h-24 text-center text-muted-foreground">Aucun devis.</TableCell></TableRow>
+                            <TableRow><TableCell colSpan={9} className="h-24 text-center text-muted-foreground">Aucun devis.</TableCell></TableRow>
                         ) : visible.map(q => (
                             <TableRow key={q.id}>
                                 <TableCell className="font-mono text-xs"><Link className="hover:underline" href={`/quotes/${q.id}`}>{q.number}</Link>{q.version > 1 && ` V${q.version}`}</TableCell>
@@ -101,6 +110,7 @@ function QuotesList() {
                                 </TableCell>
                                 <TableCell className="text-sm">{q.siteName || [q.interventionAddress?.postalCode, q.interventionAddress?.city].filter(Boolean).join(' ') || '—'}</TableCell>
                                 <TableCell>{q.title}</TableCell>
+                                <TableCell className="text-sm">{q.authorName ?? '—'}</TableCell>
                                 <TableCell><StatusBadge status={q.status} /></TableCell>
                                 <TableCell className="text-right">{formatEur(q.totals.totalHT)}</TableCell>
                                 <TableCell className="text-right">{formatPct(q.totals.marginRate)}</TableCell>

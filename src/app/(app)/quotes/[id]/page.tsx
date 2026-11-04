@@ -21,13 +21,23 @@ import { QUOTE_LINE_KIND_LABELS, type Quote, type QuoteLine, type QuoteLineKind,
 import { deleteQuoteDraft, getQuote, updateQuoteDraft, type QuoteDraftPatch } from '@/services/quotes';
 
 type Draft = Required<Pick<Quote, 'title' | 'date' | 'validityDays' | 'pricing' | 'lines'>> &
-    Pick<Quote, 'paymentTerms' | 'estimatedStart' | 'estimatedDuration' | 'notes' | 'internalNotes'>;
+    Pick<Quote, 'paymentTerms' | 'estimatedStart' | 'estimatedDuration' | 'notes' | 'internalNotes'
+        | 'authorId' | 'authorName' | 'authorEmail' | 'agencyId' | 'sectorId'
+        | 'contactId' | 'contactName' | 'contactEmail' | 'contactPhone' | 'clientReference' | 'requestDate'>;
 
 const toDraft = (q: Quote): Draft => ({
     title: q.title, date: q.date, validityDays: q.validityDays, pricing: q.pricing, lines: q.lines,
     paymentTerms: q.paymentTerms ?? '', estimatedStart: q.estimatedStart ?? '', estimatedDuration: q.estimatedDuration ?? '',
     notes: q.notes ?? '', internalNotes: q.internalNotes ?? '',
+    authorId: q.authorId ?? '', authorName: q.authorName ?? '', authorEmail: q.authorEmail ?? '',
+    agencyId: q.agencyId ?? '', sectorId: q.sectorId ?? '',
+    contactId: q.contactId ?? '', contactName: q.contactName ?? '', contactEmail: q.contactEmail ?? '', contactPhone: q.contactPhone ?? '',
+    clientReference: q.clientReference ?? '', requestDate: q.requestDate ?? '',
 });
+
+const NONE = '__none__';
+/** Champs texte vides → absents (Firestore et lisibilité). */
+const orUndefined = (v?: string) => (v && v.trim() ? v.trim() : undefined);
 
 const ADDABLE: QuoteLineKind[] = ['TITRE', 'FOURNITURE', 'MAIN_OEUVRE', 'SOUS_TRAITANCE', 'DIVERS', 'TEXTE', 'SOUS_TOTAL'];
 const SOURCE = { client: 'fiche client', company: 'société' } as const;
@@ -36,7 +46,7 @@ export default function QuoteEditorPage() {
     const { id } = useParams<{ id: string }>();
     const router = useRouter();
     const { toast } = useToast();
-    const { currentUser } = useData();
+    const { currentUser, users, contacts, agencies, sectors } = useData();
     const [quote, setQuote] = useState<Quote | null>(null);
     const [draft, setDraft] = useState<Draft | null>(null);
     const [loading, setLoading] = useState(true);
@@ -96,6 +106,11 @@ export default function QuoteEditorPage() {
                 estimatedDuration: draft.estimatedDuration?.trim() || undefined,
                 notes: draft.notes?.trim() || undefined,
                 internalNotes: draft.internalNotes?.trim() || undefined,
+                authorId: orUndefined(draft.authorId), authorName: orUndefined(draft.authorName), authorEmail: orUndefined(draft.authorEmail),
+                agencyId: orUndefined(draft.agencyId), sectorId: orUndefined(draft.sectorId),
+                contactId: orUndefined(draft.contactId), contactName: orUndefined(draft.contactName),
+                contactEmail: orUndefined(draft.contactEmail), contactPhone: orUndefined(draft.contactPhone),
+                clientReference: orUndefined(draft.clientReference), requestDate: orUndefined(draft.requestDate),
             };
             const updated = await updateQuoteDraft(quote.id, patch, currentUser?.email);
             setQuote(updated);
@@ -147,6 +162,80 @@ export default function QuoteEditorPage() {
                 )}
             </div>
             {readOnly && <p className="text-sm text-muted-foreground">Ce devis n'est plus un brouillon : il est figé. Une modification passera par une nouvelle version.</p>}
+
+            <Card>
+                <CardHeader><CardTitle className="text-base">Suivi</CardTitle></CardHeader>
+                <CardContent className="grid gap-3 md:grid-cols-3">
+                    <div className="space-y-1">
+                        <Label>Rédacteur du devis</Label>
+                        <Select value={draft.authorId || NONE} disabled={readOnly} onValueChange={v => {
+                            const u = users.find(x => x.id === v);
+                            set(u ? { authorId: u.id, authorName: [u.firstName, u.name].filter(Boolean).join(' ') || u.email, authorEmail: u.email }
+                                : { authorId: '', authorName: '', authorEmail: '' });
+                        }}>
+                            <SelectTrigger><SelectValue placeholder="Choisir" /></SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value={NONE}>Non attribué</SelectItem>
+                                {/* Rédacteur d'origine absent de la liste (utilisateur supprimé) : reste affiché. */}
+                                {draft.authorId && !users.some(u => u.id === draft.authorId) && <SelectItem value={draft.authorId}>{draft.authorName}</SelectItem>}
+                                {[...users].sort((a, b) => a.name.localeCompare(b.name)).map(u => (
+                                    <SelectItem key={u.id} value={u.id}>{[u.firstName, u.name].filter(Boolean).join(' ') || u.email}</SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                    </div>
+                    <div className="space-y-1">
+                        <Label>Agence</Label>
+                        <Select value={draft.agencyId || NONE} disabled={readOnly} onValueChange={v => set({ agencyId: v === NONE ? '' : v, sectorId: '' })}>
+                            <SelectTrigger><SelectValue placeholder="Choisir" /></SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value={NONE}>—</SelectItem>
+                                {agencies.filter(a => a.companyId === quote.companyId).map(a => <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>)}
+                            </SelectContent>
+                        </Select>
+                    </div>
+                    <div className="space-y-1">
+                        <Label>Secteur</Label>
+                        <Select value={draft.sectorId || NONE} disabled={readOnly || !draft.agencyId} onValueChange={v => set({ sectorId: v === NONE ? '' : v })}>
+                            <SelectTrigger><SelectValue placeholder="Choisir" /></SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value={NONE}>—</SelectItem>
+                                {sectors.filter(s => s.agencyId === draft.agencyId).map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
+                            </SelectContent>
+                        </Select>
+                    </div>
+                    <div className="space-y-1">
+                        <Label>Interlocuteur chez le client</Label>
+                        <Select value={draft.contactId || NONE} disabled={readOnly} onValueChange={v => {
+                            const c = contacts.find(x => x.id === v);
+                            set(c ? { contactId: c.id, contactName: c.name, contactEmail: c.email ?? '', contactPhone: c.phone ?? '' }
+                                : { contactId: '', contactName: '', contactEmail: '', contactPhone: '' });
+                        }}>
+                            <SelectTrigger><SelectValue placeholder="Choisir" /></SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value={NONE}>Aucun</SelectItem>
+                                {contacts.filter(c => c.clientId === quote.clientId).map(c => (
+                                    <SelectItem key={c.id} value={c.id}>{c.name}{c.role ? ` — ${c.role}` : ''}</SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                        {draft.contactId && <p className="text-xs text-muted-foreground">{[draft.contactEmail, draft.contactPhone].filter(Boolean).join(' · ') || 'Sans email ni téléphone'}</p>}
+                        {contacts.every(c => c.clientId !== quote.clientId) && (
+                            <p className="text-xs text-muted-foreground">Aucun contact : à ajouter sur la <Link className="underline" href={`/clients/${quote.clientId}`}>fiche client</Link>.</p>
+                        )}
+                    </div>
+                    <div className="space-y-1">
+                        <Label htmlFor="q-ref">Référence du client</Label>
+                        <Input id="q-ref" placeholder="N° de consultation, de demande…" value={draft.clientReference ?? ''} disabled={readOnly}
+                            onChange={e => set({ clientReference: e.target.value })} />
+                    </div>
+                    <div className="space-y-1">
+                        <Label htmlFor="q-request">Date de la demande</Label>
+                        <Input id="q-request" type="date" value={draft.requestDate ?? ''} disabled={readOnly}
+                            onChange={e => set({ requestDate: e.target.value })} />
+                    </div>
+                </CardContent>
+            </Card>
 
             <div className="grid gap-6 lg:grid-cols-2">
                 <Card>

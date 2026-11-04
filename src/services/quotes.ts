@@ -75,7 +75,9 @@ export async function createQuote(input: NewQuoteInput, company: Pick<Company, '
 
 export type QuoteDraftPatch = Partial<Pick<Quote,
     'title' | 'date' | 'validityDays' | 'paymentTerms' | 'estimatedStart' | 'estimatedDuration' | 'notes' | 'internalNotes'
-    | 'pricing' | 'lines' | 'siteId' | 'siteName' | 'contractId' | 'interventionAddress' | 'mode'>>;
+    | 'pricing' | 'lines' | 'siteId' | 'siteName' | 'contractId' | 'interventionAddress' | 'mode'
+    | 'authorId' | 'authorName' | 'authorEmail' | 'agencyId' | 'sectorId'
+    | 'contactId' | 'contactName' | 'contactEmail' | 'contactPhone' | 'clientReference' | 'requestDate'>>;
 
 /** Modifie un brouillon (un devis envoyé ne se modifie plus : il faudra une nouvelle version). */
 export async function updateQuoteDraft(id: string, patch: QuoteDraftPatch, user?: string): Promise<Quote> {

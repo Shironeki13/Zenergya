@@ -18,6 +18,18 @@ Menu **Travaux → Devis**, ou depuis une fiche site / une fiche client (« Nouv
 - **Un devis envoyé est figé.** Seul un brouillon se modifie ou se supprime (règles Firestore) ; un devis envoyé
   s'annule ou passe par une nouvelle version.
 
+## Suivi
+
+| Champ | Rôle |
+| --- | --- |
+| Rédacteur du devis | Utilisateur responsable (chargé d'affaires) : par défaut celui qui crée le devis, modifiable. Nom et email recopiés sur le devis. Filtre « Mes devis » dans la liste |
+| Agence, secteur | Analytique et périmètre, repris du client à la création |
+| Interlocuteur chez le client | Contact destinataire, choisi parmi les contacts du client ; nom, email et téléphone recopiés |
+| Référence du client | N° de consultation, de demande… |
+| Date de la demande | Pour suivre le délai de réponse |
+
+Création et dernière modification sont aussi tracées (date et utilisateur).
+
 ## Lignes
 
 | Nature | Prix unitaire de vente | Coût |

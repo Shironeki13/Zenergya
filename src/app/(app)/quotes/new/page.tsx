@@ -122,6 +122,14 @@ function NewQuoteForm() {
                     : { interventionAddress: { address: address.address.trim(), postalCode: address.postalCode.trim(), city: address.city.trim() } }),
                 title: title.trim(),
                 mode,
+                // Rédacteur : l'utilisateur qui crée le devis (modifiable ensuite).
+                ...(currentUser && {
+                    authorId: currentUser.id,
+                    authorName: [currentUser.firstName, currentUser.name].filter(Boolean).join(' ') || currentUser.email,
+                    authorEmail: currentUser.email,
+                }),
+                agencyId: target.agencyId,
+                sectorId: target.sectorId,
                 date: today(),
                 validityDays: company.quoteValidityDays ?? 30,
                 pricing: resolvePricing(target, company),
