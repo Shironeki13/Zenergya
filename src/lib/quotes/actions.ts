@@ -2,6 +2,8 @@
 
 import { requireUser } from '@/lib/auth/server';
 import type { Quote } from '@/lib/quotes/types';
+import type { QuoteBillingRequest } from '@/lib/quotes/billing';
+import { invoiceQuote } from '@/services/quote-billing';
 import {
     acceptQuote, cancelQuote, newQuoteVersion, refuseQuote, sendQuote, type AcceptInput,
 } from '@/services/quotes-admin';
@@ -41,4 +43,16 @@ export async function cancelQuoteAction(id: string, reason: string) {
 
 export async function newQuoteVersionAction(id: string) {
     return run(by => newQuoteVersion(id, by));
+}
+
+/** Facture un devis accepté : totalité, acompte (en %) ou solde. */
+export async function invoiceQuoteAction(id: string, request: QuoteBillingRequest):
+    Promise<{ success: true; invoiceId: string; invoiceNumber: string } | { success: false; error: string }> {
+    try {
+        const user = await requireUser();
+        return { success: true, ...(await invoiceQuote(id, request, user.email)) };
+    } catch (error) {
+        console.error('Facturation du devis :', error);
+        return { success: false, error: error instanceof Error ? error.message : 'Facturation impossible.' };
+    }
 }

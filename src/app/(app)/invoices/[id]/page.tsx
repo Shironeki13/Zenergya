@@ -154,6 +154,11 @@ export default function InvoiceDetailPage() {
           </Link>
         </Button>
         <h1 className="text-lg font-semibold md:text-2xl">{documentIdentifier}</h1>
+        {invoice.quote && (
+          <Link href={`/quotes/${invoice.quote.id}`} className="text-sm text-muted-foreground underline">
+            {invoice.quote.billingKind === 'acompte' ? `Acompte ${invoice.quote.percent?.toLocaleString('fr-FR')} %` : invoice.quote.billingKind === 'solde' ? 'Solde' : 'Totalité'} du devis {invoice.quote.number}
+          </Link>
+        )}
         <div className="ml-auto flex items-center gap-2">
           <Button variant="outline" size="sm">
             <Mail className="h-4 w-4 mr-2" />
@@ -239,10 +244,22 @@ export default function InvoiceDetailPage() {
                 <TableCell colSpan={3} className="text-right font-semibold py-2">Sous-total</TableCell>
                 <TableCell className="text-right font-medium py-2">{invoice.subtotal.toFixed(2)} €</TableCell>
               </TableRow>
-              <TableRow>
-                <TableCell colSpan={3} className="text-right font-semibold py-2">TVA (10%)</TableCell>
-                <TableCell className="text-right font-medium py-2">{invoice.tax.toFixed(2)} €</TableCell>
-              </TableRow>
+              {invoice.vatBreakdown && invoice.vatBreakdown.length > 0 ? (
+                invoice.vatBreakdown.map(v => (
+                  <TableRow key={v.rate}>
+                    <TableCell colSpan={3} className="text-right font-semibold py-2">TVA {v.rate.toLocaleString('fr-FR')} % (sur {v.base.toFixed(2)} €)</TableCell>
+                    <TableCell className="text-right font-medium py-2">{v.amount.toFixed(2)} €</TableCell>
+                  </TableRow>
+                ))
+              ) : (
+                <TableRow>
+                  {/* Taux réel de la facture (le libellé « 10 % » était codé en dur). */}
+                  <TableCell colSpan={3} className="text-right font-semibold py-2">
+                    TVA{typeof invoice.taxRate === 'number' ? ` (${(invoice.taxRate * 100).toLocaleString('fr-FR')} %)` : ''}
+                  </TableCell>
+                  <TableCell className="text-right font-medium py-2">{invoice.tax.toFixed(2)} €</TableCell>
+                </TableRow>
+              )}
               <TableRow className="text-lg font-bold">
                 <TableCell colSpan={3} className="text-right py-3 text-base">Total</TableCell>
                 <TableCell className="text-right text-primary text-xl py-3">{invoice.total.toFixed(2)} €</TableCell>

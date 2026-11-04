@@ -211,3 +211,14 @@ test('Chorus : SIRET de la société émettrice obligatoire ; rien de Chorus hor
     assert.ok(!resolveEInvoicing({ client: PUBLIC, company: { siret: '' } }).blocking.some(b => b.includes('société émettrice')));
     assert.equal(resolveEInvoicing({ client: B2B, contract: { chorus: { framework: 'A12' } } }).chorus, undefined);
 });
+
+test('Chorus : le bon de commande de la facture (devis accepté) prime comme engagement juridique', () => {
+    const r = resolveEInvoicing({
+        client: { ...PUBLIC, chorusLegalCommitmentNumber: 'EJ-CLIENT', chorusLegalCommitmentRequired: true },
+        contract: { chorus: { legalCommitments: [{ number: 'EJ-CONTRAT', startDate: '2026-01-01' }] } },
+        company: SOCIETE, documentDate: '2026-11-04', purchaseOrderNumber: 'BC-778',
+    });
+    assert.equal(r.chorus?.legalCommitment, 'BC-778');
+    assert.equal(r.chorus?.legalCommitmentSource, 'order');
+    assert.deepEqual(r.blocking, []);
+});

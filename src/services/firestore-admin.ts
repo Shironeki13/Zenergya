@@ -96,7 +96,7 @@ type PreparedSeries = { prefix: string; counterRef: FirebaseFirestore.DocumentRe
  * (Faire cette recherche dans la transaction verrouillerait une plage de la collection et ferait échouer
  * les émissions simultanées.)
  */
-async function prepareSeries(kind: NumberedKind, companyCode: string, issueDate: Date): Promise<PreparedSeries> {
+export async function prepareSeries(kind: NumberedKind, companyCode: string, issueDate: Date): Promise<PreparedSeries> {
     const prefix = numberPrefix(kind, companyCode, issueDate);
     const { collection, field } = NUMBERING[kind];
     const counterRef = adminDb.collection('counters').doc(`${kind}_${encodeURIComponent(prefix)}`);
@@ -118,7 +118,7 @@ async function prepareSeries(kind: NumberedKind, companyCode: string, issueDate:
  * Réserve le numéro suivant dans une transaction (lecture du compteur uniquement ;
  * l'appelant écrit le compteur via `commit` et le document dans la même transaction).
  */
-async function reserveNumber(tx: FirebaseFirestore.Transaction, series: PreparedSeries) {
+export async function reserveNumber(tx: FirebaseFirestore.Transaction, series: PreparedSeries) {
     const counterSnap = await tx.get(series.counterRef);
     const current = counterSnap.exists ? (counterSnap.get('current') as number) : series.seed;
     const next = current + 1;
@@ -145,7 +145,7 @@ export async function resolveIssuingCompany(contract: Contract | null, client: C
     throw new Error("Impossible de déterminer la société émettrice : renseignez la société du client ou du contrat.");
 }
 
-function assertCompanyCode(company: Company) {
+export function assertCompanyCode(company: Company) {
     if (!company.code?.trim()) {
         throw new Error(`La société « ${company.name} » n'a pas de code : il est nécessaire pour numéroter ses factures.`);
     }
@@ -157,14 +157,16 @@ function assertCompanyCode(company: Company) {
  * État de transmission électronique d'une facture / d'un avoir, calculé à partir de la configuration
  * du client, de sa typologie, du contrat et de la société émettrice au moment de l'émission.
  */
-export async function computeEInvoicingState(params: { clientId: string; contractId?: string; company: Company; documentDate: string }): Promise<EInvoicingState | undefined> {
+export async function computeEInvoicingState(params: { clientId: string; contractId?: string; company: Company; documentDate: string; purchaseOrderNumber?: string }): Promise<EInvoicingState | undefined> {
     const client = await getClient(params.clientId);
     if (!client) return undefined;
     const [typology, contract] = await Promise.all([
         client.typologyId ? getTypology(client.typologyId) : Promise.resolve(null),
         params.contractId ? getContract(params.contractId) : Promise.resolve(null),
     ]);
-    return initialEInvoicingState(resolveEInvoicing({ client, typology, contract, company: params.company, documentDate: params.documentDate }));
+    return initialEInvoicingState(resolveEInvoicing({
+        client, typology, contract, company: params.company, documentDate: params.documentDate, purchaseOrderNumber: params.purchaseOrderNumber,
+    }));
 }
 
 export type EInvoicingKind = 'invoice' | 'creditNote';

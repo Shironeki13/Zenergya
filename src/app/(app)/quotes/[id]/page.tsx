@@ -20,6 +20,7 @@ import { computeLines, computeQuoteTotals, isPriced, newLineId, quoteIssues, add
 import { QUOTE_LINE_KIND_LABELS, type Quote, type QuoteLine, type QuoteLineKind, type QuotePricing } from '@/lib/quotes/types';
 import { deleteQuoteDraft, getQuote, updateQuoteDraft, type QuoteDraftPatch } from '@/services/quotes';
 import { QuoteActions, QuoteHistory } from '@/components/quotes/lifecycle-panel';
+import { QuoteBilling } from '@/components/quotes/billing-panel';
 import { effectiveStatus } from '@/lib/quotes/lifecycle';
 
 type Draft = Required<Pick<Quote, 'title' | 'date' | 'validityDays' | 'pricing' | 'lines'>> &
@@ -170,6 +171,7 @@ export default function QuoteEditorPage() {
                     {effectiveStatus(quote) === 'expire' && ` Sa validité a pris fin le ${new Date(quote.validUntil).toLocaleDateString('fr-FR')}.`}
                 </p>
             )}
+            {quote.status === 'accepte' && <QuoteBilling quote={quote} />}
             {(quote.version > 1 || quote.sentAt || quote.cancellation) && <QuoteHistory quote={quote} />}
 
             <Card>
