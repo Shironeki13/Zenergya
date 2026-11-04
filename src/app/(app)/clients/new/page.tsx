@@ -30,6 +30,8 @@ import { Separator } from "@/components/ui/separator"
 import type { Typology, Company, Agency, Sector } from "@/lib/types"
 import { ClientSchema } from "@/lib/types"
 import { ClientEInvoicingFields } from "@/components/clients/einvoicing-fields"
+import { CompanyLookupDialog } from "@/components/clients/company-lookup"
+import { entrepriseToClientFields, type EntrepriseResult } from "@/lib/entreprises"
 import { useData } from "@/context/data-context"
 
 
@@ -85,6 +87,19 @@ export default function NewClientPage() {
       sectorId: currentUser?.scope?.sectorIds[0] !== '*' ? currentUser?.scope?.sectorIds[0] : "",
     },
   })
+
+  // Remplit la fiche depuis le répertoire des entreprises (API de l'État).
+  const applyEntreprise = (r: EntrepriseResult) => {
+    const fields = entrepriseToClientFields(r);
+    (Object.keys(fields) as (keyof typeof fields)[]).forEach(key =>
+      form.setValue(key, fields[key] as never, { shouldDirty: true, shouldValidate: true }));
+    const alert = !r.entrepriseActive ? 'Entreprise cessée.' : !r.etablissement.actif ? 'Établissement fermé.' : '';
+    toast({
+      title: alert ? `Fiche remplie — attention : ${alert}` : 'Fiche remplie depuis le répertoire',
+      description: `${r.nom} — SIRET ${r.etablissement.siret}${r.estPublic ? ' — entité publique : client public, dépôt Chorus activé' : ''}.`,
+      variant: alert ? 'destructive' : 'default',
+    });
+  };
 
   const watchTypologyId = form.watch("typologyId");
   const watchIsBe = form.watch("isBe");
@@ -214,7 +229,10 @@ export default function NewClientPage() {
 
               <Separator />
 
-              <h2 className="text-xl font-semibold">Informations Client</h2>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <h2 className="text-xl font-semibold">Informations Client</h2>
+                <CompanyLookupDialog defaultQuery={form.getValues('siret') || form.getValues('name') || ''} onSelect={applyEntreprise} />
+              </div>
               <div className="grid md:grid-cols-2 gap-8">
                 <FormField control={form.control} name="name" render={({ field }) => (
                   <FormItem>
