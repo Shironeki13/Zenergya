@@ -79,6 +79,8 @@ async function load(kind: ArchivedKind, id: string): Promise<Loaded> {
                 tax: invoice.tax,
                 total: invoice.total,
                 taxRate: invoice.taxRate,
+                ...(invoice.vatBreakdown && { vatBreakdown: invoice.vatBreakdown }),
+                ...(invoice.quote && { quote: invoice.quote }),
             },
         };
     }
@@ -105,6 +107,7 @@ async function load(kind: ArchivedKind, id: string): Promise<Loaded> {
             total: creditNote.total,
             references: originals.map(inv => inv.invoiceNumber || inv.id),
             reason: creditNote.reason,
+            ...(creditNote.vatBreakdown && { vatBreakdown: creditNote.vatBreakdown }),
         },
     };
 }

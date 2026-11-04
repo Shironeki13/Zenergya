@@ -139,6 +139,8 @@ export type Quote = {
     acceptance?: QuoteAcceptance;
     refusal?: QuoteRefusal;
     cancellation?: QuoteCancellation;
+    lastInvoicedAt?: string;        // dernière facture émise depuis ce devis
+    lastInvoicedBy?: string;
     createdAt: string;
     createdBy?: string;
     updatedAt: string;

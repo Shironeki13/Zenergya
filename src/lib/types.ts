@@ -132,7 +132,7 @@ export type ChorusAddressing = {
     serviceCode?: string;
     serviceCodeSource?: 'contract' | 'client';
     legalCommitment?: string;
-    legalCommitmentSource?: 'contract' | 'client';
+    legalCommitmentSource?: 'order' | 'contract' | 'client';
     marketNumber?: string;
     validatorSiret?: string;
     validatorServiceCode?: string;
@@ -593,6 +593,24 @@ export type InvoiceLineItem = {
     total: number;
     siteId?: string; // Optional: for detailed billing per site
     activityCode: string; // To group items by P1, P2, etc.
+    vatRate?: number; // Taux de TVA de la ligne, en % (factures multi-taux, ex. issues d'un devis)
+    unit?: string;
+};
+
+/** Ventilation de la TVA par taux (rate en %). Absente : TVA unique (`taxRate`). */
+export type VatBreakdown = { rate: number; base: number; amount: number }[];
+
+/** Facture issue d'un devis accepté. */
+export type InvoiceQuoteLink = {
+    id: string;
+    number: string;
+    version: number;
+    billingKind: 'acompte' | 'solde' | 'totale';
+    percent?: number;                 // acompte : % du devis
+    acceptedAt?: string;
+    purchaseOrderNumber?: string;
+    /** Solde : acomptes déduits. */
+    deposits?: { invoiceId: string; invoiceNumber: string; date: string; subtotal: number; tax: number }[];
 };
 
 export type Invoice = {
@@ -614,6 +632,9 @@ export type Invoice = {
     issuedAt?: string; // Horodatage d'attribution du numéro
     cancelledByCreditNoteId?: string; // Avoir ayant annulé la facture
     taxRate?: number; // Taux de TVA appliqué (ex. 0.1)
+    vatBreakdown?: VatBreakdown; // TVA par taux (factures multi-taux)
+    quoteId?: string; // Devis d'origine (requêtes)
+    quote?: InvoiceQuoteLink;
     pdf?: ArchivedPdf; // PDF archivé à l'émission (copie conforme)
     einvoicing?: EInvoicingState; // Facturation électronique (RFE)
 };
@@ -640,6 +661,7 @@ export type CreditNote = {
     tax: number;
     total: number;
     reason: string;
+    vatBreakdown?: VatBreakdown; // TVA par taux (avoir d'une facture multi-taux)
     companyId?: string; // Société émettrice (absente sur les avoirs antérieurs)
     pdf?: ArchivedPdf; // PDF archivé à l'émission (copie conforme)
     einvoicing?: EInvoicingState; // Facturation électronique (RFE)

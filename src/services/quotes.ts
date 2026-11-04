@@ -2,7 +2,7 @@ import { db } from '@/lib/firebase';
 import { collection, deleteDoc, doc, getDoc, getDocs, query, runTransaction, where } from 'firebase/firestore';
 import { addDays, computeQuoteTotals, quoteCounterKey, quoteNumber } from '@/lib/quotes/pricing';
 import type { Quote, QuoteVersionRecord } from '@/lib/quotes/types';
-import type { Client, Company } from '@/lib/types';
+import type { Client, Company, Invoice } from '@/lib/types';
 import { createClient } from '@/services/firestore';
 
 /**
@@ -44,6 +44,15 @@ export async function getQuotesBy(field: 'clientId' | 'siteId', value: string): 
 export async function getQuoteVersions(quoteId: string): Promise<QuoteVersionRecord[]> {
     const snap = await getDocs(query(collection(db, 'quoteVersions'), where('quoteId', '==', quoteId)));
     return snap.docs.map(d => ({ id: d.id, ...d.data() }) as QuoteVersionRecord).sort((a, b) => a.version - b.version);
+}
+
+/** Factures émises depuis un devis (dates converties en ISO). */
+export async function getQuoteInvoices(quoteId: string): Promise<Invoice[]> {
+    const snap = await getDocs(query(collection(db, 'invoices'), where('quoteId', '==', quoteId)));
+    const iso = (v: any) => (v?.toDate ? v.toDate().toISOString() : v);
+    return snap.docs
+        .map(d => { const data = d.data(); return { ...data, id: d.id, date: iso(data.date), dueDate: iso(data.dueDate) } as Invoice; })
+        .sort((a, b) => (a.invoiceNumber ?? '').localeCompare(b.invoiceNumber ?? ''));
 }
 
 export type NewQuoteInput = Omit<Quote, 'id' | 'number' | 'status' | 'version' | 'validUntil' | 'totals' | 'createdAt' | 'updatedAt'>;

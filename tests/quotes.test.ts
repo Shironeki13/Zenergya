@@ -98,3 +98,85 @@ test('cycle de vie : expiration déduite, actions possibles par statut', () => {
     assert.deepEqual(availableActions({ status: 'accepte', validUntil: '2026-11-30' }), []);
     assert.deepEqual(availableActions({ status: 'annule', validUntil: '2026-11-30' }), []);
 });
+
+import { allowedBillingKinds, billingSummary, buildQuoteInvoice } from '../src/lib/quotes/billing';
+import { sumCents } from '../src/lib/money';
+
+// Devis multi-taux : 3650 HT à 20 % (TVA 730) + 135 HT à 10 % (TVA 13,50) = 4528,50 TTC
+const MULTI = (() => {
+    const lines = [
+        line({ kind: 'FOURNITURE', unitCost: 1000, quantity: 2 }),
+        line({ kind: 'MAIN_OEUVRE', quantity: 8 }),
+        line({ kind: 'SOUS_TRAITANCE', unitCost: 400, discountPct: 10 }),
+        line({ kind: 'FOURNITURE', unitCost: 100, vatRate: 10 }),
+        line({ kind: 'FOURNITURE', unitCost: 500, optional: true }),
+    ];
+    return { number: 'VEF-DEV2026-0001', version: 1, mode: 'P5' as const, status: 'accepte' as const, lines, pricing: PRICING, totals: computeQuoteTotals(lines, PRICING) };
+})();
+const asInvoice = (id: string, draft: ReturnType<typeof buildQuoteInvoice>, kind: 'acompte' | 'solde' | 'totale', percent?: number) => ({
+    id, invoiceNumber: `F-${id}`, date: '2026-11-04', status: 'due' as const,
+    subtotal: draft.subtotal, tax: draft.tax, total: draft.total, vatBreakdown: draft.vatBreakdown,
+    quote: { id: 'q', number: MULTI.number, version: 1, billingKind: kind, ...(percent && { percent }) },
+});
+
+test('facturation : totalité = détail du devis, options exclues, TVA par taux', () => {
+    const f = buildQuoteInvoice(MULTI, { kind: 'totale' }, []);
+    assert.equal(f.lineItems.length, 4);
+    assert.equal(f.subtotal, MULTI.totals.totalHT);
+    assert.equal(f.tax, MULTI.totals.totalVAT);
+    assert.equal(f.total, MULTI.totals.totalTTC);
+    assert.deepEqual(f.vatBreakdown, MULTI.totals.vat);
+});
+
+test('facturation : acomptes puis solde, somme exactement égale au devis', () => {
+    const a1 = buildQuoteInvoice(MULTI, { kind: 'acompte', percent: 30 }, []);
+    assert.deepEqual(a1.vatBreakdown, [{ rate: 20, base: 1095, amount: 219 }, { rate: 10, base: 40.5, amount: 4.05 }]);
+    assert.equal(a1.lineItems.length, 2);
+    const inv1 = asInvoice('a1', a1, 'acompte', 30);
+
+    const a2 = buildQuoteInvoice(MULTI, { kind: 'acompte', percent: 33.33 }, [inv1]);
+    const inv2 = asInvoice('a2', a2, 'acompte', 33.33);
+    assert.equal(billingSummary(MULTI, [inv1, inv2]).depositPercent, 63.33);
+    assert.throws(() => buildQuoteInvoice(MULTI, { kind: 'acompte', percent: 40 }, [inv1, inv2]), /rester un solde/);
+    assert.throws(() => buildQuoteInvoice(MULTI, { kind: 'totale' }, [inv1]), /facturez le solde/);
+
+    const s = buildQuoteInvoice(MULTI, { kind: 'solde' }, [inv1, inv2]);
+    assert.equal(s.deposits.length, 2);
+    assert.equal(s.lineItems.filter(l => l.total < 0).length, 4);   // 2 acomptes × 2 taux
+    // Lignes et ventilation cohérentes : somme des lignes = base ventilée.
+    assert.equal(sumCents(s.lineItems.map(l => l.total)), s.subtotal);
+    // Somme des trois factures = devis, au centime.
+    assert.equal(sumCents([a1.subtotal, a2.subtotal, s.subtotal]), MULTI.totals.totalHT);
+    assert.equal(sumCents([a1.tax, a2.tax, s.tax]), MULTI.totals.totalVAT);
+    assert.equal(sumCents([a1.total, a2.total, s.total]), MULTI.totals.totalTTC);
+
+    const done = billingSummary(MULTI, [inv1, inv2, asInvoice('s', s, 'solde')]);
+    assert.equal(done.complete, true);
+    assert.equal(done.remainingTTC, 0);
+    assert.deepEqual(allowedBillingKinds(done), []);
+});
+
+test('facturation : un acompte annulé par avoir ne compte plus ; devis non accepté refusé', () => {
+    const a1 = buildQuoteInvoice(MULTI, { kind: 'acompte', percent: 30 }, []);
+    const cancelled = { ...asInvoice('a1', a1, 'acompte', 30), status: 'cancelled' as const };
+    assert.deepEqual(allowedBillingKinds(billingSummary(MULTI, [cancelled])), ['totale', 'acompte']);
+    assert.throws(() => buildQuoteInvoice({ ...MULTI, status: 'envoye' }, { kind: 'totale' }, []), /accepté/);
+    assert.throws(() => buildQuoteInvoice(MULTI, { kind: 'acompte', percent: 0 }, []), /entre 0 et 100/);
+});
+
+import { creditNoteAmounts } from '../src/lib/credit-notes';
+
+test("avoir d'une facture de solde : la déduction d'acompte redevient positive, l'avoir annule exactement la facture", () => {
+    const a1 = buildQuoteInvoice(MULTI, { kind: 'acompte', percent: 30 }, []);
+    const s = buildQuoteInvoice(MULTI, { kind: 'solde' }, [asInvoice('a1', a1, 'acompte', 30)]);
+    const solde = { invoiceNumber: 'F-S', lineItems: s.lineItems, tax: s.tax, vatBreakdown: s.vatBreakdown };
+    const avoir = creditNoteAmounts([solde]);
+    assert.equal(avoir.subtotal, -s.subtotal);
+    assert.equal(avoir.tax, -s.tax);
+    assert.equal(avoir.total, -s.total);
+    assert.ok(avoir.lineItems.some(l => l.total > 0), 'déductions redevenues positives');
+    assert.deepEqual(avoir.vatBreakdown, s.vatBreakdown.map(v => ({ rate: v.rate, base: -v.base, amount: -v.amount })));
+    // Factures ordinaires (lignes positives, TVA unique) : inchangé par rapport à l'ancien calcul.
+    const simple = creditNoteAmounts([{ invoiceNumber: 'F1', lineItems: [{ description: 'P2', quantity: 1, unitPrice: 100, total: 100, activityCode: 'P2' }], tax: 10 }]);
+    assert.deepEqual([simple.subtotal, simple.tax, simple.total, simple.vatBreakdown], [-100, -10, -110, []]);
+});

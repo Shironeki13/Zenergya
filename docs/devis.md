@@ -88,7 +88,28 @@ options à part, début et durée estimés, conditions de paiement, « devis gra
 mentions complémentaires de la société, et le cadre « Bon pour accord — devis reçu avant l'exécution des travaux ».
 Liste à faire valider par le service juridique.
 
+## Facturation d'un devis accepté
+
+Carte **Facturation** d'un devis accepté : factures émises, montant facturé et reste à facturer.
+
+| Facture | Contenu |
+| --- | --- |
+| **Totalité** | Le détail du devis (lignes chiffrées, options exclues), TVA par taux |
+| **Acompte** | Un pourcentage du devis, ventilé sur chacun de ses taux de TVA (une ligne par taux). Les acomptes cumulés restent sous 100 % : il reste toujours un solde |
+| **Solde** | Le détail du devis, moins chaque acompte déjà facturé (une ligne de déduction par acompte et par taux) |
+
+- **Numéro légal** de la série habituelle des factures, attribué dans la même transaction que la relecture du devis
+  et de ses factures : deux facturations simultanées ne peuvent pas facturer deux fois.
+- La TVA du solde est calculée **par différence** (TVA du devis − TVA des acomptes), taux par taux : la somme des
+  factures d'un devis égale exactement ses totaux, au centime.
+- Circuit habituel ensuite : PDF archivé (« FACTURE D'ACOMPTE » pour un acompte ; références du devis et du bon de
+  commande), facturation électronique ; pour un client public, le **bon de commande** saisi à l'acceptation est
+  l'engagement juridique déposé sur Chorus Pro.
+- Une facture se corrige par un **avoir** : une facture annulée par avoir ne compte plus, et peut être réémise.
+  L'avoir d'un solde reprend exactement ses montants (les déductions d'acompte y redeviennent positives).
+- Échéance : 30 jours.
+
 ## À venir
 
 Envoi par email depuis l'application, signature électronique, bibliothèque de prix (articles et ouvrages),
-transformation en facture (P5, acompte puis solde) ou en affaire avec situations (P6).
+transformation en affaire avec situations d'avancement (P6).

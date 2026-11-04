@@ -2,7 +2,7 @@
 /** @jsx h */
 /** @jsxFrag Fragment */
 import { Document, Page, View, Text, Image, StyleSheet, renderToBuffer } from '@react-pdf/renderer';
-import type { Client, Company, InvoiceLineItem } from '@/lib/types';
+import type { Client, Company, InvoiceLineItem, InvoiceQuoteLink, VatBreakdown } from '@/lib/types';
 
 /**
  * Modèle PDF des factures, proformas et avoirs (rendu côté serveur par @react-pdf/renderer).
@@ -38,6 +38,10 @@ export type AccountingDocumentData = {
     /** Avoir : numéros des factures annulées et motif. */
     references?: string[];
     reason?: string;
+    /** TVA par taux (factures multi-taux). Absente : une seule ligne de TVA. */
+    vatBreakdown?: VatBreakdown;
+    /** Facture issue d'un devis (acompte, solde, totalité). */
+    quote?: InvoiceQuoteLink;
 };
 
 const TITLES: Record<AccountingDocumentKind, string> = {
@@ -102,6 +106,8 @@ const styles = StyleSheet.create({
 export function AccountingDocumentPdf({ data }: { data: AccountingDocumentData }) {
     const { kind, company, client } = data;
     const logo = supportedLogo(company.logoUrl);
+    const title = kind === 'invoice' && data.quote?.billingKind === 'acompte' ? "FACTURE D'ACOMPTE" : TITLES[kind];
+    const pct = (rate: number) => `${rate.toLocaleString('fr-FR')} %`;
 
     const groups = data.lineItems.reduce<Record<string, InvoiceLineItem[]>>((acc, item) => {
         const key = item.activityCode || 'Autres';
@@ -115,7 +121,7 @@ export function AccountingDocumentPdf({ data }: { data: AccountingDocumentData }
     ].filter(Boolean).join(' · ');
 
     return (
-        <Document title={`${TITLES[kind]} ${data.number ?? ''}`.trim()} author={company.name}>
+        <Document title={`${title} ${data.number ?? ''}`.trim()} author={company.name}>
             <Page size="A4" style={styles.page}>
                 <View style={styles.header}>
                     <View>
@@ -127,7 +133,7 @@ export function AccountingDocumentPdf({ data }: { data: AccountingDocumentData }
                         {legalIds && <Text style={styles.muted}>{legalIds}</Text>}
                     </View>
                     <View>
-                        <Text style={styles.title}>{TITLES[kind]}</Text>
+                        <Text style={styles.title}>{title}</Text>
                         {data.number && <Text style={styles.number}>N° {data.number}</Text>}
                     </View>
                 </View>
@@ -147,6 +153,13 @@ export function AccountingDocumentPdf({ data }: { data: AccountingDocumentData }
                         )}
                         {data.periodStartDate && data.periodEndDate && (
                             <View style={styles.infoRow}><Text style={styles.infoLabel}>Période :</Text><Text>{`du ${formatDate(data.periodStartDate)} au ${formatDate(data.periodEndDate)}`}</Text></View>
+                        )}
+                        {data.quote && (
+                            <View style={styles.infoRow}><Text style={styles.infoLabel}>Devis :</Text>
+                                <Text>{`${data.quote.number}${data.quote.version > 1 ? ` V${data.quote.version}` : ''}${data.quote.acceptedAt ? ` accepté le ${formatDate(data.quote.acceptedAt)}` : ''}`}</Text></View>
+                        )}
+                        {data.quote?.purchaseOrderNumber && (
+                            <View style={styles.infoRow}><Text style={styles.infoLabel}>Bon de commande :</Text><Text>{data.quote.purchaseOrderNumber}</Text></View>
                         )}
                         {data.references && data.references.length > 0 && (
                             <View style={styles.infoRow}><Text style={styles.infoLabel}>Facture(s) d'origine :</Text><Text>{data.references.join(', ')}</Text></View>
@@ -176,7 +189,11 @@ export function AccountingDocumentPdf({ data }: { data: AccountingDocumentData }
 
                 <View style={styles.totals} wrap={false}>
                     <View style={styles.totalRow}><Text>Total HT</Text><Text>{formatEur(data.subtotal)}</Text></View>
-                    <View style={styles.totalRow}><Text>{`TVA (${formatRate(data.taxRate, data.subtotal, data.tax)})`}</Text><Text>{formatEur(data.tax)}</Text></View>
+                    {data.vatBreakdown && data.vatBreakdown.length > 0
+                        ? data.vatBreakdown.map(v => (
+                            <View key={v.rate} style={styles.totalRow}><Text>{`TVA ${pct(v.rate)} sur ${formatEur(v.base)}`}</Text><Text>{formatEur(v.amount)}</Text></View>
+                        ))
+                        : <View style={styles.totalRow}><Text>{`TVA (${formatRate(data.taxRate, data.subtotal, data.tax)})`}</Text><Text>{formatEur(data.tax)}</Text></View>}
                     <View style={styles.grandTotal}><Text>Total TTC</Text><Text>{formatEur(data.total)}</Text></View>
                 </View>
 

@@ -142,6 +142,8 @@ export function resolveEInvoicing(params: {
     company?: Pick<Company, 'einvoicingStartDate' | 'siret'> | null;
     /** Date de la facture (ISO). */
     documentDate?: string;
+    /** Bon de commande propre à la facture (devis accepté) : engagement juridique prioritaire pour Chorus. */
+    purchaseOrderNumber?: string;
 }): EInvoicingResolution {
     const { client, typology, contract, company, documentDate } = params;
     const { regime, regimeSource } = resolveRegime(client, typology);
@@ -179,7 +181,7 @@ export function resolveEInvoicing(params: {
     if (channel === 'chorus') {
         if (!client.siret) blocking.push('SIRET du client public manquant (obligatoire pour Chorus Pro).');
         if (!client.useChorus) warnings.push('Dépôt Chorus non activé sur la fiche client.');
-        chorus = resolveChorus({ client, contract, company, documentDate, blocking, warnings });
+        chorus = resolveChorus({ client, contract, company, documentDate, purchaseOrderNumber: params.purchaseOrderNumber, blocking, warnings });
     }
 
     // Obligation d'émission : B2G toujours concerné (Chorus Pro) ; sinon selon la date propre à la société.
@@ -201,6 +203,7 @@ function resolveChorus(params: {
     contract?: Pick<Contract, 'einvoicingAddress' | 'chorus'> | null;
     company?: Pick<Company, 'einvoicingStartDate' | 'siret'> | null;
     documentDate?: string;
+    purchaseOrderNumber?: string;
     blocking: string[];
     warnings: string[];
 }): ChorusAddressing {
@@ -224,7 +227,9 @@ function resolveChorus(params: {
 
     const commitment = legalCommitmentAt(settings.legalCommitments, date);
     const clientCommitment = client.chorusLegalCommitmentNumber?.trim();
-    if (commitment) { chorus.legalCommitment = commitment.number.trim(); chorus.legalCommitmentSource = 'contract'; }
+    const order = params.purchaseOrderNumber?.trim();
+    if (order) { chorus.legalCommitment = order; chorus.legalCommitmentSource = 'order'; }
+    else if (commitment) { chorus.legalCommitment = commitment.number.trim(); chorus.legalCommitmentSource = 'contract'; }
     else {
         if ((settings.legalCommitments ?? []).length > 0) {
             warnings.push(`Aucun engagement juridique du contrat ne couvre le ${date}.`);

@@ -10,10 +10,10 @@
 
 import { ai } from '@/ai/genkit';
 import { createCreditNote } from '@/services/firestore-admin';
-import { roundCents, sumCents } from '@/lib/money';
+import { creditNoteAmounts } from '@/lib/credit-notes';
 import { archiveDocumentSafely } from '@/services/document-archive';
 import { requireUser } from '@/lib/auth/server';
-import type { InvoiceLineItem, Invoice } from '@/lib/types';
+import type { Invoice } from '@/lib/types';
 import { GenerateCreditNoteInputSchema, GenerateCreditNoteOutputSchema, type GenerateCreditNoteInput, type GenerateCreditNoteOutput } from '@/lib/types';
 
 
@@ -61,20 +61,7 @@ const generateCreditNoteFlow = ai.defineFlow(
           throw new Error("Toutes les factures doivent appartenir au même client.");
         }
 
-        // Aggregate all line items and negate their amounts (au centime)
-        const creditedLineItems: InvoiceLineItem[] = invoicesToCredit.flatMap(inv =>
-          inv.lineItems.map(item => ({
-            ...item,
-            unitPrice: -roundCents(Math.abs(item.unitPrice)),
-            total: -roundCents(Math.abs(item.total)),
-            description: `Avoir sur facture ${inv.invoiceNumber}: ${item.description}`,
-          }))
-        );
-
-        const subtotal = sumCents(creditedLineItems.map(item => item.total));
-        // The tax is also negative, summing up the negated taxes from original invoices
-        const tax = -sumCents(invoicesToCredit.map(inv => Math.abs(inv.tax)));
-        const total = sumCents([subtotal, tax]);
+        const { lineItems: creditedLineItems, subtotal, tax, total, vatBreakdown } = creditNoteAmounts(invoicesToCredit);
 
         return {
           originalInvoiceIds: invoicesToCredit.map(inv => inv.id),
@@ -88,6 +75,7 @@ const generateCreditNoteFlow = ai.defineFlow(
           tax,
           total,
           reason,
+          ...(vatBreakdown.length > 0 && { vatBreakdown }),
         };
       });
 
