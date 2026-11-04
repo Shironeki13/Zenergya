@@ -1,7 +1,7 @@
 import { db } from '@/lib/firebase';
 import { collection, deleteDoc, doc, getDoc, getDocs, query, runTransaction, where } from 'firebase/firestore';
 import { addDays, computeQuoteTotals, quoteCounterKey, quoteNumber } from '@/lib/quotes/pricing';
-import type { Quote } from '@/lib/quotes/types';
+import type { Quote, QuoteVersionRecord } from '@/lib/quotes/types';
 import type { Client, Company } from '@/lib/types';
 import { createClient } from '@/services/firestore';
 
@@ -38,6 +38,12 @@ export async function getQuote(id: string): Promise<Quote | null> {
 export async function getQuotesBy(field: 'clientId' | 'siteId', value: string): Promise<Quote[]> {
     const snap = await getDocs(query(collection(db, QUOTES), where(field, '==', value)));
     return snap.docs.map(d => ({ id: d.id, ...d.data() }) as Quote);
+}
+
+/** Versions envoyées d'un devis (lecture seule : écrites par le serveur). */
+export async function getQuoteVersions(quoteId: string): Promise<QuoteVersionRecord[]> {
+    const snap = await getDocs(query(collection(db, 'quoteVersions'), where('quoteId', '==', quoteId)));
+    return snap.docs.map(d => ({ id: d.id, ...d.data() }) as QuoteVersionRecord).sort((a, b) => a.version - b.version);
 }
 
 export type NewQuoteInput = Omit<Quote, 'id' | 'number' | 'status' | 'version' | 'validUntil' | 'totals' | 'createdAt' | 'updatedAt'>;
@@ -101,11 +107,12 @@ export async function updateQuoteDraft(id: string, patch: QuoteDraftPatch, user?
     });
 }
 
-/** Supprime un brouillon. Un devis envoyé s'annule, il ne se supprime pas. */
+/** Supprime un brouillon jamais envoyé. Un devis envoyé (ou en version 2 et plus) s'annule, il ne se supprime pas. */
 export async function deleteQuoteDraft(id: string): Promise<void> {
     const quote = await getQuote(id);
     if (!quote) return;
     if (quote.status !== 'brouillon') throw new Error("Seul un brouillon peut être supprimé ; un devis envoyé s'annule.");
+    if (quote.version > 1) throw new Error("Ce devis a déjà été envoyé (version précédente archivée) : annulez-le plutôt.");
     await deleteDoc(doc(db, QUOTES, id));
 }
 
