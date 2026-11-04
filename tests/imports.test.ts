@@ -2,7 +2,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { IMPORT_ENTITIES, IMPORT_ENTITY_LIST } from '../src/lib/imports/definitions';
-import { csvTemplate, csvToTable, mapHeaders, noticeRows, parseTable, parseValue } from '../src/lib/imports/engine';
+import { csvTemplate, csvToTable, mapHeaders, noticeRows, parseDateTime, parseTable, parseValue } from '../src/lib/imports/engine';
 import { versionAtLeast } from '../src/lib/imports/xlsx';
 
 const CLIENTS = IMPORT_ENTITIES.clients;
@@ -90,4 +90,22 @@ test('OpenAPI : chemins et schémas générés depuis la description des imports
     assert.deepEqual(spec.components.schemas.Clients.properties.clientType.enum, ['private', 'public']);
     assert.equal(spec.components.schemas.Clients.properties.siret.pattern, '^\\d{14}$');
     assert.equal(spec.components.securitySchemes.apiKey.scheme, 'bearer');
+});
+
+test('dates des relevés : heure de Paris par défaut (hiver, été), formats français et ISO, dates impossibles refusées', () => {
+    assert.equal(parseDateTime('2025-01-31'), '2025-01-30T23:00:00.000Z');
+    assert.equal(parseDateTime('2025-07-01'), '2025-06-30T22:00:00.000Z');
+    assert.equal(parseDateTime('31/01/2025 08:30'), '2025-01-31T07:30:00.000Z');
+    assert.equal(parseDateTime('1.7.2025'), '2025-06-30T22:00:00.000Z');
+    assert.equal(parseDateTime('2025-01-31 08:30'), '2025-01-31T07:30:00.000Z');
+    assert.equal(parseDateTime('2025-01-31T08:30:00+01:00'), '2025-01-31T07:30:00.000Z');
+    assert.equal(parseDateTime('2025-01-31T08:30:00+0200'), '2025-01-31T06:30:00.000Z');
+    assert.equal(parseDateTime('2024-12-31T23:00:00.000Z'), '2024-12-31T23:00:00.000Z');   // relu tel quel depuis l'API
+    for (const bad of ['2025-02-30', '31/02/2025', '2025-1-3', '2025-01-31 25:00', 'demain', '45658']) assert.equal(parseDateTime(bad), null, bad);
+
+    const READINGS = IMPORT_ENTITIES.readings;
+    assert.deepEqual(parseValue(READINGS.fields.find(f => f.key === 'value')!, '0'), { value: 0 });   // index nul accepté
+    assert.match(parseValue(READINGS.fields.find(f => f.key === 'value')!, '-5').error!, /positif ou nul/);
+    assert.match(parseValue(READINGS.fields.find(f => f.key === 'date')!, '30/02/2025').error!, /date invalide/);
+    assert.deepEqual(parseValue(READINGS.fields.find(f => f.key === 'type')!, 'télérelève'), { value: 'AUTO' });
 });

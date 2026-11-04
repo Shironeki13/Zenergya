@@ -6,7 +6,7 @@
  * alias sont aussi reconnus).
  */
 
-export type FieldType = 'text' | 'number' | 'boolean' | 'enum' | 'siret' | 'email' | 'postalCode';
+export type FieldType = 'text' | 'number' | 'boolean' | 'enum' | 'siret' | 'email' | 'postalCode' | 'date';
 
 /** Listes de référence, lues dans le paramétrage (onglet « Listes » du modèle XLSX). */
 export type RefList = 'companies' | 'agencies' | 'sectors' | 'typologies' | 'meterTypes';
@@ -22,9 +22,11 @@ export type ImportField = {
     example?: string;
     help?: string;
     aliases?: string[];
+    /** Nombre : 0 accepté (par défaut, strictement positif). */
+    allowZero?: boolean;
 };
 
-export type ImportEntityKey = 'clients' | 'sites' | 'contacts' | 'meters';
+export type ImportEntityKey = 'clients' | 'sites' | 'contacts' | 'meters' | 'readings';
 
 export type ImportEntity = {
     key: ImportEntityKey;
@@ -136,6 +138,29 @@ export const IMPORT_ENTITIES: Record<ImportEntityKey, ImportEntity> = {
                 options: [{ value: 'on', label: 'En service', aliases: ['actif', 'on'] }, { value: 'off', label: 'Hors service', aliases: ['inactif', 'off'] }],
                 help: 'Vide à la création : En service.',
             },
+        ],
+    },
+    readings: {
+        key: 'readings',
+        label: 'Relevés de compteurs',
+        description: 'Index relevés sur les compteurs : télérelève, relevés terrain, reprise d\'historique.',
+        matching: 'Compteur + date et heure : le relevé existant à ce moment est mis à jour (index, type, commentaire) ; sinon il est créé.',
+        fields: [
+            { key: 'meter', label: 'Compteur', type: 'text', required: 'create', example: 'CPT-00012', aliases: ['cpt', 'code compteur'], help: 'Code du compteur (CPT-…).' },
+            {
+                key: 'date', label: 'Date du relevé', type: 'date', required: 'create', example: '2025-01-31', aliases: ['date'],
+                help: 'AAAA-MM-JJ ou JJ/MM/AAAA, heure facultative (HH:MM), heure de Paris ; ou date ISO 8601 avec fuseau. Sans heure : minuit.',
+            },
+            { key: 'value', label: 'Index', type: 'number', allowZero: true, required: 'create', example: '125430', aliases: ['valeur', 'index'], help: 'Index du compteur, dans l\'unité du compteur.' },
+            {
+                key: 'type', label: 'Type de relevé', type: 'enum', example: 'Réel',
+                options: [
+                    { value: 'REEL', label: 'Réel' }, { value: 'ESTIME', label: 'Estimé' },
+                    { value: 'CORRIGE', label: 'Corrigé' }, { value: 'AUTO', label: 'Automatique', aliases: ['telereleve', 'auto'] },
+                ],
+                help: 'Vide à la création : Réel. Automatique : télérelève.',
+            },
+            { key: 'comment', label: 'Commentaire', type: 'text', example: '', aliases: ['remarque'] },
         ],
     },
 };

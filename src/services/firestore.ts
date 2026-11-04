@@ -1267,7 +1267,8 @@ export async function updateClientAndContract(contractId: string, clientId: stri
 
 // Relevés de Compteurs (Suite)
 export async function updateMeterReading(id: string, data: Partial<Omit<MeterReading, 'id'>>) {
-    return updateSettingItem('meterReadings', id, data);
+    // Date en horodatage, comme à la création (tri et filtres par période).
+    return updateSettingItem('meterReadings', id, data.date ? { ...data, date: new Date(data.date) } : data);
 }
 export async function deleteMeterReading(id: string) {
     return deleteSettingItem('meterReadings', id);

@@ -1,7 +1,7 @@
 # Imports en masse
 
 Menu **Imports** (administrateurs). Données importables : **clients et prospects**, **sites**, **contacts**,
-**compteurs**. (Les articles de la bibliothèque de prix ont leur propre import : voir `bibliotheque-prix.md`.)
+**compteurs**, **relevés de compteurs**. (Les articles de la bibliothèque de prix ont leur propre import : voir `bibliotheque-prix.md`.)
 
 ## Déroulé
 
@@ -39,10 +39,16 @@ Menu **Imports** (administrateurs). Données importables : **clients et prospect
 | Sites | code site (SIT-…), sinon client + n° de site |
 | Contacts | client + email, sinon client + nom |
 | Compteurs | code compteur (CPT-…), sinon site + PDL/PCE |
+| Relevés de compteurs | compteur + date et heure (heure de Paris ; sans heure : minuit) |
 
 Références vérifiées : société (code ou nom), agence **de cette société**, secteur **de cette agence**, typologie,
 client (code ou SIRET), contrat (n° CTN, qui doit appartenir au client), site (code), type de compteur (code ou
 libellé). Un site créé avec un contrat est ajouté aux sites du contrat.
+
+Relevés : dates `AAAA-MM-JJ` ou `JJ/MM/AAAA` (heure `HH:MM` facultative ; les dates des cellules Excel sont lues
+telles quelles), index positif ou nul. Refusés : date future, même compteur et même instant sur deux lignes, index
+modifié d'un relevé repris dans un intéressement ou une régularisation. Signalés sans bloquer : index en baisse par
+rapport au relevé précédent (ou supérieur au suivant), compteur hors service. Détails : `api-externe.md`.
 
 ## Fichiers Excel
 

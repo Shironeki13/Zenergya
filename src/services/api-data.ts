@@ -1,9 +1,10 @@
 import 'server-only';
-import { FieldPath } from 'firebase-admin/firestore';
+import { FieldPath, Timestamp } from 'firebase-admin/firestore';
 import { adminDb } from '@/lib/firebase-admin';
 import { IMPORT_ENTITIES } from '@/lib/imports/definitions';
 import type { ApiResource } from '@/lib/api/scopes';
-import { applyImport } from '@/services/imports-admin';
+import { applyImport, readingMillis } from '@/services/imports-admin';
+import { parseDateTime } from '@/lib/imports/engine';
 import { ApiError } from '@/services/api-admin';
 
 /**
@@ -12,15 +13,17 @@ import { ApiError } from '@/services/api-admin';
  * Les noms de champs sont ceux de la description des imports : ce qui se lit peut se renvoyer tel quel.
  */
 
-const COLLECTIONS: Record<ApiResource, string> = { clients: 'clients', sites: 'sites', contacts: 'contacts', meters: 'meters' };
+const COLLECTIONS: Record<ApiResource, string> = { clients: 'clients', sites: 'sites', contacts: 'contacts', meters: 'meters', readings: 'meterReadings' };
 export const MAX_PAGE = 200;
 /** Champs de lecture seule de la représentation : acceptés et ignorés à l'écriture (renvoi tel quel possible). */
-export const READ_ONLY: Record<ApiResource, string[]> = { clients: [], sites: [], contacts: ['id'], meters: ['unit'] };
+export const READ_ONLY: Record<ApiResource, string[]> = { clients: [], sites: [], contacts: ['id'], meters: ['unit'], readings: ['id', 'unit', 'source', 'contract'] };
+/** Ressources sans code Zenergya : désignées par leur identifiant. */
+const BY_ID: ApiResource[] = ['contacts', 'readings'];
 export const MAX_BATCH = 500;
 
 type Lookups = {
     companies: Map<string, string>; agencies: Map<string, string>; sectors: Map<string, string>; typologies: Map<string, string>;
-    clients: Map<string, string>; contracts: Map<string, string>; sites: Map<string, string>;
+    clients: Map<string, string>; contracts: Map<string, string>; sites: Map<string, string>; meters: Map<string, string>;
 };
 
 let cache: { at: number; value: Lookups } | null = null;
@@ -30,12 +33,12 @@ async function lookups(): Promise<Lookups> {
     if (cache && Date.now() - cache.at < 60_000) return cache.value;
     const map = async (collection: string, field: (d: FirebaseFirestore.DocumentData) => string) =>
         new Map((await adminDb.collection(collection).get()).docs.map(d => [d.id, field(d.data())]));
-    const [companies, agencies, sectors, typologies, clients, contracts, sites] = await Promise.all([
+    const [companies, agencies, sectors, typologies, clients, contracts, sites, meters] = await Promise.all([
         map('companies', d => d.code || d.name), map('agencies', d => d.name), map('sectors', d => d.name),
         map('typologies', d => d.name), map('clients', d => d.externalCode || d.clientNumber || ''),
-        map('contracts', d => d.contractNumber || ''), map('sites', d => d.code || ''),
+        map('contracts', d => d.contractNumber || ''), map('sites', d => d.code || ''), map('meters', d => d.code || ''),
     ]);
-    cache = { at: Date.now(), value: { companies, agencies, sectors, typologies, clients, contracts, sites } };
+    cache = { at: Date.now(), value: { companies, agencies, sectors, typologies, clients, contracts, sites, meters } };
     return cache.value;
 }
 
@@ -62,19 +65,81 @@ function serialize(resource: ApiResource, id: string, d: FirebaseFirestore.Docum
             code: d.code, site: l.sites.get(d.siteId), name: d.name, meterType: d.type, unit: d.unit, reference: d.reference,
             location: d.location, status: d.status,
         });
+        case 'readings': return compact({
+            id, meter: l.meters.get(d.meterId), date: new Date(readingMillis(d.date)).toISOString(), value: d.value, unit: d.unit,
+            type: d.type, source: d.source, comment: d.comment, contract: d.contractId ? l.contracts.get(d.contractId) : undefined,
+        });
     }
 }
 
 /** Filtres de liste acceptés par ressource (paramètres de requête). */
 export const LIST_FILTERS: Record<ApiResource, string[]> = {
-    clients: ['siret', 'relation'], sites: ['client'], contacts: ['client'], meters: ['site'],
+    clients: ['siret', 'relation'], sites: ['client'], contacts: ['client'], meters: ['site'], readings: ['meter', 'site', 'from', 'to'],
 };
+
+const reverse = (map: Map<string, string>, value: string) => [...map.entries()].find(([, v]) => v.toUpperCase() === value.toUpperCase())?.[0];
+
+function checkParams(resource: ApiResource, params: URLSearchParams) {
+    const allowed = ['limit', 'cursor', ...LIST_FILTERS[resource]];
+    const unknown = [...params.keys()].filter(k => !allowed.includes(k));
+    if (unknown.length) throw new ApiError(400, 'invalid_parameter', `Paramètre(s) inconnu(s) : ${unknown.join(', ')}.`, { allowed });
+}
+
+/** Curseur opaque des relevés : position (date, identifiant) du dernier élément rendu. */
+const encodeCursor = (date: unknown, id: string) =>
+    Buffer.from(JSON.stringify(date instanceof Timestamp ? { t: date.toMillis(), id } : { s: String(date), id })).toString('base64url');
+function decodeCursor(cursor: string): [unknown, string] {
+    try {
+        const c = JSON.parse(Buffer.from(cursor, 'base64url').toString());
+        if (typeof c.id !== 'string') throw new Error();
+        return [typeof c.t === 'number' ? Timestamp.fromMillis(c.t) : String(c.s), c.id];
+    } catch {
+        throw new ApiError(400, 'invalid_parameter', 'Curseur invalide.');
+    }
+}
+
+/**
+ * Relevés, du plus ancien au plus récent : par compteur ou par site, sur une période (from inclus, to exclu).
+ * Index composite requis : meterReadings (meterId, date) — voir firestore.indexes.json.
+ */
+async function listReadings(params: URLSearchParams, limit: number) {
+    checkParams('readings', params);
+    const l = await lookups();
+    let q: FirebaseFirestore.Query = adminDb.collection('meterReadings');
+    const meter = params.get('meter')?.trim();
+    const site = params.get('site')?.trim();
+    if (meter) {
+        q = q.where('meterId', '==', reverse(l.meters, meter) ?? '__aucun__');
+    } else if (site) {
+        const siteId = reverse(l.sites, site);
+        const ids = siteId ? (await adminDb.collection('meters').where('siteId', '==', siteId).select().get()).docs.map(d => d.id) : [];
+        if (ids.length > 30) throw new ApiError(400, 'invalid_parameter', 'Site de plus de 30 compteurs : filtrez par compteur (meter).');
+        q = q.where('meterId', 'in', ids.length ? ids : ['__aucun__']);
+    }
+    for (const [name, op] of [['from', '>='], ['to', '<']] as const) {
+        const raw = params.get(name)?.trim();
+        if (!raw) continue;
+        const iso = parseDateTime(raw);
+        if (!iso) throw new ApiError(400, 'invalid_parameter', `${name} : date invalide (AAAA-MM-JJ ou ISO 8601).`);
+        q = q.where('date', op, Timestamp.fromDate(new Date(iso)));
+    }
+    q = q.orderBy('date').orderBy(FieldPath.documentId()).limit(limit + 1);
+    const cursor = params.get('cursor');
+    if (cursor) q = q.startAfter(...decodeCursor(cursor));
+    const snap = await q.get();
+    const docs = snap.docs.slice(0, limit);
+    const last = docs[docs.length - 1];
+    return {
+        data: docs.map(d => serialize('readings', d.id, d.data(), l)),
+        nextCursor: snap.docs.length > limit ? encodeCursor(last.get('date'), last.id) : null,
+    };
+}
 
 export async function listResource(resource: ApiResource, params: URLSearchParams) {
     const limit = Math.min(Math.max(Number(params.get('limit')) || 50, 1), MAX_PAGE);
+    if (resource === 'readings') return listReadings(params, limit);
     let q: FirebaseFirestore.Query = adminDb.collection(COLLECTIONS[resource]);
     const l = await lookups();
-    const reverse = (map: Map<string, string>, value: string) => [...map.entries()].find(([, v]) => v.toUpperCase() === value.toUpperCase())?.[0];
     for (const f of LIST_FILTERS[resource]) {
         const value = params.get(f)?.trim();
         if (!value) continue;
@@ -82,8 +147,7 @@ export async function listResource(resource: ApiResource, params: URLSearchParam
         else if (f === 'site') q = q.where('siteId', '==', reverse(l.sites, value) ?? '__aucun__');
         else q = q.where(f, '==', value);
     }
-    const unknown = [...params.keys()].filter(k => !['limit', 'cursor', ...LIST_FILTERS[resource]].includes(k));
-    if (unknown.length) throw new ApiError(400, 'invalid_parameter', `Paramètre(s) inconnu(s) : ${unknown.join(', ')}.`, { allowed: ['limit', 'cursor', ...LIST_FILTERS[resource]] });
+    checkParams(resource, params);
     q = q.orderBy(FieldPath.documentId()).limit(limit + 1);
     const cursor = params.get('cursor');
     if (cursor) q = q.startAfter(cursor);
@@ -95,12 +159,12 @@ export async function listResource(resource: ApiResource, params: URLSearchParam
     };
 }
 
-/** Détail par code Zenergya (CLI, SIT, CPT), ou par identifiant pour un contact. */
+/** Détail par code Zenergya (CLI, SIT, CPT), ou par identifiant (contact, relevé). */
 export async function getResource(resource: ApiResource, ref: string) {
     const coll = adminDb.collection(COLLECTIONS[resource]);
     let doc: FirebaseFirestore.DocumentSnapshot | undefined;
-    if (resource === 'contacts') {
-        doc = await coll.doc(ref).get();
+    if (BY_ID.includes(resource)) {
+        doc = /^[A-Za-z0-9]{1,128}$/.test(ref) ? await coll.doc(ref).get() : undefined;
     } else {
         const field = resource === 'clients' ? 'externalCode' : 'code';
         doc = (await coll.where(field, '==', ref.toUpperCase()).limit(1).get()).docs[0];
@@ -132,14 +196,19 @@ export async function upsertResource(resource: ApiResource, body: unknown, calle
     const report = await applyImport(resource, table, { fileName: `API — ${caller.name}`, by: `api:${caller.name}`, source: 'api' });
 
     // Ligne n du tableau = élément n − 2.
-    const byLine = new Map<number, { status: string; code?: string; id?: string; errors?: string[] }>();
-    for (const r of report.results) byLine.set(r.line, { status: r.action === 'create' ? 'created' : r.action === 'update' ? 'updated' : 'unchanged', ...(r.code && { code: r.code }), id: r.id });
+    const byLine = new Map<number, { status: string; code?: string; id?: string; errors?: string[]; warnings?: string[] }>();
+    for (const r of report.results) {
+        byLine.set(r.line, {
+            status: r.action === 'create' ? 'created' : r.action === 'update' ? 'updated' : 'unchanged',
+            ...(r.code && { code: r.code }), id: r.id, ...(r.warnings && { warnings: r.warnings }),
+        });
+    }
     for (const e of report.errors) byLine.set(e.line, { status: 'error', errors: e.messages });
     const results = items.map((_, i) => {
         const r = byLine.get(i + 2) ?? { status: 'ignored', errors: ['Élément vide.'] };
-        // L'identifiant interne n'est exposé que pour les contacts (sans code).
+        // L'identifiant interne n'est exposé que pour les éléments sans code (contacts, relevés).
         const { id, ...rest } = r;
-        return { index: i, ...rest, ...(resource === 'contacts' && id && { id }) };
+        return { index: i, ...rest, ...(BY_ID.includes(resource) && id && { id }) };
     });
     cache = null;   // codes nouvellement attribués
     return {

@@ -46,7 +46,7 @@ export function parseValue(field: ImportField, raw: unknown): { value: CellValue
             const s = text.replace(/[\s  €]/g, '');
             const n = Number(s.includes(',') ? s.replace(/\./g, '').replace(',', '.') : s);
             if (!Number.isFinite(n)) return { value: null, error: `${field.label} : nombre attendu (« ${text} »).` };
-            if (n <= 0) return { value: null, error: `${field.label} : doit être supérieur à 0.` };
+            if (field.allowZero ? n < 0 : n <= 0) return { value: null, error: `${field.label} : doit être ${field.allowZero ? 'positif ou nul' : 'supérieur à 0'}.` };
             return { value: n };
         }
         case 'boolean': {
@@ -78,9 +78,63 @@ export function parseValue(field: ImportField, raw: unknown): { value: CellValue
             if (!/^\d{5}$/.test(padded)) return { value: null, error: `${field.label} : 5 chiffres attendus (« ${text} »).` };
             return { value: padded };
         }
+        case 'date': {
+            const iso = parseDateTime(text);
+            if (!iso) return { value: null, error: `${field.label} : date invalide « ${text} » (AAAA-MM-JJ ou JJ/MM/AAAA, heure facultative).` };
+            return { value: iso };
+        }
         default:
             return { value: text };
     }
+}
+
+// --- Dates : heure de Paris par défaut ---
+
+const PARIS = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Europe/Paris', hourCycle: 'h23', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit',
+});
+
+/** Décalage de l'heure de Paris sur UTC à un instant donné (ms). */
+function parisOffset(ms: number): number {
+    const p = Object.fromEntries(PARIS.formatToParts(new Date(ms)).map(x => [x.type, Number(x.value)]));
+    return Date.UTC(p.year, p.month - 1, p.day, p.hour, p.minute, p.second) - Math.floor(ms / 1000) * 1000;
+}
+
+/** Instant UTC d'une heure « murale » de Paris (heure d'été comprise). */
+export function parisToUtc(y: number, mo: number, d: number, h = 0, mi = 0, s = 0): Date {
+    const wall = Date.UTC(y, mo - 1, d, h, mi, s);
+    let utc = wall - parisOffset(wall);
+    utc = wall - parisOffset(utc);
+    return new Date(utc);
+}
+
+/**
+ * Date (et heure facultative) d'une cellule, en ISO 8601 UTC. Formats : AAAA-MM-JJ, JJ/MM/AAAA (ou JJ.MM.AAAA),
+ * suivis éventuellement de HH:MM[:SS] (heure de Paris) ; ou ISO 8601 complet avec fuseau (Z, +01:00…).
+ */
+export function parseDateTime(text: string): string | null {
+    const t = text.trim();
+    const time = '(?:[T ](\\d{1,2}):(\\d{2})(?::(\\d{2})(?:\\.\\d+)?)?)?';
+    let m = new RegExp(`^(\\d{4})-(\\d{2})-(\\d{2})${time}(Z|[+-]\\d{2}:?\\d{2})?$`, 'i').exec(t);
+    let y: number, mo: number, d: number, h: number, mi: number, s: number, zone: string | undefined;
+    if (m) {
+        [y, mo, d, h, mi, s] = [m[1], m[2], m[3], m[4] ?? 0, m[5] ?? 0, m[6] ?? 0].map(Number);
+        zone = m[7];
+    } else {
+        m = new RegExp(`^(\\d{1,2})[/.](\\d{1,2})[/.](\\d{4})${time}$`).exec(t);
+        if (!m) return null;
+        [d, mo, y, h, mi, s] = [m[1], m[2], m[3], m[4] ?? 0, m[5] ?? 0, m[6] ?? 0].map(Number);
+    }
+    // Date de calendrier réelle (pas de 31/02) et heure valide.
+    const check = new Date(Date.UTC(y, mo - 1, d));
+    if (check.getUTCFullYear() !== y || check.getUTCMonth() !== mo - 1 || check.getUTCDate() !== d) return null;
+    if (h > 23 || mi > 59 || s > 59) return null;
+    if (zone) {
+        const pad = (n: number) => String(n).padStart(2, '0');
+        const z = zone.toUpperCase() === 'Z' ? 'Z' : `${zone.slice(0, 3)}:${zone.slice(-2)}`;
+        return new Date(`${y}-${pad(mo)}-${pad(d)}T${pad(h)}:${pad(mi)}:${pad(s)}${z}`).toISOString();
+    }
+    return parisToUtc(y, mo, d, h, mi, s).toISOString();
 }
 
 /** Reconnaît les colonnes du fichier (libellé, clé ou alias, sans accents ni astérisque). */
@@ -164,7 +218,7 @@ export function noticeRows(entity: ImportEntity): string[][] {
         ...entity.fields.map(f => [
             f.label,
             f.required === 'create' ? 'Oui (création)' : 'Non',
-            ({ text: 'Texte', number: 'Nombre (virgule ou point)', boolean: 'oui / non', enum: 'Liste', siret: 'SIRET (14 chiffres)', email: 'Email', postalCode: 'Code postal (5 chiffres)' } as const)[f.type],
+            ({ text: 'Texte', number: 'Nombre (virgule ou point)', boolean: 'oui / non', enum: 'Liste', siret: 'SIRET (14 chiffres)', email: 'Email', postalCode: 'Code postal (5 chiffres)', date: 'Date (AAAA-MM-JJ ou JJ/MM/AAAA)' } as const)[f.type],
             f.options ? f.options.map(o => o.label).join(', ') : f.refList ? 'Voir l\'onglet Listes' : '',
             f.example ?? '',
             f.help ?? '',
