@@ -1,9 +1,9 @@
 import 'server-only';
-import { FieldValue } from 'firebase-admin/firestore';
+import { FieldValue, Timestamp } from 'firebase-admin/firestore';
 import { adminDb } from '@/lib/firebase-admin';
 import { IMPORT_ENTITIES, type ImportEntityKey } from '@/lib/imports/definitions';
 import { parseTable, type CellValue, type ParsedRow } from '@/lib/imports/engine';
-import type { Agency, Client, Company, Contact, Contract, Meter, MeterType, Sector, Site, Typology } from '@/lib/types';
+import type { Agency, Client, Company, Contact, Contract, Meter, MeterReading, MeterType, Sector, Site, Typology } from '@/lib/types';
 
 /**
  * Imports en masse, côté serveur (Admin SDK) : le fichier est relu et contrôlé ici, quel que soit l'aperçu
@@ -44,7 +44,20 @@ type Context = {
     companies: Doc<Company>[]; agencies: Doc<Agency>[]; sectors: Doc<Sector>[]; typologies: Doc<Typology>[];
     meterTypes: Doc<MeterType>[]; clients: Doc<Client>[]; contracts: Doc<Contract>[]; sites: Doc<Site>[];
     contacts: Doc<Contact>[]; meters: Doc<Meter>[];
+    /** Relevés existants des compteurs du fichier (imports de relevés), triés par date. */
+    readings: Map<string, StoredReading[]>;
+    /** Relevés repris dans un intéressement ou une régularisation (index figé). */
+    lockedReadings: Map<string, string>;
 };
+
+type StoredReading = Doc<MeterReading> & { at: number };
+
+/** Instant d'un relevé, quelle que soit sa forme stockée (horodatage Firestore ou texte ISO). */
+export function readingMillis(date: unknown): number {
+    if (date instanceof Timestamp) return date.toMillis();
+    if (date instanceof Date) return date.getTime();
+    return new Date(String(date ?? '')).getTime();
+}
 
 async function loadContext(entity: ImportEntityKey): Promise<Context> {
     const need = (e: ImportEntityKey[]) => e.includes(entity);
@@ -56,12 +69,36 @@ async function loadContext(entity: ImportEntityKey): Promise<Context> {
         need(['clients']) ? all<Typology>('typologies') : empty,
         need(['meters']) ? all<MeterType>('meterTypes') : empty,
         need(['clients', 'sites', 'contacts']) ? all<Client>('clients') : empty,
-        need(['sites']) ? all<Contract>('contracts') : empty,
-        need(['sites', 'meters']) ? all<Site>('sites') : empty,
+        need(['sites', 'readings']) ? all<Contract>('contracts') : empty,
+        need(['sites', 'meters', 'readings']) ? all<Site>('sites') : empty,
         need(['contacts']) ? all<Contact>('contacts') : empty,
-        need(['meters']) ? all<Meter>('meters') : empty,
+        need(['meters', 'readings']) ? all<Meter>('meters') : empty,
     ]);
-    return { companies, agencies, sectors, typologies, meterTypes, clients, contracts, sites, contacts, meters } as Context;
+    return { companies, agencies, sectors, typologies, meterTypes, clients, contracts, sites, contacts, meters, readings: new Map(), lockedReadings: new Map() } as Context;
+}
+
+/** Relevés existants des compteurs cités, et relevés figés par un intéressement ou une régularisation. */
+async function loadReadings(ctx: Context, meterIds: string[]): Promise<void> {
+    const chunks: string[][] = [];
+    for (let i = 0; i < meterIds.length; i += 30) chunks.push(meterIds.slice(i, i + 30));
+    const snaps = await Promise.all(chunks.map(c => adminDb.collection('meterReadings').where('meterId', 'in', c).get()));
+    for (const d of snaps.flatMap(s => s.docs)) {
+        const r = { id: d.id, ...d.data(), at: readingMillis(d.get('date')) } as StoredReading;
+        if (!ctx.readings.has(r.meterId)) ctx.readings.set(r.meterId, []);
+        ctx.readings.get(r.meterId)!.push(r);
+    }
+    for (const list of ctx.readings.values()) list.sort((a, b) => a.at - b.at);
+    if (ctx.readings.size === 0) return;
+    const [interests, settlements] = await Promise.all([
+        all<{ seasonLabel?: string; startReadingId?: string; endReadingId?: string }>('interests'),
+        all<{ p1Detail?: { startReadingId?: string; endReadingId?: string }; startDate?: string; endDate?: string }>('service_settlements'),
+    ]);
+    for (const i of interests) {
+        for (const id of [i.startReadingId, i.endReadingId]) if (id) ctx.lockedReadings.set(id, `l'intéressement ${i.seasonLabel ?? i.id}`);
+    }
+    for (const st of settlements) {
+        for (const id of [st.p1Detail?.startReadingId, st.p1Detail?.endReadingId]) if (id) ctx.lockedReadings.set(id, `la régularisation du ${st.startDate ?? ''} au ${st.endDate ?? ''}`.trim());
+    }
 }
 
 const clientCode = (c: Client) => (c.externalCode || c.clientNumber || '').toUpperCase();
@@ -251,6 +288,60 @@ function planMeter(ctx: Context, row: ParsedRow, seen: Map<string, number>): Pla
     return item;
 }
 
+const frDate = (ms: number) => new Date(ms).toLocaleString('fr-FR', { timeZone: 'Europe/Paris', dateStyle: 'short', timeStyle: 'short' });
+
+function planReading(ctx: Context, row: ParsedRow, seen: Map<string, number>, pending: Map<string, { at: number; value: number }[]>): PlanItem {
+    const v = row.values;
+    const item: PlanItem = { line: row.line, action: 'error', label: `${v.meter ?? ''} ${v.date ? String(v.date).slice(0, 10) : ''}`.trim(), messages: [...row.errors], warnings: [] };
+    const meter = v.meter ? ctx.meters.find(m => (m.code ?? '').toUpperCase() === String(v.meter).toUpperCase()) : undefined;
+    if (!v.meter) item.messages.push('Compteur obligatoire.');
+    else if (!meter) item.messages.push(`Compteur ${v.meter} introuvable (code CPT-…).`);
+    if (!v.date && !row.errors.some(e => e.startsWith('Date'))) item.messages.push('Date du relevé obligatoire.');
+    if (item.messages.length || !meter || !v.date) return item;
+
+    const at = Date.parse(String(v.date));
+    if (at > Date.now() + 3600_000) item.messages.push(`Date future (${frDate(at)}).`);
+    const key = `${meter.id}|${at}`;
+    if (seen.has(key)) item.messages.push(`Même compteur et même date que la ligne ${seen.get(key)}.`);
+    else seen.set(key, row.line);
+
+    const history = ctx.readings.get(meter.id) ?? [];
+    const existing = history.find(r => r.at === at);
+    item.label = `${meter.code} — ${frDate(at)}`;
+    const data = plain(v, ['value', 'type', 'comment']);
+    if (!existing && v.value === null) item.messages.push('Index obligatoire pour créer un relevé.');
+    const locked = existing && ctx.lockedReadings.get(existing.id);
+    if (locked && v.value !== null && v.value !== existing.value) {
+        item.messages.push(`Relevé repris dans ${locked} : index non modifiable (${existing.value}).`);
+    }
+    if (meter.status === 'off') item.warnings.push('Compteur hors service.');
+    if (item.messages.length) return item;
+
+    // Cohérence avec les relevés voisins (existants et lignes précédentes du fichier) : simple avertissement,
+    // un index peut baisser (remplacement ou remise à zéro du compteur, correction).
+    const value = (v.value ?? existing?.value) as number;
+    const others = [...history.filter(r => r !== existing).map(r => ({ at: r.at, value: r.value })), ...(pending.get(meter.id) ?? [])];
+    const before = others.filter(r => r.at < at).sort((a, b) => b.at - a.at)[0];
+    const after = others.filter(r => r.at > at).sort((a, b) => a.at - b.at)[0];
+    if (before && value < before.value) item.warnings.push(`Index inférieur au relevé précédent (${before.value} le ${frDate(before.at)}).`);
+    if (after && value > after.value) item.warnings.push(`Index supérieur au relevé suivant (${after.value} le ${frDate(after.at)}).`);
+    if (!pending.has(meter.id)) pending.set(meter.id, []);
+    pending.get(meter.id)!.push({ at, value });
+
+    if (existing) {
+        Object.assign(item, { targetId: existing.id, data });
+        item.action = sameAs(existing as unknown as Record<string, unknown>, data) ? 'unchanged' : 'update';
+    } else {
+        const site = ctx.sites.find(s => s.id === meter.siteId);
+        const contractId = site?.contractId || ctx.contracts.find(c => (c.siteIds ?? []).includes(meter.siteId))?.id;
+        Object.assign(item, {
+            action: 'create',
+            data: { meterId: meter.id, date: new Date(at).toISOString(), type: 'REEL', unit: meter.unit, ...(contractId && { contractId }), ...data },
+        });
+    }
+    return item;
+}
+
 /** Plan d'import : ce que deviendrait chaque ligne, sans rien écrire. */
 export async function planImport(entity: ImportEntityKey, table: unknown[][]): Promise<ImportPlan> {
     const def = IMPORT_ENTITIES[entity];
@@ -261,13 +352,19 @@ export async function planImport(entity: ImportEntityKey, table: unknown[][]): P
         return { entity, fileErrors: parsed.fileErrors, ignoredColumns: parsed.ignoredColumns, missingColumns: parsed.missingColumns, items: [], counts };
     }
     const ctx = await loadContext(entity);
+    if (entity === 'readings') {
+        const codes = new Set(parsed.rows.map(r => String(r.values.meter ?? '').toUpperCase()));
+        await loadReadings(ctx, ctx.meters.filter(m => codes.has((m.code ?? '').toUpperCase())).map(m => m.id));
+    }
     const seen = new Map<string, number>();
+    const pending = new Map<string, { at: number; value: number }[]>();
     const items = parsed.rows.map(row => {
         switch (entity) {
             case 'clients': return planClient(ctx, row);
             case 'sites': return planSite(ctx, row, seen);
             case 'contacts': return planContact(ctx, row, seen);
             case 'meters': return planMeter(ctx, row, seen);
+            case 'readings': return planReading(ctx, row, seen, pending);
         }
     });
     for (const i of items) counts[i.action]++;
@@ -281,7 +378,7 @@ const CODES: Partial<Record<ImportEntityKey, { counter: string; prefix: string; 
     sites: { counter: 'site', prefix: 'SIT', field: 'code', collection: 'sites' },
     meters: { counter: 'meter', prefix: 'CPT', field: 'code', collection: 'meters' },
 };
-const COLLECTIONS: Record<ImportEntityKey, string> = { clients: 'clients', sites: 'sites', contacts: 'contacts', meters: 'meters' };
+const COLLECTIONS: Record<ImportEntityKey, string> = { clients: 'clients', sites: 'sites', contacts: 'contacts', meters: 'meters', readings: 'meterReadings' };
 
 /** Réserve `n` numéros au-delà du compteur et du plus grand code existant (pas de doublon possible). */
 async function reserveCodes(entity: ImportEntityKey, n: number): Promise<string[]> {
@@ -307,7 +404,7 @@ export type ImportReport = {
     unchanged: number;
     errors: { line: number; messages: string[] }[];
     /** Résultat par ligne valide : élément créé, mis à jour ou inchangé (identifiant et code). */
-    results: { line: number; action: 'create' | 'update' | 'unchanged'; id: string; code?: string }[];
+    results: { line: number; action: 'create' | 'update' | 'unchanged'; id: string; code?: string; warnings?: string[] }[];
 };
 
 /** Applique un import : lignes valides écrites, lignes en erreur ignorées et rapportées. */
@@ -329,9 +426,11 @@ export async function applyImport(entity: ImportEntityKey, table: unknown[][], m
         const stamp = entity === 'meters'
             ? { lastModified: now, modifiedBy: meta.by ?? 'import' }
             : entity === 'clients' ? { createdAt: now, ...(meta.by && { createdBy: meta.by }) } : {};
-        const doc = { ...item.data, ...stamp, ...(spec && { [spec.field]: codes[i] }) };
+        const doc: Record<string, unknown> = { ...item.data, ...stamp, ...(spec && { [spec.field]: codes[i] }) };
+        // Relevés : date en horodatage (comme à la saisie), origine de la donnée.
+        if (entity === 'readings') Object.assign(doc, { date: Timestamp.fromDate(new Date(String(doc.date))), source: meta.source === 'api' ? 'API' : 'IMPORT' });
         writes.push(b => b.set(ref, doc));
-        results.push({ line: item.line, action: 'create', id: ref.id, ...(spec && { code: codes[i] }) });
+        results.push({ line: item.line, action: 'create', id: ref.id, ...(spec && { code: codes[i] }), ...(item.warnings.length && { warnings: item.warnings }) });
         // Le contrat d'un site créé le compte parmi ses sites.
         if (entity === 'sites' && item.data?.contractId) {
             const contractRef = adminDb.collection('contracts').doc(String(item.data.contractId));
@@ -342,7 +441,7 @@ export async function applyImport(entity: ImportEntityKey, table: unknown[][], m
         const ref = coll.doc(item.targetId!);
         const stamp = entity === 'meters' ? { lastModified: now, modifiedBy: meta.by ?? 'import' } : {};
         writes.push(b => b.update(ref, { ...item.data, ...stamp }));
-        results.push({ line: item.line, action: 'update', id: ref.id });
+        results.push({ line: item.line, action: 'update', id: ref.id, ...(item.warnings.length && { warnings: item.warnings }) });
         if (entity === 'sites' && item.data?.contractId) {
             const contractRef = adminDb.collection('contracts').doc(String(item.data.contractId));
             writes.push(b => b.update(contractRef, { siteIds: FieldValue.arrayUnion(ref.id) }));
@@ -354,7 +453,7 @@ export async function applyImport(entity: ImportEntityKey, table: unknown[][], m
         await batch.commit();
     }
 
-    for (const item of plan.items.filter(i => i.action === 'unchanged')) results.push({ line: item.line, action: 'unchanged', id: item.targetId! });
+    for (const item of plan.items.filter(i => i.action === 'unchanged')) results.push({ line: item.line, action: 'unchanged', id: item.targetId!, ...(item.warnings.length && { warnings: item.warnings }) });
     results.sort((a, b) => a.line - b.line);
     const errors = plan.items.filter(i => i.action === 'error').map(i => ({ line: i.line, messages: i.messages }));
     const log = await adminDb.collection('imports').add({

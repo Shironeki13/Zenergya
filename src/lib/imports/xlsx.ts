@@ -71,5 +71,6 @@ export async function readXlsxTable(buffer: ArrayBuffer): Promise<string[][]> {
     const wb = XLSX.read(buffer, { type: 'array', cellFormula: false, cellHTML: false, cellStyles: false });
     const name = wb.SheetNames.includes('Données') ? 'Données' : wb.SheetNames[0];
     if (!name) return [];
-    return XLSX.utils.sheet_to_json<string[]>(wb.Sheets[name], { header: 1, raw: false, defval: '', blankrows: false });
+    // Dates Excel restituées en AAAA-MM-JJ HH:MM (sinon au format américain m/j/aa, ambigu).
+    return XLSX.utils.sheet_to_json<string[]>(wb.Sheets[name], { header: 1, raw: false, defval: '', blankrows: false, dateNF: 'yyyy-mm-dd hh:mm' });
 }

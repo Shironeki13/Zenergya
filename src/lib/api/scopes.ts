@@ -4,11 +4,11 @@ import type { ImportEntityKey } from '@/lib/imports/definitions';
  * API externe : ressources et droits (utilisable dans le navigateur ; les clés sont dans keys.ts, serveur).
  */
 
-export const API_RESOURCES = ['clients', 'sites', 'contacts', 'meters'] as const satisfies readonly ImportEntityKey[];
+export const API_RESOURCES = ['clients', 'sites', 'contacts', 'meters', 'readings'] as const satisfies readonly ImportEntityKey[];
 export type ApiResource = typeof API_RESOURCES[number];
 
 export const API_RESOURCE_LABELS: Record<ApiResource, string> = {
-    clients: 'Clients et prospects', sites: 'Sites', contacts: 'Contacts', meters: 'Compteurs',
+    clients: 'Clients et prospects', sites: 'Sites', contacts: 'Contacts', meters: 'Compteurs', readings: 'Relevés de compteurs',
 };
 
 export type ApiScope = `${ApiResource}:${'read' | 'write'}`;
