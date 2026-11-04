@@ -20,6 +20,8 @@ await env.withSecurityRulesDisabled(async (ctx) => {
   await setDoc(doc(db, 'meters', 'm'), { name: 'Compteur', code: 'CPT-00001' });
   await setDoc(doc(db, 'quotes', 'brouillon'), { number: 'VEF-DEV2026-0001', status: 'brouillon', version: 1, title: 'A' });
   await setDoc(doc(db, 'quoteVersions', 'v'), { quoteId: 'envoye', version: 1 });
+  await setDoc(doc(db, 'projects', 'p'), { code: 'VEF-AFF2026-0001', status: 'en_cours' });
+  await setDoc(doc(db, 'projectSituations', 's'), { projectId: 'p', status: 'brouillon' });
   await setDoc(doc(db, 'quotes', 'envoye'), { number: 'VEF-DEV2026-0002', status: 'envoye', title: 'B' });
   await setDoc(doc(db, 'quotes', 'jetable'), { number: 'VEF-DEV2026-0003', status: 'brouillon', version: 1, title: 'C' });
   await setDoc(doc(db, 'quotes', 'v2'), { number: 'VEF-DEV2026-0005', status: 'brouillon', version: 2, title: 'D' });
@@ -83,6 +85,12 @@ await t('user edits draft quote', assertSucceeds(updateDoc(doc(user, 'quotes', '
 await t('user cannot send quote directly', assertFails(updateDoc(doc(user, 'quotes', 'brouillon'), { status: 'envoye' })));
 await t('user cannot bump quote version', assertFails(updateDoc(doc(user, 'quotes', 'brouillon'), { version: 2 })));
 await t('user reads quote versions', assertSucceeds(getDoc(doc(user, 'quoteVersions', 'v'))));
+await t('user reads projects', assertSucceeds(getDoc(doc(user, 'projects', 'p'))));
+await t('user cannot write projects', assertFails(updateDoc(doc(user, 'projects', 'p'), { status: 'cloture' })));
+await t('admin cannot create project', assertFails(setDoc(doc(admin, 'projects', 'n'), { code: 'X' })));
+await t('user reads situations', assertSucceeds(getDoc(doc(user, 'projectSituations', 's'))));
+await t('user cannot write situations', assertFails(updateDoc(doc(user, 'projectSituations', 's'), { progress: { a: 100 } })));
+await t('user cannot delete situation', assertFails(deleteDoc(doc(user, 'projectSituations', 's'))));
 await t('user cannot write quote versions', assertFails(setDoc(doc(user, 'quoteVersions', 'v'), { version: 9 })));
 await t('admin cannot write quote versions', assertFails(setDoc(doc(admin, 'quoteVersions', 'n'), { version: 1 })));
 await t('user cannot renumber draft quote', assertFails(updateDoc(doc(user, 'quotes', 'brouillon'), { number: 'X' })));

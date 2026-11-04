@@ -3,6 +3,7 @@
 /** @jsxFrag Fragment */
 import { Document, Page, View, Text, Image, StyleSheet, renderToBuffer } from '@react-pdf/renderer';
 import type { Client, Company, InvoiceLineItem, InvoiceQuoteLink, VatBreakdown } from '@/lib/types';
+import type { SituationSnapshot } from '@/lib/projects/types';
 
 /**
  * Modèle PDF des factures, proformas et avoirs (rendu côté serveur par @react-pdf/renderer).
@@ -42,6 +43,8 @@ export type AccountingDocumentData = {
     vatBreakdown?: VatBreakdown;
     /** Facture issue d'un devis (acompte, solde, totalité). */
     quote?: InvoiceQuoteLink;
+    /** Facture de situation de travaux (affaire P6). */
+    situation?: SituationSnapshot;
 };
 
 const TITLES: Record<AccountingDocumentKind, string> = {
@@ -106,7 +109,9 @@ const styles = StyleSheet.create({
 export function AccountingDocumentPdf({ data }: { data: AccountingDocumentData }) {
     const { kind, company, client } = data;
     const logo = supportedLogo(company.logoUrl);
-    const title = kind === 'invoice' && data.quote?.billingKind === 'acompte' ? "FACTURE D'ACOMPTE" : TITLES[kind];
+    const title = kind === 'invoice' && data.situation ? `FACTURE DE SITUATION N° ${data.situation.number}`
+        : kind === 'invoice' && data.quote?.billingKind === 'acompte' ? "FACTURE D'ACOMPTE" : TITLES[kind];
+    const period = (p: string) => `${p.slice(5, 7)}/${p.slice(0, 4)}`;
     const pct = (rate: number) => `${rate.toLocaleString('fr-FR')} %`;
 
     const groups = data.lineItems.reduce<Record<string, InvoiceLineItem[]>>((acc, item) => {
@@ -133,7 +138,8 @@ export function AccountingDocumentPdf({ data }: { data: AccountingDocumentData }
                         {legalIds && <Text style={styles.muted}>{legalIds}</Text>}
                     </View>
                     <View>
-                        <Text style={styles.title}>{title}</Text>
+                        {/* Titre long (situation) : plus petit, pour ne pas empiéter sur la colonne société. */}
+                        <Text style={title.length > 16 ? [styles.title, { fontSize: 13 }] : styles.title}>{title}</Text>
                         {data.number && <Text style={styles.number}>N° {data.number}</Text>}
                     </View>
                 </View>
@@ -153,6 +159,12 @@ export function AccountingDocumentPdf({ data }: { data: AccountingDocumentData }
                         )}
                         {data.periodStartDate && data.periodEndDate && (
                             <View style={styles.infoRow}><Text style={styles.infoLabel}>Période :</Text><Text>{`du ${formatDate(data.periodStartDate)} au ${formatDate(data.periodEndDate)}`}</Text></View>
+                        )}
+                        {data.situation && (
+                            <View style={styles.infoRow}><Text style={styles.infoLabel}>Affaire :</Text><Text>{data.situation.projectCode}</Text></View>
+                        )}
+                        {data.situation && (
+                            <View style={styles.infoRow}><Text style={styles.infoLabel}>Travaux du mois :</Text><Text>{period(data.situation.period)}</Text></View>
                         )}
                         {data.quote && (
                             <View style={styles.infoRow}><Text style={styles.infoLabel}>Devis :</Text>
@@ -195,6 +207,12 @@ export function AccountingDocumentPdf({ data }: { data: AccountingDocumentData }
                         ))
                         : <View style={styles.totalRow}><Text>{`TVA (${formatRate(data.taxRate, data.subtotal, data.tax)})`}</Text><Text>{formatEur(data.tax)}</Text></View>}
                     <View style={styles.grandTotal}><Text>Total TTC</Text><Text>{formatEur(data.total)}</Text></View>
+                    {data.situation && data.situation.retention.amount !== 0 && (
+                        <>
+                            <View style={styles.totalRow}><Text>{`Retenue de garantie (${pct(data.situation.retention.pct)} du TTC)`}</Text><Text>{formatEur(-data.situation.retention.amount)}</Text></View>
+                            <View style={styles.grandTotal}><Text>Net à payer</Text><Text>{formatEur(data.situation.netToPay)}</Text></View>
+                        </>
+                    )}
                 </View>
 
                 <View style={styles.notes} wrap={false}>

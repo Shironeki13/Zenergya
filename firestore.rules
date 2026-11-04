@@ -21,10 +21,11 @@ service cloud.firestore {
       return coll in ['users', 'roles'];
     }
 
-    // Documents comptables et versions de devis envoyées : écrits uniquement par le serveur (Admin SDK).
+    // Documents comptables, versions de devis envoyées, affaires P6 et situations : écrits uniquement par le
+    // serveur (Admin SDK).
     // Pour les documents comptables, il attribue les numéros dans la même transaction. Côté navigateur, seules les exceptions ci-dessous sont permises.
     function isAccounting(coll) {
-      return coll in ['invoices', 'creditNotes', 'counters', 'quoteVersions'];
+      return coll in ['invoices', 'creditNotes', 'counters', 'quoteVersions', 'projects', 'projectSituations'];
     }
 
     // Code Zenergya d'un site ou d'un compteur (SIT-00001, CPT-00001) : identifiant maître,

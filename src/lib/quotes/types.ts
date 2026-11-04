@@ -139,6 +139,8 @@ export type Quote = {
     acceptance?: QuoteAcceptance;
     refusal?: QuoteRefusal;
     cancellation?: QuoteCancellation;
+    projectId?: string;             // affaire P6 créée depuis ce devis (facturation par situations)
+    projectCode?: string;
     lastInvoicedAt?: string;        // dernière facture émise depuis ce devis
     lastInvoicedBy?: string;
     createdAt: string;

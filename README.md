@@ -12,4 +12,5 @@ Application de gestion des contrats et de la facturation (Next.js, Firebase, Gen
 - Codes Zenergya des sites (`SIT-00001`) et des compteurs (`CPT-00001`) : attribués à la création, immuables. Pour coder les documents existants : `npm run codes:attribuer` (simulation), puis `npm run codes:attribuer -- --apply`.
 - Répertoire des entreprises (recherche et vérification SIRET via l'API de l'État) : voir [docs/repertoire-entreprises.md](docs/repertoire-entreprises.md).
 - Devis (clients et prospects, chiffrage, coefficient et taux horaire par client) : voir [docs/devis.md](docs/devis.md).
+- Affaires P6 (facturation à l'avancement par situations, retenue de garantie) : voir [docs/affaires-p6.md](docs/affaires-p6.md).
 - Déploiement Cloud Run (Dockerfile, Cloud Build) : voir [docs/deploiement-cloud-run.md](docs/deploiement-cloud-run.md).

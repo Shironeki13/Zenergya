@@ -154,6 +154,11 @@ export default function InvoiceDetailPage() {
           </Link>
         </Button>
         <h1 className="text-lg font-semibold md:text-2xl">{documentIdentifier}</h1>
+        {invoice.situation && (
+          <Link href={`/projects/${invoice.situation.projectId}`} className="text-sm text-muted-foreground underline">
+            Situation n° {invoice.situation.number} de l'affaire {invoice.situation.projectCode}
+          </Link>
+        )}
         {invoice.quote && (
           <Link href={`/quotes/${invoice.quote.id}`} className="text-sm text-muted-foreground underline">
             {invoice.quote.billingKind === 'acompte' ? `Acompte ${invoice.quote.percent?.toLocaleString('fr-FR')} %` : invoice.quote.billingKind === 'solde' ? 'Solde' : 'Totalité'} du devis {invoice.quote.number}
@@ -264,6 +269,18 @@ export default function InvoiceDetailPage() {
                 <TableCell colSpan={3} className="text-right py-3 text-base">Total</TableCell>
                 <TableCell className="text-right text-primary text-xl py-3">{invoice.total.toFixed(2)} €</TableCell>
               </TableRow>
+              {invoice.situation && invoice.situation.retention.amount !== 0 && (
+                <>
+                  <TableRow>
+                    <TableCell colSpan={3} className="text-right font-semibold py-2">Retenue de garantie ({invoice.situation.retention.pct} %)</TableCell>
+                    <TableCell className="text-right font-medium py-2">-{invoice.situation.retention.amount.toFixed(2)} €</TableCell>
+                  </TableRow>
+                  <TableRow className="font-bold">
+                    <TableCell colSpan={3} className="text-right py-2">Net à payer</TableCell>
+                    <TableCell className="text-right py-2">{invoice.situation.netToPay.toFixed(2)} €</TableCell>
+                  </TableRow>
+                </>
+              )}
             </TableFooter>
           </Table>
         </section>
