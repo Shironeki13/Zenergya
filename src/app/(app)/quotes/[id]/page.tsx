@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { ArrowDown, ArrowUp, ChevronLeft, Loader2, Plus, Save, Trash2 } from 'lucide-react';
@@ -16,12 +16,13 @@ import { useToast } from '@/hooks/use-toast';
 import { useData } from '@/context/data-context';
 import { NumberField } from '@/components/quotes/number-field';
 import { formatEur, formatPct, StatusBadge } from '@/components/quotes/format';
-import { computeLines, computeQuoteTotals, isPriced, newLineId, quoteIssues, addDays } from '@/lib/quotes/pricing';
+import { computeLines, computeQuoteTotals, isPriced, newLineId, quoteIssues, addDays, unitCostOf } from '@/lib/quotes/pricing';
 import { QUOTE_LINE_KIND_LABELS, type Quote, type QuoteLine, type QuoteLineKind, type QuotePricing } from '@/lib/quotes/types';
 import { deleteQuoteDraft, getQuote, updateQuoteDraft, type QuoteDraftPatch } from '@/services/quotes';
 import { QuoteActions, QuoteHistory } from '@/components/quotes/lifecycle-panel';
 import { QuoteBilling } from '@/components/quotes/billing-panel';
 import { QuoteProject } from '@/components/quotes/project-panel';
+import { LibraryPicker } from '@/components/quotes/library-picker';
 import { effectiveStatus } from '@/lib/quotes/lifecycle';
 
 type Draft = Required<Pick<Quote, 'title' | 'date' | 'validityDays' | 'pricing' | 'lines'>> &
@@ -55,6 +56,7 @@ export default function QuoteEditorPage() {
     const [draft, setDraft] = useState<Draft | null>(null);
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
+    const [expanded, setExpanded] = useState<Set<string>>(new Set());   // ouvrages dont le détail est affiché
 
     const load = useCallback(async () => {
         const q = await getQuote(id);
@@ -331,6 +333,7 @@ export default function QuoteEditorPage() {
                     <CardTitle className="text-base">Lignes</CardTitle>
                     {!readOnly && (
                         <div className="flex flex-wrap gap-1">
+                            <LibraryPicker pricing={draft.pricing} onAdd={line => setDraft(d => (d ? { ...d, lines: [...d.lines, line] } : d))} />
                             {ADDABLE.map(k => (
                                 <Button key={k} size="sm" variant="outline" onClick={() => addLine(k)}><Plus className="mr-1 h-3 w-3" />{QUOTE_LINE_KIND_LABELS[k]}</Button>
                             ))}
@@ -393,14 +396,29 @@ export default function QuoteEditorPage() {
                                     );
                                 }
                                 const mo = l.kind === 'MAIN_OEUVRE';
+                                const work = l.kind === 'OUVRAGE';
+                                const open = work && expanded.has(l.id);
+                                const setComponent = (j: number, patch: { quantity?: number; unitCost?: number | null }) =>
+                                    setLine(i, { components: (l.components ?? []).map((c, k) => (k === j ? { ...c, ...patch } : c)) });
                                 return (
-                                    <tr key={l.id} className={`border-b ${l.optional ? 'text-muted-foreground italic' : ''}`}>
-                                        <td className="p-1 text-xs">{QUOTE_LINE_KIND_LABELS[l.kind]}</td>
+                                    <Fragment key={l.id}>
+                                    <tr className={`border-b ${l.optional ? 'text-muted-foreground italic' : ''}`}>
+                                        <td className="p-1 text-xs">
+                                            {work ? (
+                                                <button type="button" className="underline" aria-expanded={open}
+                                                    onClick={() => setExpanded(s => { const n = new Set(s); if (n.has(l.id)) n.delete(l.id); else n.add(l.id); return n; })}>
+                                                    {open ? '▾' : '▸'} Ouvrage
+                                                </button>
+                                            ) : QUOTE_LINE_KIND_LABELS[l.kind]}
+                                            {l.source?.code && <span className="block font-mono text-[10px] text-muted-foreground">{l.source.code}</span>}
+                                        </td>
                                         <td className="p-1"><Input className="h-8" value={l.label} disabled={readOnly} onChange={e => setLine(i, { label: e.target.value })} /></td>
                                         <td className="p-1"><Input className="h-8" value={l.unit ?? ''} disabled={readOnly} onChange={e => setLine(i, { unit: e.target.value })} /></td>
                                         <td className="p-1"><NumberField className="h-8" ariaLabel="Quantité" value={l.quantity} disabled={readOnly} onChange={v => setLine(i, { quantity: v ?? 0 })} /></td>
-                                        <td className="p-1"><NumberField className="h-8" ariaLabel="Déboursé unitaire" value={l.unitCost} disabled={readOnly}
-                                            placeholder={mo ? String(draft.pricing.laborCost ?? '') : ''} onChange={v => setLine(i, { unitCost: v })} /></td>
+                                        <td className="p-1">{work
+                                            ? <span className="text-xs" title="Somme des composants">{(() => { const c = unitCostOf(l, draft.pricing); return c === null ? '?' : formatEur(c); })()}</span>
+                                            : <NumberField className="h-8" ariaLabel="Déboursé unitaire" value={l.unitCost} disabled={readOnly}
+                                                placeholder={mo ? String(draft.pricing.laborCost ?? '') : ''} onChange={v => setLine(i, { unitCost: v })} />}</td>
                                         <td className="p-1">{mo ? <span className="text-xs text-muted-foreground">—</span>
                                             : <NumberField className="h-8" ariaLabel="Coefficient" value={l.coefficient} disabled={readOnly}
                                                 placeholder={String(draft.pricing.coefficient ?? '').replace('.', ',')} onChange={v => setLine(i, { coefficient: v })} />}</td>
@@ -412,12 +430,26 @@ export default function QuoteEditorPage() {
                                         <td className="p-1 text-center"><Checkbox checked={!!l.optional} disabled={readOnly} onCheckedChange={v => setLine(i, { optional: v === true })} /></td>
                                         {actions || <td />}
                                     </tr>
+                                    {open && (l.components ?? []).map((c, j) => (
+                                        <tr key={`${l.id}-c${j}`} className="border-b bg-muted/30 text-xs">
+                                            <td className="p-1 pl-4 text-muted-foreground">{QUOTE_LINE_KIND_LABELS[c.kind]}</td>
+                                            <td className="p-1 pl-4">{c.code && <span className="font-mono">{c.code} </span>}{c.label}</td>
+                                            <td className="p-1">{c.unit}</td>
+                                            <td className="p-1"><NumberField className="h-7" ariaLabel={`Quantité de ${c.label} par unité`} value={c.quantity} disabled={readOnly}
+                                                onChange={v => setComponent(j, { quantity: v ?? 0 })} /></td>
+                                            <td className="p-1"><NumberField className="h-7" ariaLabel={`Déboursé de ${c.label}`} value={c.unitCost} disabled={readOnly}
+                                                placeholder={c.kind === 'MAIN_OEUVRE' ? String(draft.pricing.laborCost ?? '') : ''} onChange={v => setComponent(j, { unitCost: v })} /></td>
+                                            <td className="p-1 text-muted-foreground" colSpan={7}>par unité d'ouvrage</td>
+                                        </tr>
+                                    ))}
+                                    </Fragment>
                                 );
                             })}
                         </tbody>
                     </table>
                     <p className="mt-2 text-xs text-muted-foreground">
-                        PU HT vide = calculé (déboursé × coefficient ; main-d'œuvre : taux horaire). Saisir un PU HT l'impose.
+                        PU HT vide = calculé (déboursé × coefficient ; main-d'œuvre : taux horaire ; ouvrage : somme de ses composants). Saisir un PU HT l'impose.
+                        Le détail d'un ouvrage (▸) reste interne : le client ne voit que sa ligne.
                     </p>
                 </CardContent>
             </Card>

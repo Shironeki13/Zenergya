@@ -36,6 +36,7 @@ Création et dernière modification sont aussi tracées (date et utilisateur).
 | --- | --- | --- |
 | Fourniture, sous-traitance, divers | déboursé × coefficient (de la ligne, sinon du devis) | déboursé |
 | Main-d'œuvre (en heures) | taux horaire facturé du devis | coût horaire interne (ou déboursé saisi) |
+| Ouvrage (bibliothèque) | somme de ses composants, chacun selon sa nature | somme des déboursés des composants |
 | Titre, sous-total, texte | — (un titre ou un sous-total affiche la somme de ses lignes) | — |
 
 Un **prix unitaire saisi** remplace le calcul. Remise par ligne, **TVA par ligne** (20 %, 10 %, 5,5 %…). Une ligne
@@ -111,5 +112,6 @@ Carte **Facturation** d'un devis accepté : factures émises, montant facturé e
 
 ## À venir
 
-Envoi par email depuis l'application, signature électronique, bibliothèque de prix (articles et ouvrages),
-bibliothèque de prix. Les devis P6 se facturent à l'avancement : voir [affaires-p6.md](affaires-p6.md).
+Envoi par email depuis l'application, signature électronique. Les articles et ouvrages réutilisables sont dans la
+[bibliothèque de prix](bibliotheque-prix.md) ; les devis P6 se facturent à l'avancement : voir
+[affaires-p6.md](affaires-p6.md).

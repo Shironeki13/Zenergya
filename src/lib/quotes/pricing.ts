@@ -1,5 +1,5 @@
 import { roundCents, sumCents } from '@/lib/money';
-import { PRICED_KINDS, type QuoteLine, type QuotePricing, type QuoteTotals } from '@/lib/quotes/types';
+import { PRICED_KINDS, type QuoteLine, type QuoteLineComponent, type QuotePricing, type QuoteTotals } from '@/lib/quotes/types';
 
 /**
  * Calculs d'un devis : sans dépendance (écran, serveur, tests).
@@ -7,6 +7,8 @@ import { PRICED_KINDS, type QuoteLine, type QuotePricing, type QuoteTotals } fro
  * Prix unitaire de vente :
  *   main-d'œuvre                  taux horaire du devis
  *   fourniture, sous-traitance…   déboursé unitaire × coefficient (de la ligne, sinon du devis)
+ *   ouvrage                       somme, par unité d'ouvrage, des prix de ses composants (chacun selon sa
+ *                                 nature ; le coefficient de la ligne s'applique à ses fournitures)
  *   prix imposé                   remplace le calcul
  * Montant de ligne = quantité × prix unitaire × (1 − remise), arrondi au centime.
  * TVA calculée par taux, sur la somme des lignes de ce taux.
@@ -22,8 +24,38 @@ export type ComputedLine = QuoteLine & {
 
 export const isPriced = (line: Pick<QuoteLine, 'kind'>) => PRICED_KINDS.includes(line.kind);
 
+const componentCost = (c: QuoteLineComponent, pricing: QuotePricing): number | null =>
+    c.unitCost !== undefined && c.unitCost !== null ? c.unitCost : c.kind === 'MAIN_OEUVRE' ? pricing.laborCost : null;
+
+function componentPrice(c: QuoteLineComponent, coefficient: number | null | undefined, pricing: QuotePricing): number | null {
+    if (c.kind === 'MAIN_OEUVRE') return pricing.laborRate;
+    const cost = componentCost(c, pricing);
+    if (cost === null || coefficient === null || coefficient === undefined) return null;
+    return cost * coefficient;
+}
+
+/** Somme par unité d'ouvrage ; null si un composant n'est pas chiffrable ou si l'ouvrage est vide. */
+function sumComponents(components: QuoteLineComponent[] | undefined, value: (c: QuoteLineComponent) => number | null): number | null {
+    if (!components?.length) return null;
+    let total = 0;
+    for (const c of components) {
+        const v = value(c);
+        if (v === null) return null;
+        total += c.quantity * v;
+    }
+    return roundCents(total);
+}
+
+/** Heures de main-d'œuvre d'une ligne (ouvrage : celles de ses composants). */
+export function laborHoursOf(line: QuoteLine): number {
+    if (line.kind === 'MAIN_OEUVRE') return line.quantity;
+    if (line.kind === 'OUVRAGE') return line.quantity * (line.components ?? []).filter(c => c.kind === 'MAIN_OEUVRE').reduce((h, c) => h + c.quantity, 0);
+    return 0;
+}
+
 /** Coût unitaire retenu (main-d'œuvre : coût horaire du devis si la ligne n'en donne pas). */
 export function unitCostOf(line: QuoteLine, pricing: QuotePricing): number | null {
+    if (line.kind === 'OUVRAGE') return sumComponents(line.components, c => componentCost(c, pricing));
     if (line.unitCost !== undefined && line.unitCost !== null) return line.unitCost;
     if (line.kind === 'MAIN_OEUVRE') return pricing.laborCost;
     return null;
@@ -34,8 +66,9 @@ export function unitPriceOf(line: QuoteLine, pricing: QuotePricing): number | nu
     if (!isPriced(line)) return null;
     if (line.unitPriceOverride !== undefined && line.unitPriceOverride !== null) return line.unitPriceOverride;
     if (line.kind === 'MAIN_OEUVRE') return pricing.laborRate;
-    const cost = unitCostOf(line, pricing);
     const coefficient = line.coefficient ?? pricing.coefficient;
+    if (line.kind === 'OUVRAGE') return sumComponents(line.components, c => componentPrice(c, coefficient, pricing));
+    const cost = unitCostOf(line, pricing);
     if (cost === null || coefficient === null || coefficient === undefined) return null;
     return roundCents(cost * coefficient);
 }
@@ -100,7 +133,7 @@ export function computeQuoteTotals(lines: QuoteLine[], pricing: QuotePricing): Q
         margin,
         marginRate: totalHT > 0 ? Math.round((margin / totalHT) * 10000) / 10000 : null,
         effectiveCoefficient: totalCost > 0 ? Math.round((totalHT / totalCost) * 10000) / 10000 : null,
-        laborHours: Math.round(counted.filter(l => l.kind === 'MAIN_OEUVRE').reduce((h, l) => h + l.quantity, 0) * 100) / 100,
+        laborHours: Math.round(counted.reduce((h, l) => h + laborHoursOf(l), 0) * 100) / 100,
         optionsHT: sumCents(computed.filter(l => isPriced(l) && l.optional).map(l => l.totalHT)),
     };
 }
@@ -115,11 +148,14 @@ export function quoteIssues(lines: QuoteLine[], pricing: QuotePricing): string[]
         if (!l.label.trim() && l.kind !== 'SOUS_TOTAL') issues.push(`${n} : libellé vide.`);
         if (!isPriced(l)) return;
         if (!(l.quantity > 0)) issues.push(`${n} : quantité nulle ou négative.`);
-        if (unitPriceOf(l, pricing) === null) {
-            issues.push(l.kind === 'MAIN_OEUVRE'
+        if (l.kind === 'OUVRAGE' && !l.components?.length && (l.unitPriceOverride === undefined || l.unitPriceOverride === null)) {
+            issues.push(`${n} : ouvrage sans composant.`);
+        } else if (unitPriceOf(l, pricing) === null) {
+            issues.push(l.kind === 'MAIN_OEUVRE' || (l.kind === 'OUVRAGE' && pricing.laborRate === null && l.components?.some(c => c.kind === 'MAIN_OEUVRE'))
                 ? `${n} : taux horaire de main-d'œuvre non renseigné.`
                 : `${n} : prix non calculable (déboursé ou coefficient manquant).`);
         }
+        if (l.components?.some(c => !(c.quantity > 0) || (c.unitCost ?? 0) < 0)) issues.push(`${n} : composant à quantité nulle ou montant négatif.`);
         if ((l.unitPriceOverride ?? 0) < 0 || (l.unitCost ?? 0) < 0) issues.push(`${n} : montant négatif.`);
     });
     return issues;
