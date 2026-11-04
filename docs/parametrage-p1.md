@@ -23,9 +23,15 @@ BigQuery et ne se saisissent pas (voir [§ 4](#4-ce-qui-ne-se-saisit-pas)).
 2. **Non renseigné n'est pas zéro.** Un champ vide reste vide (`null`), et le
    calcul répond « non calculable » avec sa cause. Un 0 par défaut produirait un
    montant faux sans le dire.
-3. **Codes TWIMM sur chaque objet** : `code_contrat`, `code_site`,
-   `code_compteur`, PDL/PCE et code immeuble. Ce sont les clés de jointure avec les
-   données de BigQuery.
+3. **Les codes Zenergya sont les identifiants maîtres** du contrat, du site et
+   du compteur : chronologiques, lisibles et immuables, comme `CLI-00001` et
+   `CTN-00001` aujourd'hui. Le paramétrage exporté et les résultats du calcul sont
+   indexés par ces codes.
+   Les **codes TWIMM ne sont qu'une correspondance**, datée, tenue tant que des
+   données de BigQuery (relevés, DJU, consommations) restent indexées par TWIMM.
+   Le PDL/PCE et le code immeuble servent de même à rapprocher les factures
+   d'achat. Quand une source ne sera plus indexée par TWIMM, sa correspondance
+   s'éteint sans rien changer au reste.
 4. **Un paramètre vit à un seul niveau.** Aujourd'hui NB, DJU de référence et taux
    de partage sont portés à la fois par `Site`, `Service` et `Interest` : chacun
    doit avoir une seule source.
@@ -56,7 +62,8 @@ comporte comme un marché à consommation : il demande un prix de base et une fo
 
 | Paramètre | Valeurs / remarque | Dans Zenergya aujourd'hui |
 | --- | --- | --- |
-| Code contrat TWIMM, code client TWIMM | clés de jointure | `externalRef` (à formaliser) |
+| **Code contrat Zenergya** | identifiant maître | `contractNumber` (`CTN-00001`) |
+| Correspondance TWIMM (code contrat, code client) | datée, tant qu'une source est indexée par TWIMM | `externalRef` (à formaliser) |
 | Dates, statut, agence | | `startDate`, `endDate`, `status` |
 | Régime d'un compte de prestation (CP/CPI) | `refacturation` (euro/euro), `frais_gestion` (+ forfait annuel), `coefficient` (HT × coefficient), `revise` (NC au prix de base révisé) | absent |
 | Coefficient de gestion, frais de gestion annuels | selon le régime | absent |
@@ -69,7 +76,8 @@ comporte comme un marché à consommation : il demande un prix de base et une fo
 
 | Paramètre | Valeurs / remarque | Dans Zenergya aujourd'hui |
 | --- | --- | --- |
-| Code site TWIMM | clé de jointure | absent |
+| **Code site Zenergya** | identifiant maître, chronologique et immuable (ex. `SIT-00001`) | `siteNumber` facultatif et saisi : à générer comme `CTN` |
+| Correspondance TWIMM (code site) | datée, tant qu'une source est indexée par TWIMM | absent |
 | Rattachement au contrat | un seul contrat à une date donnée, historisé | `contractId` |
 | **Type de marché** | voir § 2, **daté** | `Service.heatingContractType` (texte libre) |
 | Période de référence | `saison_de_chauffe` ou `annee_civile`, datée | absent |
@@ -86,7 +94,8 @@ comporte comme un marché à consommation : il demande un prix de base et une fo
 
 | Paramètre | Remarque | Dans Zenergya aujourd'hui |
 | --- | --- | --- |
-| Code compteur TWIMM | | `code` (interne seulement) |
+| **Code compteur Zenergya** | identifiant maître, chronologique et immuable (ex. `CPT-00001`) | `code` = identifiant Firestore : à remplacer par un code lisible |
+| Correspondance TWIMM (code compteur) | datée : un compteur remplacé change de code TWIMM | absent |
 | Type et unité | énergie entrante, vente, ECS, eau froide… | `type`, `unit` |
 | **Coefficient de conversion (QE)** | index → MWh. Vide si inconnu, jamais 1 par défaut | `Service.conversionCoefficient` |
 | qECS | coefficient des compteurs d'ECS volumétriques | absent |
@@ -116,7 +125,7 @@ sur un seul compteur.
 | --- | --- |
 | Libellé, rang | |
 | Type | `chauffage`, `ecs`, `annexe`, `autre` |
-| Compteurs concernés | |
+| Compteurs concernés | codes compteur Zenergya |
 | Unité du prix | `EUR/MWh`, `EUR/m3`, `EUR/t`, `EUR/L` |
 
 ### 3.6 Formules de révision (par contrat, avec un périmètre)
@@ -179,13 +188,17 @@ Ces données viennent de BigQuery et ne sont pas des paramètres :
 
 ## 5. Mise en œuvre proposée
 
-1. Ajouter les codes TWIMM (contrat, site, compteur).
+1. Générer des codes Zenergya immuables pour les sites et les compteurs (comme
+   les clients et les contrats), et tenir une correspondance TWIMM datée pour les
+   sources encore indexées par TWIMM.
 2. Ajouter les objets manquants avec leur historique daté : postes de
    consommation, barème par tranches, formules complètes, régime CP,
    intéressement au contrat.
 3. Supprimer les doublons entre `Site`, `Service` et `Interest`.
 4. Afficher un « reste à faire » par site, piloté par la grille du § 2 : savoir
    quels sites sont calculables avant même que les données arrivent.
-5. Exporter ce paramétrage vers BigQuery (tables `p_*` du moteur) pour que le
-   moteur P1 le lise à la place du Google Sheet, puis relire ses résultats
-   (`p1_facturation_*`, `p1_site_*`) pour facturer et suivre les contrats.
+5. Exporter ce paramétrage vers BigQuery (tables `p_*` du moteur), indexé par
+   les codes Zenergya, avec la table de correspondance TWIMM : le moteur P1 le lit
+   à la place du Google Sheet et rapproche les données TWIMM par la
+   correspondance. Ses résultats (`p1_facturation_*`, `p1_site_*`), indexés par
+   les codes Zenergya, se relisent pour facturer et suivre les contrats.

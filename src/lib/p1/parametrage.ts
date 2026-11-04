@@ -9,7 +9,10 @@
  * - une valeur décidée est une `Version` : elle vaut à partir de `dateEffet`,
  *   avec son motif ; un avenant ajoute une version, il n'écrase rien ;
  * - `null` signifie « non renseigné » et rend le calcul non calculable avec sa
- *   cause : il ne vaut jamais 0.
+ *   cause : il ne vaut jamais 0 ;
+ * - les codes Zenergya (contrat, site, compteur) sont les identifiants maîtres ;
+ *   les codes TWIMM ne sont qu'une correspondance datée, tenue tant que des
+ *   données de BigQuery restent indexées par TWIMM.
  */
 
 // ---------------------------------------------------------------------------
@@ -100,10 +103,16 @@ export function exigePrixEtFormule(marche: TypeMarche, regime: RegimeCp | null):
 // Contrat
 // ---------------------------------------------------------------------------
 
+/** Les codes TWIMM d'un contrat, pour rapprocher les sources encore indexées par TWIMM. */
+export type CorrespondanceContratTwimm = {
+    codeContrat: string;
+    codeClient: string | null;
+};
+
 export type ParametrageContratP1 = {
     contractId: string;
-    codeContratTwimm: string | null;
-    codeClientTwimm: string | null;
+    codeContrat: string;                         // code Zenergya, maître (CTN-00001)
+    correspondanceTwimm: Historise<CorrespondanceContratTwimm>;
     regimeCp: Historise<RegimeCp>;
     coefficientGestion: Historise<number>;       // régime « coefficient »
     fraisGestionAnnuels: Historise<number>;      // régime « frais_gestion », EUR HT / an
@@ -128,7 +137,8 @@ export type InteressementContrat = Trace & {
 
 export type ParametrageSiteP1 = {
     siteId: string;
-    codeSiteTwimm: string | null;
+    codeSite: string;                            // code Zenergya, maître et immuable (SIT-00001)
+    correspondanceTwimm: Historise<string>;      // code site TWIMM
     rattachement: Historise<string>;             // contractId
     typeMarche: Historise<TypeMarche>;
     periodeReference: Historise<PeriodeReference>;
@@ -176,7 +186,8 @@ export type PerimetreInteressement = Trace & {
 
 export type CompteurP1 = {
     meterId: string;
-    codeCompteurTwimm: string | null;
+    codeCompteur: string;                        // code Zenergya, maître et immuable (CPT-00001)
+    correspondanceTwimm: Historise<string>;      // code compteur TWIMM (change si le compteur est remplacé)
     usage: 'entrant' | 'vente' | 'ecs' | 'eau_froide' | 'annexe' | 'autre';
     energie: Energie | null;
     unite: string;                               // kWh, MWh, m3, L, t…
@@ -188,7 +199,7 @@ export type CompteurP1 = {
 
 /** Un terme de la formule de NC : un compteur et son signe. */
 export type TermeNc = {
-    codeCompteur: string;
+    codeCompteur: string;                        // code Zenergya
     signe: 1 | -1;                               // +1 entrée, -1 déduction (ECS, sous-comptage)
 };
 
@@ -205,7 +216,7 @@ export type PosteFacturation = Trace & {
     rang: number;
     libelle: string;
     type: TypePosteFacturation;
-    compteurs: string[];                         // codes compteur
+    compteurs: string[];                         // codes compteur Zenergya
     unitePrix: UnitePrix;
 };
 
