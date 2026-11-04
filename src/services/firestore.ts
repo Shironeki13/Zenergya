@@ -81,6 +81,30 @@ export function formatId(prefix: string, number: number): string {
     return `${prefix}-${number.toString().padStart(5, '0')}`;
 }
 
+/**
+ * Crée un document et lui attribue son code (PREFIX-00001) dans une même transaction :
+ * le numéro n'est consommé que si le document est écrit (ni trou, ni doublon).
+ * Le code est ensuite immuable (firestore.rules).
+ */
+async function createWithCode(
+    collectionName: string,
+    counterName: string,
+    prefix: string,
+    data: DocumentData,
+): Promise<{ id: string; code: string }> {
+    const counterRef = doc(db, 'config', 'sequences');
+    const docRef = doc(collection(db, collectionName));
+    const code = await runTransaction(db, async (transaction) => {
+        const counterDoc = await transaction.get(counterRef);
+        const next = (counterDoc.exists() ? counterDoc.data()[counterName] || 0 : 0) + 1;
+        const newCode = formatId(prefix, next);
+        transaction.set(counterRef, { [counterName]: next }, { merge: true });
+        transaction.set(docRef, { ...data, code: newCode });
+        return newCode;
+    });
+    return { id: docRef.id, code };
+}
+
 
 // --- Fonctions de Service (Firestore) ---
 
@@ -191,11 +215,11 @@ export async function getSitesByContract(contractId: string): Promise<Site[]> {
     return getCollection<Site>(q);
 }
 
-export async function createSite(data: Omit<Site, 'id'>) {
-    const sitesCollection = collection(db, 'sites');
+export async function createSite(data: Omit<Site, 'id' | 'code'>) {
     const cleanData = Object.fromEntries(Object.entries(data).filter(([, v]) => v !== undefined));
-    const docRef = await addDoc(sitesCollection, cleanData);
-    return { id: docRef.id, ...data };
+    // Code Zenergya du site (SIT-XXXXX), attribué avec la création
+    const { id, code } = await createWithCode('sites', 'site', 'SIT', cleanData);
+    return { id, ...data, code };
 }
 
 export async function updateSite(id: string, data: Partial<Omit<Site, 'id'>>) {
@@ -417,14 +441,13 @@ export async function deleteIndexValue(id: string) {
 
 // Compteurs (Meters)
 export async function createMeter(data: Omit<Meter, 'id' | 'code'>) {
-    const meterData = {
+    const meterData = Object.fromEntries(Object.entries({
         ...data,
         lastModified: new Date().toISOString(),
-    };
-    const docRef = await addDoc(collection(db, 'meters'), meterData);
-    // Use the document ID as the unique code
-    await updateDoc(docRef, { code: docRef.id });
-    return { id: docRef.id, code: docRef.id, ...meterData };
+    }).filter(([, v]) => v !== undefined));
+    // Code Zenergya du compteur (CPT-XXXXX), attribué avec la création
+    const { id, code } = await createWithCode('meters', 'meter', 'CPT', meterData);
+    return { id, ...data, lastModified: meterData.lastModified as string, code };
 }
 export async function getMeters(): Promise<Meter[]> {
     return getCollection<Meter>(collection(db, 'meters'));

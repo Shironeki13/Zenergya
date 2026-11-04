@@ -179,6 +179,7 @@ export default function SitesPage() {
     }
     return sitesWithClientNames.filter(site =>
       site.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (site.code || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
       site.clientName.toLowerCase().includes(searchTerm.toLowerCase())
     );
   }, [sitesWithClientNames, searchTerm]);
@@ -258,6 +259,7 @@ export default function SitesPage() {
         <Table>
           <TableHeader>
             <TableRow>
+              <TableHead>Code</TableHead>
               <TableHead>Nom du Site</TableHead>
               <TableHead>Client</TableHead>
               <TableHead>Contrat</TableHead>
@@ -270,13 +272,16 @@ export default function SitesPage() {
           <TableBody>
             {isLoading ? (
               <TableRow>
-                <TableCell colSpan={5} className="text-center h-24">
+                <TableCell colSpan={6} className="text-center h-24">
                   <Loader2 className="mx-auto h-8 w-8 animate-spin text-muted-foreground" />
                 </TableCell>
               </TableRow>
             ) : filteredSites.length > 0 ? (
               filteredSites.map((site: Site & { clientName: string; contract: import('@/lib/types').Contract | null }) => (
                 <TableRow key={site.id}>
+                  <TableCell className="font-mono text-xs">
+                    {site.code || <span className="text-muted-foreground">—</span>}
+                  </TableCell>
                   <TableCell className="font-medium">
                     <Link href={`/sites/${site.id}`} className="hover:underline">
                       {site.name}
@@ -328,7 +333,7 @@ export default function SitesPage() {
               ))
             ) : (
               <TableRow>
-                <TableCell colSpan={5} className="text-center h-24">Aucun site trouvé.</TableCell>
+                <TableCell colSpan={6} className="text-center h-24">Aucun site trouvé.</TableCell>
               </TableRow>
             )}
           </TableBody>
