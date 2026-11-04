@@ -9,7 +9,7 @@
 export type FieldType = 'text' | 'number' | 'boolean' | 'enum' | 'siret' | 'email' | 'postalCode' | 'date';
 
 /** Listes de référence, lues dans le paramétrage (onglet « Listes » du modèle XLSX). */
-export type RefList = 'companies' | 'agencies' | 'sectors' | 'typologies' | 'meterTypes' | 'activities' | 'markets' | 'schedules';
+export type RefList = 'companies' | 'agencies' | 'sectors' | 'typologies' | 'meterTypes' | 'activities' | 'markets' | 'schedules' | 'terms' | 'vatRates';
 
 export type ImportField = {
     key: string;
@@ -26,7 +26,7 @@ export type ImportField = {
     allowZero?: boolean;
 };
 
-export type ImportEntityKey = 'clients' | 'contracts' | 'sites' | 'contacts' | 'meters' | 'readings';
+export type ImportEntityKey = 'clients' | 'contracts' | 'sites' | 'services' | 'contacts' | 'meters' | 'readings';
 
 export type ImportEntity = {
     key: ImportEntityKey;
@@ -173,6 +173,45 @@ export const IMPORT_ENTITIES: Record<ImportEntityKey, ImportEntity> = {
             { key: 'postalCode', label: 'Code postal', type: 'postalCode', example: '69003', aliases: ['cp'] },
             { key: 'city', label: 'Ville', type: 'text', example: 'Lyon', aliases: ['commune'] },
             { key: 'heatingWeatherStation', label: 'Station météo', type: 'text', example: 'LYON-BRON' },
+        ],
+    },
+    services: {
+        key: 'services',
+        label: 'Prestations et montants',
+        description: 'Prestations des sites (contrat du site × activité) : montant annuel HT, période de validité, TVA, compteur P1. '
+            + 'Les montants facturés du site sont calculés à partir des prestations en vigueur (ils ne se saisissent plus à la main).',
+        matching: 'Réf. externe, sinon site + activité + date de début : la prestation existante est mise à jour ; sinon elle est créée. '
+            + 'Deux prestations du même site et de la même activité ne peuvent pas se recouvrir (elles seraient facturées deux fois).',
+        fields: [
+            externalRef('de la prestation'),
+            { key: 'site', label: 'Site', type: 'text', required: 'create', example: 'SIT-00021', help: 'Code du site (SIT-…) ou réf. externe ; le site doit être rattaché à un contrat.' },
+            {
+                key: 'activity', label: 'Activité', type: 'text', required: 'create', refList: 'activities', example: 'P2',
+                help: 'Code de l\'activité, qui doit figurer parmi les activités du contrat du site. Détermine le type P1 / P2 / P3.',
+            },
+            { key: 'label', label: 'Libellé', type: 'text', example: 'Maintenance chaufferie', aliases: ['libelle'] },
+            { key: 'startDate', label: 'Date de début', type: 'date', required: 'create', example: '2025-07-01', aliases: ['debut'] },
+            { key: 'endDate', label: 'Date de fin', type: 'date', example: '2026-06-30', aliases: ['fin'], help: 'Incluse. Vide à la création : fin du contrat.' },
+            { key: 'price', label: 'Montant annuel HT', type: 'number', allowZero: true, required: 'create', example: '4800', aliases: ['montant', 'prix'], help: '€ HT par an (montant forfaitaire), facturé selon l\'échéancier du contrat.' },
+            { key: 'billingTerm', label: 'Périodicité', type: 'text', refList: 'terms', example: 'Trimestriel', aliases: ['terme'] },
+            { key: 'vatRate', label: 'TVA', type: 'text', refList: 'vatRates', example: 'TVA20', help: 'Code du taux de TVA (paramétrage).' },
+            { key: 'meter', label: 'Compteur', type: 'text', example: '', help: 'P1 : code du compteur (CPT-…) ou réf. externe, du même site.' },
+            {
+                key: 'p1Type', label: 'Type P1', type: 'enum',
+                options: [{ value: 'CHAUFFAGE', label: 'Chauffage' }, { value: 'ECS', label: 'ECS' }, { value: 'EAU_FROIDE', label: 'Eau froide' }, { value: 'AUTRE', label: 'Autre' }],
+            },
+            {
+                key: 'energyType', label: 'Énergie', type: 'enum',
+                options: [
+                    { value: 'Gaz', label: 'Gaz' }, { value: 'Electricité', label: 'Électricité', aliases: ['elec'] },
+                    { value: 'Réseau de chaleur', label: 'Réseau de chaleur', aliases: ['rcu'] }, { value: 'Fioul', label: 'Fioul' },
+                    { value: 'Biomasse', label: 'Biomasse', aliases: ['bois'] },
+                ],
+            },
+            { key: 'unitPrice', label: 'Prix unitaire de base', type: 'number', allowZero: true, help: 'P1 : prix de l\'unité (révisable).' },
+            { key: 'unit', label: 'Unité du prix', type: 'text', example: '€/MWh' },
+            { key: 'isActive', label: 'Active', type: 'boolean', example: 'oui', help: 'Vide à la création : oui. Non : jamais facturée.' },
+            { key: 'comment', label: 'Commentaire', type: 'text' },
         ],
     },
     contacts: {

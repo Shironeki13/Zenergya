@@ -4,9 +4,11 @@ import { adminDb } from '@/lib/firebase-admin';
 import { IMPORT_ENTITIES, type ImportEntityKey } from '@/lib/imports/definitions';
 import { parseTable, type CellValue, type ParsedRow } from '@/lib/imports/engine';
 import { chorusNeedsValidator } from '@/lib/einvoicing';
+import { periodsOverlap, toDay } from '@/lib/services/site-amounts';
+import { recomputeSiteAmounts } from '@/services/site-amounts-admin';
 import type {
     Activity, Agency, ChorusFramework, Client, Company, Contact, Contract, ContractChorusSettings, Market, Meter, MeterReading,
-    MeterType, Schedule, Sector, Site, Typology,
+    MeterType, Schedule, Sector, Service, Site, Term, Typology, VatRate,
 } from '@/lib/types';
 
 /**
@@ -41,6 +43,8 @@ type Effects = {
     addToContract?: string;
     renameClient?: { clientId: string; from: string; to: string };
     siteDenorm?: { siteId: string; siteName?: string; clientName?: string };
+    /** Montants du site à recalculer à partir de ses prestations. */
+    recomputeSite?: string;
 };
 
 export type ImportPlan = {
@@ -64,6 +68,7 @@ async function all<T>(collection: string): Promise<Doc<T>[]> {
 type Context = {
     companies: Doc<Company>[]; agencies: Doc<Agency>[]; sectors: Doc<Sector>[]; typologies: Doc<Typology>[];
     meterTypes: Doc<MeterType>[]; activities: Doc<Activity>[]; markets: Doc<Market>[]; schedules: Doc<Schedule>[];
+    terms: Doc<Term>[]; vatRates: Doc<VatRate>[]; services: Doc<Service>[];
     clients: Doc<Client>[]; contracts: Doc<Contract>[]; sites: Doc<Site>[]; contacts: Doc<Contact>[]; meters: Doc<Meter>[];
     /** Contrats ayant au moins une facture. */
     invoicedContracts: Set<string>;
@@ -88,24 +93,27 @@ export const readingMillis = dateMillis;
 async function loadContext(entity: ImportEntityKey): Promise<Context> {
     const need = (e: ImportEntityKey[]) => e.includes(entity);
     const empty = Promise.resolve([]);
-    const [companies, agencies, sectors, typologies, meterTypes, activities, markets, schedules, clients, contracts, sites, contacts, meters, invoices] = await Promise.all([
+    const [companies, agencies, sectors, typologies, meterTypes, activities, markets, schedules, terms, vatRates, services, clients, contracts, sites, contacts, meters, invoices] = await Promise.all([
         need(['clients', 'contracts']) ? all<Company>('companies') : empty,
         need(['clients']) ? all<Agency>('agencies') : empty,
         need(['clients']) ? all<Sector>('sectors') : empty,
         need(['clients']) ? all<Typology>('typologies') : empty,
         need(['meters']) ? all<MeterType>('meterTypes') : empty,
-        need(['contracts']) ? all<Activity>('activities') : empty,
+        need(['contracts', 'services']) ? all<Activity>('activities') : empty,
         need(['contracts']) ? all<Market>('markets') : empty,
         need(['contracts']) ? all<Schedule>('schedules') : empty,
+        need(['services']) ? all<Term>('terms') : empty,
+        need(['services']) ? all<VatRate>('vatRates') : empty,
+        need(['services']) ? all<Service>('services') : empty,
         need(['clients', 'contracts', 'sites', 'contacts']) ? all<Client>('clients') : empty,
-        need(['contracts', 'sites', 'readings']) ? all<Contract>('contracts') : empty,
-        need(['sites', 'meters', 'readings']) ? all<Site>('sites') : empty,
+        need(['contracts', 'sites', 'services', 'readings']) ? all<Contract>('contracts') : empty,
+        need(['sites', 'services', 'meters', 'readings']) ? all<Site>('sites') : empty,
         need(['contacts']) ? all<Contact>('contacts') : empty,
-        need(['meters', 'readings']) ? all<Meter>('meters') : empty,
+        need(['meters', 'services', 'readings']) ? all<Meter>('meters') : empty,
         need(['contracts']) ? adminDb.collection('invoices').select('contractId').get().then(s => s.docs.map(d => String(d.get('contractId') ?? ''))) : empty,
     ]);
     return {
-        companies, agencies, sectors, typologies, meterTypes, activities, markets, schedules, clients, contracts, sites, contacts, meters,
+        companies, agencies, sectors, typologies, meterTypes, activities, markets, schedules, terms, vatRates, services, clients, contracts, sites, contacts, meters,
         invoicedContracts: new Set(invoices as string[]), readings: new Map(), lockedReadings: new Map(),
     } as Context;
 }
@@ -501,6 +509,7 @@ function planSite(ctx: Context, row: ParsedRow, seen: Map<string, number>): Plan
             siteId: existing.id, ...(data.name ? { siteName: String(data.name) } : {}), ...(data.clientName ? { clientName: String(data.clientName) } : {}),
         };
     }
+    if (existing && effects.addToContract) effects.recomputeSite = existing.id;
     if (Object.keys(effects).length) item.effects = effects;
 
     if (existing) {
@@ -635,6 +644,106 @@ function planReading(ctx: Context, row: ParsedRow, seen: Map<string, number>, pe
     return item;
 }
 
+function planService(ctx: Context, row: ParsedRow, pending: Map<string, { line: number; startDate: string; endDate: string }[]>): PlanItem {
+    const v = row.values;
+    const item: PlanItem = { line: row.line, action: 'error', label: `${v.site ?? ''} ${v.activity ?? ''}`.trim(), messages: [...row.errors], warnings: [] };
+
+    let existing = v.externalRef ? byRef(ctx.services, v.externalRef) : undefined;
+    const site = v.site ? findSite(ctx, v.site) : existing ? ctx.sites.find(s => s.id === existing!.siteId) : undefined;
+    if (v.site && !site) item.messages.push(`Site ${v.site} introuvable (code SIT-… ou réf. externe).`);
+    if (existing && site && existing.siteId !== site.id) item.messages.push(`La réf. externe ${v.externalRef} désigne une prestation d'un autre site.`);
+    const contract = site?.contractId ? ctx.contracts.find(c => c.id === site.contractId) : undefined;
+    if (site && !contract) item.messages.push(`Site ${site.code ?? site.name} sans contrat : rattachez-le d'abord à un contrat (import des sites, colonne Contrat).`);
+    const activity = v.activity
+        ? ctx.activities.find(a => norm(a.code) === norm(v.activity) || norm(a.label) === norm(v.activity))
+        : existing ? ctx.activities.find(a => a.id === existing!.activityId) : undefined;
+    if (v.activity && !activity) item.messages.push(`Activité « ${v.activity} » inconnue.`);
+    if (activity && contract && !(contract.activityIds ?? []).includes(activity.id)) {
+        item.messages.push(`Activité ${activity.code} absente du contrat ${contract.contractNumber ?? contract.id} : ajoutez-la au contrat (import des contrats, colonne Activités), sinon elle ne serait pas facturée.`);
+    }
+    if (!existing && (!site || !activity)) {
+        if (!v.site) item.messages.push('Site obligatoire.');
+        if (!v.activity) item.messages.push('Activité obligatoire.');
+    }
+    if (item.messages.length || !site || !contract || !activity) return item;
+
+    const startDay = v.startDate ? isoDay(Date.parse(String(v.startDate))) : undefined;
+    const endDay = v.endDate ? isoDay(Date.parse(String(v.endDate))) : undefined;
+    if (!existing && startDay) {
+        existing = ctx.services.find(s => s.siteId === site.id && s.activityId === activity.id && s.contractId === contract.id && toDay(s.startDate) === startDay);
+    }
+    const taken = refTakenBy(ctx.services, v.externalRef, existing?.id);
+    if (taken) item.messages.push(`Réf. externe ${v.externalRef} déjà portée par une autre prestation.`);
+
+    const data = plain(v, ['externalRef', 'label', 'price', 'p1Type', 'energyType', 'unitPrice', 'unit', 'isActive', 'comment']);
+    if (startDay && startDay !== toDay(existing?.startDate)) data.startDate = startDay;
+    if (endDay && endDay !== toDay(existing?.endDate)) data.endDate = endDay;
+    if (existing && v.activity && activity.id !== existing.activityId) Object.assign(data, { activityId: activity.id, type: activity.type });
+    if (v.billingTerm) {
+        const term = ctx.terms.find(t => norm(t.name) === norm(v.billingTerm));
+        if (!term) item.messages.push(`Périodicité « ${v.billingTerm} » inconnue.`);
+        else data.billingTermId = term.id;
+    }
+    if (v.vatRate) {
+        const vat = ctx.vatRates.find(t => norm(t.code) === norm(v.vatRate));
+        if (!vat) item.messages.push(`TVA « ${v.vatRate} » inconnue.`);
+        else data.vatRateId = vat.id;
+    }
+    if (v.meter) {
+        const meter = findMeter(ctx, v.meter);
+        if (!meter) item.messages.push(`Compteur ${v.meter} introuvable (code CPT-… ou réf. externe).`);
+        else if (meter.siteId !== site.id) item.messages.push(`Le compteur ${meter.code ?? v.meter} n'est pas sur ce site.`);
+        else if (activity.type !== 'P1') item.messages.push('Un compteur ne se rattache qu\'à une prestation P1.');
+        else data.meterId = meter.id;
+    }
+    if (!existing && v.price === null) item.messages.push('Montant annuel HT obligatoire pour créer une prestation.');
+    if (!existing && !startDay) item.messages.push('Date de début obligatoire pour créer une prestation.');
+
+    // Période finale : fin par défaut = fin du contrat.
+    const start = (data.startDate ?? toDay(existing?.startDate)) as string | undefined;
+    const end = (data.endDate ?? toDay(existing?.endDate) ?? (existing ? undefined : toDay(contract.endDate))) as string | undefined;
+    if (start && end && end < start) item.messages.push('La date de fin doit être postérieure ou égale à la date de début.');
+    const cStart = toDay(contract.startDate);
+    const cEnd = toDay(contract.endDate);
+    if (start && ((cStart && start < cStart) || (cEnd && end && end > cEnd))) {
+        item.warnings.push(`Période hors de celle du contrat ${contract.contractNumber ?? ''} (${cStart ?? '?'} → ${cEnd ?? '?'}) : rien n'est facturé hors contrat.`);
+    }
+
+    // Recouvrement : deux prestations actives du même site et de la même activité seraient facturées deux fois.
+    const active = (data.isActive ?? existing?.isActive) !== false;
+    if (active && start && item.messages.length === 0) {
+        const period = { startDate: start, endDate: end };
+        const clash = ctx.services.find(s => s.id !== existing?.id && s.siteId === site.id && s.activityId === activity.id
+            && s.contractId === contract.id && s.isActive !== false && periodsOverlap(s, period));
+        if (clash) {
+            item.messages.push(`Recouvre la prestation ${activity.code} du ${toDay(clash.startDate) ?? '?'} au ${toDay(clash.endDate) ?? 'sans fin'} `
+                + '(facturée deux fois) : terminez-la avant, ou désignez-la (réf. externe, ou même date de début) pour la modifier.');
+        }
+        const key = `${site.id}|${activity.id}`;
+        const twin = (pending.get(key) ?? []).find(p => periodsOverlap(p, period));
+        if (twin) item.messages.push(`Recouvre la prestation de la ligne ${twin.line}.`);
+        if (!pending.has(key)) pending.set(key, []);
+        pending.get(key)!.push({ line: row.line, startDate: start, endDate: end ?? '' });
+    }
+    if (item.messages.length) return item;
+
+    item.label = `${site.code ?? site.name} — ${activity.code}${start ? ` dès le ${start}` : ''}`;
+    if (existing) {
+        Object.assign(item, { targetId: existing.id, data });
+        item.action = sameAs(existing as unknown as Record<string, unknown>, data) ? 'unchanged' : 'update';
+    } else {
+        Object.assign(item, {
+            action: 'create',
+            data: {
+                contractId: contract.id, siteId: site.id, activityId: activity.id, type: activity.type, isActive: true,
+                ...(end && { endDate: end }), ...data,
+            },
+        });
+    }
+    item.effects = { ...(item.effects ?? {}), recomputeSite: site.id };
+    return item;
+}
+
 /** Plan d'import : ce que deviendrait chaque ligne, sans rien écrire. */
 export async function planImport(entity: ImportEntityKey, table: unknown[][]): Promise<ImportPlan> {
     const def = IMPORT_ENTITIES[entity];
@@ -651,11 +760,13 @@ export async function planImport(entity: ImportEntityKey, table: unknown[][]): P
     }
     const seen = new Map<string, number>();
     const pending = new Map<string, { at: number; value: number }[]>();
+    const pendingServices = new Map<string, { line: number; startDate: string; endDate: string }[]>();
     const items = parsed.rows.map(row => {
         switch (entity) {
             case 'clients': return planClient(ctx, row, seen);
             case 'contracts': return planContract(ctx, row, seen);
             case 'sites': return planSite(ctx, row, seen);
+            case 'services': return planService(ctx, row, pendingServices);
             case 'contacts': return planContact(ctx, row, seen);
             case 'meters': return planMeter(ctx, row, seen);
             case 'readings': return planReading(ctx, row, seen, pending);
@@ -674,7 +785,7 @@ const CODES: Partial<Record<ImportEntityKey, { counter: string; prefix: string; 
     meters: { counter: 'meter', prefix: 'CPT', field: 'code', collection: 'meters' },
 };
 const COLLECTIONS: Record<ImportEntityKey, string> = {
-    clients: 'clients', contracts: 'contracts', sites: 'sites', contacts: 'contacts', meters: 'meters', readings: 'meterReadings',
+    clients: 'clients', contracts: 'contracts', sites: 'sites', services: 'services', contacts: 'contacts', meters: 'meters', readings: 'meterReadings',
 };
 
 /** Réserve `n` numéros au-delà du compteur et du plus grand code existant (pas de doublon possible). */
@@ -798,6 +909,10 @@ export async function applyImport(entity: ImportEntityKey, table: unknown[][], m
         writes.slice(i, i + 400).forEach(w => w(batch));
         await batch.commit();
     }
+
+    // Montants des sites dont les prestations (ou le contrat) ont changé.
+    const toRecompute = [...creates, ...updates].map(i => i.effects?.recomputeSite).filter((id): id is string => !!id);
+    if (toRecompute.length) await recomputeSiteAmounts(toRecompute);
 
     for (const item of plan.items.filter(i => i.action === 'unchanged')) results.push({ line: item.line, action: 'unchanged', id: item.targetId!, ...warn(item) });
     results.sort((a, b) => a.line - b.line);

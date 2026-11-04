@@ -13,19 +13,20 @@ import { ApiError } from '@/services/api-admin';
  * Les noms de champs sont ceux de la description des imports : ce qui se lit peut se renvoyer tel quel.
  */
 
-const COLLECTIONS: Record<ApiResource, string> = { clients: 'clients', contracts: 'contracts', sites: 'sites', contacts: 'contacts', meters: 'meters', readings: 'meterReadings' };
+const COLLECTIONS: Record<ApiResource, string> = { clients: 'clients', contracts: 'contracts', services: 'services', sites: 'sites', contacts: 'contacts', meters: 'meters', readings: 'meterReadings' };
 export const MAX_PAGE = 200;
 /** Champs de lecture seule de la représentation : acceptés et ignorés à l'écriture (renvoi tel quel possible). */
 export const READ_ONLY: Record<ApiResource, string[]> = {
-    clients: [], contracts: ['name', 'validationStatus', 'sites', 'chorusLegalCommitments'], sites: [], contacts: ['id'], meters: ['unit'], readings: ['id', 'unit', 'source', 'contract'] };
+    clients: [], contracts: ['name', 'validationStatus', 'sites', 'chorusLegalCommitments'],
+    services: ['id', 'contract', 'type'], sites: ['amounts', 'amountsSource'], contacts: ['id'], meters: ['unit'], readings: ['id', 'unit', 'source', 'contract'] };
 /** Ressources sans code Zenergya : désignées par leur identifiant. */
-const BY_ID: ApiResource[] = ['contacts', 'readings'];
+const BY_ID: ApiResource[] = ['contacts', 'readings', 'services'];
 export const MAX_BATCH = 500;
 
 type Lookups = {
     companies: Map<string, string>; agencies: Map<string, string>; sectors: Map<string, string>; typologies: Map<string, string>;
     clients: Map<string, string>; contracts: Map<string, string>; sites: Map<string, string>; meters: Map<string, string>;
-    activities: Map<string, string>; markets: Map<string, string>;
+    activities: Map<string, string>; markets: Map<string, string>; terms: Map<string, string>; vatRates: Map<string, string>;
 };
 
 let cache: { at: number; value: Lookups } | null = null;
@@ -35,13 +36,14 @@ async function lookups(): Promise<Lookups> {
     if (cache && Date.now() - cache.at < 60_000) return cache.value;
     const map = async (collection: string, field: (d: FirebaseFirestore.DocumentData) => string) =>
         new Map((await adminDb.collection(collection).get()).docs.map(d => [d.id, field(d.data())]));
-    const [companies, agencies, sectors, typologies, clients, contracts, sites, meters, activities, markets] = await Promise.all([
+    const [companies, agencies, sectors, typologies, clients, contracts, sites, meters, activities, markets, terms, vatRates] = await Promise.all([
         map('companies', d => d.code || d.name), map('agencies', d => d.name), map('sectors', d => d.name),
         map('typologies', d => d.name), map('clients', d => d.externalCode || d.clientNumber || ''),
         map('contracts', d => d.contractNumber || ''), map('sites', d => d.code || ''), map('meters', d => d.code || ''),
         map('activities', d => d.code || d.label), map('markets', d => d.code || d.label),
+        map('terms', d => d.name || ''), map('vatRates', d => d.code || ''),
     ]);
-    cache = { at: Date.now(), value: { companies, agencies, sectors, typologies, clients, contracts, sites, meters, activities, markets } };
+    cache = { at: Date.now(), value: { companies, agencies, sectors, typologies, clients, contracts, sites, meters, activities, markets, terms, vatRates } };
     return cache.value;
 }
 
@@ -79,9 +81,18 @@ function serialize(resource: ApiResource, id: string, d: FirebaseFirestore.Docum
             einvoicingAddress: d.einvoicingAddress,
             sites: (d.siteIds ?? []).map((id: string) => l.sites.get(id)).filter(Boolean),
         });
+        case 'services': return compact({
+            id, externalRef: d.externalRef, site: l.sites.get(d.siteId), contract: l.contracts.get(d.contractId),
+            activity: l.activities.get(d.activityId), type: d.type, label: d.label, startDate: day(d.startDate), endDate: day(d.endDate),
+            price: d.price, billingTerm: d.billingTermId ? l.terms.get(d.billingTermId) : undefined,
+            vatRate: d.vatRateId ? l.vatRates.get(d.vatRateId) : undefined, meter: d.meterId ? l.meters.get(d.meterId) : undefined,
+            p1Type: d.p1Type, energyType: d.energyType, unitPrice: d.unitPrice, unit: d.unit, isActive: d.isActive, comment: d.comment,
+        });
         case 'sites': return compact({
             code: d.code, externalRef: d.externalRef, client: l.clients.get(d.clientId), contract: d.contractId ? l.contracts.get(d.contractId) : undefined, name: d.name,
             siteNumber: d.siteNumber, address: d.address, postalCode: d.postalCode, city: d.city, heatingWeatherStation: d.heatingWeatherStation,
+            amounts: d.amounts?.length ? Object.fromEntries(d.amounts.map((a: { activityId: string; amount: number }) => [l.activities.get(a.activityId) ?? a.activityId, a.amount])) : undefined,
+            amountsSource: d.amountsSource ?? (d.amounts?.length ? 'manual' : undefined),
         });
         case 'contacts': return compact({ id, client: l.clients.get(d.clientId), type: d.type, name: d.name, email: d.email, phone: d.phone, role: d.role });
         case 'meters': return compact({
@@ -97,7 +108,7 @@ function serialize(resource: ApiResource, id: string, d: FirebaseFirestore.Docum
 
 /** Filtres de liste acceptés par ressource (paramètres de requête). */
 export const LIST_FILTERS: Record<ApiResource, string[]> = {
-    clients: ['siret', 'relation'], contracts: ['client', 'status'], sites: ['client'], contacts: ['client'], meters: ['site'], readings: ['meter', 'site', 'from', 'to'],
+    clients: ['siret', 'relation'], contracts: ['client', 'status'], services: ['site', 'contract', 'activity'], sites: ['client'], contacts: ['client'], meters: ['site'], readings: ['meter', 'site', 'from', 'to'],
 };
 
 const reverse = (map: Map<string, string>, value: string) => [...map.entries()].find(([, v]) => v.toUpperCase() === value.toUpperCase())?.[0];
@@ -168,6 +179,8 @@ export async function listResource(resource: ApiResource, params: URLSearchParam
         if (!value) continue;
         if (f === 'client') q = q.where('clientId', '==', reverse(l.clients, value) ?? '__aucun__');
         else if (f === 'site') q = q.where('siteId', '==', reverse(l.sites, value) ?? '__aucun__');
+        else if (f === 'contract') q = q.where('contractId', '==', reverse(l.contracts, value) ?? '__aucun__');
+        else if (f === 'activity') q = q.where('activityId', '==', reverse(l.activities, value) ?? '__aucun__');
         else q = q.where(f, '==', value);
     }
     checkParams(resource, params);

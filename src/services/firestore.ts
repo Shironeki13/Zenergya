@@ -3,6 +3,7 @@ import type { Client, Contact, Site, Contract, Invoice, CreditNote, MeterReading
 import { collection, getDocs, doc, getDoc, addDoc, updateDoc, deleteDoc, query, where, DocumentData, writeBatch, runTransaction, Timestamp } from 'firebase/firestore';
 import { deleteFileFromUrl } from './storage';
 import { planSiteSync } from '@/lib/contracts/site-sync';
+import { amountsDiffer, computeSiteAmounts, todayInParis } from '@/lib/services/site-amounts';
 
 
 function processFirestoreDoc<T>(docData: DocumentData): T {
@@ -766,7 +767,20 @@ export async function deleteRevisionRule(id: string) {
 
 // Prestations (Services)
 export async function createService(data: Omit<Service, 'id'>) {
-    return createSettingItem('services', data);
+    const created = await createSettingItem('services', data);
+    await refreshSiteAmounts(data.siteId);
+    return created;
+}
+
+/** Montants du site recalculés à partir de ses prestations (source unique de ce qui est facturé). */
+async function refreshSiteAmounts(siteId?: string) {
+    if (!siteId) return;
+    const siteRef = doc(db, 'sites', siteId);
+    const [siteSnap, servicesSnap] = await Promise.all([getDoc(siteRef), getDocs(query(collection(db, 'services'), where('siteId', '==', siteId)))]);
+    if (!siteSnap.exists()) return;
+    const site = { id: siteSnap.id, ...siteSnap.data() } as Site;
+    const next = computeSiteAmounts(site, servicesSnap.docs.map(d => ({ id: d.id, ...d.data() }) as Service), todayInParis());
+    if (next && amountsDiffer(site, next)) await updateDoc(siteRef, { ...next, amountsComputedAt: new Date().toISOString() });
 }
 export async function getServices(): Promise<Service[]> {
     return getCollection<Service>(collection(db, 'services'));
@@ -780,10 +794,15 @@ export async function getServicesByContract(contractId: string): Promise<Service
     return getCollection<Service>(q);
 }
 export async function updateService(id: string, data: Partial<Omit<Service, 'id'>>) {
-    return updateSettingItem('services', id, data);
+    const before = (await getDoc(doc(db, 'services', id))).get('siteId') as string | undefined;
+    await updateSettingItem('services', id, data);
+    await refreshSiteAmounts(data.siteId ?? before);
+    if (data.siteId && before && before !== data.siteId) await refreshSiteAmounts(before);
 }
 export async function deleteService(id: string) {
-    return deleteSettingItem('services', id);
+    const siteId = (await getDoc(doc(db, 'services', id))).get('siteId') as string | undefined;
+    await deleteSettingItem('services', id);
+    await refreshSiteAmounts(siteId);
 }
 
 // --- Fonctions de Gestion des Utilisateurs (Firestore) ---

@@ -13,9 +13,10 @@
     "codes:attribuer": "node scripts/attribuer-codes.mjs",
     "releves:normaliser": "node scripts/normaliser-releves.mjs",
     "liens:verifier": "node scripts/verifier-liens.mjs",
+    "montants:prestations": "tsx --require ./tests/setup-server.cjs scripts/montants-prestations.ts",
     "test:rules": "npx --yes firebase-tools@14 emulators:exec --only firestore --project demo-zenergya \"node tests/firestore-rules.test.mjs\"",
     "test": "tsx --test tests/money.test.ts tests/einvoicing.test.ts tests/entreprises.test.ts tests/quotes.test.ts tests/projects.test.ts tests/library.test.ts tests/imports.test.ts",
-    "test:billing": "FIREBASE_PROJECT_ID=demo-zenergya FIREBASE_STORAGE_BUCKET=demo-zenergya.appspot.com npx --yes firebase-tools@14 emulators:exec --only firestore,storage --project demo-zenergya \"tsx --require ./tests/setup-server.cjs --test --test-concurrency=1 tests/billing.test.ts tests/archive.test.ts tests/einvoicing-flow.test.ts tests/quotes-flow.test.ts tests/quote-billing.test.ts tests/projects-flow.test.ts tests/imports-flow.test.ts tests/api-flow.test.ts tests/readings-flow.test.ts tests/contracts-import-flow.test.ts\""
+    "test:billing": "FIREBASE_PROJECT_ID=demo-zenergya FIREBASE_STORAGE_BUCKET=demo-zenergya.appspot.com npx --yes firebase-tools@14 emulators:exec --only firestore,storage --project demo-zenergya \"tsx --require ./tests/setup-server.cjs --test --test-concurrency=1 tests/billing.test.ts tests/archive.test.ts tests/einvoicing-flow.test.ts tests/quotes-flow.test.ts tests/quote-billing.test.ts tests/projects-flow.test.ts tests/imports-flow.test.ts tests/api-flow.test.ts tests/readings-flow.test.ts tests/contracts-import-flow.test.ts tests/services-import-flow.test.ts\""
   },
   "dependencies": {
     "@genkit-ai/google-genai": "^1.24.0",
