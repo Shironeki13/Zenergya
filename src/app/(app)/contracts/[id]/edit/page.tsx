@@ -34,6 +34,7 @@ import {
 import Link from "next/link";
 
 const SiteFormSchema = z.object({
+    id: z.string().optional(), // site existant : mis à jour en place (code SIT et liens conservés)
     name: z.string().optional(),
     address: z.string().optional(),
     postalCode: z.string().optional(),
@@ -184,6 +185,7 @@ export default function EditContractPage() {
                     // Sites
                     sites: sites.length > 0
                         ? sites.map(s => ({
+                            id: s.id,
                             name: s.name || "",
                             address: s.address || "",
                             postalCode: s.postalCode || "",
@@ -223,7 +225,7 @@ export default function EditContractPage() {
             router.push('/contracts/commerce');
         } catch (e) {
             console.error(e);
-            toast({ title: "Erreur", description: "Une erreur est survenue.", variant: "destructive" });
+            toast({ title: "Erreur", description: e instanceof Error ? e.message : "Une erreur est survenue.", variant: "destructive" });
         }
     };
 

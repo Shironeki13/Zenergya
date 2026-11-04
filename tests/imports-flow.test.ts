@@ -127,5 +127,5 @@ test('contacts et compteurs : correspondance, types, codes CPT', async () => {
 test('modèle : la ligne d\'exemple du modèle CSV se contrôle sans erreur de format', async () => {
     const plan = await planImport('contacts', csvToTable(csvTemplate(IMPORT_ENTITIES.contacts)));
     // Le client d'exemple n'existe pas : seule erreur attendue.
-    assert.deepEqual(plan.items[0].messages, ['Client « CLI-00012 » introuvable (code CLI-… ou SIRET).']);
+    assert.deepEqual(plan.items[0].messages, ['Client « CLI-00012 » introuvable (code CLI-…, SIRET ou réf. externe).']);
 });

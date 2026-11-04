@@ -2,6 +2,7 @@ import { db } from '@/lib/firebase';
 import type { Client, Contact, Site, Contract, Invoice, CreditNote, MeterReading, Company, Agency, Sector, Activity, User, Role, Schedule, Term, Typology, VatRate, RevisionFormula, PaymentTerm, PricingRule, Market, Meter, MeterType, Index, IndexValue, RevisionRule, Service, InvoiceStatus, Amendment, Termination, Renewal, TrusteeChange, BeChange, Interest, Dju, DjuMonthly, WeatherStation, SettlementRule, ServiceSettlement, SettlementMethodType, SettlementTargetType, WorkProject, WorkQuote, ProgressSituation, AdvWorkQuote, AdvWorkQuoteVersion, AdvWorkQuoteLine, AdvWorkAffair, AdvWorkBudgetLine, AdvWorkLot, AdvWorkPoste, AdvWorkSituation, AdvWorkSituationLine, AdvPurchaseOrder, AdvPurchaseOrderLine, AdvCatalogArticle, AdvCatalogOuvrage, AdvOuvrageComposant } from '@/lib/types';
 import { collection, getDocs, doc, getDoc, addDoc, updateDoc, deleteDoc, query, where, DocumentData, writeBatch, runTransaction, Timestamp } from 'firebase/firestore';
 import { deleteFileFromUrl } from './storage';
+import { planSiteSync } from '@/lib/contracts/site-sync';
 
 
 function processFirestoreDoc<T>(docData: DocumentData): T {
@@ -140,7 +141,34 @@ export async function createClient(data: Omit<Client, 'id'>): Promise<any> {
 
 export async function updateClient(id: string, data: Partial<Omit<Client, 'id'>>) {
     const clientDoc = doc(db, 'clients', id);
+    const before = data.name !== undefined ? (await getDoc(clientDoc)).get('name') as string | undefined : undefined;
     await updateDoc(clientDoc, data);
+    if (data.name && before !== undefined && before !== data.name) await propagateClientName(id, before, data.name);
+}
+
+/** Report d'un renommage de client sur les noms recopiés : contrats (nom « client - libellé »), sites, compteurs. */
+async function propagateClientName(clientId: string, from: string, to: string) {
+    const [contracts, sites] = await Promise.all([
+        getDocs(query(collection(db, 'contracts'), where('clientId', '==', clientId))),
+        getDocs(query(collection(db, 'sites'), where('clientId', '==', clientId))),
+    ]);
+    const updates: [ReturnType<typeof doc>, DocumentData][] = [];
+    for (const c of contracts.docs) {
+        const label = c.get('label');
+        const name = String(c.get('name') ?? '');
+        updates.push([c.ref, { clientName: to, ...(label ? { name: `${to} - ${label}` } : name.startsWith(from) ? { name: to + name.slice(from.length) } : {}) }]);
+    }
+    for (const site of sites.docs) updates.push([site.ref, { clientName: to }]);
+    const siteIds = sites.docs.map(d => d.id);
+    for (let i = 0; i < siteIds.length; i += 30) {
+        const meters = await getDocs(query(collection(db, 'meters'), where('siteId', 'in', siteIds.slice(i, i + 30))));
+        for (const m of meters.docs) updates.push([m.ref, { clientName: to }]);
+    }
+    for (let i = 0; i < updates.length; i += 400) {
+        const batch = writeBatch(db);
+        for (const [ref, values] of updates.slice(i, i + 400)) batch.update(ref, values);
+        await batch.commit();
+    }
 }
 
 export async function deleteClient(id: string) {
@@ -1173,7 +1201,6 @@ export async function updateClientAndContract(contractId: string, clientId: stri
         clientType: data.clientType,
         typologyId: data.typologyId,
         representedBy: data.representedBy,
-        externalCode: data.externalCode,
         isBe: data.isBe,
         beName: data.beName,
         beEmail: data.beEmail,
@@ -1188,61 +1215,71 @@ export async function updateClientAndContract(contractId: string, clientId: stri
         sectorId: data.sectorId,
     });
 
-    // 2. Delete existing contacts and recreate
+    // 2. Contacts technique et facturation : mis à jour en place (les autres contacts du client sont conservés).
     const existingContacts = await getContactsByClient(clientId);
-    for (const c of existingContacts) await deleteContact(c.id);
-
-    if (data.technicalContactName || data.technicalContactEmail || data.technicalContactPhone) {
-        await createContact({
-            clientId,
-            type: 'technique',
-            name: data.technicalContactName || '',
-            email: data.technicalContactEmail || undefined,
-            phone: data.technicalContactPhone || undefined,
-            role: data.technicalContactRole || undefined,
-        });
-    }
-    if (data.billingContactName || data.billingContactEmail || data.billingContactPhone) {
-        await createContact({
-            clientId,
-            type: 'facturation',
-            name: data.billingContactName || '',
-            email: data.billingContactEmail || undefined,
-            phone: data.billingContactPhone || undefined,
-            role: data.billingContactRole || undefined,
-        });
+    for (const [type, prefix] of [['technique', 'technicalContact'], ['facturation', 'billingContact']] as const) {
+        const values = {
+            name: data[`${prefix}Name`] || '',
+            email: data[`${prefix}Email`] || '',
+            phone: data[`${prefix}Phone`] || '',
+            role: data[`${prefix}Role`] || '',
+        };
+        if (!values.name && !values.email && !values.phone) continue;
+        const current = existingContacts.find(c => c.type === type);
+        if (current) await updateDoc(doc(db, 'contacts', current.id), values);
+        else await createContact({ clientId, type, ...values } as Omit<Contact, 'id'>);
     }
 
-    // 3. Delete existing sites and recreate
+    // 3. Sites : mis à jour en place (même code SIT, compteurs et prestations conservés), nouveaux créés ;
+    // un site retiré du formulaire n'est supprimé que s'il n'a ni compteur ni prestation.
     const existingSites = await getSitesByContract(contractId);
-    for (const s of existingSites) await deleteSite(s.id);
-
-    const sitesToCreate: any[] = data.sites && data.sites.length > 0 ? data.sites : [];
-    const newSiteIds: string[] = [];
-    for (const site of sitesToCreate) {
-        const newSite = await createSite({
-            contractId,
-            clientId,
-            clientName: data.name,
-            name: site.name || data.name,
-            address: site.address || data.address || '',
-            postalCode: site.postalCode || data.postalCode,
-            city: site.city || data.city,
-            billingSchedule: site.billingSchedule || 'Mensuel',
-            termId: site.term,
-            revisionP1: site.revisionP1 ? { formula: site.revisionP1 } : undefined,
-            revisionP2: site.revisionP2 ? { formula: site.revisionP2 } : undefined,
-            revisionP3: site.revisionP3 ? { formula: site.revisionP3 } : undefined,
-            hasHeating: site.hasHeating || false,
-            hasECS: site.hasECS || false,
-            hasInterest: site.hasInterest || false,
-            heatingReferenceDju: site.heatingReferenceDju,
-            heatingWeatherStation: site.heatingWeatherStation,
-            contractualNB: site.contractualNB,
-            smallQ: site.smallQ,
-        });
-        newSiteIds.push(newSite.id);
+    const formSites: any[] = data.sites && data.sites.length > 0 ? data.sites : [];
+    const sync = planSiteSync(existingSites.map(s => s.id), formSites);
+    const blocked: string[] = [];
+    for (const id of sync.remove) {
+        const [meters, services] = await Promise.all([
+            getDocs(query(collection(db, 'meters'), where('siteId', '==', id))),
+            getDocs(query(collection(db, 'services'), where('siteId', '==', id))),
+        ]);
+        if (!meters.empty || !services.empty) {
+            const site = existingSites.find(s => s.id === id);
+            blocked.push(`${site?.code ?? ''} ${site?.name ?? id}`.trim());
+        }
     }
+    if (blocked.length) {
+        throw new Error(`Site(s) retiré(s) mais encore équipé(s) de compteurs ou de prestations : ${blocked.join(', ')}. `
+            + "Rattachez-les à un autre contrat ou retirez d'abord leurs compteurs et prestations.");
+    }
+    const siteValues = (site: any) => Object.fromEntries(Object.entries({
+        clientId,
+        clientName: data.name,
+        name: site.name || data.name,
+        address: site.address || data.address || '',
+        postalCode: site.postalCode || data.postalCode,
+        city: site.city || data.city,
+        billingSchedule: site.billingSchedule || 'Mensuel',
+        termId: site.term,
+        revisionP1: site.revisionP1 ? { formula: site.revisionP1 } : undefined,
+        revisionP2: site.revisionP2 ? { formula: site.revisionP2 } : undefined,
+        revisionP3: site.revisionP3 ? { formula: site.revisionP3 } : undefined,
+        hasHeating: site.hasHeating || false,
+        hasECS: site.hasECS || false,
+        hasInterest: site.hasInterest || false,
+        heatingReferenceDju: site.heatingReferenceDju,
+        heatingWeatherStation: site.heatingWeatherStation,
+        contractualNB: site.contractualNB,
+        smallQ: site.smallQ,
+    }).filter(([, v]) => v !== undefined));
+    const newSiteIds: string[] = [];
+    for (const { id, values } of sync.update) {
+        await updateSite(id, siteValues(values));
+        newSiteIds.push(id);
+    }
+    for (const values of sync.create) {
+        const created = await createSite({ contractId, ...siteValues(values) } as Omit<Site, 'id' | 'code'>);
+        newSiteIds.push(created.id);
+    }
+    for (const id of sync.remove) await deleteSite(id);
 
     // 4. Update contract + reset validation status
     await updateContract(contractId, {

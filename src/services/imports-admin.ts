@@ -3,12 +3,23 @@ import { FieldValue, Timestamp } from 'firebase-admin/firestore';
 import { adminDb } from '@/lib/firebase-admin';
 import { IMPORT_ENTITIES, type ImportEntityKey } from '@/lib/imports/definitions';
 import { parseTable, type CellValue, type ParsedRow } from '@/lib/imports/engine';
-import type { Agency, Client, Company, Contact, Contract, Meter, MeterReading, MeterType, Sector, Site, Typology } from '@/lib/types';
+import { chorusNeedsValidator } from '@/lib/einvoicing';
+import type {
+    Activity, Agency, ChorusFramework, Client, Company, Contact, Contract, ContractChorusSettings, Market, Meter, MeterReading,
+    MeterType, Schedule, Sector, Site, Typology,
+} from '@/lib/types';
 
 /**
  * Imports en masse, côté serveur (Admin SDK) : le fichier est relu et contrôlé ici, quel que soit l'aperçu
- * affiché dans le navigateur. Les codes CLI / SIT / CPT sont attribués comme à la saisie (config/sequences).
- * Une cellule vide conserve la valeur existante. Chaque import est tracé dans la collection `imports`.
+ * affiché dans le navigateur. Les codes CLI / CTN / SIT / CPT sont attribués comme à la saisie (config/sequences).
+ * Une cellule vide conserve la valeur existante. Rien n'est jamais supprimé. Chaque import est tracé dans la
+ * collection `imports`.
+ *
+ * Correspondance (mise à jour plutôt que doublon) : code Zenergya, sinon réf. externe, sinon clé métier (SIRET,
+ * n° de site, PDL…). Sans aucune clé, un élément très semblable à un existant est un doublon probable : refusé.
+ *
+ * Liens : le lien contrat ↔ site se fait dans l'import des sites (site.contractId et contract.siteIds tenus
+ * ensemble) ; un renommage se reporte sur les noms recopiés (contrats, sites, compteurs).
  */
 
 export type PlanAction = 'create' | 'update' | 'unchanged' | 'error';
@@ -21,6 +32,15 @@ export type PlanItem = {
     messages: string[];
     warnings: string[];
     data?: Record<string, unknown>; // champs à écrire (résolus)
+    /** Effets sur les autres éléments, appliqués à l'écriture (retrait d'un ancien contrat, report d'un renommage). */
+    effects?: Effects;
+};
+
+type Effects = {
+    removeFromContract?: string;
+    addToContract?: string;
+    renameClient?: { clientId: string; from: string; to: string };
+    siteDenorm?: { siteId: string; siteName?: string; clientName?: string };
 };
 
 export type ImportPlan = {
@@ -34,6 +54,7 @@ export type ImportPlan = {
 
 type Doc<T> = T & { id: string };
 const norm = (s: unknown) => String(s ?? '').normalize('NFKD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/\s+/g, ' ').trim();
+const upper = (s: unknown) => String(s ?? '').trim().toUpperCase();
 
 async function all<T>(collection: string): Promise<Doc<T>[]> {
     const snap = await adminDb.collection(collection).get();
@@ -42,8 +63,10 @@ async function all<T>(collection: string): Promise<Doc<T>[]> {
 
 type Context = {
     companies: Doc<Company>[]; agencies: Doc<Agency>[]; sectors: Doc<Sector>[]; typologies: Doc<Typology>[];
-    meterTypes: Doc<MeterType>[]; clients: Doc<Client>[]; contracts: Doc<Contract>[]; sites: Doc<Site>[];
-    contacts: Doc<Contact>[]; meters: Doc<Meter>[];
+    meterTypes: Doc<MeterType>[]; activities: Doc<Activity>[]; markets: Doc<Market>[]; schedules: Doc<Schedule>[];
+    clients: Doc<Client>[]; contracts: Doc<Contract>[]; sites: Doc<Site>[]; contacts: Doc<Contact>[]; meters: Doc<Meter>[];
+    /** Contrats ayant au moins une facture. */
+    invoicedContracts: Set<string>;
     /** Relevés existants des compteurs du fichier (imports de relevés), triés par date. */
     readings: Map<string, StoredReading[]>;
     /** Relevés repris dans un intéressement ou une régularisation (index figé). */
@@ -52,29 +75,39 @@ type Context = {
 
 type StoredReading = Doc<MeterReading> & { at: number };
 
-/** Instant d'un relevé, quelle que soit sa forme stockée (horodatage Firestore ou texte ISO). */
-export function readingMillis(date: unknown): number {
+/** Instant d'une date stockée, quelle que soit sa forme (horodatage Firestore, Date ou texte ISO). NaN si absente. */
+export function dateMillis(date: unknown): number {
     if (date instanceof Timestamp) return date.toMillis();
     if (date instanceof Date) return date.getTime();
-    return new Date(String(date ?? '')).getTime();
+    if (date === null || date === undefined || date === '') return NaN;
+    return new Date(String(date)).getTime();
 }
+/** @deprecated nom historique */
+export const readingMillis = dateMillis;
 
 async function loadContext(entity: ImportEntityKey): Promise<Context> {
     const need = (e: ImportEntityKey[]) => e.includes(entity);
     const empty = Promise.resolve([]);
-    const [companies, agencies, sectors, typologies, meterTypes, clients, contracts, sites, contacts, meters] = await Promise.all([
-        need(['clients']) ? all<Company>('companies') : empty,
+    const [companies, agencies, sectors, typologies, meterTypes, activities, markets, schedules, clients, contracts, sites, contacts, meters, invoices] = await Promise.all([
+        need(['clients', 'contracts']) ? all<Company>('companies') : empty,
         need(['clients']) ? all<Agency>('agencies') : empty,
         need(['clients']) ? all<Sector>('sectors') : empty,
         need(['clients']) ? all<Typology>('typologies') : empty,
         need(['meters']) ? all<MeterType>('meterTypes') : empty,
-        need(['clients', 'sites', 'contacts']) ? all<Client>('clients') : empty,
-        need(['sites', 'readings']) ? all<Contract>('contracts') : empty,
+        need(['contracts']) ? all<Activity>('activities') : empty,
+        need(['contracts']) ? all<Market>('markets') : empty,
+        need(['contracts']) ? all<Schedule>('schedules') : empty,
+        need(['clients', 'contracts', 'sites', 'contacts']) ? all<Client>('clients') : empty,
+        need(['contracts', 'sites', 'readings']) ? all<Contract>('contracts') : empty,
         need(['sites', 'meters', 'readings']) ? all<Site>('sites') : empty,
         need(['contacts']) ? all<Contact>('contacts') : empty,
         need(['meters', 'readings']) ? all<Meter>('meters') : empty,
+        need(['contracts']) ? adminDb.collection('invoices').select('contractId').get().then(s => s.docs.map(d => String(d.get('contractId') ?? ''))) : empty,
     ]);
-    return { companies, agencies, sectors, typologies, meterTypes, clients, contracts, sites, contacts, meters, readings: new Map(), lockedReadings: new Map() } as Context;
+    return {
+        companies, agencies, sectors, typologies, meterTypes, activities, markets, schedules, clients, contracts, sites, contacts, meters,
+        invoicedContracts: new Set(invoices as string[]), readings: new Map(), lockedReadings: new Map(),
+    } as Context;
 }
 
 /** Relevés existants des compteurs cités, et relevés figés par un intéressement ou une régularisation. */
@@ -83,7 +116,7 @@ async function loadReadings(ctx: Context, meterIds: string[]): Promise<void> {
     for (let i = 0; i < meterIds.length; i += 30) chunks.push(meterIds.slice(i, i + 30));
     const snaps = await Promise.all(chunks.map(c => adminDb.collection('meterReadings').where('meterId', 'in', c).get()));
     for (const d of snaps.flatMap(s => s.docs)) {
-        const r = { id: d.id, ...d.data(), at: readingMillis(d.get('date')) } as StoredReading;
+        const r = { id: d.id, ...d.data(), at: dateMillis(d.get('date')) } as StoredReading;
         if (!ctx.readings.has(r.meterId)) ctx.readings.set(r.meterId, []);
         ctx.readings.get(r.meterId)!.push(r);
     }
@@ -101,14 +134,40 @@ async function loadReadings(ctx: Context, meterIds: string[]): Promise<void> {
     }
 }
 
-const clientCode = (c: Client) => (c.externalCode || c.clientNumber || '').toUpperCase();
+// --- Désignation des éléments : code Zenergya, réf. externe, clé métier ---
 
-/** Client désigné par son code (CLI-…) ou son SIRET. */
+const clientCode = (c: Client) => upper(c.externalCode || c.clientNumber);
+const byRef = <T extends { externalRef?: string }>(list: T[], ref: unknown) => {
+    const r = upper(ref);
+    return r ? list.find(x => upper(x.externalRef) === r) : undefined;
+};
+
+/** Client désigné par son code (CLI-…), son SIRET ou sa réf. externe. */
 function findClient(ctx: Context, ref: CellValue): Doc<Client> | undefined {
     const v = String(ref ?? '').trim();
     const digits = v.replace(/\s/g, '');
-    if (/^\d{14}$/.test(digits)) return ctx.clients.find(c => (c.siret ?? '').replace(/\s/g, '') === digits);
-    return ctx.clients.find(c => clientCode(c) === v.toUpperCase());
+    if (/^\d{14}$/.test(digits)) {
+        const bySiret = ctx.clients.find(c => (c.siret ?? '').replace(/\s/g, '') === digits);
+        if (bySiret) return bySiret;
+    }
+    return ctx.clients.find(c => clientCode(c) === upper(v)) ?? byRef(ctx.clients, v);
+}
+const clientNotFound = (ref: CellValue) => `Client « ${ref} » introuvable (code CLI-…, SIRET ou réf. externe).`;
+
+/** Contrat désigné par son n° (CTN-…) ou sa réf. externe. */
+const findContract = (ctx: Context, ref: CellValue) =>
+    ctx.contracts.find(c => upper(c.contractNumber) === upper(ref)) ?? byRef(ctx.contracts, ref);
+
+/** Site désigné par son code (SIT-…) ou sa réf. externe. */
+const findSite = (ctx: Context, ref: CellValue) => ctx.sites.find(s => upper(s.code) === upper(ref)) ?? byRef(ctx.sites, ref);
+
+/** Compteur désigné par son code (CPT-…) ou sa réf. externe. */
+const findMeter = (ctx: Context, ref: CellValue) => ctx.meters.find(m => upper(m.code) === upper(ref)) ?? byRef(ctx.meters, ref);
+
+/** Réf. externe déjà portée par un autre élément du même type ? */
+function refTakenBy<T extends { id: string; externalRef?: string }>(list: T[], ref: CellValue, selfId?: string): T | undefined {
+    const r = upper(ref);
+    return r ? list.find(x => x.id !== selfId && upper(x.externalRef) === r) : undefined;
 }
 
 /** Valeurs de la ligne (non vides) à écrire telles quelles. */
@@ -118,27 +177,65 @@ function plain(values: Record<string, CellValue>, keys: string[]): Record<string
     return out;
 }
 
+/** Égalité de valeurs stockées : dates (horodatage ou texte), tableaux et objets comparés par contenu. */
+function sameValue(a: unknown, b: unknown): boolean {
+    if (a === b) return true;
+    if (a instanceof Timestamp || b instanceof Timestamp) return dateMillis(a) === dateMillis(b);
+    if (typeof a === 'object' && typeof b === 'object' && a !== null && b !== null) {
+        const stable = (x: unknown): string => JSON.stringify(x, (_k, v) => (v && typeof v === 'object' && !Array.isArray(v)
+            ? Object.fromEntries(Object.entries(v).filter(([, y]) => y !== undefined).sort(([p], [q]) => p.localeCompare(q))) : v));
+        return stable(a) === stable(b);
+    }
+    return false;
+}
+
 /** Mise à jour sans effet : toutes les valeurs fournies sont déjà celles de l'élément. */
 function sameAs(existing: Record<string, unknown>, data: Record<string, unknown>): boolean {
-    return Object.entries(data).every(([k, v]) => existing[k] === v);
+    return Object.entries(data).every(([k, v]) => sameValue(existing[k], v));
 }
+
+const DAY = 86_400_000;
+const frDay = (ms: number) => new Date(ms).toLocaleDateString('fr-FR', { timeZone: 'Europe/Paris' });
+const frDate = (ms: number) => new Date(ms).toLocaleString('fr-FR', { timeZone: 'Europe/Paris', dateStyle: 'short', timeStyle: 'short' });
+/** Date « AAAA-MM-JJ » (heure de Paris) d'un instant. */
+const isoDay = (ms: number) => new Date(ms).toLocaleDateString('en-CA', { timeZone: 'Europe/Paris' });
+
+/** Contrat en cours : ni résilié ni terminé, et pas encore échu. */
+const contractRunning = (c: Contract) => !['Résilié', 'Terminé'].includes(c.status) && !(dateMillis(c.endDate) < Date.now() - DAY);
 
 // --- Plans par type de données ---
 
-function planClient(ctx: Context, row: ParsedRow): PlanItem {
+function planClient(ctx: Context, row: ParsedRow, seen: Map<string, number>): PlanItem {
     const v = row.values;
     const item: PlanItem = { line: row.line, action: 'error', label: String(v.name ?? v.code ?? v.siret ?? ''), messages: [...row.errors], warnings: [] };
-    const code = v.code ? String(v.code).toUpperCase() : '';
+    const code = v.code ? upper(v.code) : '';
     let existing: Doc<Client> | undefined;
     if (code) {
         existing = ctx.clients.find(c => clientCode(c) === code);
         if (!existing) item.messages.push(`Code client ${code} inconnu (les codes sont attribués par Zenergya : laissez vide pour créer).`);
-    } else if (v.siret) {
+    } else if (v.externalRef) {
+        existing = byRef(ctx.clients, v.externalRef);
+    }
+    if (!existing && !code && v.siret) {
         existing = ctx.clients.find(c => (c.siret ?? '').replace(/\s/g, '') === v.siret);
         if (existing) item.warnings.push(`Fiche existante retrouvée par son SIRET (${clientCode(existing) || existing.id}).`);
     }
+    const taken = refTakenBy(ctx.clients, v.externalRef, existing?.id);
+    if (taken) item.messages.push(`Réf. externe ${v.externalRef} déjà portée par le client ${clientCode(taken) || taken.name}.`);
 
-    const data = plain(v, ['name', 'clientType', 'relation', 'siret', 'address', 'postalCode', 'city', 'representedBy', 'useChorus',
+    // Doublon probable : aucune clé (code, réf. externe, SIRET) et une fiche de même nom au même code postal.
+    if (!existing && !code && !v.externalRef && !v.siret && v.name) {
+        const key = `${norm(v.name)}|${norm(v.postalCode)}`;
+        const twin = ctx.clients.find(c => norm(c.name) === norm(v.name) && norm(c.postalCode) === norm(v.postalCode));
+        if (twin) {
+            item.messages.push(`Doublon probable de ${clientCode(twin) || twin.name} (même nom, même code postal) : indiquez son code pour le mettre à jour, `
+                + 'ou un SIRET ou une réf. externe pour créer une autre fiche.');
+        } else if (seen.has(key)) {
+            item.messages.push(`Même nom et même code postal que la ligne ${seen.get(key)}, sans SIRET ni réf. externe.`);
+        } else seen.set(key, row.line);
+    }
+
+    const data = plain(v, ['externalRef', 'name', 'clientType', 'relation', 'siret', 'address', 'postalCode', 'city', 'representedBy', 'useChorus',
         'chorusServiceCode', 'chorusServiceCodeRequired', 'chorusLegalCommitmentNumber', 'chorusLegalCommitmentRequired', 'chorusMarketNumber',
         'einvoicingRegime', 'einvoicingAddress', 'quoteCoefficient', 'quoteLaborRate']);
 
@@ -189,9 +286,141 @@ function planClient(ctx: Context, row: ParsedRow): PlanItem {
         item.label = `${clientCode(existing) || existing.name} — ${final.name}`;
         item.action = sameAs(existing as unknown as Record<string, unknown>, data) ? 'unchanged' : 'update';
         item.data = data;
+        if (data.name && data.name !== existing.name) {
+            item.effects = { renameClient: { clientId: existing.id, from: existing.name, to: String(data.name) } };
+            item.warnings.push('Nouveau nom reporté sur les contrats, sites et compteurs du client.');
+        }
     } else {
         item.action = 'create';
         item.data = { isBe: false, useChorus: false, relation: 'client', ...data };
+    }
+    return item;
+}
+
+function planContract(ctx: Context, row: ParsedRow, seen: Map<string, number>): PlanItem {
+    const v = row.values;
+    const item: PlanItem = { line: row.line, action: 'error', label: String(v.label ?? v.code ?? v.externalRef ?? ''), messages: [...row.errors], warnings: [] };
+    const client = v.client ? findClient(ctx, v.client) : undefined;
+    if (v.client && !client) item.messages.push(clientNotFound(v.client));
+
+    const code = v.code ? upper(v.code) : '';
+    let existing: Doc<Contract> | undefined;
+    if (code) {
+        existing = ctx.contracts.find(c => upper(c.contractNumber) === code);
+        if (!existing) item.messages.push(`N° de contrat ${code} inconnu (attribué par Zenergya : laissez vide pour créer).`);
+    } else if (v.externalRef) {
+        existing = byRef(ctx.contracts, v.externalRef);
+    }
+    const taken = refTakenBy(ctx.contracts, v.externalRef, existing?.id);
+    if (taken) item.messages.push(`Réf. externe ${v.externalRef} déjà portée par le contrat ${taken.contractNumber ?? taken.id}.`);
+
+    const data = plain(v, ['externalRef', 'label', 'status', 'marketType', 'baseAmountP1', 'baseAmountP2', 'baseAmountP3', 'baseAmountP3R',
+        'invoicingType', 'renewal', 'tacitRenewal', 'renewalDuration', 'noticePeriod', 'signedByCompany', 'signedByClient', 'einvoicingAddress']);
+
+    if (v.company) {
+        const companyId = ctx.companies.find(c => norm(c.code) === norm(v.company) || norm(c.name) === norm(v.company))?.id;
+        if (!companyId) item.messages.push(`Société « ${v.company} » inconnue.`);
+        else data.companyId = companyId;
+    }
+    if (v.market) {
+        const market = ctx.markets.find(m => norm(m.code) === norm(v.market) || norm(m.label) === norm(v.market));
+        if (!market) item.messages.push(`Marché « ${v.market} » inconnu.`);
+        else data.marketId = market.id;
+    }
+    if (v.activities) {
+        const ids: string[] = [];
+        for (const token of String(v.activities).split(/[;,]/).map(t => t.trim()).filter(Boolean)) {
+            const activity = ctx.activities.find(a => norm(a.code) === norm(token) || norm(a.label) === norm(token));
+            if (!activity) item.messages.push(`Activité « ${token} » inconnue.`);
+            else if (!ids.includes(activity.id)) ids.push(activity.id);
+        }
+        data.activityIds = ids;
+    }
+    if (v.billingSchedule) {
+        const schedule = ctx.schedules.find(s => norm(s.name) === norm(v.billingSchedule));
+        if (!schedule) item.messages.push(`Échéancier « ${v.billingSchedule} » inconnu.`);
+        else data.billingSchedule = schedule.name;
+    }
+    if (v.einvoicingAddress && !/^\d{9}(_[A-Za-z0-9.-]+){0,2}$/.test(String(v.einvoicingAddress))) {
+        item.messages.push('Adresse de facturation électronique : SIREN, SIREN_SIRET ou SIREN_SIRET_CODE.');
+    }
+
+    // Dates : seules celles qui changent sont écrites (une date stockée peut être un horodatage ou un texte).
+    for (const f of ['startDate', 'endDate', 'terminationDate'] as const) {
+        if (v[f] && !(existing && dateMillis(existing[f]) === Date.parse(String(v[f])))) data[f] = v[f];
+    }
+    const start = dateMillis(data.startDate ?? existing?.startDate);
+    const end = dateMillis(data.endDate ?? existing?.endDate);
+    if (!Number.isNaN(start) && !Number.isNaN(end) && end <= start) item.messages.push('La date de fin doit être postérieure à la date de début.');
+    const status = (data.status ?? existing?.status ?? 'Actif') as Contract['status'];
+    if (status === 'Résilié' && Number.isNaN(dateMillis(data.terminationDate ?? existing?.terminationDate))) {
+        item.messages.push('Date de résiliation obligatoire pour un contrat résilié.');
+    }
+
+    // Client : un contrat qui a des sites ou des factures ne change pas de client (ils appartiennent à l'ancien).
+    if (existing && client && client.id !== existing.clientId) {
+        if ((existing.siteIds ?? []).length || ctx.invoicedContracts.has(existing.id)) {
+            item.messages.push('Changement de client refusé : le contrat a déjà des sites ou des factures.');
+        } else Object.assign(data, { clientId: client.id, clientName: client.name });
+    }
+    const owner = client ?? ctx.clients.find(c => c.id === existing?.clientId);
+    if (existing && (data.startDate || data.endDate) && ctx.invoicedContracts.has(existing.id)) {
+        item.warnings.push('Contrat déjà facturé : vérifiez les périodes facturées après ce changement de dates.');
+    }
+
+    // Chorus Pro : cadre, valideur, code service, n° de marché ; engagement ajouté s'il est nouveau.
+    if (v.chorusFramework || v.chorusValidatorSiret || v.chorusServiceCode || v.chorusMarketNumber || v.chorusLegalCommitment) {
+        const chorus: ContractChorusSettings = { ...(existing?.chorus ?? {}) };
+        if (v.chorusFramework) chorus.framework = v.chorusFramework as ChorusFramework;
+        if (v.chorusValidatorSiret) chorus.validatorSiret = String(v.chorusValidatorSiret);
+        if (v.chorusServiceCode) chorus.serviceCode = String(v.chorusServiceCode);
+        if (v.chorusMarketNumber) chorus.marketNumber = String(v.chorusMarketNumber);
+        if (v.chorusLegalCommitment && !(chorus.legalCommitments ?? []).some(c => upper(c.number) === upper(v.chorusLegalCommitment))) {
+            chorus.legalCommitments = [...(chorus.legalCommitments ?? []), {
+                number: String(v.chorusLegalCommitment),
+                startDate: Number.isNaN(start) ? isoDay(Date.now()) : isoDay(start),
+                ...(!Number.isNaN(end) && { endDate: isoDay(end) }),
+            }];
+        }
+        if (chorus.framework && chorusNeedsValidator(chorus.framework) && !chorus.validatorSiret) {
+            item.messages.push(`Cadre Chorus ${chorus.framework} : SIRET du valideur obligatoire.`);
+        }
+        data.chorus = chorus;
+    }
+
+    // Doublon probable : sans n° ni réf. externe, un contrat du même client, de même libellé, sur une période qui se recouvre.
+    if (!existing && !code && !v.externalRef && client && v.label && !Number.isNaN(start) && !Number.isNaN(end)) {
+        const twin = ctx.contracts.find(c => c.clientId === client.id && norm(c.label) === norm(v.label)
+            && dateMillis(c.startDate) <= end && start <= dateMillis(c.endDate));
+        const key = `${client.id}|${norm(v.label)}`;
+        if (twin) {
+            item.messages.push(`Doublon probable du contrat ${twin.contractNumber ?? twin.id} (même client, même libellé, périodes qui se recouvrent) : `
+                + 'indiquez son n° pour le mettre à jour, ou une réf. externe pour créer un autre contrat.');
+        } else if (seen.has(key)) {
+            item.messages.push(`Même client et même libellé que la ligne ${seen.get(key)}, sans réf. externe.`);
+        } else seen.set(key, row.line);
+    }
+
+    if (!existing) {
+        if (!client) { if (!v.client) item.messages.push('Client obligatoire pour créer un contrat.'); }
+        if (!v.label) item.messages.push('Libellé obligatoire pour créer un contrat.');
+        if (!v.startDate || !v.endDate) item.messages.push('Dates de début et de fin obligatoires pour créer un contrat.');
+    }
+    if (data.label && owner) data.name = `${owner.name} - ${data.label}`;
+    if (item.messages.length) return item;
+
+    if (existing) {
+        Object.assign(item, { targetId: existing.id, label: `${existing.contractNumber ?? existing.id} — ${data.label ?? existing.label ?? ''}`, data });
+        item.action = sameAs(existing as unknown as Record<string, unknown>, data) ? 'unchanged' : 'update';
+    } else {
+        item.label = `${owner!.name} — ${v.label}`;
+        Object.assign(item, {
+            action: 'create',
+            data: {
+                clientId: owner!.id, clientName: owner!.name, siteIds: [], activityIds: [], status: 'Actif', invoicingType: 'multi-site',
+                renewal: false, tacitRenewal: false, ...data,
+            },
+        });
     }
     return item;
 }
@@ -200,36 +429,83 @@ function planSite(ctx: Context, row: ParsedRow, seen: Map<string, number>): Plan
     const v = row.values;
     const item: PlanItem = { line: row.line, action: 'error', label: String(v.name ?? v.code ?? ''), messages: [...row.errors], warnings: [] };
     const client = v.client ? findClient(ctx, v.client) : undefined;
-    if (v.client && !client) item.messages.push(`Client « ${v.client} » introuvable (code CLI-… ou SIRET).`);
-    const code = v.code ? String(v.code).toUpperCase() : '';
+    if (v.client && !client) item.messages.push(clientNotFound(v.client));
+    const code = v.code ? upper(v.code) : '';
     let existing: Doc<Site> | undefined;
     if (code) {
-        existing = ctx.sites.find(s => (s.code ?? '').toUpperCase() === code);
+        existing = ctx.sites.find(s => upper(s.code) === code);
         if (!existing) item.messages.push(`Code site ${code} inconnu (laissez vide pour créer).`);
-    } else if (client && v.siteNumber) {
+    } else if (v.externalRef) {
+        existing = byRef(ctx.sites, v.externalRef);
+    }
+    if (!existing && !code && client && v.siteNumber) {
         existing = ctx.sites.find(s => s.clientId === client.id && norm(s.siteNumber) === norm(v.siteNumber));
         const key = `${client.id}|${norm(v.siteNumber)}`;
         if (seen.has(key)) item.messages.push(`Même client et même n° de site que la ligne ${seen.get(key)}.`);
         else seen.set(key, row.line);
     }
+    const taken = refTakenBy(ctx.sites, v.externalRef, existing?.id);
+    if (taken) item.messages.push(`Réf. externe ${v.externalRef} déjà portée par le site ${taken.code ?? taken.name}.`);
+
+    // Doublon probable : aucune clé et un site du même client à la même adresse.
+    if (!existing && !code && !v.externalRef && !v.siteNumber && client && v.address) {
+        const key = `@${client.id}|${norm(v.address)}|${norm(v.postalCode)}`;
+        const twin = ctx.sites.find(s => s.clientId === client.id && norm(s.address) === norm(v.address) && norm(s.postalCode) === norm(v.postalCode));
+        if (twin) {
+            item.messages.push(`Doublon probable du site ${twin.code ?? twin.name} (même client, même adresse) : indiquez son code pour le mettre à jour, `
+                + 'ou un n° de site ou une réf. externe pour créer un autre site.');
+        } else if (seen.has(key)) {
+            item.messages.push(`Même client et même adresse que la ligne ${seen.get(key)}, sans n° de site ni réf. externe.`);
+        } else seen.set(key, row.line);
+    }
+
     const clientId = client?.id ?? existing?.clientId;
-    const data = plain(v, ['name', 'siteNumber', 'address', 'postalCode', 'city', 'heatingWeatherStation']);
+    const data = plain(v, ['externalRef', 'name', 'siteNumber', 'address', 'postalCode', 'city', 'heatingWeatherStation']);
     if (client) Object.assign(data, { clientId: client.id, clientName: client.name });
+
+    // Contrat : désigné par n° ou réf. externe, et du même client. Seul endroit où se fait le lien contrat ↔ site.
+    let contract: Doc<Contract> | undefined;
     if (v.contract) {
-        const contract = ctx.contracts.find(c => (c.contractNumber ?? '').toUpperCase() === String(v.contract).toUpperCase());
-        if (!contract) item.messages.push(`Contrat ${v.contract} inconnu.`);
-        else if (clientId && contract.clientId !== clientId) item.messages.push(`Le contrat ${v.contract} n'appartient pas à ce client.`);
+        contract = findContract(ctx, v.contract);
+        if (!contract) item.messages.push(`Contrat ${v.contract} inconnu (n° CTN-… ou réf. externe).`);
+        else if (clientId && contract.clientId !== clientId) item.messages.push(`Le contrat ${contract.contractNumber ?? v.contract} n'appartient pas à ce client.`);
         else data.contractId = contract.id;
+    } else if (existing?.contractId && client && client.id !== existing.clientId) {
+        const current = ctx.contracts.find(c => c.id === existing!.contractId);
+        if (current && current.clientId !== client.id) {
+            item.messages.push(`Changement de client : le site est rattaché au contrat ${current.contractNumber ?? current.id} de l'ancien client ; indiquez un contrat du nouveau client.`);
+        }
     }
     if (!existing) {
-        if (!client) item.messages.push('Client obligatoire pour créer un site.');
+        if (!client && !v.client) item.messages.push('Client obligatoire pour créer un site.');
         if (!v.name) item.messages.push('Nom du site obligatoire pour créer un site.');
         if (!v.address) item.messages.push('Adresse obligatoire pour créer un site.');
     }
     if (item.messages.length) return item;
+
+    const effects: Effects = {};
+    if (contract) {
+        if (!(contract.siteIds ?? []).includes(existing?.id ?? '')) effects.addToContract = contract.id;
+        const previous = existing?.contractId && existing.contractId !== contract.id ? ctx.contracts.find(c => c.id === existing!.contractId) : undefined;
+        if (previous) {
+            if (contractRunning(previous)) {
+                effects.removeFromContract = previous.id;
+                item.warnings.push(`Site retiré du contrat ${previous.contractNumber ?? previous.id}, encore en cours : il n'y sera plus facturé.`);
+            } else {
+                item.warnings.push(`Ancien contrat ${previous.contractNumber ?? previous.id} terminé : le site y reste pour l'historique.`);
+            }
+        }
+    }
+    if (existing && ((data.name && data.name !== existing.name) || (data.clientName && data.clientName !== existing.clientName))) {
+        effects.siteDenorm = {
+            siteId: existing.id, ...(data.name ? { siteName: String(data.name) } : {}), ...(data.clientName ? { clientName: String(data.clientName) } : {}),
+        };
+    }
+    if (Object.keys(effects).length) item.effects = effects;
+
     if (existing) {
         Object.assign(item, { targetId: existing.id, label: `${existing.code ?? existing.name} — ${data.name ?? existing.name}`, data });
-        item.action = sameAs(existing as unknown as Record<string, unknown>, data) ? 'unchanged' : 'update';
+        item.action = sameAs(existing as unknown as Record<string, unknown>, data) && !effects.addToContract ? 'unchanged' : 'update';
     } else {
         Object.assign(item, { action: 'create', data: { contractId: '', ...data } });
     }
@@ -241,7 +517,7 @@ function planContact(ctx: Context, row: ParsedRow, seen: Map<string, number>): P
     const item: PlanItem = { line: row.line, action: 'error', label: String(v.name ?? v.email ?? ''), messages: [...row.errors], warnings: [] };
     const client = v.client ? findClient(ctx, v.client) : undefined;
     if (!v.client) item.messages.push('Client obligatoire.');
-    else if (!client) item.messages.push(`Client « ${v.client} » introuvable (code CLI-… ou SIRET).`);
+    else if (!client) item.messages.push(clientNotFound(v.client));
     if (item.messages.length || !client) return item;
     const matchKey = v.email ? `${client.id}|@${v.email}` : `${client.id}|${norm(v.name)}`;
     if (seen.has(matchKey)) { item.messages.push(`Même contact que la ligne ${seen.get(matchKey)}.`); return item; }
@@ -259,26 +535,45 @@ function planContact(ctx: Context, row: ParsedRow, seen: Map<string, number>): P
 function planMeter(ctx: Context, row: ParsedRow, seen: Map<string, number>): PlanItem {
     const v = row.values;
     const item: PlanItem = { line: row.line, action: 'error', label: String(v.name ?? v.code ?? ''), messages: [...row.errors], warnings: [] };
-    const site = v.site ? ctx.sites.find(s => (s.code ?? '').toUpperCase() === String(v.site).toUpperCase()) : undefined;
-    if (v.site && !site) item.messages.push(`Site ${v.site} introuvable (code SIT-…).`);
-    const code = v.code ? String(v.code).toUpperCase() : '';
+    const site = v.site ? findSite(ctx, v.site) : undefined;
+    if (v.site && !site) item.messages.push(`Site ${v.site} introuvable (code SIT-… ou réf. externe).`);
+    const code = v.code ? upper(v.code) : '';
     let existing: Doc<Meter> | undefined;
     if (code) {
-        existing = ctx.meters.find(m => (m.code ?? '').toUpperCase() === code);
+        existing = ctx.meters.find(m => upper(m.code) === code);
         if (!existing) item.messages.push(`Code compteur ${code} inconnu (laissez vide pour créer).`);
-    } else if (site && v.reference) {
+    } else if (v.externalRef) {
+        existing = byRef(ctx.meters, v.externalRef);
+    }
+    if (!existing && !code && site && v.reference) {
         existing = ctx.meters.find(m => m.siteId === site.id && norm(m.reference) === norm(v.reference));
         const key = `${site.id}|${norm(v.reference)}`;
         if (seen.has(key)) item.messages.push(`Même site et même PDL/PCE que la ligne ${seen.get(key)}.`);
         else seen.set(key, row.line);
     }
-    const data = plain(v, ['name', 'reference', 'location', 'status']);
+    const taken = refTakenBy(ctx.meters, v.externalRef, existing?.id);
+    if (taken) item.messages.push(`Réf. externe ${v.externalRef} déjà portée par le compteur ${taken.code ?? taken.name}.`);
+
+    // Doublon probable : aucune clé et un compteur du même site de même nom.
+    if (!existing && !code && !v.externalRef && !v.reference && site && v.name) {
+        const key = `@${site.id}|${norm(v.name)}`;
+        const twin = ctx.meters.find(m => m.siteId === site.id && norm(m.name) === norm(v.name));
+        if (twin) {
+            item.messages.push(`Doublon probable du compteur ${twin.code ?? twin.name} (même site, même nom) : indiquez son code pour le mettre à jour, `
+                + 'ou un PDL/PCE ou une réf. externe pour créer un autre compteur.');
+        } else if (seen.has(key)) {
+            item.messages.push(`Même site et même nom que la ligne ${seen.get(key)}, sans PDL/PCE ni réf. externe.`);
+        } else seen.set(key, row.line);
+    }
+
+    const data = plain(v, ['externalRef', 'name', 'reference', 'location', 'status']);
     if (site) Object.assign(data, { siteId: site.id, siteName: site.name, ...(site.clientName && { clientName: site.clientName }) });
     if (v.meterType) {
         const type = ctx.meterTypes.find(t => norm(t.code) === norm(v.meterType) || norm(t.label) === norm(v.meterType));
         if (!type) item.messages.push(`Type de compteur « ${v.meterType} » inconnu.`);
         else Object.assign(data, { type: type.label, unit: type.unit });
     }
+    if (existing && site && site.id !== existing.siteId) item.warnings.push(`Compteur déplacé vers le site ${site.code ?? site.name}.`);
     if (!existing && (!site || !v.name || !v.meterType)) item.messages.push('Site, nom et type obligatoires pour créer un compteur.');
     if (item.messages.length) return item;
     if (existing) {
@@ -288,14 +583,12 @@ function planMeter(ctx: Context, row: ParsedRow, seen: Map<string, number>): Pla
     return item;
 }
 
-const frDate = (ms: number) => new Date(ms).toLocaleString('fr-FR', { timeZone: 'Europe/Paris', dateStyle: 'short', timeStyle: 'short' });
-
 function planReading(ctx: Context, row: ParsedRow, seen: Map<string, number>, pending: Map<string, { at: number; value: number }[]>): PlanItem {
     const v = row.values;
     const item: PlanItem = { line: row.line, action: 'error', label: `${v.meter ?? ''} ${v.date ? String(v.date).slice(0, 10) : ''}`.trim(), messages: [...row.errors], warnings: [] };
-    const meter = v.meter ? ctx.meters.find(m => (m.code ?? '').toUpperCase() === String(v.meter).toUpperCase()) : undefined;
+    const meter = v.meter ? findMeter(ctx, v.meter) : undefined;
     if (!v.meter) item.messages.push('Compteur obligatoire.');
-    else if (!meter) item.messages.push(`Compteur ${v.meter} introuvable (code CPT-…).`);
+    else if (!meter) item.messages.push(`Compteur ${v.meter} introuvable (code CPT-… ou réf. externe).`);
     if (!v.date && !row.errors.some(e => e.startsWith('Date'))) item.messages.push('Date du relevé obligatoire.');
     if (item.messages.length || !meter || !v.date) return item;
 
@@ -353,14 +646,15 @@ export async function planImport(entity: ImportEntityKey, table: unknown[][]): P
     }
     const ctx = await loadContext(entity);
     if (entity === 'readings') {
-        const codes = new Set(parsed.rows.map(r => String(r.values.meter ?? '').toUpperCase()));
-        await loadReadings(ctx, ctx.meters.filter(m => codes.has((m.code ?? '').toUpperCase())).map(m => m.id));
+        const refs = new Set(parsed.rows.map(r => upper(r.values.meter)));
+        await loadReadings(ctx, ctx.meters.filter(m => refs.has(upper(m.code)) || (m.externalRef && refs.has(upper(m.externalRef)))).map(m => m.id));
     }
     const seen = new Map<string, number>();
     const pending = new Map<string, { at: number; value: number }[]>();
     const items = parsed.rows.map(row => {
         switch (entity) {
-            case 'clients': return planClient(ctx, row);
+            case 'clients': return planClient(ctx, row, seen);
+            case 'contracts': return planContract(ctx, row, seen);
             case 'sites': return planSite(ctx, row, seen);
             case 'contacts': return planContact(ctx, row, seen);
             case 'meters': return planMeter(ctx, row, seen);
@@ -375,10 +669,13 @@ export async function planImport(entity: ImportEntityKey, table: unknown[][]): P
 
 const CODES: Partial<Record<ImportEntityKey, { counter: string; prefix: string; field: string; collection: string }>> = {
     clients: { counter: 'client', prefix: 'CLI', field: 'externalCode', collection: 'clients' },
+    contracts: { counter: 'contract', prefix: 'CTN', field: 'contractNumber', collection: 'contracts' },
     sites: { counter: 'site', prefix: 'SIT', field: 'code', collection: 'sites' },
     meters: { counter: 'meter', prefix: 'CPT', field: 'code', collection: 'meters' },
 };
-const COLLECTIONS: Record<ImportEntityKey, string> = { clients: 'clients', sites: 'sites', contacts: 'contacts', meters: 'meters', readings: 'meterReadings' };
+const COLLECTIONS: Record<ImportEntityKey, string> = {
+    clients: 'clients', contracts: 'contracts', sites: 'sites', contacts: 'contacts', meters: 'meters', readings: 'meterReadings',
+};
 
 /** Réserve `n` numéros au-delà du compteur et du plus grand code existant (pas de doublon possible). */
 async function reserveCodes(entity: ImportEntityKey, n: number): Promise<string[]> {
@@ -395,6 +692,40 @@ async function reserveCodes(entity: ImportEntityKey, n: number): Promise<string[
         return current + 1;
     });
     return Array.from({ length: n }, (_, i) => `${spec.prefix}-${String(first + i).padStart(5, '0')}`);
+}
+
+/** Dates des contrats et relevés : en horodatage, comme à la saisie. */
+function toStored(entity: ImportEntityKey, doc: Record<string, unknown>): Record<string, unknown> {
+    const fields = entity === 'contracts' ? ['startDate', 'endDate', 'terminationDate'] : entity === 'readings' ? ['date'] : [];
+    const out = { ...doc };
+    for (const f of fields) if (typeof out[f] === 'string') out[f] = Timestamp.fromDate(new Date(String(out[f])));
+    return out;
+}
+
+type Write = (b: FirebaseFirestore.WriteBatch) => void;
+
+/** Report d'un renommage de client sur les noms recopiés : contrats, sites, compteurs. */
+async function renameClientWrites(r: NonNullable<Effects['renameClient']>): Promise<Write[]> {
+    const writes: Write[] = [];
+    const [contracts, sites] = await Promise.all([
+        adminDb.collection('contracts').where('clientId', '==', r.clientId).get(),
+        adminDb.collection('sites').where('clientId', '==', r.clientId).get(),
+    ]);
+    for (const c of contracts.docs) {
+        const name = String(c.get('name') ?? '');
+        const label = c.get('label');
+        writes.push(b => b.update(c.ref, {
+            clientName: r.to,
+            ...(label ? { name: `${r.to} - ${label}` } : name.startsWith(r.from) ? { name: r.to + name.slice(r.from.length) } : {}),
+        }));
+    }
+    for (const s of sites.docs) writes.push(b => b.update(s.ref, { clientName: r.to }));
+    const siteIds = sites.docs.map(s => s.id);
+    for (let i = 0; i < siteIds.length; i += 30) {
+        const meters = await adminDb.collection('meters').where('siteId', 'in', siteIds.slice(i, i + 30)).get();
+        for (const m of meters.docs) writes.push(b => b.update(m.ref, { clientName: r.to }));
+    }
+    return writes;
 }
 
 export type ImportReport = {
@@ -417,43 +748,58 @@ export async function applyImport(entity: ImportEntityKey, table: unknown[][], m
     const now = new Date().toISOString();
     const coll = adminDb.collection(COLLECTIONS[entity]);
     const spec = CODES[entity];
+    const warn = (item: PlanItem) => (item.warnings.length ? { warnings: item.warnings } : {});
 
-    type Write = (b: FirebaseFirestore.WriteBatch) => void;
     const writes: Write[] = [];
     const results: ImportReport['results'] = [];
+    const contractLink = (item: PlanItem, siteId: string) => {
+        if (item.effects?.addToContract) {
+            const ref = adminDb.collection('contracts').doc(item.effects.addToContract);
+            writes.push(b => b.update(ref, { siteIds: FieldValue.arrayUnion(siteId) }));
+        }
+        if (item.effects?.removeFromContract) {
+            const ref = adminDb.collection('contracts').doc(item.effects.removeFromContract);
+            writes.push(b => b.update(ref, { siteIds: FieldValue.arrayRemove(siteId) }));
+        }
+    };
+
     creates.forEach((item, i) => {
         const ref = coll.doc();
         const stamp = entity === 'meters'
             ? { lastModified: now, modifiedBy: meta.by ?? 'import' }
-            : entity === 'clients' ? { createdAt: now, ...(meta.by && { createdBy: meta.by }) } : {};
-        const doc: Record<string, unknown> = { ...item.data, ...stamp, ...(spec && { [spec.field]: codes[i] }) };
-        // Relevés : date en horodatage (comme à la saisie), origine de la donnée.
-        if (entity === 'readings') Object.assign(doc, { date: Timestamp.fromDate(new Date(String(doc.date))), source: meta.source === 'api' ? 'API' : 'IMPORT' });
+            : entity === 'clients' ? { createdAt: now, ...(meta.by && { createdBy: meta.by }) }
+            : entity === 'contracts' ? {
+                createdAt: now, createdBy: meta.by ?? 'import', validationStatus: 'validated', validatedAt: now,
+                validatedBy: meta.source === 'api' ? `API (${meta.by ?? ''})` : 'import',
+            }
+            : entity === 'readings' ? { source: meta.source === 'api' ? 'API' : 'IMPORT' } : {};
+        const doc = toStored(entity, { ...item.data, ...stamp, ...(spec && { [spec.field]: codes[i] }) });
         writes.push(b => b.set(ref, doc));
-        results.push({ line: item.line, action: 'create', id: ref.id, ...(spec && { code: codes[i] }), ...(item.warnings.length && { warnings: item.warnings }) });
-        // Le contrat d'un site créé le compte parmi ses sites.
-        if (entity === 'sites' && item.data?.contractId) {
-            const contractRef = adminDb.collection('contracts').doc(String(item.data.contractId));
-            writes.push(b => b.update(contractRef, { siteIds: FieldValue.arrayUnion(ref.id) }));
-        }
+        results.push({ line: item.line, action: 'create', id: ref.id, ...(spec && { code: codes[i] }), ...warn(item) });
+        if (entity === 'sites') contractLink(item, ref.id);
     });
+    const followUps: Promise<Write[]>[] = [];
     for (const item of updates) {
         const ref = coll.doc(item.targetId!);
         const stamp = entity === 'meters' ? { lastModified: now, modifiedBy: meta.by ?? 'import' } : {};
-        writes.push(b => b.update(ref, { ...item.data, ...stamp }));
-        results.push({ line: item.line, action: 'update', id: ref.id, ...(item.warnings.length && { warnings: item.warnings }) });
-        if (entity === 'sites' && item.data?.contractId) {
-            const contractRef = adminDb.collection('contracts').doc(String(item.data.contractId));
-            writes.push(b => b.update(contractRef, { siteIds: FieldValue.arrayUnion(ref.id) }));
+        writes.push(b => b.update(ref, toStored(entity, { ...item.data, ...stamp }) as FirebaseFirestore.UpdateData<FirebaseFirestore.DocumentData>));
+        results.push({ line: item.line, action: 'update', id: ref.id, ...warn(item) });
+        if (entity === 'sites') contractLink(item, ref.id);
+        if (item.effects?.renameClient) followUps.push(renameClientWrites(item.effects.renameClient));
+        const denorm = item.effects?.siteDenorm;
+        if (denorm) {
+            followUps.push(adminDb.collection('meters').where('siteId', '==', denorm.siteId).get().then(s => s.docs.map(m => (b: FirebaseFirestore.WriteBatch) =>
+                b.update(m.ref, { ...(denorm.siteName && { siteName: denorm.siteName }), ...(denorm.clientName && { clientName: denorm.clientName }) }))));
         }
     }
+    writes.push(...(await Promise.all(followUps)).flat());
     for (let i = 0; i < writes.length; i += 400) {
         const batch = adminDb.batch();
         writes.slice(i, i + 400).forEach(w => w(batch));
         await batch.commit();
     }
 
-    for (const item of plan.items.filter(i => i.action === 'unchanged')) results.push({ line: item.line, action: 'unchanged', id: item.targetId!, ...(item.warnings.length && { warnings: item.warnings }) });
+    for (const item of plan.items.filter(i => i.action === 'unchanged')) results.push({ line: item.line, action: 'unchanged', id: item.targetId!, ...warn(item) });
     results.sort((a, b) => a.line - b.line);
     const errors = plan.items.filter(i => i.action === 'error').map(i => ({ line: i.line, messages: i.messages }));
     const log = await adminDb.collection('imports').add({
