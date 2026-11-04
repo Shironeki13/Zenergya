@@ -690,6 +690,9 @@ export default function SiteDetailsPage() {
                         <div>
                             <div className="flex items-center gap-2">
                                 <h1 className="text-2xl font-bold tracking-tight">{site.name}</h1>
+                                {site.code && (
+                                    <Badge variant="outline" className="font-mono">{site.code}</Badge>
+                                )}
                                 <Badge variant={contract?.status === 'Actif' ? 'default' : 'secondary'}>
                                     {contract?.status || 'Aucun contrat'}
                                 </Badge>

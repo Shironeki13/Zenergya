@@ -165,7 +165,8 @@ export type Site = {
     clientId?: string; // Optional, can be derived or kept for easier querying
     clientName?: string; // Denormalized for display
     name: string;
-    siteNumber?: string;
+    code?: string; // Code Zenergya (SIT-00001) : attribué à la création, immuable. Identifiant maître du site.
+    siteNumber?: string; // Numéro libre du site (client, ancien système…), distinct du code
     address: string;
     postalCode?: string;
     city?: string;
@@ -212,7 +213,7 @@ export type MeterType = {
 
 export type Meter = {
     id: string;
-    code: string; // unique code, auto-generated from document ID
+    code: string; // Code Zenergya (CPT-00001) : attribué à la création, immuable. Identifiant maître du compteur.
     name: string;
     reference?: string; // PDL / PCE
     siteId: string;

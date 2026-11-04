@@ -27,11 +27,21 @@ service cloud.firestore {
       return coll in ['invoices', 'creditNotes', 'counters'];
     }
 
+    // Code Zenergya d'un site ou d'un compteur (SIT-00001, CPT-00001) : identifiant maître,
+    // immuable une fois attribué. Le rattrapage des anciens documents passe par l'Admin SDK.
+    function codeInchange(coll) {
+      return !(coll in ['sites', 'meters'])
+        || request.method != 'update'
+        || !('code' in resource.data)
+        || request.resource.data.get('code', null) == resource.data.code;
+    }
+
     // Attention : les règles qui correspondent à un même chemin s'additionnent (OU logique),
     // d'où une règle générique qui exclut explicitement les collections traitées à part.
     match /{coll}/{docId} {
       allow read: if isAppUser();
-      allow create, update, delete: if !isAccounting(coll) && (isAdmin() || (isAppUser() && !isAdminOnly(coll)));
+      allow create, update, delete: if !isAccounting(coll) && codeInchange(coll)
+        && (isAdmin() || (isAppUser() && !isAdminOnly(coll)));
     }
 
     match /invoices/{invoiceId} {

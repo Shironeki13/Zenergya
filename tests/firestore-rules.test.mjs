@@ -15,6 +15,9 @@ await env.withSecurityRulesDisabled(async (ctx) => {
   await setDoc(doc(db, 'invoices', 'due'), { status: 'due', invoiceNumber: 'ACME-2610-0001', total: 100 });
   await setDoc(doc(db, 'invoices', 'pro'), { status: 'proforma', total: 100 });
   await setDoc(doc(db, 'invoices', 'cancelled'), { status: 'cancelled', invoiceNumber: 'ACME-2610-0002', total: 100 });
+  await setDoc(doc(db, 'sites', 's'), { name: 'Site', code: 'SIT-00001' });
+  await setDoc(doc(db, 'sites', 'ancien'), { name: 'Ancien site' });
+  await setDoc(doc(db, 'meters', 'm'), { name: 'Compteur', code: 'CPT-00001' });
 });
 const anon = env.unauthenticatedContext().firestore();
 const stranger = env.authenticatedContext('s', { email: 'evil@x.com' }).firestore();
@@ -60,6 +63,15 @@ await t('user cannot read subcollection', assertFails(getDoc(doc(user, 'clients'
 await t('admin writes users', assertSucceeds(setDoc(doc(admin, 'users', 'x'), { a: 2 })));
 await t('admin writes roles', assertSucceeds(setDoc(doc(admin, 'roles', 'x'), { isAdmin: true })));
 await t('admin deletes contract', assertSucceeds(deleteDoc(doc(admin, 'contracts', 'x'))));
+await t('user updates site keeping its code', assertSucceeds(updateDoc(doc(user, 'sites', 's'), { name: 'Site renommé' })));
+await t('user cannot change site code', assertFails(updateDoc(doc(user, 'sites', 's'), { code: 'SIT-09999' })));
+await t('admin cannot change site code', assertFails(updateDoc(doc(admin, 'sites', 's'), { code: 'SIT-09999' })));
+await t('user cannot remove site code', assertFails(setDoc(doc(user, 'sites', 's'), { name: 'Sans code' })));
+await t('user cannot change meter code', assertFails(updateDoc(doc(user, 'meters', 'm'), { code: 'CPT-09999' })));
+await t('user updates meter keeping its code', assertSucceeds(updateDoc(doc(user, 'meters', 'm'), { name: 'Compteur 2' })));
+await t('user creates site with code', assertSucceeds(setDoc(doc(user, 'sites', 'nouveau'), { name: 'N', code: 'SIT-00002' })));
+await t('user updates site without code', assertSucceeds(updateDoc(doc(user, 'sites', 'ancien'), { name: 'Ancien site 2' })));
+await t('user deletes site', assertSucceeds(deleteDoc(doc(user, 'sites', 'nouveau'))));
 console.log(`\n${ok} passed, ${ko} failed`);
 await env.cleanup();
 process.exit(ko ? 1 : 0);
