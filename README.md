@@ -8,4 +8,5 @@ Application de gestion des contrats et de la facturation (Next.js, Firebase, Gen
 - Facturation électronique (régimes, adressage, tableau de bord) : voir [docs/facturation-electronique.md](docs/facturation-electronique.md).
 - Développement avec les émulateurs Firebase : `FIREBASE_WEB_EMULATOR_HOST=127.0.0.1` (voir `.env.example`).
 - Sécurité, droits et mise en service : voir [docs/securite.md](docs/securite.md).
+- Répertoire des entreprises (recherche et vérification SIRET via l'API de l'État) : voir [docs/repertoire-entreprises.md](docs/repertoire-entreprises.md).
 - Déploiement Cloud Run (Dockerfile, Cloud Build) : voir [docs/deploiement-cloud-run.md](docs/deploiement-cloud-run.md).

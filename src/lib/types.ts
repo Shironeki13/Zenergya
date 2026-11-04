@@ -1,4 +1,5 @@
 
+import type { SireneCheck } from '@/lib/entreprises';
 import { z } from 'zod';
 import type {
     WorkQuote as AdvWorkQuote,
@@ -141,6 +142,7 @@ export const ClientSchema = ClientBaseSchema.superRefine((data, ctx) => {
 
 export type Client = z.infer<typeof ClientSchema> & {
     id: string;
+    sireneCheck?: SireneCheck; // Dernier contrôle du SIRET dans le répertoire des entreprises (API de l'État)
     typologyName?: string; // denormalized for display
     clientNumber?: string; // N° Chrono
     createdAt?: string; // Timestamp

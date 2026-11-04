@@ -14,6 +14,7 @@ import { useToast } from '@/hooks/use-toast';
 import { Badge } from '@/components/ui/badge';
 import { AttachContractDialog } from '@/components/attach-contract-dialog';
 import { useData } from '@/context/data-context';
+import { SireneCheckPanel } from '@/components/clients/sirene-check';
 
 export default function ClientDetailPage() {
   const params = useParams();
@@ -145,6 +146,7 @@ export default function ClientDetailPage() {
                 <span>{client.beName || 'Oui'}</span>
               </>}
             </div>
+            <SireneCheckPanel client={client} onChecked={check => setClient(c => (c ? { ...c, sireneCheck: check } : c))} />
 
             {client.externalCode && (
               <>

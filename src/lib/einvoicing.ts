@@ -1,6 +1,7 @@
 import type {
     Client, Company, Contract, CreditNote, EInvoicingChannel, EInvoicingRegime, EInvoicingState, EInvoicingStatus, Invoice, Typology,
 } from '@/lib/types';
+import { sireneCheckIssues } from '@/lib/entreprises';
 
 /**
  * Réforme de la facturation électronique (RFE) : à partir de la configuration du client, du contrat,
@@ -61,7 +62,7 @@ export type EInvoicingResolution = {
 };
 
 type ClientLike = Pick<Client, 'clientType' | 'typologyId' | 'siret' | 'useChorus'> &
-    Partial<Pick<Client, 'einvoicingRegime' | 'einvoicingAddress' | 'chorusServiceCode'>>;
+    Partial<Pick<Client, 'einvoicingRegime' | 'einvoicingAddress' | 'chorusServiceCode' | 'sireneCheck'>>;
 
 /** SIREN (9 chiffres) déduit du SIRET. */
 export function sirenOf(siret?: string): string | undefined {
@@ -106,6 +107,10 @@ export function resolveEInvoicing(params: {
 
     if (client.siret && !luhnValid(client.siret.replace(/\s/g, ''))) {
         warnings.push('SIRET du client invalide (clé de contrôle).');
+    }
+    // Dernier contrôle dans le répertoire des entreprises, s'il porte sur le SIRET actuel de la fiche.
+    if (client.siret && client.sireneCheck?.siret === client.siret.replace(/\s/g, '')) {
+        warnings.push(...sireneCheckIssues(client.sireneCheck, client.clientType));
     }
 
     let address: string | undefined;
