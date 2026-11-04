@@ -77,6 +77,8 @@ export default function NewClientPage() {
       chorusServiceCode: "",
       chorusLegalCommitmentNumber: "",
       chorusMarketNumber: "",
+      chorusServiceCodeRequired: false,
+      chorusLegalCommitmentRequired: false,
       // Pre-fill hierarchy from current user scope if possible, or default to empty/first available
       companyId: currentUser?.scope?.companyIds[0] !== '*' ? currentUser?.scope?.companyIds[0] : "",
       agencyId: currentUser?.scope?.agencyIds[0] !== '*' ? currentUser?.scope?.agencyIds[0] : "",
@@ -330,6 +332,19 @@ export default function NewClientPage() {
                     <FormField control={form.control} name="chorusServiceCode" render={({ field }) => (<FormItem><FormLabel>Code service</FormLabel><FormControl><Input placeholder="Code service Chorus" {...field} /></FormControl><FormMessage /></FormItem>)} />
                     <FormField control={form.control} name="chorusLegalCommitmentNumber" render={({ field }) => (<FormItem><FormLabel>Numéro engagement juridique</FormLabel><FormControl><Input placeholder="Numéro EJ" {...field} /></FormControl><FormMessage /></FormItem>)} />
                     <FormField control={form.control} name="chorusMarketNumber" render={({ field }) => (<FormItem><FormLabel>Numéro de marché</FormLabel><FormControl><Input placeholder="Numéro de marché" {...field} /></FormControl><FormMessage /></FormItem>)} />
+                    <FormField control={form.control} name="chorusServiceCodeRequired" render={({ field }) => (
+                      <FormItem className="flex flex-row items-center justify-between gap-4">
+                        <div className="space-y-0.5"><FormLabel>Code service obligatoire</FormLabel><FormDescription>Exigé par la structure dans l'annuaire Chorus Pro.</FormDescription></div>
+                        <FormControl><Switch checked={!!field.value} onCheckedChange={field.onChange} /></FormControl>
+                      </FormItem>
+                    )} />
+                    <FormField control={form.control} name="chorusLegalCommitmentRequired" render={({ field }) => (
+                      <FormItem className="flex flex-row items-center justify-between gap-4">
+                        <div className="space-y-0.5"><FormLabel>N° d'engagement obligatoire</FormLabel><FormDescription>Exigé par la structure dans l'annuaire Chorus Pro.</FormDescription></div>
+                        <FormControl><Switch checked={!!field.value} onCheckedChange={field.onChange} /></FormControl>
+                      </FormItem>
+                    )} />
+                    <FormDescription>Le cadre de facturation (A1, A9, A12), le valideur et les engagements par période se règlent sur chaque contrat.</FormDescription>
                   </>)}
                 </div>
               </div>

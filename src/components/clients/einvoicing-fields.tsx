@@ -22,12 +22,19 @@ const SOURCE_LABELS = {
  */
 export function ClientEInvoicingFields({ typologies }: { typologies: Typology[] }) {
     const form = useFormContext();
-    const [clientType, typologyId, siret, useChorus, einvoicingRegime, einvoicingAddress] = form.watch([
+    const [
+        clientType, typologyId, siret, useChorus, einvoicingRegime, einvoicingAddress,
+        chorusServiceCode, chorusLegalCommitmentNumber, chorusServiceCodeRequired, chorusLegalCommitmentRequired,
+    ] = form.watch([
         'clientType', 'typologyId', 'siret', 'useChorus', 'einvoicingRegime', 'einvoicingAddress',
+        'chorusServiceCode', 'chorusLegalCommitmentNumber', 'chorusServiceCodeRequired', 'chorusLegalCommitmentRequired',
     ]);
     const typology = typologies.find(t => t.id === typologyId);
     const resolution = resolveEInvoicing({
-        client: { clientType, typologyId, siret, useChorus, einvoicingRegime, einvoicingAddress },
+        client: {
+            clientType, typologyId, siret, useChorus, einvoicingRegime, einvoicingAddress,
+            chorusServiceCode, chorusLegalCommitmentNumber, chorusServiceCodeRequired, chorusLegalCommitmentRequired,
+        },
         typology,
     });
     // L'aperçu ne connaît ni la société ni le contrat : on ignore l'avertissement sur la date d'entrée en vigueur.
