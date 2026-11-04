@@ -180,3 +180,27 @@ test("avoir d'une facture de solde : la déduction d'acompte redevient positive,
     const simple = creditNoteAmounts([{ invoiceNumber: 'F1', lineItems: [{ description: 'P2', quantity: 1, unitPrice: 100, total: 100, activityCode: 'P2' }], tax: 10 }]);
     assert.deepEqual([simple.subtotal, simple.tax, simple.total, simple.vatBreakdown], [-100, -10, -110, []]);
 });
+
+test('ouvrage : prix et coût issus des composants, coefficient de la ligne, heures de main-d\'œuvre', () => {
+    // Pose d'un radiateur : 1 radiateur (180 €) + 1 kit (25 €) + 2 h de MO
+    const ouvrage = line({
+        kind: 'OUVRAGE', label: "Pose d'un radiateur", unit: 'u', quantity: 3,
+        components: [
+            { kind: 'FOURNITURE', label: 'Radiateur', unit: 'u', quantity: 1, unitCost: 180 },
+            { kind: 'FOURNITURE', label: 'Kit raccordement', unit: 'u', quantity: 1, unitCost: 25 },
+            { kind: 'MAIN_OEUVRE', label: 'Pose', unit: 'h', quantity: 2 },
+        ],
+    });
+    // prix unitaire = (180 + 25) × 1,35 + 2 × 58 = 276,75 + 116 = 392,75 ; coût = 205 + 2 × 36,5 = 278
+    assert.equal(unitPriceOf(ouvrage, PRICING), 392.75);
+    const t = computeQuoteTotals([ouvrage], PRICING);
+    assert.equal(t.totalHT, 1178.25);
+    assert.equal(t.totalCost, 834);
+    assert.equal(t.laborHours, 6);
+    // Coefficient propre à la ligne : s'applique aux fournitures de l'ouvrage, pas à la main-d'œuvre.
+    assert.equal(unitPriceOf({ ...ouvrage, coefficient: 1.5 }, PRICING), 423.5);
+    // Paramètre manquant ou ouvrage vide : non calculable, signalé.
+    assert.equal(unitPriceOf(ouvrage, { ...PRICING, laborRate: null }), null);
+    assert.ok(quoteIssues([ouvrage], { ...PRICING, laborRate: null }).some(i => i.includes('taux horaire')));
+    assert.ok(quoteIssues([{ ...ouvrage, components: [] }], PRICING).some(i => i.includes('sans composant')));
+});

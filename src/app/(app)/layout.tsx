@@ -99,6 +99,7 @@ function MainAppLayout({ children }: { children: React.ReactNode }) {
     { href: '/works', label: 'Accueil Travaux', icon: Home },
     { href: '/quotes', label: 'Devis', icon: MessageSquareQuote },
     { href: '/projects', label: 'Affaires (P6)', icon: Calculator },
+    { href: '/library', label: 'Bibliothèque de prix', icon: Library },
   ];
 
 

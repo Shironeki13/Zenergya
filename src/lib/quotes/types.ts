@@ -30,12 +30,28 @@ export type QuoteMode = 'P5' | 'P6';
  * Nature d'une ligne :
  * - FOURNITURE, SOUS_TRAITANCE, DIVERS : prix = déboursé unitaire × coefficient ;
  * - MAIN_OEUVRE : quantité en heures, prix = taux horaire de vente, coût = coût horaire interne ;
+ * - OUVRAGE : une ligne pour le client, composée d'articles (sous-détail interne) : chaque composant est
+ *   chiffré comme une ligne de sa nature, par unité d'ouvrage ;
  * - TITRE, SOUS_TOTAL, TEXTE : structure et commentaires, sans montant propre.
  */
-export const QUOTE_LINE_KINDS = ['TITRE', 'FOURNITURE', 'MAIN_OEUVRE', 'SOUS_TRAITANCE', 'DIVERS', 'TEXTE', 'SOUS_TOTAL'] as const;
+export const QUOTE_LINE_KINDS = ['TITRE', 'FOURNITURE', 'MAIN_OEUVRE', 'SOUS_TRAITANCE', 'DIVERS', 'OUVRAGE', 'TEXTE', 'SOUS_TOTAL'] as const;
 export type QuoteLineKind = typeof QUOTE_LINE_KINDS[number];
 
-export const PRICED_KINDS: readonly QuoteLineKind[] = ['FOURNITURE', 'MAIN_OEUVRE', 'SOUS_TRAITANCE', 'DIVERS'];
+export const PRICED_KINDS: readonly QuoteLineKind[] = ['FOURNITURE', 'MAIN_OEUVRE', 'SOUS_TRAITANCE', 'DIVERS', 'OUVRAGE'];
+
+/** Natures d'un composant d'ouvrage (lignes simples). */
+export type ComponentKind = 'FOURNITURE' | 'MAIN_OEUVRE' | 'SOUS_TRAITANCE' | 'DIVERS';
+
+/** Composant d'un ouvrage : quantité pour UNE unité d'ouvrage. Recopié depuis la bibliothèque. */
+export type QuoteLineComponent = {
+    articleId?: string;          // article d'origine (bibliothèque), pour mémoire
+    code?: string;
+    kind: ComponentKind;
+    label: string;
+    unit?: string;
+    quantity: number;
+    unitCost?: number | null;    // déboursé (main-d'œuvre : vide = coût horaire du devis)
+};
 
 export const QUOTE_LINE_KIND_LABELS: Record<QuoteLineKind, string> = {
     TITRE: 'Titre',
@@ -43,6 +59,7 @@ export const QUOTE_LINE_KIND_LABELS: Record<QuoteLineKind, string> = {
     MAIN_OEUVRE: "Main-d'œuvre",
     SOUS_TRAITANCE: 'Sous-traitance',
     DIVERS: 'Divers',
+    OUVRAGE: 'Ouvrage',
     TEXTE: 'Texte',
     SOUS_TOTAL: 'Sous-total',
 };
@@ -65,6 +82,10 @@ export type QuoteLine = {
     /** Ligne en option : affichée, non comptée dans les totaux. */
     optional?: boolean;
     level?: number;              // niveau d'un titre (0, 1…)
+    /** Ouvrage : composition (sous-détail interne, jamais montré au client). */
+    components?: QuoteLineComponent[];
+    /** Article ou ouvrage de la bibliothèque d'où vient la ligne (recopiée, pour mémoire). */
+    source?: { type: 'article' | 'work'; id: string; code?: string };
 };
 
 /** Paramètres de prix du devis, recopiés depuis la fiche client puis la société. */
