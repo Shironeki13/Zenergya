@@ -25,7 +25,7 @@ service cloud.firestore {
     // serveur (Admin SDK).
     // Pour les documents comptables, il attribue les numéros dans la même transaction. Côté navigateur, seules les exceptions ci-dessous sont permises.
     function isAccounting(coll) {
-      return coll in ['invoices', 'creditNotes', 'counters', 'quoteVersions', 'projects', 'projectSituations'];
+      return coll in ['invoices', 'creditNotes', 'counters', 'quoteVersions', 'projects', 'projectSituations', 'imports'];
     }
 
     // Code Zenergya d'un site ou d'un compteur (SIT-00001, CPT-00001) : identifiant maître,

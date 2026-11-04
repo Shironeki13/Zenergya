@@ -5,6 +5,10 @@ const nextConfig: NextConfig = {
   output: 'standalone',
   // Moteur PDF chargé depuis node_modules (avec son React) plutôt qu'embarqué dans le bundle serveur.
   serverExternalPackages: ['@react-pdf/renderer'],
+  // Imports en masse : un fichier de plusieurs milliers de lignes est envoyé à une action serveur.
+  experimental: {
+    serverActions: { bodySizeLimit: '8mb' },
+  },
   /* config options here */
   typescript: {
     ignoreBuildErrors: true,

@@ -91,6 +91,8 @@ await t('admin cannot create project', assertFails(setDoc(doc(admin, 'projects',
 await t('user reads situations', assertSucceeds(getDoc(doc(user, 'projectSituations', 's'))));
 await t('user cannot write situations', assertFails(updateDoc(doc(user, 'projectSituations', 's'), { progress: { a: 100 } })));
 await t('user cannot delete situation', assertFails(deleteDoc(doc(user, 'projectSituations', 's'))));
+await t('user cannot write import log', assertFails(setDoc(doc(user, 'imports', 'x'), { created: 1 })));
+await t('admin cannot write import log', assertFails(setDoc(doc(admin, 'imports', 'x'), { created: 1 })));
 await t('user cannot write quote versions', assertFails(setDoc(doc(user, 'quoteVersions', 'v'), { version: 9 })));
 await t('admin cannot write quote versions', assertFails(setDoc(doc(admin, 'quoteVersions', 'n'), { version: 1 })));
 await t('user cannot renumber draft quote', assertFails(updateDoc(doc(user, 'quotes', 'brouillon'), { number: 'X' })));

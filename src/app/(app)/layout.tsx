@@ -19,6 +19,7 @@ import {
   MinusCircle,
   ChevronDown,
   Library,
+  Upload,
   MessageSquareQuote,
   ShieldCheck,
   Home,
@@ -72,6 +73,7 @@ function MainAppLayout({ children }: { children: React.ReactNode }) {
   const navItems = [
     { href: '/meters', icon: Gauge, label: 'Compteurs' },
     ...(isAdmin ? [{ href: '/users', icon: Users, label: 'Utilisateurs' }] : []),
+    ...(isAdmin ? [{ href: '/imports', icon: Upload, label: 'Imports' }] : []),
     { href: '/settings', icon: Settings, label: 'Paramétrage' },
   ];
 

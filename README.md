@@ -14,4 +14,6 @@ Application de gestion des contrats et de la facturation (Next.js, Firebase, Gen
 - Devis (clients et prospects, chiffrage, coefficient et taux horaire par client) : voir [docs/devis.md](docs/devis.md).
 - Affaires P6 (facturation à l'avancement par situations, retenue de garantie) : voir [docs/affaires-p6.md](docs/affaires-p6.md).
 - Bibliothèque de prix (articles, ouvrages, import CSV des tarifs) : voir [docs/bibliotheque-prix.md](docs/bibliotheque-prix.md).
+- Imports en masse (clients, sites, contacts, compteurs ; modèles CSV et Excel) : voir [docs/imports.md](docs/imports.md).
+- API externe (proposition à valider) : voir [docs/api-externe.md](docs/api-externe.md).
 - Déploiement Cloud Run (Dockerfile, Cloud Build) : voir [docs/deploiement-cloud-run.md](docs/deploiement-cloud-run.md).
