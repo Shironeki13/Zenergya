@@ -124,6 +124,9 @@ export default function EditClientPage() {
           einvoicingRegime: clientData.einvoicingRegime || 'auto',
           einvoicingAddress: clientData.einvoicingAddress || '',
           chorusServiceCodeRequired: clientData.chorusServiceCodeRequired ?? false,
+          relation: clientData.relation ?? 'client',
+          quoteCoefficient: clientData.quoteCoefficient ?? null,
+          quoteLaborRate: clientData.quoteLaborRate ?? null,
           chorusLegalCommitmentRequired: clientData.chorusLegalCommitmentRequired ?? false,
         });
       } catch (error) {
@@ -377,6 +380,44 @@ export default function EditClientPage() {
 
             <Separator />
 
+            <div className="space-y-4">
+              <div>
+                <h2 className="text-xl font-semibold">Devis</h2>
+                <p className="text-sm text-muted-foreground">Conditions de chiffrage propres à ce client. Vides : celles de la société (Paramétrage → Sociétés).</p>
+              </div>
+              <div className="grid md:grid-cols-3 gap-8 items-start">
+                <FormField control={form.control} name="quoteCoefficient" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Coefficient de vente</FormLabel>
+                    <FormControl><Input inputMode="decimal" placeholder="ex. 1,35" value={field.value ?? ''}
+                      onChange={e => field.onChange(e.target.value.replace(',', '.'))} /></FormControl>
+                    <FormDescription>Appliqué au déboursé des fournitures et de la sous-traitance.</FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )} />
+                <FormField control={form.control} name="quoteLaborRate" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Taux horaire main-d'œuvre (€ HT/h)</FormLabel>
+                    <FormControl><Input inputMode="decimal" placeholder="ex. 58" value={field.value ?? ''}
+                      onChange={e => field.onChange(e.target.value.replace(',', '.'))} /></FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )} />
+                <FormField control={form.control} name="relation" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Relation</FormLabel>
+                    <Select onValueChange={field.onChange} value={field.value || 'client'}>
+                      <FormControl><SelectTrigger><SelectValue /></SelectTrigger></FormControl>
+                      <SelectContent>
+                        <SelectItem value="prospect">Prospect</SelectItem>
+                        <SelectItem value="client">Client</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <FormDescription>Un prospect devient client à l'acceptation d'un devis.</FormDescription>
+                  </FormItem>
+                )} />
+              </div>
+            </div>
             <ClientEInvoicingFields typologies={typologies} />
 
             <Button type="submit">Enregistrer les modifications</Button>

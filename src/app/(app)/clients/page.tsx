@@ -155,6 +155,7 @@ export default function ClientsPage() {
                       <Link href={`/clients/${client.id}`} className="hover:underline">
                         {client.name}
                       </Link>
+                      {client.relation === 'prospect' && <Badge variant="outline" className="ml-2">Prospect</Badge>}
                     </TableCell>
                     <TableCell>
                       <Badge variant={client.clientType === 'public' ? 'secondary' : 'outline'} className="capitalize">

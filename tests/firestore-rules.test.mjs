@@ -18,6 +18,9 @@ await env.withSecurityRulesDisabled(async (ctx) => {
   await setDoc(doc(db, 'sites', 's'), { name: 'Site', code: 'SIT-00001' });
   await setDoc(doc(db, 'sites', 'ancien'), { name: 'Ancien site' });
   await setDoc(doc(db, 'meters', 'm'), { name: 'Compteur', code: 'CPT-00001' });
+  await setDoc(doc(db, 'quotes', 'brouillon'), { number: 'VEF-DEV2026-0001', status: 'brouillon', title: 'A' });
+  await setDoc(doc(db, 'quotes', 'envoye'), { number: 'VEF-DEV2026-0002', status: 'envoye', title: 'B' });
+  await setDoc(doc(db, 'quotes', 'jetable'), { number: 'VEF-DEV2026-0003', status: 'brouillon', title: 'C' });
 });
 const anon = env.unauthenticatedContext().firestore();
 const stranger = env.authenticatedContext('s', { email: 'evil@x.com' }).firestore();
@@ -72,6 +75,14 @@ await t('user updates meter keeping its code', assertSucceeds(updateDoc(doc(user
 await t('user creates site with code', assertSucceeds(setDoc(doc(user, 'sites', 'nouveau'), { name: 'N', code: 'SIT-00002' })));
 await t('user updates site without code', assertSucceeds(updateDoc(doc(user, 'sites', 'ancien'), { name: 'Ancien site 2' })));
 await t('user deletes site', assertSucceeds(deleteDoc(doc(user, 'sites', 'nouveau'))));
+await t('user creates quote', assertSucceeds(setDoc(doc(user, 'quotes', 'neuf'), { number: 'VEF-DEV2026-0004', status: 'brouillon' })));
+await t('anon cannot create quote', assertFails(setDoc(doc(anon, 'quotes', 'x'), { status: 'brouillon' })));
+await t('user edits draft quote', assertSucceeds(updateDoc(doc(user, 'quotes', 'brouillon'), { title: 'A2' })));
+await t('user cannot renumber draft quote', assertFails(updateDoc(doc(user, 'quotes', 'brouillon'), { number: 'X' })));
+await t('user cannot edit sent quote', assertFails(updateDoc(doc(user, 'quotes', 'envoye'), { title: 'B2' })));
+await t('admin cannot edit sent quote', assertFails(updateDoc(doc(admin, 'quotes', 'envoye'), { title: 'B2' })));
+await t('user cannot delete sent quote', assertFails(deleteDoc(doc(user, 'quotes', 'envoye'))));
+await t('user deletes draft quote', assertSucceeds(deleteDoc(doc(user, 'quotes', 'jetable'))));
 console.log(`\n${ok} passed, ${ko} failed`);
 await env.cleanup();
 process.exit(ko ? 1 : 0);

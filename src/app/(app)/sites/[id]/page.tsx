@@ -715,6 +715,12 @@ export default function SiteDetailsPage() {
                         </div>
                     </div>
                     <div className="flex items-center gap-2">
+                        <Button variant="outline" asChild>
+                            <Link href={`/quotes?siteId=${site.id}`}>Devis du site</Link>
+                        </Button>
+                        <Button variant="outline" asChild>
+                            <Link href={`/quotes/new?${new URLSearchParams({ siteId: site.id, ...(site.clientId && { clientId: site.clientId }) })}`}>Nouveau devis</Link>
+                        </Button>
                         <Button variant="default" onClick={() => console.log('Save')}>
                             <Save className="mr-2 h-4 w-4" /> Enregistrer
                         </Button>

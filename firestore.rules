@@ -36,12 +36,26 @@ service cloud.firestore {
         || request.resource.data.get('code', null) == resource.data.code;
     }
 
+    // Devis : modification et suppression traitées à part (voir match /quotes).
+    function isQuoteChange(coll) {
+      return coll == 'quotes' && request.method in ['update', 'delete'];
+    }
+
     // Attention : les règles qui correspondent à un même chemin s'additionnent (OU logique),
     // d'où une règle générique qui exclut explicitement les collections traitées à part.
     match /{coll}/{docId} {
       allow read: if isAppUser();
-      allow create, update, delete: if !isAccounting(coll) && codeInchange(coll)
+      allow create, update, delete: if !isAccounting(coll) && codeInchange(coll) && !isQuoteChange(coll)
         && (isAdmin() || (isAppUser() && !isAdminOnly(coll)));
+    }
+
+    match /quotes/{quoteId} {
+      // Seul un brouillon se modifie, sans changer de numéro ; un devis envoyé est figé (nouvelle version).
+      allow update: if isAppUser()
+        && resource.data.status == 'brouillon'
+        && request.resource.data.number == resource.data.number;
+      // Seul un brouillon se supprime ; un devis envoyé s'annule.
+      allow delete: if isAppUser() && resource.data.status == 'brouillon';
     }
 
     match /invoices/{invoiceId} {
