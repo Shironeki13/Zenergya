@@ -1,19 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { timingSafeEqual } from 'crypto';
 import { syncAllIndices } from '@/services/index-sync';
 import { AuthError, requireAdmin } from '@/lib/auth/server';
+import { isCronRequest } from '@/lib/auth/cron';
 
 export const runtime = 'nodejs';
-
-/** Appel planifié (Cloud Scheduler…) : en-tête `Authorization: Bearer <CRON_SECRET>`. */
-function isCronRequest(req: NextRequest): boolean {
-    const secret = process.env.CRON_SECRET;
-    const header = req.headers.get('authorization');
-    if (!secret || !header) return false;
-    const expected = Buffer.from(`Bearer ${secret}`);
-    const received = Buffer.from(header);
-    return expected.length === received.length && timingSafeEqual(expected, received);
-}
 
 export async function POST(req: NextRequest) {
     if (!isCronRequest(req)) {

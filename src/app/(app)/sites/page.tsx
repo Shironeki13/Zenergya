@@ -63,6 +63,7 @@ export default function SitesPage() {
   const [siteCity, setSiteCity] = useState('');
   const [siteActivityIds, setSiteActivityIds] = useState<string[]>([]);
   const [siteAmounts, setSiteAmounts] = useState<Record<string, number>>({});
+  const amountsFromServices = editingSite?.amountsSource === 'services';
 
   const handleGoToCreateSite = () => {
     if (selectedClientId) {
@@ -116,10 +117,13 @@ export default function SitesPage() {
       address: siteAddress,
       postalCode: sitePostalCode,
       city: siteCity,
-      activityIds: siteActivityIds,
-      amounts: Object.entries(siteAmounts)
-        .filter(([activityId]) => siteActivityIds.includes(activityId))
-        .map(([activityId, amount]) => ({ activityId, amount: Number(amount) || 0 })),
+      // Site piloté par ses prestations : activités et montants calculés, jamais écrits depuis ce formulaire.
+      ...(!amountsFromServices && {
+        activityIds: siteActivityIds,
+        amounts: Object.entries(siteAmounts)
+          .filter(([activityId]) => siteActivityIds.includes(activityId))
+          .map(([activityId, amount]) => ({ activityId, amount: Number(amount) || 0 })),
+      }),
     };
 
     try {
@@ -377,7 +381,11 @@ export default function SitesPage() {
             <Card>
               <CardHeader>
                 <CardTitle>Activités et Montants</CardTitle>
-                <CardDescription>Sélectionnez les activités et saisissez les montants annuels HT.</CardDescription>
+                <CardDescription>
+                  {amountsFromServices
+                    ? 'Montants calculés à partir des prestations en vigueur du site (fiche du site, onglet prestations, ou import des prestations) : ils ne se saisissent plus ici.'
+                    : 'Sélectionnez les activités et saisissez les montants annuels HT.'}
+                </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="space-y-2">
@@ -388,6 +396,7 @@ export default function SitesPage() {
                         <Checkbox
                           id={`activity-${activity.id}-edit`}
                           checked={siteActivityIds.includes(activity.id)}
+                          disabled={amountsFromServices}
                           onCheckedChange={(checked) => handleActivityChange(activity.id, !!checked)}
                         />
                         <label htmlFor={`activity-${activity.id}-edit`} className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
@@ -408,6 +417,7 @@ export default function SitesPage() {
                           type="number"
                           placeholder="Montant en €"
                           value={siteAmounts[activity.id] || ''}
+                          disabled={amountsFromServices}
                           onChange={(e) => setSiteAmounts(prev => ({ ...prev, [activity.id]: parseFloat(e.target.value) || 0 }))}
                         />
                       </div>

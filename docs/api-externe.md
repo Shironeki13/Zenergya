@@ -9,7 +9,7 @@ mêmes formats, mêmes valeurs possibles).
 Menu **Accès API** (administrateurs) : une clé **par système externe**, avec :
 
 - des **droits par ressource** (`clients:read`, `clients:write`, `contracts:…`, `sites:read`, `sites:write`,
-  `contacts:…`, `meters:…`, `readings:…`) — l'écriture n'implique pas la lecture ;
+  `services:…`, `contacts:…`, `meters:…`, `readings:…`) — l'écriture n'implique pas la lecture ;
 - une **limite de débit** (appels par minute, 120 par défaut) et une **date d'expiration** facultative ;
 - la **révocation** immédiate.
 
@@ -38,6 +38,7 @@ curl -X POST -H "Authorization: Bearer $ZEN_KEY" -H "Content-Type: application/j
 | `clients` | `siret`, `relation` | code CLI |
 | `contracts` | `client` (code CLI), `status` | n° CTN |
 | `sites` | `client` (code CLI) | code SIT |
+| `services` | `site` (code SIT), `contract` (n° CTN), `activity` (code) | identifiant |
 | `contacts` | `client` (code CLI) | identifiant |
 | `meters` | `site` (code SIT) | code CPT |
 | `readings` | `meter` (code CPT), `site` (code SIT), `from`, `to` | identifiant |
@@ -45,7 +46,9 @@ curl -X POST -H "Authorization: Bearer $ZEN_KEY" -H "Content-Type: application/j
 - **Représentation** : codes et noms Zenergya (client, site, contrat, société, agence…), jamais les identifiants
   internes de rattachement. Ce qui se lit peut se renvoyer tel quel (champs en lecture seule ignorés : `id` d'un
   contact ou d'un relevé, `unit`, `source` et `contract` d'un relevé, `unit` d'un compteur ; `name`,
-  `validationStatus`, `sites` et `chorusLegalCommitments` d'un contrat). Dates des contrats : `AAAA-MM-JJ`.
+  `validationStatus`, `sites` et `chorusLegalCommitments` d'un contrat). Dates des contrats et des prestations :
+  `AAAA-MM-JJ`. Un site expose ses montants facturés (`amounts`, par code activité) et leur origine (`amountsSource` :
+  `services` = calculés à partir des prestations, `manual` = saisis).
   Les contrats listent leurs sites (`sites`) ; le lien contrat ↔ site s'écrit par la ressource `sites` (`contract`).
 - **Écriture** : exactement les contrôles de l'**import de fichiers** (voir `imports.md`) — correspondance par code
   (sinon réf. externe, SIRET, client + n° de site, client + email, site + PDL), doublons probables refusés, liens
@@ -117,5 +120,5 @@ curl -H "Authorization: Bearer $ZEN_KEY" "https://<zenergya>/api/v1/readings?met
 
 ## À venir
 
-1. Lecture des devis, factures (et PDF), affaires P6 ; prestations par site.
+1. Lecture des devis, factures (et PDF), affaires P6.
 2. Webhooks : notification signée (HMAC) lors d'un événement (facture émise, devis accepté, situation facturée).

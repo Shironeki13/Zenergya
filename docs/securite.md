@@ -45,6 +45,8 @@
    ```
 7. **Planifier la synchronisation des indices** (optionnel) avec Cloud Scheduler :
    `POST https://<domaine>/api/indices/sync` avec l'en-tête `Authorization: Bearer <CRON_SECRET>`.
+8. **Planifier le recalcul quotidien des montants des sites** (prestations qui commencent ou se terminent) :
+   `POST https://<domaine>/api/sites/amounts` chaque nuit, même en-tête (`?dryRun=1` : liste sans écrire).
 
 ## Développement local
 

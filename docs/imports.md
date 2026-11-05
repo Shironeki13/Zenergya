@@ -1,7 +1,7 @@
 # Imports en masse
 
 Menu **Imports** (administrateurs). Données importables : **clients et prospects**, **contrats**, **sites**,
-**contacts**, **compteurs**, **relevés de compteurs**. (Les articles de la bibliothèque de prix ont leur propre import : voir `bibliotheque-prix.md`.)
+**prestations et montants**, **contacts**, **compteurs**, **relevés de compteurs**. (Les articles de la bibliothèque de prix ont leur propre import : voir `bibliotheque-prix.md`.)
 
 ## Déroulé
 
@@ -9,7 +9,7 @@ Menu **Imports** (administrateurs). Données importables : **clients et prospect
    - **CSV** (séparateur `;`, UTF-8 avec BOM, lisible tel quel par Excel) : en-têtes + une ligne d'exemple ;
    - **Excel** : onglet **Données** (en-têtes + exemple), onglet **Notice** (chaque colonne : obligatoire ou non,
      format, valeurs possibles, exemple, aide) et onglet **Listes** (valeurs du paramétrage : sociétés, agences,
-     secteurs, typologies, types de compteur, activités, marchés, échéanciers).
+     secteurs, typologies, types de compteur, activités, marchés, échéanciers, périodicités, taux de TVA).
 2. Remplir le fichier (supprimer la ligne d'exemple) et le **déposer** (CSV ou XLSX).
 3. **Aperçu**, ligne par ligne : création, mise à jour, inchangé ou erreur (avec le motif). Rien n'est écrit.
    Erreurs téléchargeables en CSV.
@@ -39,6 +39,7 @@ Menu **Imports** (administrateurs). Données importables : **clients et prospect
 | Clients et prospects | code client (CLI-…), sinon réf. externe, sinon SIRET | même nom et même code postal |
 | Contrats | n° de contrat (CTN-…), sinon réf. externe | même client, même libellé, périodes qui se recouvrent |
 | Sites | code site (SIT-…), sinon réf. externe, sinon client + n° de site | même client et même adresse + code postal |
+| Prestations | réf. externe, sinon site + activité + date de début | — (recouvrement refusé, voir ci-dessous) |
 | Contacts | client + email, sinon client + nom | — |
 | Compteurs | code compteur (CPT-…), sinon réf. externe, sinon site + PDL/PCE | même site et même nom |
 | Relevés de compteurs | compteur + date et heure (heure de Paris ; sans heure : minuit) | — |
@@ -52,7 +53,7 @@ Clients, contrats, sites et compteurs ont une **réf. externe** (code dans l'anc
 Elle retrouve l'élément au réimport et **désigne le parent dans les autres fichiers** : le client d'un contrat ou
 d'un site (code CLI, SIRET ou réf. externe), le contrat d'un site (n° CTN ou réf. externe), le site d'un compteur
 (code SIT ou réf. externe), le compteur d'un relevé (code CPT ou réf. externe). Une reprise complète se fait donc
-sans connaître les codes Zenergya, dans l'ordre : **clients → contrats → sites → compteurs → relevés** (et contacts
+sans connaître les codes Zenergya, dans l'ordre : **clients → contrats → sites → compteurs → prestations → relevés** (et contacts
 après les clients). Chaque réimport met à jour, sans doublon.
 
 Le « Code client » d'une fiche (CLI-…) est l'identifiant Zenergya : il n'est plus modifiable à l'écran (l'ancien
@@ -81,7 +82,28 @@ activités, marché, échéancier, type de compteur (code ou libellé).
 - Activités : codes séparés par « ; » (renseignées, elles remplacent la liste). Engagement juridique Chorus : ajouté
   à la liste du contrat s'il est nouveau, valable sur la durée du contrat.
 - Changer les dates d'un contrat déjà facturé : avertissement (vérifier les périodes facturées).
-- Les prestations et montants par site (contrat × site × activité) feront l'objet d'un import distinct.
+
+### Prestations et montants facturés
+
+Une prestation = **site × activité** sur le contrat du site, avec un **montant annuel HT**, une période de validité,
+la TVA, la périodicité, et pour le P1 le compteur, le type P1 et l'énergie.
+
+- **Source unique de ce qui est facturé** : les montants du site (lus par la facturation) sont **calculés** à partir
+  des prestations **en vigueur** (actives, date du jour dans leur période) : somme par activité. Un site qui a des
+  prestations ne se saisit plus à la main (écrans Sites et Contrat : montants en lecture seule) ; un site sans
+  prestation garde ses montants saisis (transition).
+- Recalcul à chaque écriture d'une prestation (écran, import, API) et **chaque jour** (une prestation qui commence ou
+  se termine change les montants) : planifier `POST /api/sites/amounts` (voir `securite.md`).
+- Contrôles : site rattaché à un contrat ; activité **parmi celles du contrat** (sinon elle ne serait pas facturée) ;
+  pas de **recouvrement** entre deux prestations actives du même site et de la même activité (facturées deux fois) ;
+  compteur du même site, et seulement pour le P1 ; fin après le début ; périodicité et TVA connues. Avertissement si
+  la période sort de celle du contrat.
+- Changement de prix daté : terminer la prestation la veille et en créer une nouvelle à partir de la date d'effet ;
+  l'historique des prix est conservé.
+- Fin vide à la création : fin du contrat. Un site déplacé vers un contrat sans prestation n'a plus de montant (les
+  prestations de l'ancien contrat ne se facturent pas sur le nouveau).
+- **Bascule** (une fois, après le déploiement) : `npm run montants:prestations` affiche site par site l'écart entre
+  les montants saisis et ceux des prestations ; vérifier, puis `npm run montants:prestations -- --apply`.
 
 Relevés : dates `AAAA-MM-JJ` ou `JJ/MM/AAAA` (heure `HH:MM` facultative ; les dates des cellules Excel sont lues
 telles quelles), index positif ou nul. Refusés : date future, même compteur et même instant sur deux lignes, index
@@ -98,7 +120,7 @@ modèles Excel restent téléchargeables. Version corrigée :
 
 ## À venir
 
-Prestations et montants par site ; vérification en masse des SIRET importés dans le répertoire des entreprises.
+Facturation lue directement sur les prestations (TVA et périodicité par prestation) ; vérification en masse des SIRET importés dans le répertoire des entreprises.
 
 ## Vérifier les liens existants
 

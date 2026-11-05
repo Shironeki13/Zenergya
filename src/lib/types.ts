@@ -235,7 +235,10 @@ export type Site = {
     postalCode?: string;
     city?: string;
     activityIds?: string[];
-    amounts?: { activityId: string; amount: number }[]; // Montants à facturer par activité
+    amounts?: { activityId: string; amount: number }[]; // Montants annuels HT facturés par activité
+    /** 'services' : montants calculés à partir des prestations en vigueur (non saisis) ; absent : saisis à la main. */
+    amountsSource?: 'services';
+    amountsComputedAt?: string;
 
     // --- Billing & Revision (moved from Contract) ---
     billingSchedule?: string; // Périodicité de facturation
@@ -953,6 +956,7 @@ export type Service = {
     endDate: string; // ISO String
 
     // Identification
+    externalRef?: string; // Réf. externe : code de la prestation dans un autre système
     code?: string; // code_prestation
     label?: string; // libelle
 

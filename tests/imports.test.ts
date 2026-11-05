@@ -117,3 +117,28 @@ test('correction d\'un contrat : sites existants mis à jour en place, nouveaux 
     assert.deepEqual(plan.create, [{ name: 'Nouveau' }, { name: 'X' }, { name: 'B bis' }]);
     assert.deepEqual(plan.remove, ['s1', 's3']);
 });
+
+test('montants du site calculés à partir des prestations en vigueur', async () => {
+    const { computeSiteAmounts, inForce, periodsOverlap, toDay } = await import('../src/lib/services/site-amounts');
+    const site = { id: 's', contractId: 'c' };
+    const svc = (activityId: string, price: number, startDate: string, endDate = '', extra = {}) => ({ siteId: 's', contractId: 'c', activityId, price, startDate, endDate, ...extra });
+    const services = [
+        svc('P2', 4000, '2025-07-01', '2026-06-30'),
+        svc('P2', 4200.105, '2026-07-01'),
+        svc('P1', 1000, '2025-07-01', '2030-06-30'),
+        svc('P1', 10.2, '2025-07-01', '', { isActive: false }),
+        svc('P3', 999, '2027-01-01'),
+        { ...svc('P2', 7777, '2020-01-01'), contractId: 'ancien' },
+    ];
+    assert.deepEqual(computeSiteAmounts(site, services, '2026-11-04'), {
+        amounts: [{ activityId: 'P1', amount: 1000 }, { activityId: 'P2', amount: 4200.11 }], activityIds: ['P1', 'P2'], amountsSource: 'services',
+    });
+    assert.deepEqual(computeSiteAmounts(site, services, '2026-06-30')!.amounts.find(a => a.activityId === 'P2'), { activityId: 'P2', amount: 4000 });
+    assert.equal(computeSiteAmounts({ id: 's', contractId: 'autre' }, services, '2026-11-04'), null, 'jamais piloté : montants saisis conservés');
+    assert.deepEqual(computeSiteAmounts({ id: 's', contractId: 'autre', amountsSource: 'services' }, services, '2026-11-04')!.amounts, [], 'nouveau contrat sans prestation');
+    assert.ok(inForce(svc('X', 1, '2026-11-04', '2026-11-04'), '2026-11-04'));
+    assert.ok(!periodsOverlap({ startDate: '2025-07-01', endDate: '2026-06-30' }, { startDate: '2026-07-01' }));
+    assert.ok(periodsOverlap({ startDate: '2025-07-01' }, { startDate: '2030-01-01', endDate: '2030-02-01' }));
+    assert.equal(toDay('2025-06-30T22:00:00.000Z'), '2025-07-01');
+    assert.equal(toDay(new Date('2025-12-31T23:30:00Z')), '2026-01-01');
+});

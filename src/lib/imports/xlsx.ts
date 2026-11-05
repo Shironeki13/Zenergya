@@ -31,7 +31,7 @@ export class UnsafeXlsxError extends Error {
 
 const LIST_TITLES: Record<RefList, string> = {
     companies: 'Sociétés (code)', agencies: 'Agences', sectors: 'Secteurs', typologies: 'Typologies', meterTypes: 'Types de compteur (code)',
-    activities: 'Activités (code)', markets: 'Marchés (code)', schedules: 'Échéanciers',
+    activities: 'Activités (code)', markets: 'Marchés (code)', schedules: 'Échéanciers', terms: 'Périodicités', vatRates: 'TVA (code)',
 };
 
 /** Modèle XLSX : onglets « Données » (en-têtes + exemple), « Notice » et « Listes » (valeurs du paramétrage). */
