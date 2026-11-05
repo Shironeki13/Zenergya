@@ -8,8 +8,10 @@ import { scheduleOf, termeOf } from '@/lib/billing/contract-billing';
 import { parseAnchor } from '@/lib/billing/revision';
 import { periodsOverlap, toDay } from '@/lib/services/site-amounts';
 import { recomputeSiteAmounts } from '@/services/site-amounts-admin';
-import { P1_DOC_ID, P1_PARAMS, validateParam, type NewVersion, type P1ContractDoc, type P1MeterDoc, type P1Scope, type P1SiteDoc } from '@/lib/p1/stockage';
-import { addP1Poste, addP1Version, type P1Target } from '@/services/p1-admin';
+import { ENERGIES, P1_DOC_ID, paramDef, validateParam, type NewVersion, type P1ContractDoc, type P1MeterDoc, type P1Scope, type P1SiteDoc } from '@/lib/p1/stockage';
+import { addP1Formule, addP1FormuleVersion, addP1Poste, addP1Version, loadSeries, type P1Target } from '@/services/p1-admin';
+import { parseTermes, validateFormule, type FormuleVersion, type PerimetreFormule } from '@/lib/p1/formules';
+import type { Energie } from '@/lib/p1/parametrage';
 import type {
     Activity, Agency, ChorusFramework, Client, Company, Contact, Contract, ContractChorusSettings, Market, Meter, MeterReading,
     Index, MeterType, PaymentTerm, RevisionRule, Schedule, Sector, Service, ServiceInitialIndexValue, Site, Term, Typology, VatRate,
@@ -82,6 +84,8 @@ type Context = {
     /** Paramétrage P1 (imports P1) : documents par identifiant, codes des stations météo. */
     p1Docs: Map<string, P1SiteDoc | P1MeterDoc | P1ContractDoc>;
     stationCodes: string[];
+    /** Codes des indices connus (formules P1). */
+    indexCodes: string[];
     /** Relevés repris dans un intéressement ou une régularisation (index figé). */
     lockedReadings: Map<string, string>;
 };
@@ -117,8 +121,8 @@ async function loadContext(entity: ImportEntityKey): Promise<Context> {
         need(['services']) ? all<RevisionRule>('revisionRules') : empty,
         need(['services']) ? all<Index>('indices') : empty,
         need(['clients', 'contracts', 'sites', 'contacts']) ? all<Client>('clients') : empty,
-        need(['contracts', 'sites', 'services', 'readings', 'p1']) ? all<Contract>('contracts') : empty,
-        need(['sites', 'services', 'meters', 'readings', 'p1']) ? all<Site>('sites') : empty,
+        need(['contracts', 'sites', 'services', 'readings', 'p1', 'p1formules']) ? all<Contract>('contracts') : empty,
+        need(['sites', 'services', 'meters', 'readings', 'p1', 'p1formules']) ? all<Site>('sites') : empty,
         need(['contacts']) ? all<Contact>('contacts') : empty,
         need(['meters', 'services', 'readings', 'p1']) ? all<Meter>('meters') : empty,
         need(['contracts']) ? adminDb.collection('invoices').select('contractId').get().then(s => s.docs.map(d => String(d.get('contractId') ?? ''))) : empty,
@@ -126,7 +130,8 @@ async function loadContext(entity: ImportEntityKey): Promise<Context> {
     return {
         companies, agencies, sectors, typologies, meterTypes, activities, markets, schedules, terms, vatRates, services, paymentTerms, revisionRules, indices, clients, contracts, sites, contacts, meters,
         invoicedContracts: new Set(invoices as string[]), readings: new Map(), lockedReadings: new Map(),
-        p1Docs: entity === 'p1' ? new Map((await adminDb.collection('p1Parametrage').get()).docs.map(d => [d.id, d.data() as P1SiteDoc])) : new Map(),
+        indexCodes: entity === 'p1formules' ? (await loadSeries()).codes : [],
+        p1Docs: entity === 'p1' || entity === 'p1formules' ? new Map((await adminDb.collection('p1Parametrage').get()).docs.map(d => [d.id, d.data() as P1SiteDoc])) : new Map(),
         stationCodes: entity === 'p1' ? (await adminDb.collection('weatherStations').select('code').get()).docs.map(d => String(d.get('code') ?? '')) : [],
     } as Context;
 }
@@ -870,7 +875,7 @@ function planP1(ctx: Context, row: ParsedRow, seen: Map<string, number>): PlanIt
     if (seen.has(dupKey)) { item.messages.push(`Même paramètre et même date d'effet que la ligne ${seen.get(dupKey)}.`); return item; }
     seen.set(dupKey, row.line);
 
-    item.label = `${elementLabel}${scope === 'poste' ? ` / ${v.poste}` : ''} — ${P1_PARAMS[scope][key].label} ${dateEffet ? `au ${dateEffet.split('-').reverse().join('/')}` : '(origine)'}`;
+    item.label = `${elementLabel}${scope === 'poste' ? ` / ${v.poste}` : ''} — ${paramDef(scope, key)!.label} ${dateEffet ? `au ${dateEffet.split('-').reverse().join('/')}` : '(origine)'}`;
     const active = versions.find(x => !x.retireLe && (x.dateEffet ?? null) === dateEffet);
     if (active) {
         if (sameValue(active.valeur, checked.value)) { Object.assign(item, { action: 'unchanged', targetId: docId }); return item; }
@@ -884,6 +889,79 @@ function planP1(ctx: Context, row: ParsedRow, seen: Map<string, number>): PlanIt
             target: { scope, id, ...(scope === 'poste' && { posteDesignation: String(v.poste).trim(), posteId: poste?.id }) }, key,
             version: { valeur: checked.value, dateEffet, motif: String(v.motif), document: v.document ? String(v.document) : null },
         },
+    });
+    return item;
+}
+
+/** « contrat », « énergies : gaz, fioul », « sites : SIT-1, SIT-2 » → périmètre ; message sinon. */
+function parsePerimetre(ctx: Context, text: string): PerimetreFormule | string {
+    const t = String(text).trim();
+    if (/^contrat$/i.test(t) || t === '') return { type: 'contrat' };
+    const m = /^(energies|énergies|sites)\s*:\s*(.+)$/i.exec(t);
+    if (!m) return `périmètre « ${t} » : « contrat », « énergies : gaz, fioul » ou « sites : SIT-00001, SIT-00002 ».`;
+    const items = m[2].split(',').map(x => x.trim()).filter(Boolean);
+    if (/^sites$/i.test(m[1])) {
+        const ids: string[] = [];
+        for (const code of items) { const site = findSite(ctx, code); if (!site) return `site ${code} introuvable.`; ids.push(site.id); }
+        return { type: 'sites', siteIds: ids };
+    }
+    const energies = items.map(e => norm(e).replace(/\s+/g, '_')) as Energie[];
+    const bad = energies.filter(e => !ENERGIES.includes(e));
+    return bad.length ? `énergie(s) inconnue(s) : ${bad.join(', ')} (${ENERGIES.join(', ')}).` : { type: 'energies', energies };
+}
+
+/** Formules P1 : une ligne = une version ; la formule est créée si besoin. */
+function planP1Formule(ctx: Context, row: ParsedRow, seen: Map<string, number>): PlanItem {
+    const v = row.values;
+    const item: PlanItem = { line: row.line, action: 'error', label: `${v.contrat ?? ''} — ${v.nom ?? ''}`, messages: [...row.errors], warnings: [] };
+    const contract = v.contrat ? findContract(ctx, v.contrat) : undefined;
+    if (!v.contrat) item.messages.push('Contrat obligatoire.');
+    else if (!contract) item.messages.push(`Contrat ${v.contrat} introuvable (n° CTN-… ou réf. externe).`);
+    for (const [k, label] of [['nom', 'Formule'], ['motif', 'Motif'], ['termes', 'Termes'], ['forme', 'Forme'], ['periodicite', 'Périodicité']] as const) {
+        if (v[k] === null || v[k] === undefined) { if (!row.errors.some(e => e.startsWith(label))) item.messages.push(`${label} obligatoire.`); }
+    }
+    if (item.messages.length || !contract) return item;
+    const termes = parseTermes(String(v.termes));
+    if (typeof termes === 'string') { item.messages.push(`Termes : ${termes}`); return item; }
+    // Mois M0 : AAAA-MM, une date (Excel : « 2025-01-01 00:00 ») ou MM/AAAA.
+    const m0Text = v.dateM0 ? String(v.dateM0).trim() : '';
+    const m0Fr = /^(\d{1,2})\/(\d{4})$/.exec(m0Text);
+    const dateM0 = !m0Text ? null : m0Fr ? `${m0Fr[2]}-${m0Fr[1].padStart(2, '0')}` : /^\d{4}-\d{2}/.test(m0Text) ? m0Text.slice(0, 7) : m0Text;
+    if (dateM0 && !/^\d{4}-\d{2}$/.test(dateM0)) { item.messages.push('Mois M0 : AAAA-MM.'); return item; }
+    const version: FormuleVersion = {
+        forme: v.forme as 'A' | 'B', mode: (v.mode as FormuleVersion['mode']) ?? 'standard', baseEnergetique: (v.baseEnergetique as 'PCS' | 'PCI') ?? 'PCS',
+        unitePrix: (v.unitePrix as FormuleVersion['unitePrix']) ?? 'EUR/MWh', dateM0, m0Manquante: v.m0Manquante ? String(v.m0Manquante) : null,
+        regimeKmol: (v.regimeKmol as 'variable' | 'fixe') ?? 'variable', prixMoleculeNegocie: typeof v.prixMolecule === 'number' ? v.prixMolecule : null,
+        prixFixe: v.prixFixe === true, periodicite: v.periodicite as FormuleVersion['periodicite'], termes,
+    };
+    const check = validateFormule(version, ctx.indexCodes);
+    item.messages.push(...check.errors);
+    item.warnings.push(...check.warnings);
+    const doc = ctx.p1Docs.get(P1_DOC_ID.contract(contract.id)) as P1ContractDoc | undefined;
+    const formule = Object.values(doc?.formules ?? {}).find(f => !f.retireLe && norm(f.nom) === norm(v.nom));
+    let creation: { usage: 'chauffage' | 'ecs'; perimetre: PerimetreFormule } | undefined;
+    if (!formule) {
+        if (!v.usage) item.messages.push('Usage obligatoire pour créer la formule.');
+        const perimetre = parsePerimetre(ctx, String(v.perimetre ?? ''));
+        if (typeof perimetre === 'string') item.messages.push(`Périmètre : ${perimetre}`);
+        else if (v.usage) creation = { usage: v.usage as 'chauffage' | 'ecs', perimetre };
+        item.warnings.push(`Formule « ${v.nom} » créée.`);
+    }
+    const dateEffet = v.dateEffet ? isoDay(Date.parse(String(v.dateEffet))) : null;
+    const dupKey = `${contract.id}|${norm(v.nom)}|${dateEffet ?? ''}`;
+    if (seen.has(dupKey)) item.messages.push(`Même formule et même date d'effet que la ligne ${seen.get(dupKey)}.`);
+    else seen.set(dupKey, row.line);
+    if (item.messages.length) return item;
+    item.label = `${contract.contractNumber ?? contract.id} — ${v.nom} ${dateEffet ? `au ${dateEffet.split('-').reverse().join('/')}` : '(origine)'}`;
+    const active = formule?.versions.find(x => !x.retireLe && (x.dateEffet ?? null) === dateEffet);
+    if (active) {
+        if (sameValue(active.valeur, version)) { Object.assign(item, { action: 'unchanged', targetId: formule!.id }); return item; }
+        item.messages.push('Une autre version de cette formule est déjà en vigueur à cette date : retirez-la à l\'écran (avec son motif) pour la remplacer.');
+        return item;
+    }
+    Object.assign(item, {
+        action: 'create',
+        data: { contractId: contract.id, formuleId: formule?.id, nom: String(v.nom).trim(), creation, version, meta: { dateEffet, motif: String(v.motif), document: v.document ? String(v.document) : null } },
     });
     return item;
 }
@@ -915,6 +993,7 @@ export async function planImport(entity: ImportEntityKey, table: unknown[][]): P
             case 'meters': return planMeter(ctx, row, seen);
             case 'readings': return planReading(ctx, row, seen, pending);
             case 'p1': return planP1(ctx, row, seen);
+            case 'p1formules': return planP1Formule(ctx, row, seen);
         }
     });
     for (const i of items) counts[i.action]++;
@@ -930,7 +1009,7 @@ const CODES: Partial<Record<ImportEntityKey, { counter: string; prefix: string; 
     meters: { counter: 'meter', prefix: 'CPT', field: 'code', collection: 'meters' },
 };
 const COLLECTIONS: Record<ImportEntityKey, string> = {
-    clients: 'clients', contracts: 'contracts', sites: 'sites', services: 'services', contacts: 'contacts', meters: 'meters', readings: 'meterReadings', p1: 'p1Parametrage',
+    clients: 'clients', contracts: 'contracts', sites: 'sites', services: 'services', contacts: 'contacts', meters: 'meters', readings: 'meterReadings', p1: 'p1Parametrage', p1formules: 'p1Parametrage',
 };
 
 /** Réserve `n` numéros au-delà du compteur et du plus grand code existant (pas de doublon possible). */
@@ -999,6 +1078,7 @@ export async function applyImport(entity: ImportEntityKey, table: unknown[][], m
     const plan = await planImport(entity, table);
     if (plan.fileErrors.length) throw new Error(plan.fileErrors.join(' '));
     if (entity === 'p1') return applyP1(plan, meta);
+    if (entity === 'p1formules') return applyP1Formules(plan, meta);
     const creates = plan.items.filter(i => i.action === 'create');
     const updates = plan.items.filter(i => i.action === 'update');
     const codes = await reserveCodes(entity, creates.length);
@@ -1102,4 +1182,34 @@ async function applyP1(plan: ImportPlan, meta: { fileName?: string; by?: string;
         created, updated: 0, unchanged: plan.counts.unchanged, rejected: errors.length, errors: errors.slice(0, 200),
     });
     return { importId: log.id, created, updated: 0, unchanged: plan.counts.unchanged, errors, results };
+}
+
+/** Écriture d'un import de formules P1 : formules créées au besoin, versions ajoutées une à une. */
+async function applyP1Formules(plan: ImportPlan, meta: { fileName?: string; by?: string; source?: 'file' | 'api' }): Promise<ImportReport> {
+    const by = meta.by ?? 'import';
+    const results: ImportReport['results'] = [];
+    const errors = plan.items.filter(i => i.action === 'error').map(i => ({ line: i.line, messages: i.messages }));
+    const created = new Map<string, string>();
+    let count = 0;
+    for (const item of plan.items.filter(i => i.action === 'create')) {
+        const d = item.data as { contractId: string; formuleId?: string; nom: string; creation?: { usage: 'chauffage' | 'ecs'; perimetre: PerimetreFormule }; version: FormuleVersion; meta: { dateEffet: string | null; motif: string; document: string | null } };
+        try {
+            const key = `${d.contractId}|${norm(d.nom)}`;
+            const formuleId = d.formuleId ?? created.get(key) ?? await addP1Formule(d.contractId, { nom: d.nom, ...d.creation! }, by);
+            created.set(key, formuleId);
+            await addP1FormuleVersion(d.contractId, formuleId, d.version, d.meta, by);
+            results.push({ line: item.line, action: 'create', id: formuleId, ...(item.warnings.length && { warnings: item.warnings }) });
+            count++;
+        } catch (e) {
+            errors.push({ line: item.line, messages: [(e as Error).message] });
+        }
+    }
+    for (const item of plan.items.filter(i => i.action === 'unchanged')) results.push({ line: item.line, action: 'unchanged', id: item.targetId! });
+    results.sort((a, b) => a.line - b.line);
+    errors.sort((a, b) => a.line - b.line);
+    const log = await adminDb.collection('imports').add({
+        entity: 'p1formules', fileName: meta.fileName ?? '', at: new Date().toISOString(), by, source: meta.source ?? 'file',
+        created: count, updated: 0, unchanged: plan.counts.unchanged, rejected: errors.length, errors: errors.slice(0, 200),
+    });
+    return { importId: log.id, created: count, updated: 0, unchanged: plan.counts.unchanged, errors, results };
 }

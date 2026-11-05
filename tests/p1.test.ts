@@ -68,30 +68,30 @@ const contract = (params: Record<string, unknown>): P1ContractDoc => ({
 
 test('reste à faire : selon le type de marché ; QE et qECS des compteurs de la formule ; calculable', () => {
     const date = '2026-01-15';
-    assert.deepEqual(resteAFaire({ site: null, meters: [], contract: null, hasP1Revision: false, date }).manque, ['Type de marché']);
-    const pf = resteAFaire({ site: site({ typeMarche: 'PF' }), meters: [], contract: null, hasP1Revision: false, date });
+    assert.deepEqual(resteAFaire({ site: null, meters: [], contract: null, formuleChauffage: null, date }).manque, ['Type de marché']);
+    const pf = resteAFaire({ site: site({ typeMarche: 'PF' }), meters: [], contract: null, formuleChauffage: null, date });
     assert.deepEqual([pf.suivi, pf.calculable, pf.manque], [false, false, []]);
 
-    const mci = resteAFaire({ site: site({ typeMarche: 'MCI' }), meters: [{ code: 'CPT-1', unit: 'm3', doc: null }], contract: null, hasP1Revision: false, date });
-    assert.deepEqual(mci.manque, ['Période de référence', 'Prix de base chauffage', 'Formule de révision du prix (prestation P1)', 'Poste de consommation avec sa formule de NC', 'Station météo']);
-    assert.deepEqual(mci.aVenir, ['Barème de partage par tranches']);
+    const mci = resteAFaire({ site: site({ typeMarche: 'MCI' }), meters: [{ code: 'CPT-1', unit: 'm3', doc: null }], contract: null, formuleChauffage: null, date });
+    assert.deepEqual(mci.manque, ['Période de référence', 'Prix de base chauffage', 'Formule de révision P1 (chauffage) du contrat', 'Poste de consommation avec sa formule de NC', 'Station météo', 'Barème de partage MCI (contrat ou site)']);
+    assert.deepEqual(mci.aVenir, []);
 
     const complet = resteAFaire({
         site: site({ typeMarche: 'MCI', periodeReference: 'saison_de_chauffe', prixBase: 85, stationMeteo: 'LYON' },
             { Chaufferie: { formuleNc: [{ codeCompteur: 'CPT-1', signe: 1 }, { codeCompteur: 'CPT-2', signe: -1 }], cibleNb: 800, cibleNbUnite: 'MWh', djuReference: 2200 } }),
         meters: [{ code: 'CPT-1', unit: 'm3', doc: meter('CPT-1', { qe: 11.2 }) }, { code: 'CPT-2', unit: 'm3', doc: meter('CPT-2', { usage: 'ecs' }) }],
-        contract: null, hasP1Revision: true, date,
+        contract: null, formuleChauffage: { nom: 'F', errors: [], warnings: [] }, date,
     });
-    assert.deepEqual(complet.manque, ['Coefficient QE du compteur CPT-2', 'qECS du compteur CPT-2']);
+    assert.deepEqual(complet.manque, ['Coefficient QE du compteur CPT-2', 'qECS du compteur CPT-2', 'Barème de partage MCI (contrat ou site)']);
 
     const cp = resteAFaire({
         site: site({ typeMarche: 'CP', periodeReference: 'annee_civile' }, { Gaz: { formuleNc: [{ codeCompteur: 'CPT-1', signe: 1 }] } }),
-        meters: [{ code: 'CPT-1', unit: 'MWh', doc: null }], contract: contract({ regimeCp: 'coefficient' }), hasP1Revision: false, date,
+        meters: [{ code: 'CPT-1', unit: 'MWh', doc: null }], contract: contract({ regimeCp: 'coefficient' }), formuleChauffage: null, date,
     });
     assert.deepEqual(cp.manque, ['Coefficient de gestion (contrat)']);
     const revise = resteAFaire({
         site: site({ typeMarche: 'CP', periodeReference: 'annee_civile' }, { Gaz: { formuleNc: [{ codeCompteur: 'CPT-1', signe: 1 }] } }),
-        meters: [{ code: 'CPT-1', unit: 'MWh', doc: null }], contract: contract({ regimeCp: 'revise' }), hasP1Revision: true, date,
+        meters: [{ code: 'CPT-1', unit: 'MWh', doc: null }], contract: contract({ regimeCp: 'revise' }), formuleChauffage: { nom: 'F', errors: [], warnings: [] }, date,
     });
     assert.deepEqual([revise.manque, revise.calculable], [['Prix de base chauffage'], false]);
 });

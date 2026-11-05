@@ -230,7 +230,33 @@ Code : `src/lib/p1/stockage.ts` (versions, contrôles, reste à faire), `src/ser
 - **Reprise** : `npm run p1:reprise` (simulation), puis `-- --apply` : station, type de marché (s'il est dans la
   grille), poste « Chauffage » (compteur de la prestation, cible, DJU), QE (sauf 1, signalé à vérifier).
 
-Lots suivants : barème de partage par tranches, formules de révision P1 complètes (forme B, paniers, termes du gaz,
-périodicités DJU), qualification des achats, postes de facturation, prix de l'énergie PFI, P2 par exercice,
-périmètre d'intéressement ; puis export vers BigQuery (tables `p_*`) et relecture des résultats du moteur.
+## 7. Mis en œuvre : barèmes de partage et formules de révision P1
+
+Code : `src/lib/p1/bareme.ts`, `src/lib/p1/formules.ts` (calculs repris du moteur P1, `moteur/marche.py` et
+`moteur/revision.py`), écran « Paramétrage P1 » de la fiche site, imports « Paramétrage P1 » et « Formules de
+révision P1 ».
+
+- **Barème de partage** (paramètre daté `bareme:<marché>` du contrat, ou du site qui l'emporte) : tranches par sens
+  (économie, dépassement), bornes en % du N'B, part du client. Saisie : « économie 0-10 % 50 % ; économie 10-100 %
+  70 % ; dépassement 0-100 % 30 % ». Contrôle RG-53 (tranches contiguës depuis 0 %) ; un sens sans tranche : partage
+  nul, signalé.
+- **Partage et régularisation** (RG-53, RG-54) : écart = N'B − NC découpé par tranches ; sur un MTI seule la part du
+  client circule ; sur un MCI, CPI, PFI la part de l'exploitant est facturée (économie) ou rendue (dépassement).
+  L'écran d'intéressement applique le barème en vigueur (à défaut, l'ancien pourcentage unique, signalé).
+- **Formules de révision P1** (contrat) : nom, usage (chauffage, ECS), périmètre (contrat, énergies, sites : la plus
+  précise l'emporte), versions datées : forme A (Σ aᵢ Iᵢ/Iᵢ₀, pondérations à 100 %) ou B (Σ cᵢ Iᵢ / Σ cᵢ Iᵢ₀), mode,
+  base énergétique, unité, mois M0 (ou ce qui manque), régime de la molécule (prix négocié en fixe), prix fixe,
+  périodicité (mensuel, annuel_temps, annuel_dju, annuel_cloture), termes (indice, panier d'indices et de valeurs
+  fixes, valeur de base M0, base contractuelle, actif). Saisie des termes : `p0=0,15 ; Kmol=0,6*PEGMA@20 ;
+  CEE=0,1*(1*CL+0,5*PR)@5!`.
+- **Prix de base : celui du site** (décision du moteur du 27/10/2026) ; prix révisé = prix de base × coefficient.
+- **Indices** (RG-38, RG-40) : valeur du mois = dernière publiée jusqu'à ce mois ; reportée : prix provisoire, alerte
+  au-delà de 3 mois ; aucune : non calculable. **Contrôle à M0** (RG-41) : coefficient 1 au mois M0, sinon formule à
+  corriger (sauf base contractuelle : signalé).
+- **Reste à faire** : formule chauffage retenue pour le site et ses anomalies (dont M0), barème du marché.
+- **Aperçu** : prix révisés sur 12 mois (prix de base, coefficient, prix du mois, prix retenu selon la périodicité).
+
+Lots suivants : qualification des achats, postes de facturation, prix de l'énergie PFI, P2 par exercice, périmètre
+d'intéressement ; acomptes P1 ; puis export vers BigQuery (tables `p_*`) et relecture des résultats du moteur.
+
 

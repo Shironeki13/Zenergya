@@ -13,8 +13,9 @@ import { toast } from '@/hooks/use-toast';
 import { Separator } from '@/components/ui/separator';
 import { Calculator } from 'lucide-react';
 import { getP1SiteAction } from '@/lib/p1/actions';
-import { valeurAu } from '@/lib/p1/stockage';
-import type { TermeNc } from '@/lib/p1/parametrage';
+import { baremeAu, valeurAu } from '@/lib/p1/stockage';
+import type { TermeNc, TrancheBareme, TypeMarche } from '@/lib/p1/parametrage';
+import { formatBareme, partage, quantiteRegularisation } from '@/lib/p1/bareme';
 
 interface InterestDialogProps {
     open: boolean;
@@ -48,6 +49,8 @@ export function InterestDialog({ open, onOpenChange, service, existingInterest, 
     const [conversionCoefficient, setConversionCoefficient] = useState<number | null>(null);
     /** Origine des références : paramétrage P1 daté, ou ancienne saisie de la prestation. */
     const [referenceSource, setReferenceSource] = useState<'p1' | 'prestation' | null>(null);
+    /** Barème de partage en vigueur (paramétrage P1) et type de marché : partage par tranches comme le moteur P1. */
+    const [p1Bareme, setP1Bareme] = useState<{ typeMarche: TypeMarche; tranches: TrancheBareme[]; source: 'site' | 'contrat' } | null>(null);
 
     // Results
     const [ncMwh, setNcMwh] = useState(0);
@@ -160,6 +163,9 @@ export function InterestDialog({ open, onOpenChange, service, existingInterest, 
             setConversionCoefficient(qe ?? ((meter?.unit ?? '').toLowerCase() === 'mwh' ? 1 : null));
             const station = view ? valeurAu<string>(view.siteDoc?.params, 'stationMeteo', day) : null;
             if (station) setSelectedStation(station);
+            const typeMarche = view ? valeurAu<TypeMarche>(view.siteDoc?.params, 'typeMarche', day) : null;
+            const bareme = view && typeMarche ? baremeAu(view.siteDoc, view.contractDoc, typeMarche, day) : null;
+            setP1Bareme(typeMarche && bareme ? { typeMarche, ...bareme } : null);
         });
         return () => { cancelled = true; };
     }, [open, existingInterest, startDate, service]);
@@ -244,7 +250,11 @@ export function InterestDialog({ open, onOpenChange, service, existingInterest, 
             // Partage = Delta * (Percentage / 100)
 
             const delta = calcCorrectedNb - calculatedNc;
-            const share = delta * (sharingPercentage / 100);
+            // Barème P1 en vigueur : partage par tranches (RG-53) et quantité de régularisation selon le marché (RG-54),
+            // positive à facturer au client. Sans barème : ancien pourcentage unique de la prestation.
+            const share = p1Bareme && !existingInterest
+                ? quantiteRegularisation(p1Bareme.typeMarche, delta, partage(delta, calcCorrectedNb, p1Bareme.tranches).client)
+                : delta * (sharingPercentage / 100);
             setSharingQuantity(share);
 
             const amount = share * interestUnitPrice;
@@ -400,6 +410,9 @@ export function InterestDialog({ open, onOpenChange, service, existingInterest, 
                     <div className="space-y-4">
                         <div className="space-y-2 p-3 bg-muted rounded-md text-sm">
                             <h4 className="font-semibold mb-2">Paramètres Contractuels</h4>
+                            {!existingInterest && (p1Bareme
+                                ? <p className="text-xs">Barème {p1Bareme.typeMarche} ({p1Bareme.source}) : {formatBareme(p1Bareme.tranches)}</p>
+                                : <p className="text-xs text-amber-600">Pas de barème de partage dans le paramétrage P1 : pourcentage unique de la prestation.</p>)}
                             {referenceSource === 'prestation' && <p className="text-xs text-amber-600">Cible et DJU repris de l'ancienne saisie de la prestation : renseignez-les dans le paramétrage P1 du site.</p>}
                             {referenceSource === null && !existingInterest && <p className="text-xs text-destructive">Cible NB et DJU de référence non renseignés (paramétrage P1 du site).</p>}
                             <div className="grid grid-cols-2 gap-2">

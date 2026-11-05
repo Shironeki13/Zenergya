@@ -121,7 +121,16 @@ Une ligne = une version : élément (code SIT, CPT ou CTN, ou réf. externe), po
 créé s'il n'existe pas), paramètre (liste de la notice), valeur, date d'effet (vide : valeur d'origine), motif,
 pièce. Formule de NC : `CPT-00012 + CPT-00013 - CPT-00020` (compteurs du site). Une version identique déjà saisie
 est inchangée ; une autre valeur à la même date est refusée (la retirer à l'écran, avec son motif). Voir
-`parametrage-p1.md`.
+`parametrage-p1.md`. Barèmes : paramètre « Barème de partage MCI (contrat) » (ou site), valeur « économie 0-10 % 50 % ;
+dépassement 0-100 % 30 % ».
+
+### Formules de révision P1
+
+Une ligne = une version d'une formule d'un contrat : contrat, formule (nom), usage et périmètre (pour la créer),
+date d'effet, motif, forme (A ou B), périodicité, termes (`p0=0,15 ; Kmol=0,6*PEGMA@20 ; TVD=0,25*ATRD_T2@4`),
+mois M0 (AAAA-MM, MM/AAAA ou date) ou ce qui manque, unité, mode, base énergétique, régime et prix de la molécule,
+prix fixe. Une formule fausse (pondérations, indice inconnu, base M0 absente…) est refusée ; une version identique
+est inchangée ; une autre à la même date est refusée.
 
 ## Fichiers Excel
 

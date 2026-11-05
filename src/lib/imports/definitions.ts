@@ -1,4 +1,5 @@
-import { P1_PARAMS } from '@/lib/p1/stockage';
+import { MARCHES_BAREME, P1_PARAMS } from '@/lib/p1/stockage';
+import { PERIODICITES_REVISION, UNITES_PRIX } from '@/lib/p1/parametrage';
 
 /**
  * Imports en masse : description des données importables.
@@ -28,7 +29,7 @@ export type ImportField = {
     allowZero?: boolean;
 };
 
-export type ImportEntityKey = 'clients' | 'contracts' | 'sites' | 'services' | 'contacts' | 'meters' | 'readings' | 'p1';
+export type ImportEntityKey = 'clients' | 'contracts' | 'sites' | 'services' | 'contacts' | 'meters' | 'readings' | 'p1' | 'p1formules';
 
 export type ImportEntity = {
     key: ImportEntityKey;
@@ -47,7 +48,11 @@ const P1_PARAM_OPTIONS = Object.entries(P1_PARAMS)
         value: `${scope}.${key}`,
         label: `${d.label} (${({ site: 'site', poste: 'poste', meter: 'compteur', contract: 'contrat' } as Record<string, string>)[scope]})`,
         aliases: [key, `${scope}.${key}`],
-    })));
+    })))
+    .concat(MARCHES_BAREME.flatMap(m => [
+        { value: `contract.bareme:${m}`, label: `Barème de partage ${m} (contrat)`, aliases: [`bareme ${m} contrat`] },
+        { value: `site.bareme:${m}`, label: `Barème de partage ${m} (site)`, aliases: [`bareme ${m} site`] },
+    ]));
 
 /** Référence dans un autre système (ancienne codification, TWIMM…) : 2e clé de correspondance, après le code Zenergya. */
 const externalRef = (what: string): ImportField => ({
@@ -314,6 +319,36 @@ export const IMPORT_ENTITIES: Record<ImportEntityKey, ImportEntity> = {
             { key: 'dateEffet', label: 'Date d\'effet', type: 'date', help: 'Vide : valeur d\'origine du marché.' },
             { key: 'motif', label: 'Motif', type: 'text', required: 'create', example: 'contrat d\'origine' },
             { key: 'document', label: 'Pièce justificative', type: 'text', help: 'Lien (facultatif).' },
+        ],
+    },
+    p1formules: {
+        key: 'p1formules',
+        label: 'Formules de révision P1',
+        description: 'Une ligne = une version d\'une formule de révision P1 d\'un contrat (forme, termes, M0, périodicité). Le prix de base vient du site.',
+        matching: 'Contrat + nom de la formule : la formule est créée si elle n\'existe pas (usage et périmètre alors obligatoires) ; une version identique à la même date '
+            + 'd\'effet est inchangée, une autre est refusée (retirez la version à l\'écran pour la remplacer).',
+        fields: [
+            { key: 'contrat', label: 'Contrat', type: 'text', required: 'create', example: 'CTN-00034', help: 'N° de contrat (CTN-…) ou réf. externe.' },
+            { key: 'nom', label: 'Formule', type: 'text', required: 'create', example: 'Gaz 2025', aliases: ['nom'] },
+            {
+                key: 'usage', label: 'Usage', type: 'enum', example: 'Chauffage',
+                options: [{ value: 'chauffage', label: 'Chauffage' }, { value: 'ecs', label: 'ECS', aliases: ['eau chaude'] }], help: 'Pour créer la formule.',
+            },
+            { key: 'perimetre', label: 'Périmètre', type: 'text', example: 'contrat', help: '« contrat », « énergies : gaz, fioul » ou « sites : SIT-00001, SIT-00002 » (pour créer la formule).' },
+            { key: 'dateEffet', label: 'Date d\'effet', type: 'date', help: 'Vide : version d\'origine.' },
+            { key: 'motif', label: 'Motif', type: 'text', required: 'create', example: 'marché d\'origine' },
+            { key: 'forme', label: 'Forme', type: 'enum', required: 'create', example: 'A', options: [{ value: 'A', label: 'A', aliases: ['somme de rapports'] }, { value: 'B', label: 'B', aliases: ['rapport des sommes'] }] },
+            { key: 'periodicite', label: 'Périodicité de révision', type: 'enum', required: 'create', example: 'mensuel', options: PERIODICITES_REVISION.map(p => ({ value: p, label: p.replace(/_/g, ' ') })) },
+            { key: 'termes', label: 'Termes', type: 'text', required: 'create', example: 'p0=0,15 ; Kmol=0,60*PEGMA@25,30 ; TVD=0,25*ATRD_T2@3,10', help: 'code=coefficient*INDICE@base M0 ; « ! » base contractuelle ; « ~ » inactif ; panier *(1*IND1+0,8*#2,1).' },
+            { key: 'dateM0', label: 'Mois M0', type: 'text', example: '2025-01', help: 'AAAA-MM. Vide : renseigner « M0 manquante ».' },
+            { key: 'm0Manquante', label: 'M0 manquante', type: 'text', help: 'Ce qui manque quand M0 n\'est pas connue.' },
+            { key: 'unitePrix', label: 'Unité du prix', type: 'enum', example: 'EUR/MWh', options: UNITES_PRIX.map(u => ({ value: u, label: u })), help: 'Vide : EUR/MWh.' },
+            { key: 'mode', label: 'Mode', type: 'enum', options: [{ value: 'standard', label: 'standard' }, { value: 'derogatoire', label: 'dérogatoire', aliases: ['derogatoire'] }] },
+            { key: 'baseEnergetique', label: 'Base énergétique', type: 'enum', options: [{ value: 'PCS', label: 'PCS' }, { value: 'PCI', label: 'PCI' }] },
+            { key: 'regimeKmol', label: 'Régime de la molécule', type: 'enum', options: [{ value: 'variable', label: 'variable' }, { value: 'fixe', label: 'fixe' }] },
+            { key: 'prixMolecule', label: 'Prix molécule négocié', type: 'number', help: 'Régime fixe.' },
+            { key: 'prixFixe', label: 'Prix fixe', type: 'boolean', help: 'oui : prix non révisable.' },
+            { key: 'document', label: 'Pièce justificative', type: 'text' },
         ],
     },
 };
