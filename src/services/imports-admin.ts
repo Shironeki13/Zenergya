@@ -8,7 +8,7 @@ import { periodsOverlap, toDay } from '@/lib/services/site-amounts';
 import { recomputeSiteAmounts } from '@/services/site-amounts-admin';
 import type {
     Activity, Agency, ChorusFramework, Client, Company, Contact, Contract, ContractChorusSettings, Market, Meter, MeterReading,
-    MeterType, Schedule, Sector, Service, Site, Term, Typology, VatRate,
+    MeterType, PaymentTerm, Schedule, Sector, Service, Site, Term, Typology, VatRate,
 } from '@/lib/types';
 
 /**
@@ -68,7 +68,7 @@ async function all<T>(collection: string): Promise<Doc<T>[]> {
 type Context = {
     companies: Doc<Company>[]; agencies: Doc<Agency>[]; sectors: Doc<Sector>[]; typologies: Doc<Typology>[];
     meterTypes: Doc<MeterType>[]; activities: Doc<Activity>[]; markets: Doc<Market>[]; schedules: Doc<Schedule>[];
-    terms: Doc<Term>[]; vatRates: Doc<VatRate>[]; services: Doc<Service>[];
+    terms: Doc<Term>[]; vatRates: Doc<VatRate>[]; services: Doc<Service>[]; paymentTerms: Doc<PaymentTerm>[];
     clients: Doc<Client>[]; contracts: Doc<Contract>[]; sites: Doc<Site>[]; contacts: Doc<Contact>[]; meters: Doc<Meter>[];
     /** Contrats ayant au moins une facture. */
     invoicedContracts: Set<string>;
@@ -93,7 +93,7 @@ export const readingMillis = dateMillis;
 async function loadContext(entity: ImportEntityKey): Promise<Context> {
     const need = (e: ImportEntityKey[]) => e.includes(entity);
     const empty = Promise.resolve([]);
-    const [companies, agencies, sectors, typologies, meterTypes, activities, markets, schedules, terms, vatRates, services, clients, contracts, sites, contacts, meters, invoices] = await Promise.all([
+    const [companies, agencies, sectors, typologies, meterTypes, activities, markets, schedules, terms, vatRates, services, paymentTerms, clients, contracts, sites, contacts, meters, invoices] = await Promise.all([
         need(['clients', 'contracts']) ? all<Company>('companies') : empty,
         need(['clients']) ? all<Agency>('agencies') : empty,
         need(['clients']) ? all<Sector>('sectors') : empty,
@@ -105,6 +105,7 @@ async function loadContext(entity: ImportEntityKey): Promise<Context> {
         need(['services']) ? all<Term>('terms') : empty,
         need(['services']) ? all<VatRate>('vatRates') : empty,
         need(['services']) ? all<Service>('services') : empty,
+        need(['clients', 'contracts']) ? all<PaymentTerm>('paymentTerms') : empty,
         need(['clients', 'contracts', 'sites', 'contacts']) ? all<Client>('clients') : empty,
         need(['contracts', 'sites', 'services', 'readings']) ? all<Contract>('contracts') : empty,
         need(['sites', 'services', 'meters', 'readings']) ? all<Site>('sites') : empty,
@@ -113,7 +114,7 @@ async function loadContext(entity: ImportEntityKey): Promise<Context> {
         need(['contracts']) ? adminDb.collection('invoices').select('contractId').get().then(s => s.docs.map(d => String(d.get('contractId') ?? ''))) : empty,
     ]);
     return {
-        companies, agencies, sectors, typologies, meterTypes, activities, markets, schedules, terms, vatRates, services, clients, contracts, sites, contacts, meters,
+        companies, agencies, sectors, typologies, meterTypes, activities, markets, schedules, terms, vatRates, services, paymentTerms, clients, contracts, sites, contacts, meters,
         invoicedContracts: new Set(invoices as string[]), readings: new Map(), lockedReadings: new Map(),
     } as Context;
 }
@@ -211,6 +212,14 @@ const isoDay = (ms: number) => new Date(ms).toLocaleDateString('en-CA', { timeZo
 /** Contrat en cours : ni résilié ni terminé, et pas encore échu. */
 const contractRunning = (c: Contract) => !['Résilié', 'Terminé'].includes(c.status) && !(dateMillis(c.endDate) < Date.now() - DAY);
 
+/** Conditions de paiement désignées par leur code (ou leur libellé). */
+function paymentTermOf(ctx: Context, v: Record<string, CellValue>, data: Record<string, unknown>, item: PlanItem) {
+    if (!v.paymentTerm) return;
+    const term = ctx.paymentTerms.find(t => norm(t.code) === norm(v.paymentTerm) || norm(t.deadline) === norm(v.paymentTerm));
+    if (!term) item.messages.push(`Conditions de paiement « ${v.paymentTerm} » inconnues.`);
+    else data.paymentTermId = term.id;
+}
+
 // --- Plans par type de données ---
 
 function planClient(ctx: Context, row: ParsedRow, seen: Map<string, number>): PlanItem {
@@ -264,6 +273,7 @@ function planClient(ctx: Context, row: ParsedRow, seen: Map<string, number>): Pl
         if (!sectorId) item.messages.push(`Secteur « ${v.sector} » inconnu pour cette agence.`);
         else data.sectorId = sectorId;
     }
+    paymentTermOf(ctx, v, data, item);
     if (v.typology) {
         const typologyId = ctx.typologies.find(t => norm(t.name) === norm(v.typology))?.id;
         if (!typologyId) item.messages.push(`Typologie « ${v.typology} » inconnue.`);
@@ -344,6 +354,7 @@ function planContract(ctx: Context, row: ParsedRow, seen: Map<string, number>): 
         }
         data.activityIds = ids;
     }
+    paymentTermOf(ctx, v, data, item);
     if (v.billingSchedule) {
         const schedule = ctx.schedules.find(s => norm(s.name) === norm(v.billingSchedule));
         if (!schedule) item.messages.push(`Échéancier « ${v.billingSchedule} » inconnu.`);

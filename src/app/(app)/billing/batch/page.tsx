@@ -9,7 +9,10 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Loader2, CalendarIcon } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useData } from '@/context/data-context';
-import type { Contract, Invoice } from '@/lib/types';
+import { contractInvoiceLines, frDay, nextBillingPeriod, vatTotals, type BillingPeriod } from '@/lib/billing/contract-billing';
+import { toDay } from '@/lib/services/site-amounts';
+
+const eur = (n: number) => n.toLocaleString('fr-FR', { style: 'currency', currency: 'EUR' });
 import { generateInvoice } from '@/ai/flows/generate-invoice-flow';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
@@ -21,106 +24,63 @@ import { cn } from '@/lib/utils';
 type BillableItem = {
     id: string;
     contractId: string;
+    contractNumber: string;
     clientName: string;
-    periodStartDate: Date;
-    periodEndDate: Date;
+    periodStart: string;
+    periodEnd: string;
     billingSchedule: string;
-    amount: number;
+    subtotal: number;
+    tax: number;
+    /** Facture impossible (TVA manquante, échéancier inconnu…) : ligne non sélectionnable. */
+    error?: string;
 };
 
 export default function BatchBillingPage() {
-    const { contracts, invoices, sites, activities, isLoading } = useData();
+    const { contracts, invoices, sites, services, activities, vatRates, isLoading } = useData();
     const { toast } = useToast();
     const [isGenerating, setIsGenerating] = useState(false);
     const [selectedItems, setSelectedItems] = useState<string[]>([]);
     const [dueDate, setDueDate] = useState<Date>(new Date());
 
+    // Même calcul que le serveur (lib/billing/contract-billing) : périodes, prorata au jour près, TVA par ligne.
     const billableItems = useMemo(() => {
         if (isLoading) return [];
-
+        const until = toDay(dueDate)!;
         const results: BillableItem[] = [];
-
-        const activeContracts = contracts.filter(c => c.status === 'Actif');
-        const invoicesByContract = invoices.reduce((acc, inv) => {
-            if (inv.status !== 'proforma') {
-                if (!acc[inv.contractId]) acc[inv.contractId] = [];
-                acc[inv.contractId].push(inv);
-            }
-            return acc;
-        }, {} as Record<string, Invoice[]>);
-
-        for (const contract of activeContracts) {
-            const contractInvoices = invoicesByContract[contract.id] || [];
-            contractInvoices.sort((a, b) => new Date(b.periodEndDate!).getTime() - new Date(a.periodEndDate!).getTime());
-
-            const lastInvoice = contractInvoices[0];
-            const contractStartDate = new Date(contract.startDate);
-            let nextBillingStartDate = lastInvoice ? new Date(lastInvoice.periodEndDate!) : contractStartDate;
-            if (lastInvoice) nextBillingStartDate.setDate(nextBillingStartDate.getDate() + 1);
-
-            while (nextBillingStartDate < dueDate && nextBillingStartDate < new Date(contract.endDate)) {
-                let billingFactor = 1;
-                let nextBillingEndDate = new Date(nextBillingStartDate);
-
-                switch (contract.billingSchedule) {
-                    case 'Mensuel':
-                        billingFactor = 1 / 12;
-                        nextBillingEndDate.setMonth(nextBillingEndDate.getMonth() + 1);
-                        nextBillingEndDate.setDate(nextBillingEndDate.getDate() - 1);
-                        break;
-                    case 'Trimestriel':
-                        billingFactor = 1 / 4;
-                        nextBillingEndDate.setMonth(nextBillingEndDate.getMonth() + 3);
-                        nextBillingEndDate.setDate(nextBillingEndDate.getDate() - 1);
-                        break;
-                    case 'Semestriel':
-                        billingFactor = 1 / 2;
-                        nextBillingEndDate.setMonth(nextBillingEndDate.getMonth() + 6);
-                        nextBillingEndDate.setDate(nextBillingEndDate.getDate() - 1);
-                        break;
-                    case 'Annuel': default:
-                        billingFactor = 1;
-                        nextBillingEndDate.setFullYear(nextBillingEndDate.getFullYear() + 1);
-                        nextBillingEndDate.setDate(nextBillingEndDate.getDate() - 1);
-                        break;
+        for (const contract of contracts.filter(c => c.status === 'Actif')) {
+            const base = { contractId: contract.id, contractNumber: contract.contractNumber ?? contract.id, clientName: contract.clientName };
+            let last = invoices
+                .filter(inv => inv.contractId === contract.id && inv.status !== 'cancelled' && !inv.cancelledByCreditNoteId && inv.periodEndDate)
+                .map(inv => toDay(inv.periodEndDate)!)
+                .sort()
+                .pop() ?? null;
+            for (let guard = 0; guard < 120; guard++) {
+                let period: BillingPeriod | null;
+                try {
+                    period = nextBillingPeriod(contract, last);
+                } catch (e) {
+                    results.push({ ...base, id: `${contract.id}-erreur`, periodStart: '', periodEnd: '', billingSchedule: contract.billingSchedule ?? '', subtotal: 0, tax: 0, error: (e as Error).message });
+                    break;
                 }
-
-                const contractEndDate = new Date(contract.endDate);
-                if (nextBillingEndDate > contractEndDate) {
-                    nextBillingEndDate = contractEndDate;
-                }
-
-                if (nextBillingStartDate > nextBillingEndDate) break;
-
-                const contractSites = sites.filter(s => contract.siteIds.includes(s.id));
-                let totalAmountForPeriod = 0;
-                for (const site of contractSites) {
-                    if (!site.amounts) continue;
-                    for (const amountInfo of site.amounts) {
-                        if (contract.activityIds.includes(amountInfo.activityId)) {
-                            totalAmountForPeriod += amountInfo.amount;
-                        }
-                    }
-                }
-
-                totalAmountForPeriod *= billingFactor;
-
+                if (!period || period.start > until) break;
+                const { lines, errors } = contractInvoiceLines({
+                    contract: { id: contract.id, siteIds: contract.siteIds ?? [], activityIds: contract.activityIds ?? [], invoicingType: contract.invoicingType },
+                    sites, services, activities, vatRates,
+                }, period);
+                const totals = vatTotals(lines);
                 results.push({
-                    id: `${contract.id}-${nextBillingStartDate.toISOString()}`,
-                    contractId: contract.id,
-                    clientName: contract.clientName,
-                    periodStartDate: new Date(nextBillingStartDate),
-                    periodEndDate: nextBillingEndDate,
-                    billingSchedule: contract.billingSchedule || 'Annuel',
-                    amount: totalAmountForPeriod,
+                    ...base, id: `${contract.id}-${period.start}`, periodStart: period.start, periodEnd: period.end, billingSchedule: period.label,
+                    subtotal: totals.subtotal, tax: totals.tax,
+                    ...(errors.length ? { error: errors.join(' ') } : lines.length === 0 ? { error: 'Aucune prestation facturable sur cette période.' } : {}),
                 });
-
-                nextBillingStartDate = new Date(nextBillingEndDate);
-                nextBillingStartDate.setDate(nextBillingStartDate.getDate() + 1);
+                // Une période en erreur bloque les suivantes (elles se facturent dans l'ordre).
+                if (errors.length) break;
+                last = period.end;
             }
         }
         return results;
-    }, [isLoading, contracts, invoices, sites, activities, dueDate]);
+    }, [isLoading, contracts, invoices, sites, services, activities, vatRates, dueDate]);
+    const selectable = billableItems.filter(item => !item.error);
 
     const handleSelect = (id: string, checked: boolean) => {
         if (checked) {
@@ -132,7 +92,7 @@ export default function BatchBillingPage() {
 
     const handleSelectAll = (checked: boolean) => {
         if (checked) {
-            setSelectedItems(billableItems.map(item => item.id));
+            setSelectedItems(selectable.map(item => item.id));
         } else {
             setSelectedItems([]);
         }
@@ -145,18 +105,26 @@ export default function BatchBillingPage() {
         }
         setIsGenerating(true);
 
-        const itemsToGenerate = billableItems.filter(item => selectedItems.includes(item.id));
-
-        const promises = itemsToGenerate.map(item => generateInvoice({
-            contractId: item.contractId,
-            invoiceDate: new Date().toISOString(),
-            isProforma: false,
-        }));
+        const itemsToGenerate = selectable.filter(item => selectedItems.includes(item.id));
+        const invoiceDate = toDay(new Date())!;
+        // Les périodes d'un même contrat se facturent l'une après l'autre, dans l'ordre (chacune vérifie qu'elle
+        // est bien la suivante) ; les contrats sont traités en parallèle.
+        const byContract = new Map<string, BillableItem[]>();
+        for (const item of itemsToGenerate) byContract.set(item.contractId, [...(byContract.get(item.contractId) ?? []), item]);
+        const promises = [...byContract.values()].map(async (items) => {
+            const outcomes: { success: boolean; error?: string }[] = [];
+            for (const item of items.sort((a, b) => a.periodStart.localeCompare(b.periodStart))) {
+                const r = await generateInvoice({ contractId: item.contractId, invoiceDate, isProforma: false, periodStartDate: item.periodStart });
+                outcomes.push(r.success ? r : { success: false, error: `${item.contractNumber} : ${r.error}` });
+                if (!r.success) break;
+            }
+            return outcomes;
+        });
 
         try {
-            const results = await Promise.allSettled(promises);
-            const successfulGenerations = results.filter(r => r.status === 'fulfilled' && r.value.success);
-            const failedGenerations = results.filter(r => r.status === 'rejected' || (r.status === 'fulfilled' && !r.value.success));
+            const results = (await Promise.all(promises)).flat();
+            const successfulGenerations = results.filter(r => r.success);
+            const failedGenerations = results.filter(r => !r.success);
 
             if (successfulGenerations.length > 0) {
                 toast({
@@ -166,10 +134,7 @@ export default function BatchBillingPage() {
             }
 
             if (failedGenerations.length > 0) {
-                const errorMessage = failedGenerations.map(r => {
-                    if (r.status === 'fulfilled') return r.value.error;
-                    return (r.reason as Error).message;
-                }).join(', ');
+                const errorMessage = failedGenerations.map(r => r.error).join(' ; ');
                 toast({
                     title: 'Échecs de génération',
                     description: `Erreurs pour ${failedGenerations.length} factures: ${errorMessage}`,
@@ -240,21 +205,22 @@ export default function BatchBillingPage() {
                         <TableRow>
                             <TableHead className="w-[50px]">
                                 <Checkbox
-                                    checked={selectedItems.length === billableItems.length && billableItems.length > 0}
+                                    checked={selectedItems.length === selectable.length && selectable.length > 0}
                                     onCheckedChange={handleSelectAll}
                                 />
                             </TableHead>
                             <TableHead>Client</TableHead>
-                            <TableHead>Contrat ID</TableHead>
+                            <TableHead>Contrat</TableHead>
                             <TableHead>Période</TableHead>
                             <TableHead>Échéancier</TableHead>
                             <TableHead className="text-right">Montant HT</TableHead>
+                            <TableHead className="text-right">TVA</TableHead>
                         </TableRow>
                     </TableHeader>
                     <TableBody>
                         {isLoading ? (
                             <TableRow>
-                                <TableCell colSpan={6} className="h-24 text-center">
+                                <TableCell colSpan={7} className="h-24 text-center">
                                     <Loader2 className="mx-auto h-8 w-8 animate-spin text-muted-foreground" />
                                 </TableCell>
                             </TableRow>
@@ -264,21 +230,25 @@ export default function BatchBillingPage() {
                                     <TableCell>
                                         <Checkbox
                                             checked={selectedItems.includes(item.id)}
+                                            disabled={!!item.error}
                                             onCheckedChange={(checked) => handleSelect(item.id, !!checked)}
                                         />
                                     </TableCell>
                                     <TableCell className="font-medium">{item.clientName}</TableCell>
-                                    <TableCell>{item.contractId}</TableCell>
-                                    <TableCell>
-                                        {item.periodStartDate.toLocaleDateString()} - {item.periodEndDate.toLocaleDateString()}
-                                    </TableCell>
-                                    <TableCell>{item.billingSchedule}</TableCell>
-                                    <TableCell className="text-right">{item.amount.toFixed(2)} €</TableCell>
+                                    <TableCell className="font-mono text-xs">{item.contractNumber}</TableCell>
+                                    {item.error ? (
+                                        <TableCell colSpan={4} className="text-sm text-destructive">{item.periodStart ? `${frDay(item.periodStart)} - ${frDay(item.periodEnd)} : ` : ''}{item.error}</TableCell>
+                                    ) : (<>
+                                        <TableCell>{frDay(item.periodStart)} - {frDay(item.periodEnd)}</TableCell>
+                                        <TableCell>{item.billingSchedule}</TableCell>
+                                        <TableCell className="text-right">{eur(item.subtotal)}</TableCell>
+                                        <TableCell className="text-right">{eur(item.tax)}</TableCell>
+                                    </>)}
                                 </TableRow>
                             ))
                         ) : (
                             <TableRow>
-                                <TableCell colSpan={6} className="text-center h-24">Aucune facture à émettre pour le moment.</TableCell>
+                                <TableCell colSpan={7} className="text-center h-24">Aucune facture à émettre pour le moment.</TableCell>
                             </TableRow>
                         )}
                     </TableBody>

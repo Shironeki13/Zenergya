@@ -56,7 +56,7 @@ test('import : prestations créées, fin par défaut = fin du contrat, montants 
     const p2 = services.find(s => s.startDate === current)!;
     assert.deepEqual([p2.contractId, p2.type, p2.endDate, p2.isActive, p2.price], ['sv-k1', 'P2', contractEnd, true, 4200.105]);
     assert.equal(services.find(s => s.activityId === 'sv-p1')!.meterId, 'sv-m1');
-    assert.equal(services.find(s => s.startDate === past.start)!.vatRateId, 'sv-v');
+    assert.equal(services.find(s => s.startDate === past.start && s.activityId === 'sv-p2')!.vatRateId, 'sv-v');
 
     const s1 = await site('sv-s1');
     assert.equal(s1.amountsSource, 'services');
