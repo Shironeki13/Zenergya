@@ -2,7 +2,11 @@
 
 import { requireUser } from '@/lib/auth/server';
 import type { NewVersion } from '@/lib/p1/stockage';
-import { addP1Poste, addP1Version, getP1Site, retireP1Poste, retireP1Version, type P1SiteView, type P1Target } from '@/services/p1-admin';
+import type { FormuleVersion, PerimetreFormule } from '@/lib/p1/formules';
+import {
+    addP1Formule, addP1FormuleVersion, addP1Poste, addP1Version, getP1Site, previewPrixP1, retireP1Formule, retireP1FormuleVersion,
+    retireP1Poste, retireP1Version, type P1SiteView, type P1Target, type PrixP1Preview,
+} from '@/services/p1-admin';
 
 /** Paramétrage P1 : lecture et écritures par version, au nom de l'utilisateur connecté (tracé sur chaque version). */
 
@@ -27,4 +31,24 @@ export async function addP1PosteAction(siteId: string, designation: string): Pro
 
 export async function retireP1PosteAction(siteId: string, posteId: string, motif: string): Promise<Result<null>> {
     try { const u = await requireUser(); await retireP1Poste(siteId, posteId, motif, u.email); return { success: true, data: null }; } catch (e) { return fail(e); }
+}
+
+export async function addP1FormuleAction(contractId: string, f: { nom: string; usage: 'chauffage' | 'ecs'; perimetre: PerimetreFormule }): Promise<Result<string>> {
+    try { const u = await requireUser(); return { success: true, data: await addP1Formule(contractId, f, u.email) }; } catch (e) { return fail(e); }
+}
+
+export async function addP1FormuleVersionAction(contractId: string, formuleId: string, version: FormuleVersion, meta: { dateEffet: string | null; motif: string; document?: string | null }): Promise<Result<null>> {
+    try { const u = await requireUser(); await addP1FormuleVersion(contractId, formuleId, version, meta, u.email); return { success: true, data: null }; } catch (e) { return fail(e); }
+}
+
+export async function retireP1FormuleVersionAction(contractId: string, formuleId: string, versionId: string, motif: string): Promise<Result<null>> {
+    try { const u = await requireUser(); await retireP1FormuleVersion(contractId, formuleId, versionId, motif, u.email); return { success: true, data: null }; } catch (e) { return fail(e); }
+}
+
+export async function retireP1FormuleAction(contractId: string, formuleId: string, motif: string): Promise<Result<null>> {
+    try { const u = await requireUser(); await retireP1Formule(contractId, formuleId, motif, u.email); return { success: true, data: null }; } catch (e) { return fail(e); }
+}
+
+export async function previewPrixP1Action(siteId: string, usage: 'chauffage' | 'ecs', debut: string): Promise<Result<PrixP1Preview>> {
+    try { await requireUser(); return { success: true, data: JSON.parse(JSON.stringify(await previewPrixP1(siteId, usage, debut))) }; } catch (e) { return fail(e); }
 }

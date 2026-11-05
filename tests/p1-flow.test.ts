@@ -33,9 +33,10 @@ test('service : versions datées, poste, retrait tracé, reste à faire selon le
     const view = await getP1Site('p1-s', '2026-06-01');
     assert.equal(view.reste.typeMarche, 'MCI');
     assert.deepEqual(view.reste.manque, [
-        'Période de référence', 'Prix de base chauffage', 'Formule de révision du prix (prestation P1)',
+        'Période de référence', 'Prix de base chauffage', 'Formule de révision P1 (chauffage) du contrat',
         'Coefficient QE du compteur CPT-04401', 'Coefficient QE du compteur CPT-04402', 'Station météo',
         'Cible NB du poste « Chaufferie gaz »', 'Unité de la cible du poste « Chaufferie gaz »', 'DJU de référence du poste « Chaufferie gaz »',
+        'Barème de partage MCI (contrat ou site)',
     ]);
     assert.equal((await getP1Site('p1-s', '2027-02-01')).reste.typeMarche, 'MTI');
 
@@ -81,8 +82,8 @@ test('import : une ligne = une version ; identique inchangée ; autre valeur à 
     assert.equal(doc.params.prixBase[0].saisiPar, 'import@v.fr');
 
     const view = await getP1Site('p1-s', '2026-06-01');
-    assert.deepEqual(view.reste.manque, ['Formule de révision du prix (prestation P1)', 'Coefficient QE du compteur CPT-04402', 'qECS du compteur CPT-04402', 'Cible NB du poste « Chaufferie bois »',
-        'Unité de la cible du poste « Chaufferie bois »', 'DJU de référence du poste « Chaufferie bois »']);
+    assert.deepEqual(view.reste.manque, ['Formule de révision P1 (chauffage) du contrat', 'Coefficient QE du compteur CPT-04402', 'qECS du compteur CPT-04402', 'Cible NB du poste « Chaufferie bois »',
+        'Unité de la cible du poste « Chaufferie bois »', 'DJU de référence du poste « Chaufferie bois »', 'Barème de partage MCI (contrat ou site)']);
     // Réimport : tout est inchangé.
     const again = await planImport('p1', table.slice(0, 11));
     assert.ok(again.items.every(i => i.action === 'unchanged'), JSON.stringify(again.items.map(i => [i.action, i.messages])));

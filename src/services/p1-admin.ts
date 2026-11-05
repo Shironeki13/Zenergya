@@ -2,9 +2,14 @@ import 'server-only';
 import { randomUUID } from 'crypto';
 import { adminDb } from '@/lib/firebase-admin';
 import {
-    P1_DOC_ID, addVersion, resteAFaire, retireVersion, validateParam,
-    type NewVersion, type P1ContractDoc, type P1MeterDoc, type P1Poste, type P1Scope, type P1SiteDoc, type P1Version, type ResteAFaire,
+    P1_DOC_ID, addVersion, formuleAu, resteAFaire, retireVersion, validateParam, valeurAu,
+    type NewVersion, type P1ContractDoc, type P1Formule, type P1MeterDoc, type P1Poste, type P1Scope, type P1SiteDoc, type P1Version, type ResteAFaire,
 } from '@/lib/p1/stockage';
+import {
+    controleM0, prixExercice, prixRevise, validateFormule, type FormuleVersion, type PerimetreFormule, type PrixMois, type SerieValues,
+} from '@/lib/p1/formules';
+import { ENERGIES } from '@/lib/p1/stockage';
+import type { Energie } from '@/lib/p1/parametrage';
 import { toDay } from '@/lib/services/site-amounts';
 
 /**
@@ -28,10 +33,9 @@ export async function getP1Site(siteId: string, date = toDay(new Date())!): Prom
     const siteSnap = await adminDb.collection('sites').doc(siteId).get();
     if (!siteSnap.exists) throw new Error('Site introuvable.');
     const site = siteSnap.data()!;
-    const [meterSnap, contractSnap, servicesSnap] = await Promise.all([
+    const [meterSnap, contractSnap] = await Promise.all([
         adminDb.collection('meters').where('siteId', '==', siteId).get(),
         site.contractId ? adminDb.collection('contracts').doc(site.contractId).get() : Promise.resolve(null),
-        adminDb.collection('services').where('siteId', '==', siteId).get(),
     ]);
     const meters = meterSnap.docs.map(d => ({ id: d.id, code: String(d.get('code') ?? d.id), name: String(d.get('name') ?? ''), unit: d.get('unit') as string | undefined }));
     const docIds = [P1_DOC_ID.site(siteId), ...meters.map(m => P1_DOC_ID.meter(m.id)), ...(site.contractId ? [P1_DOC_ID.contract(site.contractId)] : [])];
@@ -39,14 +43,160 @@ export async function getP1Site(siteId: string, date = toDay(new Date())!): Prom
     const siteDoc = (docs.get(P1_DOC_ID.site(siteId)) ?? null) as P1SiteDoc | null;
     const contractDoc = (site.contractId ? docs.get(P1_DOC_ID.contract(site.contractId)) ?? null : null) as P1ContractDoc | null;
     const meterViews = meters.map(m => ({ ...m, doc: (docs.get(P1_DOC_ID.meter(m.id)) ?? null) as P1MeterDoc | null }));
-    const hasP1Revision = servicesSnap.docs.some(d => d.get('type') === 'P1' && d.get('contractId') === site.contractId && d.get('isActive') !== false && !!d.get('revisionRuleId'));
+    // Formule de révision P1 retenue (la plus précise) et ses contrôles, dont le coefficient à M0 (RG-41).
+    const energies = siteEnergies(meterViews.map(m => m.doc), date);
+    const retenue = formuleAu(contractDoc, siteId, energies, 'chauffage', date);
+    let formuleChauffage: ResteInput['formuleChauffage'] = null;
+    if (retenue) {
+        const { codes, series } = await loadSeries();
+        const check = validateFormule(retenue.version, codes);
+        const m0 = check.errors.length ? {} : controleM0(retenue.version, series);
+        formuleChauffage = {
+            nom: retenue.formule.nom,
+            errors: [...check.errors, ...(m0.error ? [m0.error] : [])],
+            warnings: [...check.warnings, ...(m0.warning ? [m0.warning] : [])],
+        };
+    }
     return {
         site: { id: siteId, code: String(site.code ?? siteId), name: String(site.name ?? ''), contractId: site.contractId || undefined },
         siteDoc, meters: meterViews,
         contract: contractSnap?.exists ? { id: contractSnap.id, code: String(contractSnap.get('contractNumber') ?? contractSnap.id) } : null,
         contractDoc,
-        reste: resteAFaire({ site: siteDoc, meters: meterViews.map(m => ({ code: m.code, unit: m.unit, doc: m.doc })), contract: contractDoc, hasP1Revision, date }),
+        reste: resteAFaire({ site: siteDoc, meters: meterViews.map(m => ({ code: m.code, unit: m.unit, doc: m.doc })), contract: contractDoc, formuleChauffage, date }),
     };
+}
+
+type ResteInput = Parameters<typeof resteAFaire>[0];
+
+/** Énergies d'un site : celles de ses compteurs (paramétrage P1) à une date. */
+function siteEnergies(meterDocs: (P1MeterDoc | null)[], date: string): Energie[] {
+    return [...new Set(meterDocs.map(d => valeurAu<Energie>(d?.params, 'energie', date)).filter((e): e is Energie => !!e))];
+}
+
+/** Indices connus (codes) et leurs valeurs mensuelles, par code. */
+export async function loadSeries(): Promise<{ codes: string[]; series: SerieValues }> {
+    const [indices, values] = await Promise.all([adminDb.collection('indices').get(), adminDb.collection('indexValues').get()]);
+    const codeOf = new Map(indices.docs.map(d => [d.id, String(d.get('code') ?? '').toUpperCase()]));
+    const series: SerieValues = new Map();
+    for (const v of values.docs) {
+        const code = codeOf.get(String(v.get('indexId')));
+        if (!code) continue;
+        if (!series.has(code)) series.set(code, []);
+        series.get(code)!.push({ period: String(v.get('period')), value: Number(v.get('value')) });
+    }
+    return { codes: [...codeOf.values()].filter(Boolean), series };
+}
+
+// --- Formules de révision P1 (contrat) ---
+
+const contractRef = (contractId: string) => coll().doc(P1_DOC_ID.contract(contractId));
+
+async function contractDocInit(contractId: string): Promise<P1ContractDoc> {
+    const c = await adminDb.collection('contracts').doc(contractId).get();
+    if (!c.exists) throw new Error('Contrat introuvable.');
+    return { kind: 'contract', contractId, codeContrat: String(c.get('contractNumber') ?? contractId), params: {}, formules: {} };
+}
+
+function checkPerimetre(p: PerimetreFormule): void {
+    if (p.type === 'energies' && (!p.energies.length || p.energies.some(e => !ENERGIES.includes(e)))) throw new Error(`Périmètre : énergies parmi ${ENERGIES.join(', ')}.`);
+    if (p.type === 'sites' && !p.siteIds.length) throw new Error('Périmètre : au moins un site.');
+}
+
+/** Crée une formule (sans version) sur un contrat. */
+export async function addP1Formule(contractId: string, f: { nom: string; usage: 'chauffage' | 'ecs'; perimetre: PerimetreFormule }, by: string): Promise<string> {
+    if (!f.nom?.trim()) throw new Error('Nom de la formule obligatoire.');
+    if (!['chauffage', 'ecs'].includes(f.usage)) throw new Error('Usage : chauffage ou ECS.');
+    checkPerimetre(f.perimetre);
+    const init = await contractDocInit(contractId);
+    return adminDb.runTransaction(async (tx) => {
+        const snap = await tx.get(contractRef(contractId));
+        const doc = (snap.exists ? snap.data() : init) as P1ContractDoc;
+        doc.formules = doc.formules ?? {};
+        if (Object.values(doc.formules).some(x => !x.retireLe && x.nom.toLowerCase() === f.nom.trim().toLowerCase())) throw new Error(`Une formule « ${f.nom.trim()} » existe déjà sur ce contrat.`);
+        const id = randomUUID();
+        doc.formules[id] = { id, nom: f.nom.trim(), usage: f.usage, perimetre: f.perimetre, versions: [], saisiLe: new Date().toISOString(), saisiPar: by } as P1Formule;
+        tx.set(contractRef(contractId), doc);
+        return id;
+    });
+}
+
+/** Ajoute une version datée à une formule (contrôlée : une version fausse ne s'enregistre pas). */
+export async function addP1FormuleVersion(contractId: string, formuleId: string, version: FormuleVersion, meta: { dateEffet: string | null; motif: string; document?: string | null }, by: string): Promise<void> {
+    const { codes } = await loadSeries();
+    const check = validateFormule(version, codes);
+    if (check.errors.length) throw new Error(`Formule refusée : ${check.errors.join(' ')}`);
+    await adminDb.runTransaction(async (tx) => {
+        const snap = await tx.get(contractRef(contractId));
+        // Un seul exemplaire du document : snap.data() en rend un nouveau à chaque appel.
+        const doc = snap.data() as P1ContractDoc | undefined;
+        const f = doc?.formules?.[formuleId];
+        if (!doc || !f || f.retireLe) throw new Error('Formule introuvable.');
+        const next = addVersion(f.versions as P1Version<unknown>[], { valeur: version, ...meta }, by, new Date().toISOString(), randomUUID());
+        if ('error' in next) throw new Error(next.error);
+        f.versions = next as P1Version<FormuleVersion>[];
+        tx.set(contractRef(contractId), doc);
+    });
+}
+
+export async function retireP1FormuleVersion(contractId: string, formuleId: string, versionId: string, motif: string, by: string): Promise<void> {
+    await adminDb.runTransaction(async (tx) => {
+        const snap = await tx.get(contractRef(contractId));
+        const doc = snap.data() as P1ContractDoc | undefined;
+        const f = doc?.formules?.[formuleId];
+        if (!doc || !f) throw new Error('Formule introuvable.');
+        const next = retireVersion(f.versions as P1Version<unknown>[], versionId, motif, by, new Date().toISOString());
+        if ('error' in next) throw new Error(next.error);
+        f.versions = next as P1Version<FormuleVersion>[];
+        tx.set(contractRef(contractId), doc);
+    });
+}
+
+export async function retireP1Formule(contractId: string, formuleId: string, motif: string, by: string): Promise<void> {
+    if (!motif?.trim()) throw new Error('Motif du retrait obligatoire.');
+    await adminDb.runTransaction(async (tx) => {
+        const snap = await tx.get(contractRef(contractId));
+        const doc = snap.data() as P1ContractDoc | undefined;
+        const f = doc?.formules?.[formuleId];
+        if (!doc || !f || f.retireLe) throw new Error('Formule introuvable.');
+        Object.assign(f, { retireLe: new Date().toISOString(), retirePar: by, motifRetrait: motif.trim() });
+        tx.set(contractRef(contractId), doc);
+    });
+}
+
+export type PrixP1Preview = {
+    formule: string | null;
+    periodicite: string | null;
+    mois: { mois: string; prixBase: number | null; mensuel: PrixMois; retenu: PrixMois }[];
+};
+
+/** Prix révisés d'un site sur 12 mois à partir de `debut` (AAAA-MM) : prix mensuels et prix retenu selon la périodicité. */
+export async function previewPrixP1(siteId: string, usage: 'chauffage' | 'ecs', debut: string): Promise<PrixP1Preview> {
+    const view = await getP1Site(siteId, `${debut}-01`);
+    const mois = Array.from({ length: 12 }, (_, i) => { const t = new Date(Date.UTC(+debut.slice(0, 4), +debut.slice(5, 7) - 1 + i, 1)); return t.toISOString().slice(0, 7); });
+    const { series } = await loadSeries();
+    const energies = siteEnergies(view.meters.map(m => m.doc), `${debut}-01`);
+    const prixKey = usage === 'chauffage' ? 'prixBase' : 'prixBaseEcs';
+    const mensuels: Record<string, PrixMois> = {};
+    let periodicite: FormuleVersion['periodicite'] | null = null;
+    let nom: string | null = null;
+    const bases: Record<string, number | null> = {};
+    for (const m of mois) {
+        const jour = `${m}-01`;
+        const f = formuleAu(view.contractDoc, siteId, energies, usage, jour);
+        bases[m] = valeurAu<number>(view.siteDoc?.params, prixKey, jour);
+        if (!f) { mensuels[m] = { causes: [`aucune formule de révision ${usage === 'chauffage' ? 'chauffage' : 'ECS'} en vigueur`] }; continue; }
+        nom = nom ?? f.formule.nom;
+        periodicite = periodicite ?? f.version.periodicite;
+        mensuels[m] = prixRevise(f.version, bases[m], m, series);
+    }
+    let dju: Record<string, number> = {};
+    const station = valeurAu<string>(view.siteDoc?.params, 'stationMeteo', `${debut}-01`);
+    if (periodicite === 'annuel_dju' && station) {
+        const snap = await adminDb.collection('djuMonthly').where('stationCode', '==', station).get();
+        dju = Object.fromEntries(snap.docs.map(d => [String(d.get('period')), Number(d.get('value'))]));
+    }
+    const retenus = periodicite ? prixExercice(mensuels, mois, periodicite, dju) : mensuels;
+    return { formule: nom, periodicite, mois: mois.map(m => ({ mois: m, prixBase: bases[m], mensuel: mensuels[m], retenu: retenus[m] })) };
 }
 
 export type P1Target = { scope: P1Scope; id: string; posteId?: string };

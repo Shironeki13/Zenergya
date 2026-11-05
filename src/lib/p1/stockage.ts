@@ -1,7 +1,9 @@
 import {
     EXIGENCES_MARCHE, PERIODES_REFERENCE, REGIMES_CP, TYPES_MARCHE, enVigueur, exigePrixEtFormule,
-    type Energie, type IsoDate, type RegimeCp, type TermeNc, type Trace, type TypeMarche, type Version,
+    type Energie, type IsoDate, type RegimeCp, type TermeNc, type TrancheBareme, type Trace, type TypeMarche, type Version,
 } from '@/lib/p1/parametrage';
+import { parseBareme, validateBareme } from '@/lib/p1/bareme';
+import type { FormuleVersion, PerimetreFormule } from '@/lib/p1/formules';
 
 /**
  * Paramétrage P1 enregistré (collection `p1Parametrage`, écrite par le serveur seulement) : fondations.
@@ -19,7 +21,18 @@ export type P1Params = Record<string, P1Version<unknown>[]>;
 export type P1Poste = Trace & { id: string; designation: string; params: P1Params };
 export type P1SiteDoc = { kind: 'site'; siteId: string; codeSite: string; params: P1Params; postes: Record<string, P1Poste> };
 export type P1MeterDoc = { kind: 'meter'; meterId: string; codeCompteur: string; siteId: string; params: P1Params };
-export type P1ContractDoc = { kind: 'contract'; contractId: string; codeContrat: string; params: P1Params };
+export type P1Formule = Trace & {
+    id: string;
+    nom: string;
+    usage: 'chauffage' | 'ecs';
+    perimetre: PerimetreFormule;
+    versions: P1Version<FormuleVersion>[];
+};
+export type P1ContractDoc = { kind: 'contract'; contractId: string; codeContrat: string; params: P1Params; formules?: Record<string, P1Formule> };
+
+/** Marchés avec intéressement : un barème de partage chacun (paramètre « bareme:MCI »…). */
+export const MARCHES_BAREME = TYPES_MARCHE.filter(m => EXIGENCES_MARCHE[m].bareme);
+export const baremeKey = (marche: TypeMarche) => `bareme:${marche}`;
 export type P1Scope = 'site' | 'poste' | 'meter' | 'contract';
 
 export const P1_DOC_ID = { site: (id: string) => `site:${id}`, meter: (id: string) => `meter:${id}`, contract: (id: string) => `contract:${id}` };
@@ -33,7 +46,7 @@ export const REPARTITIONS = ['contrat', 'prorata_nb'] as const;
 
 export type InteressementMarche = { marche: TypeMarche; repartition: typeof REPARTITIONS[number]; plafondPct: number | null; plafonne: boolean };
 
-type Kind = 'enum' | 'positive' | 'nonNegative' | 'text' | 'station' | 'formule' | 'interessement';
+type Kind = 'enum' | 'positive' | 'nonNegative' | 'text' | 'station' | 'formule' | 'interessement' | 'bareme';
 export type ParamDef = { label: string; kind: Kind; options?: readonly string[]; unit?: string; help?: string };
 
 export const P1_PARAMS: Record<P1Scope, Record<string, ParamDef>> = {
@@ -76,9 +89,21 @@ export type ValidationContext = {
 
 const num = (v: unknown) => (typeof v === 'number' ? v : Number(String(v ?? '').replace(/\s/g, '').replace(',', '.')));
 
+/** Définition d'un paramètre, y compris les barèmes par marché (« bareme:MCI » sur le contrat ou le site). */
+export function paramDef(scope: P1Scope, key: string): ParamDef | undefined {
+    const m = /^bareme:([A-Z]+)$/.exec(key);
+    if (m && (scope === 'contract' || scope === 'site') && (MARCHES_BAREME as string[]).includes(m[1])) {
+        return {
+            label: `Barème de partage ${m[1]}${scope === 'site' ? ' (propre au site)' : ''}`, kind: 'bareme',
+            help: 'Tranches par sens (économie, dépassement) : bornes en % du N\'B, part du client. Ex. « économie 0-10 % 50 % ; économie 10-100 % 70 % ; dépassement 0-100 % 30 % ».',
+        };
+    }
+    return P1_PARAMS[scope][key];
+}
+
 /** Contrôle (et normalisation) d'une valeur ; texte accepté (imports). */
 export function validateParam(scope: P1Scope, key: string, raw: unknown, ctx: ValidationContext = {}): { value: unknown } | { error: string } {
-    const def = P1_PARAMS[scope][key];
+    const def = paramDef(scope, key);
     if (!def) return { error: `Paramètre « ${key} » inconnu.` };
     const empty = raw === null || raw === undefined || (typeof raw === 'string' && raw.trim() === '');
     if (empty) return { error: `${def.label} : valeur obligatoire (une valeur inconnue ne se saisit pas : elle reste vide).` };
@@ -109,6 +134,13 @@ export function validateParam(scope: P1Scope, key: string, raw: unknown, ctx: Va
             const unknown = ctx.siteMeterCodes ? codes.filter(c => !ctx.siteMeterCodes!.some(m => m.toUpperCase() === c)) : [];
             if (unknown.length) return { error: `${def.label} : compteur(s) absent(s) du site : ${unknown.join(', ')}.` };
             return { value: termes.map(t => ({ codeCompteur: t.codeCompteur.toUpperCase(), signe: t.signe })) };
+        }
+        case 'bareme': {
+            const tranches = typeof raw === 'string' ? parseBareme(raw) : (raw as TrancheBareme[]);
+            if (!Array.isArray(tranches)) return { error: `${def.label} : ${tranches}` };
+            const { errors } = validateBareme(tranches);
+            if (errors.length) return { error: `${def.label} : ${errors.join(' ; ')}.` };
+            return { value: tranches.map(t => ({ sens: t.sens, borneBasse: t.borneBasse, borneHaute: t.borneHaute, partClient: t.partClient })) };
         }
         case 'interessement': {
             const list = raw as InteressementMarche[];
@@ -187,6 +219,8 @@ export function valeurAu<T>(params: P1Params | undefined, key: string, date: Iso
 
 export type ResteAFaire = {
     typeMarche: TypeMarche | null;
+    /** Signalements non bloquants (barème sans tranche pour un sens : partage nul ; contrôle M0 contractuel…). */
+    alertes: string[];
     /** Le site est suivi (tout sauf PF) et rien ne manque pour calculer. */
     calculable: boolean;
     suivi: boolean;
@@ -199,20 +233,44 @@ export type ResteInput = {
     site: P1SiteDoc | null;
     meters: { code: string; unit?: string; doc: P1MeterDoc | null }[];
     contract: P1ContractDoc | null;
-    /** Le site a une prestation P1 avec une règle de révision (formule actuelle, en attendant les formules P1). */
-    hasP1Revision: boolean;
+    /** Formule de révision P1 (chauffage) retenue pour le site à la date, avec ses anomalies de contrôle. */
+    formuleChauffage: { nom: string; errors: string[]; warnings: string[] } | null;
     date: IsoDate;
 };
+
+/** Barème en vigueur d'un marché : celui du site s'il en a un, sinon celui du contrat. */
+export function baremeAu(site: P1SiteDoc | null, contract: P1ContractDoc | null, marche: TypeMarche, date: IsoDate): { tranches: TrancheBareme[]; source: 'site' | 'contrat' } | null {
+    const propre = valeurAu<TrancheBareme[]>(site?.params, baremeKey(marche), date);
+    if (propre) return { tranches: propre, source: 'site' };
+    const commun = valeurAu<TrancheBareme[]>(contract?.params, baremeKey(marche), date);
+    return commun ? { tranches: commun, source: 'contrat' } : null;
+}
+
+/**
+ * Formule de révision d'un site pour un usage à une date : parmi les formules actives du contrat qui ont une
+ * version en vigueur, la plus précise (sites, puis énergies, puis tout le contrat).
+ */
+export function formuleAu(contract: P1ContractDoc | null, siteId: string, energies: Energie[], usage: 'chauffage' | 'ecs', date: IsoDate): { formule: P1Formule; version: FormuleVersion } | null {
+    const rang = (f: P1Formule) => f.perimetre.type === 'sites' ? (f.perimetre.siteIds.includes(siteId) ? 3 : 0)
+        : f.perimetre.type === 'energies' ? (f.perimetre.energies.some(e => energies.includes(e)) ? 2 : 0) : 1;
+    const candidates = Object.values(contract?.formules ?? {})
+        .filter(f => !f.retireLe && f.usage === usage && rang(f) > 0)
+        .map(f => ({ f, v: enVigueur(f.versions, date) }))
+        .filter((x): x is { f: P1Formule; v: Version<FormuleVersion> } => !!x.v)
+        .sort((a, b) => rang(b.f) - rang(a.f));
+    return candidates[0] ? { formule: candidates[0].f, version: candidates[0].v.valeur } : null;
+}
 
 /** Ce qui manque pour que le site soit calculable à une date, selon la grille de son type de marché. */
 export function resteAFaire(input: ResteInput): ResteAFaire {
     const { site, meters, contract, date } = input;
     const manque: string[] = [];
     const aVenir: string[] = [];
+    const alertes: string[] = [];
     const typeMarche = valeurAu<TypeMarche>(site?.params, 'typeMarche', date);
-    if (!typeMarche) return { typeMarche: null, calculable: false, suivi: true, manque: ['Type de marché'], aVenir };
+    if (!typeMarche) return { typeMarche: null, alertes, calculable: false, suivi: true, manque: ['Type de marché'], aVenir };
     const ex = EXIGENCES_MARCHE[typeMarche];
-    if (!ex.suivi) return { typeMarche, calculable: false, suivi: false, manque: [], aVenir };
+    if (!ex.suivi) return { typeMarche, alertes, calculable: false, suivi: false, manque: [], aVenir };
 
     if (!valeurAu(site?.params, 'periodeReference', date)) manque.push('Période de référence');
     const regime = valeurAu<RegimeCp>(contract?.params, 'regimeCp', date);
@@ -223,7 +281,9 @@ export function resteAFaire(input: ResteInput): ResteAFaire {
     }
     if (exigePrixEtFormule(typeMarche, regime)) {
         if (!valeurAu(site?.params, 'prixBase', date)) manque.push('Prix de base chauffage');
-        if (!input.hasP1Revision) manque.push('Formule de révision du prix (prestation P1)');
+        if (!input.formuleChauffage) manque.push('Formule de révision P1 (chauffage) du contrat');
+        else if (input.formuleChauffage.errors.length) manque.push(`Formule « ${input.formuleChauffage.nom} » à corriger : ${input.formuleChauffage.errors.join(' ; ')}`);
+        if (input.formuleChauffage?.warnings.length) alertes.push(...input.formuleChauffage.warnings.map(w => `Formule « ${input.formuleChauffage!.nom} » : ${w}`));
     }
 
     // Plan de comptage : nécessaire pour tous les marchés suivis.
@@ -245,7 +305,11 @@ export function resteAFaire(input: ResteInput): ResteAFaire {
             if (!valeurAu(p.params, 'djuReference', date)) manque.push(`DJU de référence du poste « ${p.designation} »`);
         }
     }
-    if (ex.bareme) aVenir.push('Barème de partage par tranches');
+    if (ex.bareme) {
+        const bareme = baremeAu(site, contract, typeMarche, date);
+        if (!bareme) manque.push(`Barème de partage ${typeMarche} (contrat ou site)`);
+        else alertes.push(...validateBareme(bareme.tranches).warnings.map(w => `Barème ${typeMarche} : ${w}`));
+    }
     if (ex.prixEnergieClient) aVenir.push("Prix de l'énergie du client (PFI)");
-    return { typeMarche, calculable: manque.length === 0, suivi: true, manque: [...new Set(manque)], aVenir };
+    return { typeMarche, alertes, calculable: manque.length === 0, suivi: true, manque: [...new Set(manque)], aVenir };
 }
