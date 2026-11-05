@@ -165,7 +165,25 @@ et, le cas échéant, la mention « option pour le paiement de la TVA d'après l
 
 ## Pilotage
 
-### Suivi de la facturation (Facturation › Suivi, onglet « À facturer »)
+### Pilotage ADV (Facturation › Suivi, onglet « Pilotage »)
+
+Poste de travail du service facturation (`src/lib/pilotage/tcd.ts`, `src/components/pilotage/pilotage-adv.tsx`) :
+
+- **Synthèse** : clients à facturer, **factures à sortir** (contrats ayant au moins une échéance facturable : une
+  facture de contrat regroupe tout ce qui est facturable à la date), dont bloquées ; montant et nombre d'échéances en
+  retard (retard max), à facturer aujourd'hui, à venir dans l'horizon.
+- **Tableau croisé** Client → Contrat → Prestation → Échéances : à chaque niveau, retard max, montant en retard,
+  du jour, à venir, échéances bloquées (et nombre d'échéances au montant connu seulement à la facture). On déplie
+  ligne par ligne ou tout un niveau (boutons Clients, Contrats, Prestations, Échéances). Les plus en retard d'abord.
+- **Focus** : « En retard et du jour » (par défaut), « Bloquées » (seulement les échéances facturables bloquées, avec
+  la raison sous la prestation), « Tout l'horizon ». Recherche par client, contrat, site ou prestation.
+- **Commentaires de suivi** (colonne Suivi) sur un contrat ou une prestation : motif (en cours, attente client,
+  attente de relevé / donnée, paramétrage à corriger, litige, résolu, note), texte, auteur et date. Historisés :
+  collection `suiviCommentaires` écrite par le serveur, sans modification ni suppression (règles Firestore) ; le
+  dernier motif s'affiche dans le tableau, l'historique complet dans le fil (celui du contrat reprend ceux de ses
+  prestations). La prestation commentée doit appartenir au contrat.
+
+### Liste des échéances (Facturation › Suivi, onglet « Liste des échéances »)
 
 Pour chaque contrat actif, les échéances non facturées jusqu'à l'horizon choisi (30, 60 ou 90 jours), calculées par
 le même moteur que la facture (`src/lib/pilotage/suivi-facturation.ts`, service `pilotage-admin.ts`) :
@@ -203,6 +221,6 @@ la TVA est calculée sur ce HT puis arrondie, le TTC est HT + TVA.
 
 ## Tests
 
-- `npm test` : arrondis, moteur de facturation, P1, pilotage (`tests/pilotage.test.ts`).
+- `npm test` : arrondis, moteur de facturation, P1, pilotage (`tests/pilotage.test.ts`) ; `npm run test:billing` comprend les commentaires de suivi (`tests/pilotage-flow.test.ts`).
 - `npm run test:billing` : numérotation, conversion de proforma, avoirs, archivage des PDF (émulateurs Firestore et Storage, Java requis).
 - `npm run test:rules` : règles Firestore.

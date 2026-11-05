@@ -6,7 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { AlertTriangle, Clock, CalendarDays, Activity, ExternalLink, CheckCircle2, Loader2 } from 'lucide-react';
+import { ExternalLink, CheckCircle2, Loader2 } from 'lucide-react';
 import { useData } from '@/context/data-context';
 import { updateInvoiceStatus } from '@/services/firestore';
 import { useToast } from '@/hooks/use-toast';
@@ -15,6 +15,7 @@ import { fr } from 'date-fns/locale';
 import Link from 'next/link';
 import type { Invoice } from '@/lib/types';
 import { AFacturer } from '@/components/pilotage/a-facturer';
+import { PilotageAdv } from '@/components/pilotage/pilotage-adv';
 import { suiviFacturationAction } from '@/lib/pilotage/actions';
 import type { SuiviFacturation } from '@/services/pilotage-admin';
 
@@ -90,8 +91,6 @@ export default function SuiviFacturationPage() {
         return () => { cancelled = true; };
     }, [horizon, invoices, toast]);
     const enRetard = (suivi?.echeances ?? []).filter(e => e.statut !== 'a_venir');
-    const enRetardTotal = enRetard.reduce((t, e) => t + (e.montant ?? 0), 0);
-    const bloquees = (suivi?.echeances ?? []).filter(e => e.blocage).length + (suivi?.contratsEnErreur.length ?? 0);
 
     const handleMarkPaid = async (inv: Invoice) => {
         setMarkingPaid(inv.id);
@@ -124,70 +123,16 @@ export default function SuiviFacturationPage() {
                 </p>
             </div>
 
-            {/* KPI Cards */}
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-                <Card className={overdueInvoices.length > 0 ? 'border-red-200' : ''}>
-                    <CardHeader className="pb-2 pt-4 px-4">
-                        <div className="flex items-center justify-between">
-                            <CardTitle className="text-sm font-medium text-muted-foreground">En retard</CardTitle>
-                            <AlertTriangle className={`h-4 w-4 ${overdueInvoices.length > 0 ? 'text-red-500' : 'text-muted-foreground'}`} />
-                        </div>
-                    </CardHeader>
-                    <CardContent className="px-4 pb-4">
-                        <p className={`text-2xl font-bold ${overdueInvoices.length > 0 ? 'text-red-600' : ''}`}>{overdueInvoices.length}</p>
-                        <p className="text-sm text-muted-foreground">{formatCurrency(overdueTotal)}</p>
-                    </CardContent>
-                </Card>
-
-                <Card className={upcomingDueInvoices.length > 0 ? 'border-amber-200' : ''}>
-                    <CardHeader className="pb-2 pt-4 px-4">
-                        <div className="flex items-center justify-between">
-                            <CardTitle className="text-sm font-medium text-muted-foreground">Échéances 30j</CardTitle>
-                            <Clock className={`h-4 w-4 ${upcomingDueInvoices.length > 0 ? 'text-amber-500' : 'text-muted-foreground'}`} />
-                        </div>
-                    </CardHeader>
-                    <CardContent className="px-4 pb-4">
-                        <p className={`text-2xl font-bold ${upcomingDueInvoices.length > 0 ? 'text-amber-600' : ''}`}>{upcomingDueInvoices.length}</p>
-                        <p className="text-sm text-muted-foreground">{formatCurrency(upcomingDueTotal)}</p>
-                    </CardContent>
-                </Card>
-
-                <Card className={enRetard.length > 0 ? 'border-red-200' : ''}>
-                    <CardHeader className="pb-2 pt-4 px-4">
-                        <div className="flex items-center justify-between">
-                            <CardTitle className="text-sm font-medium text-muted-foreground">À facturer (retard, jour)</CardTitle>
-                            <CalendarDays className={`h-4 w-4 ${enRetard.length > 0 ? 'text-red-500' : 'text-muted-foreground'}`} />
-                        </div>
-                    </CardHeader>
-                    <CardContent className="px-4 pb-4">
-                        <p className={`text-2xl font-bold ${enRetard.length > 0 ? 'text-red-600' : ''}`}>{suivi ? enRetard.length : '…'}</p>
-                        <p className="text-sm text-muted-foreground">{formatCurrency(enRetardTotal)}</p>
-                    </CardContent>
-                </Card>
-
-                <Card className={bloquees > 0 ? 'border-amber-200' : ''}>
-                    <CardHeader className="pb-2 pt-4 px-4">
-                        <div className="flex items-center justify-between">
-                            <CardTitle className="text-sm font-medium text-muted-foreground">Bloquées</CardTitle>
-                            <Activity className={`h-4 w-4 ${bloquees > 0 ? 'text-amber-500' : 'text-muted-foreground'}`} />
-                        </div>
-                    </CardHeader>
-                    <CardContent className="px-4 pb-4">
-                        <p className={`text-2xl font-bold ${bloquees > 0 ? 'text-amber-600' : ''}`}>{suivi ? bloquees : '…'}</p>
-                        <p className="text-sm text-muted-foreground">échéances ou contrats à débloquer</p>
-                    </CardContent>
-                </Card>
-            </div>
-
             {/* Tabs */}
-            <Tabs defaultValue="facturer">
+            <Tabs defaultValue="pilotage">
                 <TabsList>
-                    <TabsTrigger value="facturer" className="gap-2">
-                        À facturer
+                    <TabsTrigger value="pilotage" className="gap-2">
+                        Pilotage
                         {enRetard.length > 0 && <Badge variant="destructive" className="h-5 min-w-[1.25rem] px-1 text-xs">{enRetard.length}</Badge>}
                     </TabsTrigger>
+                    <TabsTrigger value="facturer">Liste des échéances</TabsTrigger>
                     <TabsTrigger value="overdue" className="gap-2">
-                        Impayés
+                        Impayés{overdueInvoices.length > 0 && <span className="text-xs text-muted-foreground">{formatCurrency(overdueTotal)}</span>}
                         {overdueInvoices.length > 0 && (
                             <Badge variant="destructive" className="h-5 min-w-[1.25rem] px-1 text-xs">
                                 {overdueInvoices.length}
@@ -195,7 +140,7 @@ export default function SuiviFacturationPage() {
                         )}
                     </TabsTrigger>
                     <TabsTrigger value="upcoming" className="gap-2">
-                        Paiements attendus — 30j
+                        Paiements attendus — 30j{upcomingDueInvoices.length > 0 && <span className="text-xs text-muted-foreground">{formatCurrency(upcomingDueTotal)}</span>}
                         {upcomingDueInvoices.length > 0 && (
                             <Badge variant="secondary" className="h-5 min-w-[1.25rem] px-1 text-xs">
                                 {upcomingDueInvoices.length}
@@ -203,6 +148,10 @@ export default function SuiviFacturationPage() {
                         )}
                     </TabsTrigger>
                 </TabsList>
+
+                <TabsContent value="pilotage">
+                    <PilotageAdv data={suivi} loading={suiviLoading} horizon={horizon} onHorizon={setHorizon} />
+                </TabsContent>
 
                 <TabsContent value="facturer">
                     <AFacturer data={suivi} loading={suiviLoading} horizon={horizon} onHorizon={setHorizon} />

@@ -22,6 +22,7 @@ await env.withSecurityRulesDisabled(async (ctx) => {
   await setDoc(doc(db, 'contracts', 'ctn'), { label: 'Contrat', contractNumber: 'CTN-00001', siteIds: [] });
   await setDoc(doc(db, 'p1Parametrage', 'site:s'), { kind: 'site', siteId: 's', params: {}, postes: {} });
   await setDoc(doc(db, 'meterReadings', 'r'), { meterId: 'm', value: 10, type: 'REEL' });
+  await setDoc(doc(db, 'suiviCommentaires', 'c'), { contractId: 'k', texte: 'x', motif: 'note' });
   await setDoc(doc(db, 'quotes', 'brouillon'), { number: 'VEF-DEV2026-0001', status: 'brouillon', version: 1, title: 'A' });
   await setDoc(doc(db, 'quoteVersions', 'v'), { quoteId: 'envoye', version: 1 });
   await setDoc(doc(db, 'projects', 'p'), { code: 'VEF-AFF2026-0001', status: 'en_cours' });
@@ -97,6 +98,10 @@ await t('user cannot create a meter reading', assertFails(setDoc(doc(user, 'mete
 await t('admin cannot delete a meter reading', assertFails(deleteDoc(doc(admin, 'meterReadings', 'r'))));
 await t('user cannot write P1 actuals', assertFails(setDoc(doc(user, 'p1Reel', 's_2025-10'), { montantHt: 1 })));
 await t('admin cannot write P1 actuals', assertFails(setDoc(doc(admin, 'p1Reel', 's_2025-10'), { montantHt: 1 })));
+await t('user reads billing follow-up comments', assertSucceeds(getDoc(doc(user, 'suiviCommentaires', 'c'))));
+await t('user cannot write a billing follow-up comment', assertFails(setDoc(doc(user, 'suiviCommentaires', 'n'), { contractId: 'k', texte: 'x' })));
+await t('admin cannot change a billing follow-up comment', assertFails(updateDoc(doc(admin, 'suiviCommentaires', 'c'), { texte: 'y' })));
+await t('admin cannot delete a billing follow-up comment', assertFails(deleteDoc(doc(admin, 'suiviCommentaires', 'c'))));
 await t('user creates site with code', assertSucceeds(setDoc(doc(user, 'sites', 'nouveau'), { name: 'N', code: 'SIT-00002' })));
 await t('user updates site without code', assertSucceeds(updateDoc(doc(user, 'sites', 'ancien'), { name: 'Ancien site 2' })));
 await t('user deletes site', assertSucceeds(deleteDoc(doc(user, 'sites', 'nouveau'))));

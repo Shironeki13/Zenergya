@@ -47,9 +47,10 @@ service cloud.firestore {
     }
 
     // Écrits par le serveur seulement, lisibles par les utilisateurs : paramétrage P1 (versions datées, jamais
-    // d'écrasement), réel P1 du moteur, relevés de compteurs (relevés facturés ou repris figés).
+    // d'écrasement), réel P1 du moteur, relevés de compteurs (relevés facturés ou repris figés), commentaires de
+    // suivi de la facturation (historique : ni modification ni suppression).
     function isServerWritten(coll) {
-      return coll in ['p1Parametrage', 'p1Reel', 'meterReadings'];
+      return coll in ['p1Parametrage', 'p1Reel', 'meterReadings', 'suiviCommentaires'];
     }
 
     // Devis : modification et suppression traitées à part (voir match /quotes).

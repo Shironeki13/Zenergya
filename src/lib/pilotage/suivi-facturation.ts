@@ -16,7 +16,11 @@ export type StatutEcheance = 'retard' | 'aujourdhui' | 'a_venir';
 export type EcheanceSuivi = {
     contractId: string;
     contractNumber: string;
+    clientId: string;
     clientName: string;
+    /** Prestation facturée (clé de l'échéancier : `svc:<prestation>` ou `site:<site>:<activité>`). */
+    itemKey: string;
+    siteId: string;
     site: string;
     prestation: string;
     start: string;
@@ -31,15 +35,16 @@ export type EcheanceSuivi = {
     blocage?: string;
 };
 
-export type SuiviContrat = { contractId: string; contractNumber: string; clientName: string; echeances: EcheanceSuivi[]; erreurs: string[] };
+export type SuiviContrat = { contractId: string; contractNumber: string; clientId: string; clientName: string; echeances: EcheanceSuivi[]; erreurs: string[] };
 
 export function suiviContrat(
-    contract: { id: string; contractNumber: string; clientName: string },
+    contract: { id: string; contractNumber: string; clientId?: string; clientName: string },
     input: BillingInput, invoices: BilledInvoice[], today: string, horizon: string,
 ): SuiviContrat {
+    const clientId = contract.clientId ?? contract.clientName;
     const { items, errors } = billingItems(input);
     const contractStart = toDay(input.contract.startDate);
-    if (errors.length || !contractStart) return { contractId: contract.id, contractNumber: contract.contractNumber, clientName: contract.clientName, echeances: [], erreurs: errors };
+    if (errors.length || !contractStart) return { contractId: contract.id, contractNumber: contract.contractNumber, clientId, clientName: contract.clientName, echeances: [], erreurs: errors };
     const billed = billedUntil(items, invoices);
     // Ce que la facture du jour contiendrait : montants exacts et blocages des échéances déjà facturables.
     const due = dueInvoiceLines(input, invoices, today);
@@ -60,8 +65,8 @@ export function suiviContrat(
             const k = `${item.key}|${e.start.slice(0, 7)}`;
             const calcule = item.p1Acompte || item.p1Releve;
             echeances.push({
-                contractId: contract.id, contractNumber: contract.contractNumber, clientName: contract.clientName,
-                site: item.site.name, prestation: `${item.activity.code}${item.label ? ` — ${item.label}` : ''}${item.p1Acompte ? ' (acompte P1)' : item.p1Releve ? ' (ECS au relevé)' : ''}`,
+                contractId: contract.id, contractNumber: contract.contractNumber, clientId, clientName: contract.clientName,
+                itemKey: item.key, siteId: item.site.id, site: item.site.name, prestation: `${item.activity.code}${item.label ? ` — ${item.label}` : ''}${item.p1Acompte ? ' (acompte P1)' : item.p1Releve ? ' (ECS au relevé)' : ''}`,
                 start: e.start, end: e.end, billableOn: e.billableOn,
                 statut: !facturable ? 'a_venir' : e.billableOn === today ? 'aujourdhui' : 'retard',
                 jours: facturable ? daysIn(e.billableOn, today) - 1 : daysIn(today, e.billableOn) - 1,
@@ -75,5 +80,5 @@ export function suiviContrat(
     const generiques = due.errors.filter(e => !items.some(i => e.includes(i.site.name)));
     if (generiques.length) for (const e of echeances) if (e.statut !== 'a_venir' && !e.blocage) e.blocage = generiques.join(' ');
     echeances.sort((a, b) => a.billableOn.localeCompare(b.billableOn) || a.site.localeCompare(b.site));
-    return { contractId: contract.id, contractNumber: contract.contractNumber, clientName: contract.clientName, echeances, erreurs: [] };
+    return { contractId: contract.id, contractNumber: contract.contractNumber, clientId, clientName: contract.clientName, echeances, erreurs: [] };
 }

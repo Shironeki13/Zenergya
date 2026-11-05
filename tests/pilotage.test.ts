@@ -68,3 +68,55 @@ test('alertes : dérive par rapport à l\'an passé, sinon à la médiane ; ECS 
     assert.match(nulle.find(a => a.type === 'conso_nulle')!.message, /Aucune consommation depuis le 31\/12\/2025/);
     assert.deepEqual(trierAlertes([...nulle, ...ecs]).map(a => a.gravite)[0], 'critique');
 });
+
+// ── Pilotage ADV : tableau croisé Client → Contrat → Prestation ──────────────────────────────────────────────────
+import { construireTcd, resumerFils, type CommentaireSuivi } from '../src/lib/pilotage/tcd';
+import type { EcheanceSuivi } from '../src/lib/pilotage/suivi-facturation';
+
+const ech = (p: Partial<EcheanceSuivi>): EcheanceSuivi => ({
+    contractId: 'k1', contractNumber: 'CTN-1', clientId: 'c1', clientName: 'Alpha', itemKey: 'svc:a', siteId: 's', site: 'Résidence',
+    prestation: 'P2', start: '2025-11-01', end: '2025-11-30', billableOn: '2025-11-01', statut: 'retard', jours: 44, montant: 100, estime: false, ...p,
+});
+const ech4 = [
+    ech({}),
+    ech({ start: '2025-12-01', billableOn: '2025-12-01', jours: 14 }),
+    ech({ itemKey: 'svc:b', prestation: 'P1 (acompte P1)', statut: 'aujourdhui', jours: 0, montant: null, billableOn: '2025-12-15', blocage: 'TVA non renseignée' }),
+    ech({ start: '2026-01-01', billableOn: '2026-01-01', statut: 'a_venir', jours: 17, montant: 100, estime: true }),
+    ech({ contractId: 'k2', contractNumber: 'CTN-2', itemKey: 'svc:c', billableOn: '2025-12-10', jours: 5, montant: 50 }),
+    ech({ contractId: 'k3', contractNumber: 'CTN-3', clientId: 'c2', clientName: 'Beta', itemKey: 'svc:d', statut: 'a_venir', jours: 3, montant: 999, estime: true }),
+];
+const com = (p: Partial<CommentaireSuivi>): CommentaireSuivi => ({ id: p.createdAt!, contractId: 'k1', itemKey: null, cible: '', motif: 'note', texte: 't', auteur: 'ADV', createdAt: '2025-12-01T10:00:00Z', ...p });
+
+test('tcd : regroupement, totaux à chaque niveau, ordre par urgence, synthèse', () => {
+    const { clients, synthese } = construireTcd(ech4, [], 'tout');
+    assert.deepEqual(clients.map(c => c.clientName), ['Alpha', 'Beta']);
+    const alpha = clients[0];
+    assert.deepEqual(alpha.contrats.map(c => c.contractNumber), ['CTN-1', 'CTN-2']);
+    const k1 = alpha.contrats[0];
+    assert.deepEqual(k1.prestations.map(p => [p.itemKey, p.echeances.length, p.totaux.retard, p.totaux.montantRetard, p.totaux.aVenir]), [['svc:a', 3, 2, 200, 1], ['svc:b', 1, 0, 0, 0]]);
+    assert.deepEqual(k1.prestations[1].blocages, ['TVA non renseignée']);
+    assert.deepEqual([k1.totaux.retard, k1.totaux.montantRetard, k1.totaux.jour, k1.totaux.aLaFacture, k1.totaux.bloquees, k1.totaux.retardMax, k1.totaux.plusAncienne, k1.totaux.montantAVenir],
+        [2, 200, 1, 1, 1, 44, '2025-11-01', 100]);
+    assert.deepEqual([alpha.totaux.retard, alpha.totaux.montantRetard], [3, 250]);
+    assert.deepEqual([synthese.clients, synthese.clientsAFacturer, synthese.contrats, synthese.facturesASortir, synthese.facturesBloquees, synthese.montantRetard, synthese.aVenir, synthese.montantAVenir],
+        [2, 1, 3, 2, 1, 250, 2, 1099]);
+});
+
+test('tcd : focus retard et bloquées ; commentaires rattachés au contrat et à la prestation', () => {
+    const retard = construireTcd(ech4, [], 'retard');
+    assert.deepEqual(retard.clients.map(c => c.clientName), ['Alpha']);
+    assert.equal(retard.synthese.aVenir, 0);
+    assert.equal(retard.clients[0].contrats[0].prestations[0].echeances.length, 2);
+    const bloque = construireTcd(ech4, [], 'bloque');
+    assert.deepEqual(bloque.clients.flatMap(c => c.contrats.flatMap(k => k.prestations.map(p => p.itemKey))), ['svc:b']);
+    const fils = [
+        com({ createdAt: '2025-12-01T10:00:00Z', motif: 'attente_client' }),
+        com({ createdAt: '2025-12-03T10:00:00Z', motif: 'en_cours' }),
+        com({ createdAt: '2025-12-02T10:00:00Z', itemKey: 'svc:b', motif: 'parametrage', texte: 'TVA à créer' }),
+    ];
+    assert.deepEqual([...resumerFils(fils)].map(([k, r]) => [k, r.nombre, r.dernier.motif]), [['k1', 2, 'en_cours'], ['k1|svc:b', 1, 'parametrage']]);
+    const k1 = construireTcd(ech4, fils, 'tout').clients[0].contrats[0];
+    assert.equal(k1.suivi!.dernier.motif, 'en_cours');
+    assert.equal(k1.prestations.find(p => p.itemKey === 'svc:b')!.suivi!.dernier.texte, 'TVA à créer');
+    assert.equal(k1.prestations.find(p => p.itemKey === 'svc:a')!.suivi, undefined);
+});
