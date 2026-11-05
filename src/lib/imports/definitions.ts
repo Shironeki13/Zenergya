@@ -38,7 +38,18 @@ export type ImportEntity = {
     /** Comment une ligne retrouve un élément existant (sinon : création). */
     matching: string;
     fields: ImportField[];
+    /** Rubrique de l'écran Imports. */
+    groupe: GroupeImport;
+    /** Une phrase : à quoi sert l'import (vignette de l'écran). */
+    resume: string;
+    /** Mode d'emploi : quand l'utiliser, ordre, pièges (écran et onglet Notice du modèle). */
+    usage: string[];
+    /** Colonnes qui retrouvent un élément existant (mise à jour), par ordre de priorité. */
+    cles: string[];
 };
+
+export type GroupeImport = 'Référentiel' | 'Facturation' | 'Compteurs et relevés' | 'P1';
+export const GROUPES_IMPORT: GroupeImport[] = ['Référentiel', 'Facturation', 'Compteurs et relevés', 'P1'];
 
 const OUI_NON = 'oui / non';
 
@@ -85,7 +96,7 @@ const externalRef = (what: string): ImportField => ({
     help: `Code ${what} dans un autre système (ancienne codification). Retrouve ${what === 'du client' ? 'la fiche' : 'l\'élément'} au réimport et permet de le désigner dans les autres fichiers. Unique.`,
 });
 
-export const IMPORT_ENTITIES: Record<ImportEntityKey, ImportEntity> = {
+const BASE: Record<ImportEntityKey, Omit<ImportEntity, 'groupe' | 'resume' | 'usage' | 'cles'>> = {
     clients: {
         key: 'clients',
         label: 'Clients et prospects',
@@ -419,4 +430,156 @@ export const IMPORT_ENTITIES: Record<ImportEntityKey, ImportEntity> = {
     },
 };
 
-export const IMPORT_ENTITY_LIST = Object.values(IMPORT_ENTITIES);
+
+// --- Mode d'emploi des imports (écran Imports et onglet Notice des modèles) ---
+
+type Guide = Pick<ImportEntity, 'groupe' | 'resume' | 'usage' | 'cles'> & { label?: string; aides?: Record<string, string> };
+
+const ORDRE = "Ordre conseillé : clients → contrats → sites → compteurs → prestations → relevés ; le P1 après les sites, compteurs et contrats.";
+
+const GUIDES: Record<ImportEntityKey, Guide> = {
+    clients: {
+        groupe: 'Référentiel', resume: 'Fiches clients et prospects : identité, rattachement (société, agence, secteur), Chorus, facturation électronique.',
+        usage: [
+            'Premier import à faire : contrats, sites et contacts désignent ensuite le client par son code CLI, son SIRET ou sa réf. externe.',
+            'Reprise depuis un autre logiciel : renseignez « Réf. externe » avec l\'ancien code ; les fichiers suivants pourront l\'utiliser.',
+            'Mise à jour : seules les colonnes présentes et renseignées changent ; une cellule vide conserve la valeur.',
+            ORDRE,
+        ],
+        cles: ['code', 'externalRef', 'siret'],
+        aides: {
+            name: 'Nom légal du client (ou du syndicat de copropriété).', address: 'Adresse de facturation.', postalCode: '5 chiffres.', city: 'Ville de l\'adresse de facturation.',
+            representedBy: 'Syndic ou gestionnaire qui représente le client (copropriété).', chorusServiceCode: 'Code service du destinataire public dans Chorus Pro.',
+            chorusLegalCommitmentNumber: 'N° d\'engagement juridique (bon de commande public) à porter sur les factures.', chorusMarketNumber: 'N° du marché public dans Chorus Pro.',
+        },
+    },
+    contracts: {
+        groupe: 'Référentiel', resume: 'Contrats : période, activités, facturation, reconduction, Chorus, responsable facturation et paramètres P1 du contrat.',
+        usage: [
+            'Après les clients. Le lien contrat ↔ sites se fait dans l\'import des sites (colonne Contrat).',
+            'Un contrat importé est directement validé et actif (sauf statut indiqué).',
+            'Colonnes « P1 · … » : paramètres P1 communs à tous les sites du contrat (régime, gestion, répartition des acomptes, barèmes). '
+                + 'Chaque valeur ajoute une version datée : renseignez « P1 · Date d\'effet » pour changer une valeur existante.',
+            ORDRE,
+        ],
+        cles: ['code', 'externalRef'],
+        aides: {
+            startDate: 'Début d\'exécution du contrat : point de départ de l\'échéancier de facturation.', endDate: 'Fin du contrat (avant reconduction).',
+            billingSchedule: 'Périodicité par défaut (Mensuel, Trimestriel…) ; chaque prestation peut avoir la sienne.',
+            renewalDuration: 'Durée de chaque reconduction, en texte libre (ex. « 1 an »).', noticePeriod: 'Délai de dénonciation, en texte libre (ex. « 3 mois »).',
+            chorusMarketNumber: 'N° du marché public dans Chorus Pro.', [P1_COLONNE('contract', 'correspondanceTwimm')]: 'Code du contrat dans TWIMM (moteur P1) : rapproche les résultats du moteur.',
+        },
+    },
+    sites: {
+        groupe: 'Référentiel', resume: 'Sites des clients, leur rattachement au contrat, et leur paramétrage P1 (marché, prix de base, station, poste de consommation).',
+        usage: [
+            'Après les clients et les contrats : la colonne Contrat est le seul endroit où se fait le lien contrat ↔ site.',
+            'Colonnes « P1 · … » : paramètres P1 du site. Colonnes « P1 · Poste · … » : poste de consommation (formule de NC, cible NB, DJU) ; '
+                + 'un site à plusieurs postes se saisit sur plusieurs lignes, une par poste (colonne « P1 · Poste »).',
+            'Chaque valeur P1 ajoute une version datée : la première est la valeur d\'origine ; pour en changer, renseignez « P1 · Date d\'effet » et « P1 · Motif ».',
+            ORDRE,
+        ],
+        cles: ['code', 'externalRef'],
+        aides: {
+            name: 'Nom usuel du site (résidence, bâtiment).', address: 'Adresse du site (pas celle du client).', postalCode: '5 chiffres.', city: 'Ville du site.',
+            [P1_COLONNE('site', 'periodeReference')]: 'Période de calcul de la cible et de l\'intéressement : saison de chauffe ou année civile.',
+            [P1_COLONNE('site', 'correspondanceTwimm')]: 'Code du site dans TWIMM (moteur P1) : rapproche les résultats du moteur.',
+            [P1_COLONNE('poste', 'cibleNb')]: 'Consommation contractuelle de référence du poste (N\'B), dans l\'unité de la cible.',
+            [P1_COLONNE('poste', 'cibleNbUnite')]: 'Unité de la cible NB : MWh, t ou L.',
+            [P1_COLONNE('poste', 'djuReference')]: 'DJU de la période de référence : la cible est corrigée de la rigueur climatique (station météo du site).',
+        },
+    },
+    services: {
+        groupe: 'Facturation', resume: 'Ce qui est facturé : une prestation par site et activité, avec son montant annuel, sa périodicité, sa TVA et sa révision.',
+        usage: [
+            'Source unique de la facturation : les montants des sites sont calculés à partir des prestations en vigueur.',
+            'Après les sites (et les compteurs pour le P1) ; l\'activité doit faire partie de celles du contrat du site.',
+            'Deux prestations du même site et de la même activité ne peuvent pas se recouvrir dans le temps.',
+            ORDRE,
+        ],
+        cles: ['externalRef'],
+        aides: {
+            label: 'Libellé de la ligne de facture (vide : celui de l\'activité).', startDate: 'Début de facturation de la prestation.',
+            unit: 'Unité du prix unitaire (ex. €/MWh, €/m³).', comment: 'Note interne, non imprimée.',
+        },
+    },
+    contacts: {
+        groupe: 'Référentiel', resume: 'Interlocuteurs des clients : principal, technique, facturation.',
+        usage: ['Après les clients. L\'adresse e-mail du contact de facturation sert à l\'envoi des factures.'],
+        cles: ['client', 'email'],
+        aides: { name: 'Prénom et nom.', email: 'Adresse e-mail (sert de clé avec le client).', phone: 'Numéro de téléphone.', role: 'Fonction (ex. gardien, directeur technique).' },
+    },
+    meters: {
+        groupe: 'Compteurs et relevés', resume: 'Compteurs des sites et leur paramétrage P1 (usage, énergie, coefficient de conversion).',
+        usage: [
+            'Après les sites. Les relevés et la formule de NC désignent ensuite le compteur par son code CPT ou sa réf. externe.',
+            'Colonnes « P1 · … » : paramètres P1 du compteur ; chaque valeur ajoute une version datée (« P1 · Date d\'effet » pour en changer, ex. compteur remplacé).',
+            ORDRE,
+        ],
+        cles: ['code', 'externalRef', 'reference'],
+        aides: {
+            name: 'Nom usuel (ex. « Gaz chaufferie »).', reference: 'Point de livraison (PDL électricité) ou de comptage (PCE gaz) : 2e clé avec le site.',
+            location: 'Emplacement physique (sous-sol, chaufferie…).',
+            [P1_COLONNE('meter', 'usage')]: 'Rôle dans le calcul P1 : entrant (énergie achetée), vente, ecs, eau_froide, annexe, autre.',
+            [P1_COLONNE('meter', 'energie')]: 'Énergie mesurée (gaz, fioul, bois, electricite, reseau_chaleur, propane, autre) : choisit la formule de révision par énergie.',
+        },
+    },
+    readings: {
+        groupe: 'Compteurs et relevés', resume: 'Index relevés sur les compteurs : relevés terrain, télérelève, reprise d\'historique.',
+        usage: [
+            'Après les compteurs. Un relevé déjà facturé ou repris dans un intéressement ne se modifie plus.',
+            'L\'ECS facturée au relevé se calcule par différence d\'index entre deux relevés mensuels.',
+        ],
+        cles: ['meter', 'date'],
+        aides: { comment: 'Note libre (ex. compteur changé, relevé contrôlé).' },
+    },
+    p1formules: {
+        label: 'P1 · Formules de révision',
+        groupe: 'P1', resume: 'Formules de révision des prix P1 d\'un contrat (indices, M0, périodicité), par versions datées.',
+        usage: [
+            'Après les contrats et le paramétrage P1 des sites (le prix de base vient du site).',
+            'Une ligne = une version d\'une formule ; la formule est créée à sa première ligne (usage et périmètre alors obligatoires).',
+        ],
+        cles: ['contrat', 'nom'],
+        aides: { nom: 'Nom de la formule dans le contrat (ex. « Gaz — marché 2025 ») : clé avec le contrat.', motif: 'Pourquoi cette version (contrat d\'origine, avenant…).', document: 'Lien vers la pièce (avenant, contrat).' },
+    },
+    p1reel: {
+        label: 'P1 · Réel du moteur (régularisation)',
+        groupe: 'P1', resume: 'Résultat du moteur P1 (pas un paramétrage) : montant P1 HT réellement dû par site et par mois, comparé aux acomptes pour régulariser.',
+        usage: [
+            'Chaque mois (ou avant une régularisation), à partir de l\'export du moteur P1 (table p1_facturation_site).',
+            'Un mois déjà régularisé ne change plus. Visible sur la fiche du site (Paramétrage P1 › Réel P1 du moteur).',
+        ],
+        cles: ['site', 'mois', 'usage'],
+    },
+    p1: {
+        label: 'P1 · Paramétrage détaillé (avancé)',
+        groupe: 'P1', resume: 'Cas avancés du paramétrage P1 : plusieurs versions d\'un paramètre dans un fichier, reprise d\'historique, intéressement.',
+        usage: [
+            'Le paramétrage P1 courant se fait dans les imports Sites, Compteurs et Contrats (colonnes « P1 · … »).',
+            'Ici, une ligne = une version d\'un paramètre : élément (site, compteur, contrat), paramètre, valeur, date d\'effet, motif.',
+        ],
+        cles: ['element', 'parametre', 'poste', 'dateEffet'],
+        aides: { motif: 'Pourquoi cette valeur (contrat d\'origine, avenant 2…) : conservé dans l\'historique.' },
+    },
+};
+
+/** Imports, avec leur mode d'emploi et les aides complétées. */
+export const IMPORT_ENTITIES: Record<ImportEntityKey, ImportEntity> = Object.fromEntries(
+    (Object.keys(BASE) as ImportEntityKey[]).map(k => {
+        const { aides = {}, label, ...guide } = GUIDES[k];
+        return [k, {
+            ...BASE[k], ...guide, ...(label && { label }),
+            fields: BASE[k].fields.map(f => (!f.help && aides[f.key] ? { ...f, help: aides[f.key] } : f)),
+        }];
+    }),
+) as Record<ImportEntityKey, ImportEntity>;
+
+/** Ordre de l'écran : rubrique, puis ordre conseillé d'import. */
+const ORDRE_IMPORTS: ImportEntityKey[] = ['clients', 'contracts', 'sites', 'contacts', 'services', 'meters', 'readings', 'p1formules', 'p1reel', 'p1'];
+export const IMPORT_ENTITY_LIST = ORDRE_IMPORTS.map(k => IMPORT_ENTITIES[k]);
+
+/** Statut d'une colonne : obligatoire à la création, clé de correspondance, ou facultative. */
+export function statutColonne(entity: ImportEntity, f: ImportField): { obligatoire: boolean; cle: boolean } {
+    return { obligatoire: f.required === 'create', cle: entity.cles.includes(f.key) };
+}

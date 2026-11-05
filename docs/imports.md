@@ -1,15 +1,24 @@
 # Imports en masse
 
-Menu **Imports** (administrateurs). Données importables : **clients et prospects**, **contrats**, **sites**,
-**prestations et montants**, **paramétrage P1**, **contacts**, **compteurs**, **relevés de compteurs**. (Les articles de la bibliothèque de prix ont leur propre import : voir `bibliotheque-prix.md`.)
+Menu **Imports** (administrateurs), par rubrique : **Référentiel** (clients et prospects, contrats, sites, contacts),
+**Facturation** (prestations et montants), **Compteurs et relevés** (compteurs, relevés), **P1** (formules de révision,
+réel du moteur pour la régularisation, paramétrage détaillé avancé ; le paramétrage P1 courant passe par les colonnes
+« P1 · … » des imports Sites, Compteurs et Contrats). (Les articles de la bibliothèque de prix ont leur propre import : voir `bibliotheque-prix.md`.)
 
 ## Déroulé
 
-1. Choisir le type de données et télécharger le **modèle** :
+1. Choisir le type de données : l'écran donne son **mode d'emploi** (à quoi il sert, ordre conseillé, pièges), la
+   règle de **création ou mise à jour** et ses **clés**, et le détail des **colonnes** (badges *Obligatoire* et
+   *Clé*, format, rôle, valeurs possibles, exemple ; filtre « seulement les obligatoires et les clés »).
+   Télécharger le **modèle** :
    - **CSV** (séparateur `;`, UTF-8 avec BOM, lisible tel quel par Excel) : en-têtes + une ligne d'exemple ;
-   - **Excel** : onglet **Données** (en-têtes + exemple), onglet **Notice** (chaque colonne : obligatoire ou non,
-     format, valeurs possibles, exemple, aide) et onglet **Listes** (valeurs du paramétrage : sociétés, agences,
+   - **Excel** : onglet **Données** (en-têtes + exemple ; l'aide de chaque colonne en commentaire de son en-tête),
+     onglet **Notice** (mode d'emploi, clés, puis chaque colonne : obligatoire et/ou clé, format, valeurs possibles,
+     exemple, aide) et onglet **Listes** (valeurs du paramétrage : sociétés, agences,
      secteurs, typologies, types de compteur, activités, marchés, échéanciers, périodicités, taux de TVA).
+   Les colonnes **obligatoires pour créer** sont marquées « * » dans les modèles (l'astérisque est ignoré à la
+   relecture). En mise à jour, une clé suffit ; une cellule vide conserve la valeur. Les colonnes inutiles peuvent
+   être supprimées.
 2. Remplir le fichier (supprimer la ligne d'exemple) et le **déposer** (CSV ou XLSX).
 3. **Aperçu**, ligne par ligne : création, mise à jour, inchangé ou erreur (avec le motif). Rien n'est écrit.
    Erreurs téléchargeables en CSV.

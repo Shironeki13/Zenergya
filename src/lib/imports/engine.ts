@@ -204,12 +204,21 @@ export function csvToTable(text: string): string[][] {
 }
 
 /** Modèle CSV : en-têtes + ligne d'exemple, séparateur « ; », BOM UTF-8 (lisible tel quel par Excel). */
+/** En-tête d'une colonne dans les modèles : « * » pour une colonne obligatoire à la création (ignoré à la relecture). */
+export const enteteModele = (f: ImportField) => (f.required === 'create' ? `${f.label} *` : f.label);
+
 export function csvTemplate(entity: ImportEntity): string {
     const quote = (s: string) => (/[;"\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s);
-    const header = entity.fields.map(f => quote(f.label)).join(';');
+    const header = entity.fields.map(f => quote(enteteModele(f))).join(';');
     const example = entity.fields.map(f => quote(f.example ?? '')).join(';');
     return `﻿${header}\r\n${example}\r\n`;
 }
+
+/** Format attendu d'une colonne, en clair. */
+export const FORMATS: Record<ImportField['type'], string> = {
+    text: 'Texte', number: 'Nombre (virgule ou point)', boolean: 'oui / non', enum: 'Liste', siret: 'SIRET (14 chiffres)', email: 'Email',
+    postalCode: 'Code postal (5 chiffres)', date: 'Date (AAAA-MM-JJ ou JJ/MM/AAAA)',
+};
 
 /** Lignes de la notice (onglet « Notice » du modèle XLSX, et documentation). */
 export function noticeRows(entity: ImportEntity): string[][] {
@@ -217,12 +226,29 @@ export function noticeRows(entity: ImportEntity): string[][] {
         ['Colonne', 'Obligatoire', 'Format', 'Valeurs possibles', 'Exemple', 'Aide'],
         ...entity.fields.map(f => [
             f.label,
-            f.required === 'create' ? 'Oui (création)' : 'Non',
-            ({ text: 'Texte', number: 'Nombre (virgule ou point)', boolean: 'oui / non', enum: 'Liste', siret: 'SIRET (14 chiffres)', email: 'Email', postalCode: 'Code postal (5 chiffres)', date: 'Date (AAAA-MM-JJ ou JJ/MM/AAAA)' } as const)[f.type],
+            [f.required === 'create' ? 'Oui, pour créer' : '', entity.cles.includes(f.key) ? 'Clé : retrouve l\'élément' : ''].filter(Boolean).join(' · ') || 'Non',
+            FORMATS[f.type],
             f.options ? f.options.map(o => o.label).join(', ') : f.refList ? 'Voir l\'onglet Listes' : '',
             f.example ?? '',
             f.help ?? '',
         ]),
+    ];
+}
+
+/** En-tête de l'onglet Notice : à quoi sert l'import, mode d'emploi, correspondance, légende. */
+export function noticeIntro(entity: ImportEntity): string[][] {
+    return [
+        [`Import : ${entity.label}`],
+        [entity.resume],
+        [],
+        ['Mode d\'emploi'],
+        ...entity.usage.map(u => [`• ${u}`]),
+        [],
+        [`Correspondance : ${entity.matching}`],
+        [`Clés (retrouvent un élément existant, par priorité) : ${entity.cles.map(k => entity.fields.find(f => f.key === k)?.label ?? k).join(', ')}.`],
+        ['Colonnes marquées « * » : obligatoires pour créer un élément. En mise à jour, seule une clé est nécessaire ; une cellule vide conserve la valeur existante.'],
+        ['Les colonnes inutiles peuvent être supprimées. Supprimez la ligne d\'exemple de l\'onglet Données avant d\'importer.'],
+        [],
     ];
 }
 

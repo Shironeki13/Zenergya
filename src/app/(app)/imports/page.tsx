@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { collection, getDocs, limit, orderBy, query } from 'firebase/firestore';
-import { CheckCircle2, Download, FileSpreadsheet, Loader2, Upload } from 'lucide-react';
+import { CheckCircle2, ChevronDown, ChevronUp, Download, FileSpreadsheet, KeyRound, Loader2, Upload } from 'lucide-react';
 import { db } from '@/lib/firebase';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -10,8 +10,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { useToast } from '@/hooks/use-toast';
 import { useData } from '@/context/data-context';
-import { IMPORT_ENTITIES, IMPORT_ENTITY_LIST, type ImportEntityKey, type RefList } from '@/lib/imports/definitions';
-import { csvTemplate, csvToTable, errorsCsv } from '@/lib/imports/engine';
+import { GROUPES_IMPORT, IMPORT_ENTITIES, IMPORT_ENTITY_LIST, type ImportEntity, type ImportEntityKey, type RefList } from '@/lib/imports/definitions';
+import { csvTemplate, csvToTable, errorsCsv, FORMATS } from '@/lib/imports/engine';
 import { readXlsxTable, xlsxTemplate } from '@/lib/imports/xlsx';
 import { applyImportAction, previewImportAction } from '@/lib/imports/actions';
 
@@ -114,22 +114,47 @@ export default function ImportsPage() {
                 </p>
             </div>
 
-            <div className="grid gap-3 md:grid-cols-4">
-                {IMPORT_ENTITY_LIST.map(e => (
-                    <button key={e.key} type="button" onClick={() => { setEntityKey(e.key); reset(); }}
-                        className={`rounded-lg border p-3 text-left transition-colors ${e.key === entityKey ? 'border-primary bg-primary/5' : 'hover:bg-muted/50'}`}>
-                        <p className="font-medium">{e.label}</p>
-                        <p className="text-xs text-muted-foreground">{e.fields.length} colonnes</p>
-                    </button>
+            <div className="space-y-4">
+                {GROUPES_IMPORT.map(g => (
+                    <div key={g} className="space-y-2">
+                        <h2 className="text-sm font-semibold text-muted-foreground">{g}</h2>
+                        <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-4">
+                            {IMPORT_ENTITY_LIST.filter(e => e.groupe === g).map(e => (
+                                <button key={e.key} type="button" onClick={() => { setEntityKey(e.key); reset(); }}
+                                    className={`rounded-lg border p-3 text-left transition-colors ${e.key === entityKey ? 'border-primary bg-primary/5' : 'hover:bg-muted/50'}`}>
+                                    <p className="font-medium">{e.label}</p>
+                                    <p className="mt-1 text-xs text-muted-foreground line-clamp-2">{e.resume}</p>
+                                    <p className="mt-1 text-[11px] text-muted-foreground">{e.fields.length} colonnes · {e.fields.filter(f => f.required === 'create').length} obligatoires</p>
+                                </button>
+                            ))}
+                        </div>
+                    </div>
                 ))}
             </div>
 
             <Card>
                 <CardHeader>
                     <CardTitle className="text-base">{entity.label}</CardTitle>
-                    <CardDescription>{entity.description} {entity.matching}</CardDescription>
+                    <CardDescription>{entity.resume}</CardDescription>
                 </CardHeader>
-                <CardContent className="flex flex-wrap items-center gap-2">
+                <CardContent className="space-y-4">
+                    <div className="grid gap-4 md:grid-cols-2 text-sm">
+                        <div>
+                            <p className="font-medium mb-1">Mode d&apos;emploi</p>
+                            <ul className="list-disc pl-5 space-y-1 text-muted-foreground">{entity.usage.map(u => <li key={u}>{u}</li>)}</ul>
+                        </div>
+                        <div>
+                            <p className="font-medium mb-1">Création ou mise à jour ?</p>
+                            <p className="text-muted-foreground">{entity.matching}</p>
+                            <p className="mt-2 text-muted-foreground">
+                                <span className="font-medium text-foreground">Clés</span> (par priorité) : {entity.cles.map(k => entity.fields.find(f => f.key === k)?.label ?? k).join(', ')}.
+                                {' '}Les colonnes <Badge variant="destructive" className="px-1 py-0 text-[10px]">Obligatoire</Badge> sont nécessaires pour créer ; en mise à jour, une clé suffit et une cellule vide conserve la valeur.
+                                {' '}Dans les modèles, elles sont marquées « * ».
+                            </p>
+                        </div>
+                    </div>
+                    <Colonnes entity={entity} />
+                    <div className="flex flex-wrap items-center gap-2">
                     <Button variant="outline" onClick={() => download(csvTemplate(entity), `modele-import-${entity.key}.csv`, 'text/csv;charset=utf-8')}>
                         <Download className="mr-2 h-4 w-4" />Modèle CSV
                     </Button>
@@ -151,6 +176,7 @@ export default function ImportsPage() {
                         </label>
                     </Button>
                     {file && <span className="text-sm text-muted-foreground">{file.name}</span>}
+                    </div>
                 </CardContent>
             </Card>
 
@@ -250,3 +276,54 @@ export default function ImportsPage() {
         </div>
     );
 }
+
+/** Colonnes d'un import : statut (obligatoire, clé), format, valeurs possibles, exemple, aide. */
+function Colonnes({ entity }: { entity: ImportEntity }) {
+    const [ouvert, setOuvert] = useState(false);
+    const [essentielles, setEssentielles] = useState(false);
+    useEffect(() => { setOuvert(false); setEssentielles(false); }, [entity.key]);
+    const cles = new Set(entity.cles);
+    const champs = entity.fields.filter(f => !essentielles || f.required === 'create' || cles.has(f.key));
+    return (
+        <div className="rounded-md border">
+            <button type="button" className="flex w-full items-center justify-between px-3 py-2 text-sm font-medium" onClick={() => setOuvert(o => !o)}>
+                <span>Colonnes du modèle ({entity.fields.length}) : rôle, format et exemple de chacune</span>
+                {ouvert ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+            </button>
+            {ouvert && (
+                <div className="border-t p-3 space-y-2">
+                    <label className="flex items-center gap-2 text-xs text-muted-foreground">
+                        <input type="checkbox" checked={essentielles} onChange={e => setEssentielles(e.target.checked)} />
+                        Seulement les colonnes obligatoires et les clés
+                    </label>
+                    <Table>
+                        <TableHeader><TableRow>
+                            <TableHead className="w-64">Colonne</TableHead><TableHead className="w-40">Format</TableHead><TableHead>Rôle et valeurs</TableHead><TableHead className="w-40">Exemple</TableHead>
+                        </TableRow></TableHeader>
+                        <TableBody>
+                            {champs.map(f => (
+                                <TableRow key={f.key}>
+                                    <TableCell className="align-top">
+                                        <span className="font-medium">{f.label}</span>
+                                        <span className="mt-1 flex flex-wrap gap-1">
+                                            {f.required === 'create' && <Badge variant="destructive" className="px-1 py-0 text-[10px]">Obligatoire</Badge>}
+                                            {cles.has(f.key) && <Badge variant="outline" className="gap-0.5 px-1 py-0 text-[10px]"><KeyRound className="h-2.5 w-2.5" />Clé</Badge>}
+                                        </span>
+                                    </TableCell>
+                                    <TableCell className="align-top text-xs text-muted-foreground">{FORMATS[f.type]}</TableCell>
+                                    <TableCell className="align-top text-xs">
+                                        {f.help && <p>{f.help}</p>}
+                                        {f.options && <p className="text-muted-foreground">Valeurs : {f.options.map(o => o.label).join(', ')}.</p>}
+                                        {f.refList && <p className="text-muted-foreground">Valeurs du paramétrage : onglet « Listes » du modèle Excel.</p>}
+                                    </TableCell>
+                                    <TableCell className="align-top font-mono text-xs">{f.example ?? ''}</TableCell>
+                                </TableRow>
+                            ))}
+                        </TableBody>
+                    </Table>
+                </div>
+            )}
+        </div>
+    );
+}
+

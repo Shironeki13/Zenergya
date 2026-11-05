@@ -59,7 +59,11 @@ test('fichier : lignes contrôlées, lignes vides ignorées, doublons de code et
 test('modèles : le CSV relu redonne ses colonnes ; notice complète ; toutes les entités', () => {
     for (const entity of IMPORT_ENTITY_LIST) {
         const table = csvToTable(csvTemplate(entity));
-        assert.deepEqual(table[0], entity.fields.map(f => f.label));
+        assert.deepEqual(table[0], entity.fields.map(f => (f.required === 'create' ? `${f.label} *` : f.label)));
+        // Chaque import a son mode d'emploi, ses clés (colonnes existantes) et une aide pour chaque colonne.
+        assert.ok(entity.resume && entity.usage.length > 0, entity.key);
+        assert.ok(entity.cles.every(k => entity.fields.some(f => f.key === k)), entity.key);
+        assert.deepEqual(entity.fields.filter(f => !f.help && !f.options).map(f => f.label), [], entity.key);
         const { index, ignored } = mapHeaders(entity, table[0]);
         assert.equal(index.size, entity.fields.length, entity.key);
         assert.deepEqual(ignored, []);

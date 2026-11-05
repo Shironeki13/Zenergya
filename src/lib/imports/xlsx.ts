@@ -1,5 +1,5 @@
 import type { ImportEntity, RefList } from '@/lib/imports/definitions';
-import { noticeRows } from '@/lib/imports/engine';
+import { enteteModele, noticeIntro, noticeRows } from '@/lib/imports/engine';
 
 /**
  * Fichiers Excel des imports (librairie SheetJS, chargée à la demande).
@@ -39,18 +39,17 @@ export async function xlsxTemplate(entity: ImportEntity, lists: Partial<Record<R
     const XLSX = await import('xlsx');
     const wb = XLSX.utils.book_new();
 
-    const data = XLSX.utils.aoa_to_sheet([entity.fields.map(f => f.label), entity.fields.map(f => f.example ?? '')]);
-    data['!cols'] = entity.fields.map(f => ({ wch: Math.max(14, f.label.length + 2) }));
+    const data = XLSX.utils.aoa_to_sheet([entity.fields.map(enteteModele), entity.fields.map(f => f.example ?? '')]);
+    data['!cols'] = entity.fields.map(f => ({ wch: Math.max(14, enteteModele(f).length + 2) }));
+    // Commentaire de cellule sur chaque en-tête : l'aide de la colonne, visible au survol dans Excel.
+    entity.fields.forEach((f, i) => {
+        const cell = data[XLSX.utils.encode_cell({ r: 0, c: i })];
+        const texte = [f.required === 'create' ? 'Obligatoire pour créer.' : '', entity.cles.includes(f.key) ? 'Clé : retrouve l\'élément existant.' : '', f.help ?? ''].filter(Boolean).join(' ');
+        if (cell && texte) { cell.c = [{ a: 'Zenergya', t: texte }]; cell.c.hidden = true; }
+    });
     XLSX.utils.book_append_sheet(wb, data, 'Données');
 
-    const notice = XLSX.utils.aoa_to_sheet([
-        [`Import : ${entity.label}`],
-        [entity.description],
-        [`Correspondance : ${entity.matching}`],
-        ['Une cellule vide conserve la valeur existante (mise à jour). Supprimez la ligne d\'exemple avant d\'importer.'],
-        [],
-        ...noticeRows(entity),
-    ]);
+    const notice = XLSX.utils.aoa_to_sheet([...noticeIntro(entity), ...noticeRows(entity)]);
     notice['!cols'] = [{ wch: 30 }, { wch: 16 }, { wch: 24 }, { wch: 40 }, { wch: 20 }, { wch: 60 }];
     XLSX.utils.book_append_sheet(wb, notice, 'Notice');
 
