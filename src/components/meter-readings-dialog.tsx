@@ -7,14 +7,16 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { PlusCircle, Trash2, Edit, Loader2, Calendar as CalendarIcon } from "lucide-react";
+import { PlusCircle, Trash2, Edit, Loader2, Lock, Calendar as CalendarIcon } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 import { format } from "date-fns";
 import { fr } from "date-fns/locale";
 import { cn } from "@/lib/utils";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useToast } from "@/hooks/use-toast";
-import { createMeterReading, updateMeterReading, deleteMeterReading } from "@/services/firestore";
+import { deleteReadingAction, readingLocksAction, saveReadingAction } from "@/lib/readings/actions";
+import type { ReadingLocks } from "@/services/readings-admin";
 import { useData } from "@/context/data-context";
 import type { Meter, MeterReading } from "@/lib/types";
 
@@ -25,16 +27,17 @@ interface MeterReadingsDialogProps {
 
 export function MeterReadingsDialog({ meter, trigger }: MeterReadingsDialogProps) {
     const { toast } = useToast();
-    const { meterReadings, sites, contracts, reloadData, isLoading } = useData();
+    const { meterReadings, reloadData } = useData();
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [editingId, setEditingId] = useState<string | null>(null);
     const [isFormOpen, setIsFormOpen] = useState(false);
+    /** Relevés figés (facture, intéressement, régularisation) et dernier relevé facturé : lus au serveur. */
+    const [locks, setLocks] = useState<ReadingLocks>({ locked: {}, lastBilled: null });
 
     // Form State
     const [date, setDate] = useState<Date | undefined>(new Date());
     const [value, setValue] = useState('');
     const [type, setType] = useState<MeterReading['type']>('REEL');
-    const [source, setSource] = useState<MeterReading['source']>('MANUEL');
     const [comment, setComment] = useState('');
 
     const readings = useMemo(() => {
@@ -43,11 +46,16 @@ export function MeterReadingsDialog({ meter, trigger }: MeterReadingsDialogProps
             .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
     }, [meterReadings, meter.id]);
 
+    const loadLocks = async () => {
+        const r = await readingLocksAction(meter.id);
+        if (r.success) setLocks(r.data);
+    };
+    const editingLocked = editingId ? locks.locked[editingId] : undefined;
+
     const resetForm = () => {
         setDate(new Date());
         setValue('');
         setType('REEL');
-        setSource('MANUEL');
         setComment('');
         setEditingId(null);
         setIsFormOpen(false);
@@ -58,63 +66,35 @@ export function MeterReadingsDialog({ meter, trigger }: MeterReadingsDialogProps
         setDate(new Date(reading.date));
         setValue(reading.value.toString());
         setType(reading.type);
-        setSource(reading.source);
         setComment(reading.comment || '');
         setIsFormOpen(true);
     };
 
     const handleDelete = async (id: string) => {
         if (!confirm("Êtes-vous sûr de vouloir supprimer ce relevé ?")) return;
-        try {
-            await deleteMeterReading(id);
-            toast({ title: "Succès", description: "Relevé supprimé." });
-            await reloadData();
-        } catch (error) {
-            toast({ title: "Erreur", description: "Impossible de supprimer le relevé.", variant: "destructive" });
-        }
+        const r = await deleteReadingAction(id);
+        if (!r.success) { toast({ title: "Suppression refusée", description: r.error, variant: "destructive" }); return; }
+        toast({ title: "Succès", description: "Relevé supprimé." });
+        await reloadData();
+        await loadLocks();
     };
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!date || !value) return;
-
+        if (!date || value === '') return;
         setIsSubmitting(true);
-        try {
-            // Find contractId
-            const site = sites.find(s => s.id === meter.siteId);
-            const contract = site ? contracts.find(c => c.siteIds.includes(site.id)) : null;
-            const contractId = contract?.id ?? null;
-
-            const data = {
-                meterId: meter.id,
-                contractId, // Add contractId
-                date: date.toISOString(),
-                value: Number(value),
-                type,
-                source,
-                comment,
-                unit: meter.unit
-            };
-
-            if (editingId) {
-                await updateMeterReading(editingId, data);
-                toast({ title: "Succès", description: "Relevé mis à jour." });
-            } else {
-                await createMeterReading(data);
-                toast({ title: "Succès", description: "Relevé ajouté." });
-            }
-            await reloadData();
-            resetForm();
-        } catch (error) {
-            console.error(error);
-            toast({ title: "Erreur", description: "L'opération a échoué.", variant: "destructive" });
-        } finally {
-            setIsSubmitting(false);
-        }
+        // Écrit par le serveur : contrôles (index, date), relevés figés, période déjà facturée.
+        const r = await saveReadingAction({ ...(editingId && { id: editingId }), meterId: meter.id, date: date.toISOString(), value: Number(value), type, comment });
+        setIsSubmitting(false);
+        if (!r.success) { toast({ title: "Enregistrement refusé", description: r.error, variant: "destructive" }); return; }
+        toast({ title: "Succès", description: editingId ? "Relevé mis à jour." : "Relevé ajouté." });
+        await reloadData();
+        await loadLocks();
+        resetForm();
     };
 
     return (
-        <Dialog>
+        <Dialog onOpenChange={open => { if (open) loadLocks(); }}>
             <DialogTrigger asChild>
                 {trigger || <Button variant="outline" size="sm">Relevés</Button>}
             </DialogTrigger>
@@ -123,6 +103,7 @@ export function MeterReadingsDialog({ meter, trigger }: MeterReadingsDialogProps
                     <DialogTitle>Relevés - {meter.code}</DialogTitle>
                     <DialogDescription>
                         Gérez les relevés pour le compteur {meter.name} ({meter.reference || 'Sans référence'}).
+                        {locks.lastBilled && <> Relevés facturés jusqu&apos;au {format(new Date(locks.lastBilled.date), 'dd/MM/yyyy')} (facture {locks.lastBilled.invoice}) : un relevé antérieur ne s&apos;ajoute plus.</>}
                     </DialogDescription>
                 </DialogHeader>
 
@@ -131,6 +112,7 @@ export function MeterReadingsDialog({ meter, trigger }: MeterReadingsDialogProps
                     {isFormOpen ? (
                         <form onSubmit={handleSubmit} className="p-4 border rounded-lg bg-muted/20 space-y-4">
                             <h3 className="font-semibold text-sm">{editingId ? "Modifier le relevé" : "Nouveau relevé"}</h3>
+                            {editingLocked && <p className="text-xs text-amber-700">Relevé repris dans {editingLocked} : seul le commentaire se modifie (une correction passe par un avoir).</p>}
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                 <div className="space-y-2">
                                     <Label>Date</Label>
@@ -138,6 +120,7 @@ export function MeterReadingsDialog({ meter, trigger }: MeterReadingsDialogProps
                                         <PopoverTrigger asChild>
                                             <Button
                                                 variant={"outline"}
+                                                disabled={!!editingLocked}
                                                 className={cn("w-full justify-start text-left font-normal", !date && "text-muted-foreground")}
                                             >
                                                 <CalendarIcon className="mr-2 h-4 w-4" />
@@ -151,28 +134,17 @@ export function MeterReadingsDialog({ meter, trigger }: MeterReadingsDialogProps
                                 </div>
                                 <div className="space-y-2">
                                     <Label>Index ({meter.unit})</Label>
-                                    <Input type="number" step="any" value={value} onChange={e => setValue(e.target.value)} required />
+                                    <Input type="number" step="any" min={0} value={value} onChange={e => setValue(e.target.value)} required disabled={!!editingLocked} />
                                 </div>
                                 <div className="space-y-2">
                                     <Label>Type</Label>
-                                    <Select value={type} onValueChange={(v: any) => setType(v)}>
+                                    <Select value={type} onValueChange={(v: any) => setType(v)} disabled={!!editingLocked}>
                                         <SelectTrigger><SelectValue /></SelectTrigger>
                                         <SelectContent>
                                             <SelectItem value="REEL">Réel</SelectItem>
                                             <SelectItem value="ESTIME">Estimé</SelectItem>
                                             <SelectItem value="CORRIGE">Corrigé</SelectItem>
                                             <SelectItem value="AUTO">Automatique</SelectItem>
-                                        </SelectContent>
-                                    </Select>
-                                </div>
-                                <div className="space-y-2">
-                                    <Label>Source</Label>
-                                    <Select value={source} onValueChange={(v: any) => setSource(v)}>
-                                        <SelectTrigger><SelectValue /></SelectTrigger>
-                                        <SelectContent>
-                                            <SelectItem value="MANUEL">Manuel</SelectItem>
-                                            <SelectItem value="IMPORT">Import</SelectItem>
-                                            <SelectItem value="API">API</SelectItem>
                                         </SelectContent>
                                     </Select>
                                 </div>
@@ -223,12 +195,17 @@ export function MeterReadingsDialog({ meter, trigger }: MeterReadingsDialogProps
                                             <TableCell className="text-xs text-muted-foreground">{reading.source}</TableCell>
                                             <TableCell className="text-xs text-muted-foreground max-w-[150px] truncate">{reading.comment}</TableCell>
                                             <TableCell className="text-right">
-                                                <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleEdit(reading)}>
+                                                {locks.locked[reading.id] && (
+                                                    <Badge variant="outline" className="mr-1 gap-1 text-[10px]" title={`Repris dans ${locks.locked[reading.id]}`}><Lock className="h-3 w-3" />Figé</Badge>
+                                                )}
+                                                <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleEdit(reading)} title={locks.locked[reading.id] ? 'Modifier le commentaire' : 'Modifier'}>
                                                     <Edit className="h-4 w-4" />
                                                 </Button>
-                                                <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive" onClick={() => handleDelete(reading.id)}>
-                                                    <Trash2 className="h-4 w-4" />
-                                                </Button>
+                                                {!locks.locked[reading.id] && (
+                                                    <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive" onClick={() => handleDelete(reading.id)}>
+                                                        <Trash2 className="h-4 w-4" />
+                                                    </Button>
+                                                )}
                                             </TableCell>
                                         </TableRow>
                                     ))

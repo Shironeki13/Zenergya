@@ -46,10 +46,10 @@ service cloud.firestore {
       return coll in ['apiKeys', 'apiUsage', 'apiIdempotency', 'apiLogs'];
     }
 
-    // Paramétrage P1 : versions datées, écrites par le serveur seulement (ajout ou retrait tracé, jamais
-    // d'écrasement) ; lisibles par les utilisateurs de l'application.
+    // Écrits par le serveur seulement, lisibles par les utilisateurs : paramétrage P1 (versions datées, jamais
+    // d'écrasement), réel P1 du moteur, relevés de compteurs (relevés facturés ou repris figés).
     function isServerWritten(coll) {
-      return coll in ['p1Parametrage', 'p1Reel'];
+      return coll in ['p1Parametrage', 'p1Reel', 'meterReadings'];
     }
 
     // Devis : modification et suppression traitées à part (voir match /quotes).

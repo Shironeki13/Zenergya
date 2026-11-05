@@ -91,6 +91,8 @@ type Context = {
     p1Regularises: Set<string>;
     /** Relevés repris dans un intéressement ou une régularisation (index figé). */
     lockedReadings: Map<string, string>;
+    /** Dernier relevé facturé de chaque compteur (ECS au relevé) : pas de nouveau relevé antérieur. */
+    lastBilledReading: Map<string, { date: string; invoice: string }>;
 };
 
 type StoredReading = Doc<MeterReading> & { at: number };
@@ -132,7 +134,7 @@ async function loadContext(entity: ImportEntityKey): Promise<Context> {
     ]);
     return {
         companies, agencies, sectors, typologies, meterTypes, activities, markets, schedules, terms, vatRates, services, paymentTerms, revisionRules, indices, clients, contracts, sites, contacts, meters,
-        invoicedContracts: new Set(invoices as string[]), readings: new Map(), lockedReadings: new Map(),
+        invoicedContracts: new Set(invoices as string[]), readings: new Map(), lockedReadings: new Map(), lastBilledReading: new Map(),
         indexCodes: entity === 'p1formules' ? (await loadSeries()).codes : [],
         p1Reel: new Map(), p1Regularises: new Set(),
         p1Docs: entity === 'p1' || entity === 'p1formules' ? new Map((await adminDb.collection('p1Parametrage').get()).docs.map(d => [d.id, d.data() as P1SiteDoc])) : new Map(),
@@ -169,9 +171,12 @@ async function loadReadings(ctx: Context, meterIds: string[]): Promise<void> {
         const invoices = await adminDb.collection('invoices').where('contractId', 'in', contractIds.slice(i, i + 30)).get();
         for (const inv of invoices.docs) {
             if (inv.get('status') === 'cancelled' || inv.get('cancelledByCreditNoteId')) continue;
-            for (const l of (inv.get('lineItems') ?? []) as { p1Releve?: { compteurs: { debut: { readingId: string }; fin: { readingId: string } }[] } }[]) {
-                for (const c of l.p1Releve?.compteurs ?? []) for (const id of [c.debut.readingId, c.fin.readingId]) {
-                    ctx.lockedReadings.set(id, `la facture ${inv.get('invoiceNumber') ?? inv.id} (ECS au relevé)`);
+            for (const l of (inv.get('lineItems') ?? []) as { p1Releve?: { compteurs: { meterId: string; debut: { readingId: string }; fin: { readingId: string; date: string } }[] } }[]) {
+                for (const c of l.p1Releve?.compteurs ?? []) {
+                    const invoice = String(inv.get('invoiceNumber') ?? inv.id);
+                    for (const id of [c.debut.readingId, c.fin.readingId]) ctx.lockedReadings.set(id, `la facture ${invoice} (ECS au relevé)`);
+                    const cur = ctx.lastBilledReading.get(c.meterId);
+                    if (!cur || c.fin.date > cur.date) ctx.lastBilledReading.set(c.meterId, { date: c.fin.date, invoice });
                 }
             }
         }
@@ -658,6 +663,10 @@ function planReading(ctx: Context, row: ParsedRow, seen: Map<string, number>, pe
     item.label = `${meter.code} — ${frDate(at)}`;
     const data = plain(v, ['value', 'type', 'comment']);
     if (!existing && v.value === null) item.messages.push('Index obligatoire pour créer un relevé.');
+    const billed = ctx.lastBilledReading.get(meter.id);
+    if (!existing && billed && isoDay(at) <= billed.date) {
+        item.messages.push(`Période déjà facturée jusqu'au ${billed.date.split('-').reverse().join('/')} (facture ${billed.invoice}) : un relevé antérieur ne s'ajoute plus.`);
+    }
     const locked = existing && ctx.lockedReadings.get(existing.id);
     if (locked && v.value !== null && v.value !== existing.value) {
         item.messages.push(`Relevé repris dans ${locked} : index non modifiable (${existing.value}).`);

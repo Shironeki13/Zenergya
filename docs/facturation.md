@@ -80,7 +80,11 @@ Facturation → Régularisation P1.
   formule P1 ECS) ou prestation (prix unitaire × sa formule de révision), × coefficient de prix facultatif. La
   ligne indique compteurs, relevés (dates, index, relevé estimé), volume et prix. Bloquant : relevé du mois
   manquant, index en baisse (changement ou remise à zéro du compteur), compteur pas au m³, périodicité non
-  mensuelle, terme à échoir. Un relevé facturé est **figé** (import, API) : une correction passe par un avoir.
+  mensuelle, terme à échoir. Un relevé facturé est **figé** : une correction passe par un avoir.
+- **Relevés écrits par le serveur seulement** (écran de saisie, import, API ; règle Firestore) : un relevé repris dans
+  une facture, un intéressement ou une régularisation garde son index, sa date et son type (commentaire libre, pas
+  de suppression) ; un nouveau relevé ne se date pas avant le dernier relevé facturé du compteur. L'écran signale
+  les relevés figés et la période facturée.
   Pas de régularisation de consommation pour l'ECS au relevé (déjà au réel) : sur ces sites, la régularisation ne
   porte que sur le chauffage (réel par usage « chauffage » ; un réel total est refusé).
 - **Réel du moteur** : import « Réel P1 du moteur » (site, mois, montant P1 HT, usage), collection `p1Reel` écrite
