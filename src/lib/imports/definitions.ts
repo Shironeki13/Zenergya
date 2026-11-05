@@ -29,7 +29,7 @@ export type ImportField = {
     allowZero?: boolean;
 };
 
-export type ImportEntityKey = 'clients' | 'contracts' | 'sites' | 'services' | 'contacts' | 'meters' | 'readings' | 'p1' | 'p1formules';
+export type ImportEntityKey = 'clients' | 'contracts' | 'sites' | 'services' | 'contacts' | 'meters' | 'readings' | 'p1' | 'p1formules' | 'p1reel';
 
 export type ImportEntity = {
     key: ImportEntityKey;
@@ -349,6 +349,18 @@ export const IMPORT_ENTITIES: Record<ImportEntityKey, ImportEntity> = {
             { key: 'prixMolecule', label: 'Prix molécule négocié', type: 'number', help: 'Régime fixe.' },
             { key: 'prixFixe', label: 'Prix fixe', type: 'boolean', help: 'oui : prix non révisable.' },
             { key: 'document', label: 'Pièce justificative', type: 'text' },
+        ],
+    },
+    p1reel: {
+        key: 'p1reel',
+        label: 'Réel P1 du moteur',
+        description: 'Montant P1 HT réel de chaque site et de chaque mois, calculé par le moteur P1 (table p1_facturation_site : total P1 du mois). '
+            + 'Sert à régulariser les acomptes P1.',
+        matching: 'Site + mois : un montant identique est inchangé ; un autre montant remplace le précédent, sauf si le mois est déjà régularisé (refusé).',
+        fields: [
+            { key: 'site', label: 'Site', type: 'text', required: 'create', example: 'SIT-00021', aliases: ['code_site'], help: 'Code du site (SIT-…) ou réf. externe.' },
+            { key: 'mois', label: 'Mois', type: 'text', required: 'create', example: '2025-11', help: 'AAAA-MM (ou MM/AAAA, ou une date du mois).' },
+            { key: 'montant', label: 'Montant P1 HT', type: 'number', allowZero: true, required: 'create', example: '12450,80', aliases: ['total_p1', 'montant'], help: '€ HT, réel facturable du mois (chauffage, ECS et annexes).' },
         ],
     },
 };

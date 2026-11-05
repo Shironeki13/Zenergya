@@ -84,6 +84,17 @@ export type BillingService = {
     id?: string; siteId: string; contractId: string; activityId: string; price?: number | null; startDate?: unknown; endDate?: unknown;
     isActive?: boolean; vatRateId?: string; label?: string; scheduleId?: string; billingTermId?: string;
     revisionRuleId?: string; initialIndexValues?: ServiceInitialIndexValue[]; revisionMonths?: number; revisionAnchor?: string; revisionFromStart?: boolean;
+    p1Mode?: 'forfait' | 'acompte';
+};
+
+/** Acomptes P1 (calculés au serveur à partir du paramétrage P1 daté) : quantité, répartition, prix révisé du mois. */
+export type P1AcompteSource = {
+    /** Quantité annuelle (MWh) du site à une date ; message si non renseignée. */
+    quantite: (siteId: string, mois: string) => number | string;
+    /** 12 parts mensuelles (%) du contrat à une date ; message si non renseignée. */
+    repartition: (mois: string) => number[] | string;
+    /** Prix révisé P1 chauffage du site pour un mois (€/MWh) ; message si non calculable. */
+    prix: (siteId: string, mois: string) => number | string;
 };
 export type BillingActivity = { id: string; code: string; label: string; vatRateId?: string };
 export type BillingVatRate = { id: string; code: string; rate: number };
@@ -101,6 +112,8 @@ export type BillingInput = {
     revisionRules?: RevisionRule[];
     indices?: Index[];
     indexValues?: IndexValue[];
+    /** Acomptes P1 : sans source, une prestation en acompte ne peut pas être facturée. */
+    p1?: P1AcompteSource;
 };
 
 /** Élément facturable : une prestation, ou un montant saisi d'un site sans prestation. */
@@ -119,6 +132,8 @@ export type BillingItem = {
     vatRateId?: string;
     /** Révision des prix ; absente : prix ferme. */
     revision?: RevisionConfig;
+    /** Acompte P1 : montant calculé par mois (paramétrage P1), le prix de la prestation est ignoré. */
+    p1Acompte?: boolean;
 };
 
 export type Echeance = {
@@ -141,7 +156,7 @@ export type BilledInvoice = {
     status?: string;
     cancelledByCreditNoteId?: string;
     periodEndDate?: unknown;
-    lineItems?: Partial<Pick<InvoiceLineItem, 'itemKey' | 'itemKeys' | 'periodEndDate' | 'siteId' | 'activityCode' | 'revision'>>[];
+    lineItems?: Partial<Pick<InvoiceLineItem, 'itemKey' | 'itemKeys' | 'periodEndDate' | 'siteId' | 'activityCode' | 'revision' | 'p1Regul'>>[];
 };
 
 // --- Éléments facturables ---
@@ -177,14 +192,17 @@ export function billingItems(input: BillingInput): { items: BillingItem[]; error
         if (site.amountsSource === 'services' || own.length > 0) {
             for (const s of own) {
                 const a = activity.get(s.activityId);
-                if (!a || !contract.activityIds.includes(a.id) || !Number(s.price)) continue;
+                const acompte = s.p1Mode === 'acompte';
+                if (!a || !contract.activityIds.includes(a.id) || (!acompte && !Number(s.price))) continue;
                 const where = `${a.code} sur le site ${site.name}`;
                 const sched = periodicity(where, scheduleName.get(s.scheduleId ?? ''), site.billingSchedule, contract.billingSchedule);
                 if (!sched) continue;
-                const revision = revisionConfig(s, contractStart, input.revisionRules ?? []);
+                // Un acompte P1 est déjà au prix révisé P1 : pas de révision de la prestation par-dessus.
+                const revision = acompte ? null : revisionConfig(s, contractStart, input.revisionRules ?? []);
                 if (revision && 'error' in revision) { errors.push(`${where} : ${revision.error}.`); continue; }
                 items.push({
                     ...(revision && { revision }),
+                    ...(acompte && { p1Acompte: true }),
                     key: `svc:${s.id}`, serviceId: s.id, site, activity: a, label: s.label, annual: Number(s.price),
                     from: maxDay(contractStart, toDay(s.startDate)), to: minDay(contractEnd, toDay(s.endDate)),
                     months: sched.months, scheduleLabel: sched.label, terme: termeFor(where, s.billingTermId, site.termId),
@@ -224,6 +242,15 @@ export function billedUntil(items: BillingItem[], invoices: BilledInvoice[]): Ma
         for (const line of inv.lineItems ?? []) {
             const keys = lineItemKeys(line);
             if (keys.length) { for (const key of keys) bump(key, toDay(line.periodEndDate)); continue; }
+            // Régularisation P1 : les mois régularisés comptent comme facturés pour les acomptes du site ; un intéressement, pour rien.
+            if (line.p1Regul) {
+                if ('mois' in line.p1Regul && line.p1Regul.mois.length) {
+                    const last = line.p1Regul.mois[line.p1Regul.mois.length - 1];
+                    const end = new Date(Date.UTC(+last.slice(0, 4), +last.slice(5, 7), 0)).toISOString().slice(0, 10);
+                    for (const item of items) if (item.p1Acompte && item.site.id === line.p1Regul.siteId) bump(item.key, end);
+                }
+                continue;
+            }
             // Facture antérieure à l'échéancier : par site et activité (ou activité seule en facturation globale).
             for (const item of items) {
                 if (line.activityCode === item.activity.code && (!line.siteId || line.siteId === item.site.id)) bump(item.key, invoiceEnd);
@@ -272,7 +299,7 @@ export function dueInvoiceLines(input: BillingInput, invoices: BilledInvoice[], 
     if (errors.length) return { echeances: [], lines: [], errors, warnings };
     const billed = billedUntil(items, invoices);
     const echeances = items.flatMap(item => echeancesOf(item, contractStart, billed.get(item.key) ?? null, until))
-        .filter(e => e.amount !== 0)
+        .filter(e => e.amount !== 0 || e.item.p1Acompte)
         .sort((a, b) => a.start.localeCompare(b.start) || a.item.site.name.localeCompare(b.item.site.name) || a.item.activity.code.localeCompare(b.item.activity.code));
 
     // Révisions déjà facturées : réutilisées telles quelles (même coefficient pour une même révision).
@@ -290,9 +317,15 @@ export function dueInvoiceLines(input: BillingInput, invoices: BilledInvoice[], 
     };
 
     // Morceaux facturés : l'échéance, coupée à chaque date de révision, au coefficient de la révision en vigueur.
-    type Piece = { e: Echeance; start: string; end: string; days: number; base: number; amount: number; revision?: RevisionSnapshot };
+    type Piece = { e: Echeance; start: string; end: string; days: number; base: number; amount: number; revision?: RevisionSnapshot; p1?: P1Mois[] };
     const pieces: Piece[] = [];
     for (const e of echeances) {
+        if (e.item.p1Acompte) {
+            const r = acompteP1(e, input.p1);
+            if (typeof r === 'string') { lineErrors.push(`Acompte P1 impossible : site ${e.item.site.name}, ${r}.`); continue; }
+            pieces.push({ e, start: e.start, end: e.end, days: e.days, base: r.total, amount: r.total, p1: r.mois });
+            continue;
+        }
         const config = e.item.revision;
         const cuts = config ? revisionDatesWithin(config, e.start, e.end) : [];
         const bounds = [e.start, ...cuts];
@@ -315,7 +348,12 @@ export function dueInvoiceLines(input: BillingInput, invoices: BilledInvoice[], 
         });
     }
 
-    const prorata = (p: { days: number; e: Echeance }) => (p.days < p.e.nominalDays ? ` — prorata ${p.days}/${p.e.nominalDays} j` : '');
+    const prorata = (p: { days: number; e: Echeance; p1?: P1Mois[] }) => (p.days < p.e.nominalDays && !p.p1 ? ` — prorata ${p.days}/${p.e.nominalDays} j` : '');
+    const p1Text = (p: Piece) => {
+        if (!p.p1) return '';
+        const q = p.p1.reduce((a, m) => a + m.quantite, 0);
+        return ` — acompte sur ${q.toLocaleString('fr-FR', { maximumFractionDigits: 2 })} MWh estimés au prix révisé P1 (${p.p1.map(m => `${m.mois} : ${m.prix.toLocaleString('fr-FR', { maximumFractionDigits: 4 })} €/MWh`).join(', ')})`;
+    };
     const period = (p: Piece) => `du ${frDay(p.start)} au ${frDay(p.end)}`;
     const revised = (p: Piece) => (p.revision ? ` — ${revisionText(p.revision)}` : '');
     const lines: InvoiceLineItem[] = [];
@@ -326,6 +364,7 @@ export function dueInvoiceLines(input: BillingInput, invoices: BilledInvoice[], 
         for (const p of pieces) {
             const rate = rateOf(p.e);
             if (rate === undefined) continue;
+            if (p.p1) { lineErrors.push(`Acompte P1 : facturation globale non prise en charge (site ${p.e.item.site.name}) ; passez le contrat en multi-site.`); continue; }
             const key = `${p.e.item.activity.id}|${rate}|${p.start}|${p.end}|${p.revision ? `${p.revision.rule}@${p.revision.date}=${p.revision.coefficient}` : ''}`;
             if (!groups.has(key)) groups.set(key, { p, rate, amounts: [], bases: [], keys: [] });
             const g = groups.get(key)!;
@@ -348,14 +387,44 @@ export function dueInvoiceLines(input: BillingInput, invoices: BilledInvoice[], 
             if (rate === undefined) continue;
             const item = p.e.item;
             lines.push({
-                description: `${item.activity.label}${item.label ? ` — ${item.label}` : ''} (${item.scheduleLabel}, ${TERME_LABEL[item.terme]}) — Site : ${item.site.name} — ${period(p)}${prorata(p)}${revised(p)}`,
+                description: `${p.p1 ? 'Acompte ' : ''}${item.activity.label}${item.label ? ` — ${item.label}` : ''} (${item.scheduleLabel}, ${TERME_LABEL[item.terme]}) — Site : ${item.site.name} — ${period(p)}${prorata(p)}${revised(p)}${p1Text(p)}`,
                 quantity: 1, unitPrice: p.amount, total: p.amount, siteId: item.site.id, activityCode: item.activity.code, vatRate: rate,
                 itemKey: item.key, ...(item.serviceId && { serviceId: item.serviceId }), periodStartDate: p.start, periodEndDate: p.end,
                 ...(p.revision && { baseAmount: p.base, revision: p.revision }),
+                ...(p.p1 && { p1Acompte: { siteId: item.site.id, mois: p.p1 } }),
             });
         }
     }
     return { echeances, lines: lines.filter(l => l.total !== 0), errors: [...new Set(lineErrors)], warnings };
+}
+
+export type P1Mois = { mois: string; quantite: number; prix: number; montant: number };
+
+/**
+ * Acompte P1 d'une échéance : pour chaque mois couvert (au prorata des jours du mois), quantité annuelle × part du
+ * mois × prix révisé P1 du mois. Montant arrondi au centime par mois.
+ */
+export function acompteP1(e: Echeance, p1: P1AcompteSource | undefined): { total: number; mois: P1Mois[] } | string {
+    if (!p1) return 'paramétrage P1 indisponible pour ce calcul';
+    const mois: P1Mois[] = [];
+    let cursor = e.start;
+    while (cursor <= e.end) {
+        const m = cursor.slice(0, 7);
+        const [y, mo] = m.split('-').map(Number);
+        const monthEnd = new Date(Date.UTC(y, mo, 0)).toISOString().slice(0, 10);
+        const end = monthEnd < e.end ? monthEnd : e.end;
+        const share = daysIn(cursor, end) / daysIn(`${m}-01`, monthEnd);
+        const quantiteAn = p1.quantite(e.item.site.id, m);
+        if (typeof quantiteAn === 'string') return quantiteAn;
+        const repartition = p1.repartition(m);
+        if (typeof repartition === 'string') return repartition;
+        const prix = p1.prix(e.item.site.id, m);
+        if (typeof prix === 'string') return `prix ${m} : ${prix}`;
+        const quantite = quantiteAn * (repartition[mo - 1] / 100) * share;
+        mois.push({ mois: m, quantite: Math.round(quantite * 1e6) / 1e6, prix, montant: roundCents(quantite * prix) });
+        cursor = addDays(end, 1);
+    }
+    return { total: sumCents(mois.map(m => m.montant)), mois };
 }
 
 /** Lignes facturées par un élément (y compris en facturation globale, via `itemKeys`). */

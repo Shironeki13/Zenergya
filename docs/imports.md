@@ -124,6 +124,12 @@ est inchangée ; une autre valeur à la même date est refusée (la retirer à l
 `parametrage-p1.md`. Barèmes : paramètre « Barème de partage MCI (contrat) » (ou site), valeur « économie 0-10 % 50 % ;
 dépassement 0-100 % 30 % ».
 
+### Réel P1 du moteur
+
+Site (code SIT ou réf. externe), mois (AAAA-MM, MM/AAAA ou date), montant P1 HT du mois (table
+`p1_facturation_site` du moteur). Un montant identique est inchangé, un autre remplace le précédent, sauf pour un
+mois déjà régularisé (refusé). Sert à la régularisation des acomptes P1 (voir `facturation.md`).
+
 ### Formules de révision P1
 
 Une ligne = une version d'une formule d'un contrat : contrat, formule (nom), usage et périmètre (pour la créer),

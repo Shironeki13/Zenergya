@@ -62,6 +62,7 @@ export default function SiteDetailsPage() {
     const [revisionMonths, setRevisionMonths] = useState<string>('12');
     const [revisionAnchor, setRevisionAnchor] = useState<string>('');
     const [revisionFromStart, setRevisionFromStart] = useState<boolean>(false);
+    const [p1Mode, setP1Mode] = useState<'forfait' | 'acompte'>('forfait');
     const [price, setPrice] = useState<number>(0);
     const [meterId, setMeterId] = useState<string>('');
     const [isMeterComboOpen, setIsMeterComboOpen] = useState(false);
@@ -205,6 +206,7 @@ export default function SiteDetailsPage() {
         setRevisionMonths('12');
         setRevisionAnchor('');
         setRevisionFromStart(false);
+        setP1Mode('forfait');
         setPrice(0);
         setMeterId('');
         setStartDate(contract?.startDate || new Date().toISOString().split('T')[0]);
@@ -304,6 +306,7 @@ export default function SiteDetailsPage() {
         setRevisionMonths(String(service.revisionMonths ?? 12));
         setRevisionAnchor(service.revisionAnchor ?? '');
         setRevisionFromStart(!!service.revisionFromStart);
+        setP1Mode(service.p1Mode ?? 'forfait');
         setPrice(service.price || 0);
         setMeterId(service.meterId || '');
         setStartDate(service.startDate || '');
@@ -361,6 +364,7 @@ export default function SiteDetailsPage() {
             scheduleId,
             pricingRuleId,
             revisionRuleId,
+            ...(selectedType === 'P1' && { p1Mode }),
             // Calendrier de révision (lib/billing/revision) : seulement avec une règle ; sans règle, prix ferme.
             ...(revisionRuleId ? {
                 revisionMonths: Number(revisionMonths) || 12,
@@ -646,7 +650,7 @@ export default function SiteDetailsPage() {
                 return l.activityCode === item.activity.code && (!l.siteId || l.siteId === site.id)
                     && (toDay(inv.periodStartDate) ?? '') <= e.start && (toDay(inv.periodEndDate) ?? '') >= e.end;
             })) ?? null;
-            return { periodStart: new Date(e.start), periodEnd: new Date(e.end), dueDate: new Date(e.billableOn), invoice, amount: e.amount };
+            return { periodStart: new Date(e.start), periodEnd: new Date(e.end), dueDate: new Date(e.billableOn), invoice, amount: item.p1Acompte ? null : e.amount };
         });
     })();
 
@@ -1010,7 +1014,7 @@ export default function SiteDetailsPage() {
                                                         {p.periodEnd.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: '2-digit' })}
                                                     </TableCell>
                                                     <TableCell className="text-xs py-1.5">{p.dueDate.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: '2-digit' })}</TableCell>
-                                                    <TableCell className="text-xs py-1.5 text-right">{p.amount.toLocaleString('fr-FR', { style: 'currency', currency: 'EUR' })}</TableCell>
+                                                    <TableCell className="text-xs py-1.5 text-right">{p.amount === null ? 'acompte P1' : p.amount.toLocaleString('fr-FR', { style: 'currency', currency: 'EUR' })}</TableCell>
                                                     <TableCell className="py-1.5">
                                                         {p.invoice
                                                             ? <Link href={`/invoices/${p.invoice.id}`} className="text-xs text-green-600 hover:underline font-medium">
@@ -1543,6 +1547,25 @@ export default function SiteDetailsPage() {
                                             <Input type="number" step="0.0001" value={moleculePrice} onChange={e => setMoleculePrice(parseFloat(e.target.value))} />
                                         </div>
                                     </div>
+                                )}
+                            </div>
+                        )}
+
+                        {selectedType === 'P1' && (
+                            <div className="space-y-2 border p-4 rounded-md mt-4">
+                                <Label>Facturation du P1</Label>
+                                <Select value={p1Mode} onValueChange={v => setP1Mode(v as 'forfait' | 'acompte')}>
+                                    <SelectTrigger><SelectValue /></SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="forfait">Forfait (montant annuel de la prestation)</SelectItem>
+                                        <SelectItem value="acompte">Acomptes P1 (quantité × répartition × prix révisé P1), régularisés sur le réel</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                                {p1Mode === 'acompte' && (
+                                    <p className="text-xs text-muted-foreground">
+                                        Montant calculé à chaque échéance à partir du paramétrage P1 du site (quantité annuelle ou cibles NB, prix de base,
+                                        formule) et de la répartition du contrat ; le montant annuel ci-dessous est ignoré. Régularisation : Facturation → Régularisation P1.
+                                    </p>
                                 )}
                             </div>
                         )}

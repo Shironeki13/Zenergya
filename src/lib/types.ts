@@ -615,6 +615,10 @@ export type InvoiceLineItem = {
     periodStartDate?: string; // AAAA-MM-JJ
     periodEndDate?: string;   // AAAA-MM-JJ
     baseAmount?: number;      // Montant avant révision
+    /** Acompte P1 : détail par mois (quantité estimée, prix révisé, montant) ; sert à la régularisation. */
+    p1Acompte?: { siteId: string; mois: { mois: string; quantite: number; prix: number; montant: number }[] };
+    /** Régularisation P1 : site et mois régularisés (réel du moteur − acomptes), ou intéressement facturé. */
+    p1Regul?: { siteId: string; mois: string[]; reel: number; acomptes: number } | { siteId: string; interestId: string };
     revision?: { date: string; coefficient: number; rule: string; indices: { code: string; periods: string[]; value: number; base: number; basePeriod: string }[] };
 };
 
@@ -964,6 +968,8 @@ export type Service = {
     revisionMonths?: number; // Révision tous les N mois (1, 3, 6, 12 ; 12 par défaut)
     revisionAnchor?: string; // Date anniversaire de révision « MM-JJ » (défaut : jour du début du contrat)
     revisionFromStart?: boolean; // Révisé dès le début du contrat (sinon prix de base jusqu'à la première révision)
+    /** P1 : « acompte » = montant calculé (quantité annuelle × répartition du mois × prix révisé P1), le prix est ignoré ; sinon forfait. */
+    p1Mode?: 'forfait' | 'acompte';
 
     // Financials
     price: number; // Base price or Flat rate

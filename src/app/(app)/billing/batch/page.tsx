@@ -1,7 +1,7 @@
 
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -9,7 +9,8 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Loader2, CalendarIcon } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useData } from '@/context/data-context';
-import { dueInvoiceLines, frDay, vatTotals } from '@/lib/billing/contract-billing';
+import { frDay } from '@/lib/billing/contract-billing';
+import { previewBatchBillingAction } from '@/lib/billing/actions';
 import { toDay } from '@/lib/services/site-amounts';
 
 const eur = (n: number) => n.toLocaleString('fr-FR', { style: 'currency', currency: 'EUR' });
@@ -38,40 +39,28 @@ type BillableItem = {
 };
 
 export default function BatchBillingPage() {
-    const { contracts, invoices, sites, services, activities, vatRates, schedules, terms, revisionRules, indices, indexValues, isLoading } = useData();
+    const { invoices, isLoading } = useData();
     const { toast } = useToast();
     const [isGenerating, setIsGenerating] = useState(false);
     const [selectedItems, setSelectedItems] = useState<string[]>([]);
     const [dueDate, setDueDate] = useState<Date>(new Date());
 
-    // Même calcul que le serveur (lib/billing/contract-billing) : échéances des prestations facturables à la date
-    // choisie (terme et périodicité de chacune), prorata au jour près, TVA par ligne. Une facture par contrat.
-    const billableItems = useMemo(() => {
-        if (isLoading) return [];
-        const until = toDay(dueDate)!;
-        const results: BillableItem[] = [];
-        for (const contract of contracts.filter(c => c.status === 'Actif')) {
-            const input = {
-                contract: {
-                    id: contract.id, siteIds: contract.siteIds ?? [], activityIds: contract.activityIds ?? [], invoicingType: contract.invoicingType,
-                    startDate: contract.startDate, endDate: contract.endDate, billingSchedule: contract.billingSchedule,
-                },
-                sites, services, activities, vatRates, schedules, terms, revisionRules, indices, indexValues,
-            };
-            const due = dueInvoiceLines(input, invoices.filter(inv => inv.contractId === contract.id), until);
-            if (!due.errors.length && due.lines.length === 0) continue;
-            const totals = vatTotals(due.lines);
-            const starts = due.echeances.map(e => e.start).sort();
-            const ends = due.echeances.map(e => e.end).sort();
-            results.push({
-                id: contract.id, contractId: contract.id, contractNumber: contract.contractNumber ?? contract.id, clientName: contract.clientName,
-                periodStart: starts[0] ?? '', periodEnd: ends[ends.length - 1] ?? '', echeances: due.echeances.length,
-                subtotal: totals.subtotal, tax: totals.tax, warnings: due.warnings,
-                ...(due.errors.length && { error: due.errors.join(' ') }),
-            });
-        }
-        return results;
-    }, [isLoading, contracts, invoices, sites, services, activities, vatRates, schedules, terms, revisionRules, indices, indexValues, dueDate]);
+    // Aperçu calculé au serveur, exactement comme la facture (acomptes P1 compris) : une ligne par contrat.
+    const [billableItems, setBillableItems] = useState<BillableItem[]>([]);
+    const [previewing, setPreviewing] = useState(false);
+    const [refresh, setRefresh] = useState(0);
+    useEffect(() => {
+        if (isLoading) return;
+        let cancelled = false;
+        setPreviewing(true);
+        previewBatchBillingAction(toDay(dueDate)!).then(r => {
+            if (cancelled) return;
+            setPreviewing(false);
+            if (r.success) setBillableItems(r.data.map(row => ({ ...row, id: row.contractId })));
+            else toast({ title: 'Aperçu impossible', description: r.error, variant: 'destructive' });
+        });
+        return () => { cancelled = true; };
+    }, [isLoading, dueDate, invoices, toast, refresh]);
     const selectable = billableItems.filter(item => !item.error);
 
     const handleSelect = (id: string, checked: boolean) => {
@@ -137,6 +126,7 @@ export default function BatchBillingPage() {
             });
         } finally {
             setIsGenerating(false);
+            setRefresh(r => r + 1);
         }
     };
 
@@ -204,7 +194,7 @@ export default function BatchBillingPage() {
                         </TableRow>
                     </TableHeader>
                     <TableBody>
-                        {isLoading ? (
+                        {isLoading || previewing ? (
                             <TableRow>
                                 <TableCell colSpan={7} className="h-24 text-center">
                                     <Loader2 className="mx-auto h-8 w-8 animate-spin text-muted-foreground" />
