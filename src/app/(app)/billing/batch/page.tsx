@@ -38,7 +38,7 @@ type BillableItem = {
 };
 
 export default function BatchBillingPage() {
-    const { contracts, invoices, sites, services, activities, vatRates, schedules, terms, isLoading } = useData();
+    const { contracts, invoices, sites, services, activities, vatRates, schedules, terms, revisionRules, indices, indexValues, isLoading } = useData();
     const { toast } = useToast();
     const [isGenerating, setIsGenerating] = useState(false);
     const [selectedItems, setSelectedItems] = useState<string[]>([]);
@@ -56,7 +56,7 @@ export default function BatchBillingPage() {
                     id: contract.id, siteIds: contract.siteIds ?? [], activityIds: contract.activityIds ?? [], invoicingType: contract.invoicingType,
                     startDate: contract.startDate, endDate: contract.endDate, billingSchedule: contract.billingSchedule,
                 },
-                sites, services, activities, vatRates, schedules, terms,
+                sites, services, activities, vatRates, schedules, terms, revisionRules, indices, indexValues,
             };
             const due = dueInvoiceLines(input, invoices.filter(inv => inv.contractId === contract.id), until);
             if (!due.errors.length && due.lines.length === 0) continue;
@@ -71,7 +71,7 @@ export default function BatchBillingPage() {
             });
         }
         return results;
-    }, [isLoading, contracts, invoices, sites, services, activities, vatRates, schedules, terms, dueDate]);
+    }, [isLoading, contracts, invoices, sites, services, activities, vatRates, schedules, terms, revisionRules, indices, indexValues, dueDate]);
     const selectable = billableItems.filter(item => !item.error);
 
     const handleSelect = (id: string, checked: boolean) => {

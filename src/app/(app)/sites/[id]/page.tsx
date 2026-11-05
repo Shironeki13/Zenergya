@@ -10,6 +10,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { ArrowLeft, Plus, Trash2, Edit, Check, MoreHorizontal, Save, ChevronsUpDown, X, Calculator, Flame, Droplets, Snowflake, Wrench, ChevronDown, ChevronUp } from 'lucide-react';
 import { Input } from '@/components/ui/input';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -26,7 +27,8 @@ import { Textarea } from '@/components/ui/textarea';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { cn } from '@/lib/utils';
-import { calculateIndexValue, calculateRevisionCoefficient } from '@/lib/calculations';
+import { calculateIndexValue } from '@/lib/calculations';
+import { parseAnchor, revisionAt, revisionConfig, revisionDatesWithin, revisionInForce } from '@/lib/billing/revision';
 import { InterestManager } from '@/components/interest-manager';
 import { SettlementManager } from '@/components/settlement-manager';
 
@@ -56,6 +58,9 @@ export default function SiteDetailsPage() {
     const [scheduleId, setScheduleId] = useState<string>('');
     const [pricingRuleId, setPricingRuleId] = useState<string>('');
     const [revisionRuleId, setRevisionRuleId] = useState<string>('');
+    const [revisionMonths, setRevisionMonths] = useState<string>('12');
+    const [revisionAnchor, setRevisionAnchor] = useState<string>('');
+    const [revisionFromStart, setRevisionFromStart] = useState<boolean>(false);
     const [price, setPrice] = useState<number>(0);
     const [meterId, setMeterId] = useState<string>('');
     const [isMeterComboOpen, setIsMeterComboOpen] = useState(false);
@@ -196,6 +201,9 @@ export default function SiteDetailsPage() {
         setScheduleId('');
         setPricingRuleId('');
         setRevisionRuleId('');
+        setRevisionMonths('12');
+        setRevisionAnchor('');
+        setRevisionFromStart(false);
         setPrice(0);
         setMeterId('');
         setStartDate(contract?.startDate || new Date().toISOString().split('T')[0]);
@@ -292,6 +300,9 @@ export default function SiteDetailsPage() {
         setScheduleId(service.scheduleId || '');
         setPricingRuleId(service.pricingRuleId || '');
         setRevisionRuleId(service.revisionRuleId || '');
+        setRevisionMonths(String(service.revisionMonths ?? 12));
+        setRevisionAnchor(service.revisionAnchor ?? '');
+        setRevisionFromStart(!!service.revisionFromStart);
         setPrice(service.price || 0);
         setMeterId(service.meterId || '');
         setStartDate(service.startDate || '');
@@ -349,6 +360,12 @@ export default function SiteDetailsPage() {
             scheduleId,
             pricingRuleId,
             revisionRuleId,
+            // Calendrier de révision (lib/billing/revision) : seulement avec une règle ; sans règle, prix ferme.
+            ...(revisionRuleId ? {
+                revisionMonths: Number(revisionMonths) || 12,
+                ...(parseAnchor(revisionAnchor) ? { revisionAnchor: parseAnchor(revisionAnchor)! } : {}),
+                revisionFromStart,
+            } : {}),
             price: Number(price),
             meterId: selectedType === 'P1' ? meterId : undefined,
             startDate,
@@ -560,51 +577,44 @@ export default function SiteDetailsPage() {
         return extra.length > 0 ? [...indexValues, ...extra] : indexValues;
     })();
 
-    const revisionCoefficient = (activeRevisionRule && activeService?.initialIndexValues?.length)
-        ? calculateRevisionCoefficient(activeRevisionRule, activeService.initialIndexValues, expandedIndexValues)
-        : (activeRevisionRule?.type === 'FIXE' ? 1 : null);
-
-    // Diagnostic précis en cas d'échec du calcul
-    const revisionDiagnostic = (() => {
-        if (!activeRevisionRule || activeRevisionRule.type === 'FIXE' || revisionCoefficient !== null) return null;
-        if (!activeService?.initialIndexValues?.length) return 'Valeurs I0 non renseignées';
-        for (const ruleIndex of activeRevisionRule.indices) {
-            const i0Entry = activeService.initialIndexValues.find(iv => iv.indexId === ruleIndex.indexId);
-            if (!i0Entry || i0Entry.value === 0) {
-                const idx = indices.find(i => i.id === ruleIndex.indexId);
-                return `I0 manquant : ${idx?.code ?? '?'}`;
-            }
-            const hasCurrentValues = expandedIndexValues.some(iv => iv.indexId === ruleIndex.indexId);
-            if (!hasCurrentValues) {
-                const idx = indices.find(i => i.id === ruleIndex.indexId);
-                return `Valeurs courantes absentes : ${idx?.code ?? '?'}`;
-            }
-        }
-        return 'Données insuffisantes';
+    // Révision en vigueur aujourd'hui : même calcul daté que la facturation (lib/billing/revision).
+    const revisionToday = (() => {
+        const contractStart = toDay(contract?.startDate);
+        if (!activeService || !activeRevisionRule || !contractStart) return null;
+        const config = revisionConfig(activeService, contractStart, revisionRules);
+        if (!config) return null;
+        if ('error' in config) return { error: config.error };
+        const date = revisionInForce(config, toDay(new Date())!);
+        if (!date) return { base: true as const, next: revisionDatesWithin(config, contractStart, '9999-12-31')[0] };
+        return revisionAt(config, date, indices, expandedIndexValues);
     })();
+    const revisionCoefficient = !revisionToday ? (activeRevisionRule?.type === 'FIXE' ? 1 : null)
+        : 'coefficient' in revisionToday ? revisionToday.coefficient : 'base' in revisionToday ? 1 : null;
+
+    // Diagnostic : donnée manquante, ou prix de base jusqu'à la première révision.
+    const revisionDiagnostic = !revisionToday ? null
+        : 'error' in revisionToday ? revisionToday.error
+        : 'base' in revisionToday ? `Prix de base jusqu'à la première révision${revisionToday.next ? ` (${revisionToday.next.split('-').reverse().join('/')})` : ''}` : null;
 
     const revisedUnitPrice = (activeService?.unitPrice != null && revisionCoefficient != null)
         ? activeService.unitPrice * revisionCoefficient
         : null;
 
-    // Détail de calcul du coefficient pour vérification
+    // Détail de calcul du coefficient pour vérification (mois exacts utilisés pour la révision en vigueur)
     const revisionDetails = (() => {
-        if (!activeRevisionRule || activeRevisionRule.type === 'FIXE' || !activeService?.initialIndexValues?.length) return null;
+        if (!activeRevisionRule || activeRevisionRule.type === 'FIXE' || !revisionToday || !('coefficient' in revisionToday)) return null;
         return activeRevisionRule.indices.map(ruleIndex => {
             const idx = indices.find(i => i.id === ruleIndex.indexId);
-            const i0Entry = activeService.initialIndexValues?.find(iv => iv.indexId === ruleIndex.indexId);
-            const sortedValues = [...expandedIndexValues]
-                .filter(iv => iv.indexId === ruleIndex.indexId)
-                .sort((a, b) => b.period.localeCompare(a.period))
-                .slice(0, activeRevisionRule.nbMonths);
-            const Ir = sortedValues.length > 0 ? sortedValues.reduce((s, v) => s + v.value, 0) / sortedValues.length : null;
-            const ratio = (Ir !== null && i0Entry?.value) ? Ir / i0Entry.value : null;
+            const detail = revisionToday.indices.find(d => d.code === (idx?.code ?? ruleIndex.indexId));
+            const periods = (detail?.periods ?? []).map(period => expandedIndexValues.find(v => v.indexId === ruleIndex.indexId && v.period === period)).filter((v): v is IndexValue => !!v);
+            const Ir = detail?.value ?? null;
+            const ratio = (Ir !== null && detail?.base) ? Ir / detail.base : null;
             return {
                 code: idx?.code ?? '?',
                 coefficient: ruleIndex.coefficient,
-                i0: i0Entry?.value ?? null,
-                i0Period: i0Entry?.period ?? null,
-                periods: sortedValues,
+                i0: detail?.base ?? null,
+                i0Period: detail?.basePeriod ?? null,
+                periods,
                 Ir,
                 ratio,
                 partial: ratio !== null ? ruleIndex.coefficient * ratio : null,
@@ -985,7 +995,7 @@ export default function SiteDetailsPage() {
                                             <TableRow>
                                                 <TableHead className="text-xs">Période</TableHead>
                                                 <TableHead className="text-xs">Facturable le</TableHead>
-                                                <TableHead className="text-xs text-right">HT</TableHead>
+                                                <TableHead className="text-xs text-right">HT avant révision</TableHead>
                                                 <TableHead className="text-xs">Statut</TableHead>
                                             </TableRow>
                                         </TableHeader>
@@ -1662,6 +1672,35 @@ export default function SiteDetailsPage() {
                                 </Select>
                             </div>
                         </div>
+
+                        {revisionRuleId && (
+                            <div className="grid grid-cols-3 gap-4">
+                                <div className="space-y-2">
+                                    <Label>Révision tous les</Label>
+                                    <Select value={revisionMonths} onValueChange={setRevisionMonths}>
+                                        <SelectTrigger><SelectValue /></SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="12">12 mois</SelectItem>
+                                            <SelectItem value="6">6 mois</SelectItem>
+                                            <SelectItem value="3">3 mois</SelectItem>
+                                            <SelectItem value="1">mois</SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+                                <div className="space-y-2">
+                                    <Label>Date anniversaire (JJ/MM)</Label>
+                                    <Input value={revisionAnchor} onChange={e => setRevisionAnchor(e.target.value)} placeholder="début du contrat" />
+                                    {revisionAnchor && !parseAnchor(revisionAnchor) && <p className="text-xs text-destructive">Format JJ/MM attendu.</p>}
+                                </div>
+                                <div className="flex items-end gap-2 pb-2">
+                                    <Checkbox id="revFromStart" checked={revisionFromStart} onCheckedChange={v => setRevisionFromStart(!!v)} />
+                                    <Label htmlFor="revFromStart" className="text-sm">Révisé dès le début du contrat</Label>
+                                </div>
+                                <p className="col-span-3 text-xs text-muted-foreground">
+                                    Indices des mois précédant chaque date de révision (selon la règle) ; sans « dès le début », prix de base jusqu'à la première révision.
+                                </p>
+                            </div>
+                        )}
 
                         <div className="space-y-2">
                             <div className="flex justify-between items-center">

@@ -614,6 +614,8 @@ export type InvoiceLineItem = {
     serviceId?: string;
     periodStartDate?: string; // AAAA-MM-JJ
     periodEndDate?: string;   // AAAA-MM-JJ
+    baseAmount?: number;      // Montant avant révision
+    revision?: { date: string; coefficient: number; rule: string; indices: { code: string; periods: string[]; value: number; base: number; basePeriod: string }[] };
 };
 
 /** Ventilation de la TVA par taux (rate en %). Absente : TVA unique (`taxRate`). */
@@ -931,6 +933,8 @@ export type RevisionRule = {
     description?: string;
     activityId?: string;
     p1Type?: string; // 'CHAUFFAGE', 'ECS', etc.
+    lagMonths?: number; // Décalage : indices des mois finissant N mois avant la révision (1 par défaut)
+    decimals?: number; // Arrondi du coefficient (4 par défaut)
 }
 
 export type ServiceType = 'P1' | 'P2' | 'P3';
@@ -956,7 +960,10 @@ export type Service = {
     billingTermId?: string; // Link to Term (Trimestriel, Mensuel...)
     scheduleId?: string; // Link to Schedule (Echéancier)
     pricingRuleId?: string; // Link to PricingRule
-    revisionRuleId?: string; // Link to RevisionRule
+    revisionRuleId?: string; // Link to RevisionRule (sans règle : prix ferme)
+    revisionMonths?: number; // Révision tous les N mois (1, 3, 6, 12 ; 12 par défaut)
+    revisionAnchor?: string; // Date anniversaire de révision « MM-JJ » (défaut : jour du début du contrat)
+    revisionFromStart?: boolean; // Révisé dès le début du contrat (sinon prix de base jusqu'à la première révision)
 
     // Financials
     price: number; // Base price or Flat rate

@@ -37,8 +37,27 @@ la fiche site) ; préparation : `src/services/contract-billing-admin.ts`.
 les prestations leur périodicité et leur terme (fiche site ou import des prestations, colonnes « Périodicité » et
 « Terme »).
 
-Pas encore géré : révision des prix (indices), facturation du P1 sur consommation (acomptes, régularisation,
-intéressement).
+### Révision des prix
+
+Calcul : `src/lib/billing/revision.ts`.
+
+- **Source unique : la prestation** (règle de révision, valeurs de base I0 avec leur mois, calendrier). Sans règle :
+  prix ferme. Les révisions saisies sur un site sans prestation ne sont pas appliquées (signalé).
+- **Calendrier** : révision tous les 12 mois (ou 6, 3, 1) à la date anniversaire de la prestation (JJ/MM ; par
+  défaut le jour du début du contrat). Le prix de base s'applique jusqu'à la première révision qui suit le début du
+  contrat, sauf « révisé dès le début ». Une échéance qui chevauche une date de révision est coupée en deux lignes.
+- **Indices datés** : à une révision du mois M, chaque indice vaut la moyenne des « Moyenne » mois consécutifs qui
+  finissent « Décalage » mois avant M (règle de révision, Paramétrage : par défaut 3 mois finissant le mois
+  précédent). Les indices calculés sont évalués par leur formule. Un mois manquant ou une valeur de base absente
+  bloque la facture (aucun coefficient supposé).
+- **Coefficient** : prix ferme = 1 ; Σ coeff × In/I0 ; a + b × Σ coeff × In/I0 ; arrondi à « Décimales » (4 par
+  défaut).
+- **Facture** : chaque ligne révisée porte le montant avant révision, le coefficient, la date de révision et les
+  indices utilisés (mois, valeur, base), imprimés dans son libellé.
+- **Figé une fois facturé** : le coefficient d'une révision déjà facturée est réutilisé pour les échéances suivantes
+  de la même révision ; une correction d'indice publiée après coup ne change ni le passé ni la suite de la période.
+
+Pas encore géré : facturation du P1 sur consommation (acomptes, régularisation, intéressement).
 
 ## Numérotation (factures et avoirs)
 

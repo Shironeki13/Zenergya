@@ -26,7 +26,8 @@ export const MAX_BATCH = 500;
 type Lookups = {
     companies: Map<string, string>; agencies: Map<string, string>; sectors: Map<string, string>; typologies: Map<string, string>;
     clients: Map<string, string>; contracts: Map<string, string>; sites: Map<string, string>; meters: Map<string, string>;
-    activities: Map<string, string>; markets: Map<string, string>; terms: Map<string, string>; schedules: Map<string, string>; vatRates: Map<string, string>; paymentTerms: Map<string, string>;
+    activities: Map<string, string>; markets: Map<string, string>; terms: Map<string, string>; schedules: Map<string, string>;
+    revisionRules: Map<string, string>; indices: Map<string, string>; vatRates: Map<string, string>; paymentTerms: Map<string, string>;
 };
 
 let cache: { at: number; value: Lookups } | null = null;
@@ -36,15 +37,16 @@ async function lookups(): Promise<Lookups> {
     if (cache && Date.now() - cache.at < 60_000) return cache.value;
     const map = async (collection: string, field: (d: FirebaseFirestore.DocumentData) => string) =>
         new Map((await adminDb.collection(collection).get()).docs.map(d => [d.id, field(d.data())]));
-    const [companies, agencies, sectors, typologies, clients, contracts, sites, meters, activities, markets, terms, vatRates, paymentTerms, schedules] = await Promise.all([
+    const [companies, agencies, sectors, typologies, clients, contracts, sites, meters, activities, markets, terms, vatRates, paymentTerms, schedules, revisionRules, indices] = await Promise.all([
         map('companies', d => d.code || d.name), map('agencies', d => d.name), map('sectors', d => d.name),
         map('typologies', d => d.name), map('clients', d => d.externalCode || d.clientNumber || ''),
         map('contracts', d => d.contractNumber || ''), map('sites', d => d.code || ''), map('meters', d => d.code || ''),
         map('activities', d => d.code || d.label), map('markets', d => d.code || d.label),
         map('terms', d => d.name || ''), map('vatRates', d => d.code || ''), map('paymentTerms', d => d.code || ''),
         map('schedules', d => d.name || ''),
+        map('revisionRules', d => d.code || ''), map('indices', d => d.code || ''),
     ]);
-    cache = { at: Date.now(), value: { companies, agencies, sectors, typologies, clients, contracts, sites, meters, activities, markets, terms, vatRates, paymentTerms, schedules } };
+    cache = { at: Date.now(), value: { companies, agencies, sectors, typologies, clients, contracts, sites, meters, activities, markets, terms, vatRates, paymentTerms, schedules, revisionRules, indices } };
     return cache.value;
 }
 
@@ -88,6 +90,11 @@ function serialize(resource: ApiResource, id: string, d: FirebaseFirestore.Docum
             activity: l.activities.get(d.activityId), type: d.type, label: d.label, startDate: day(d.startDate), endDate: day(d.endDate),
             price: d.price, schedule: d.scheduleId ? l.schedules.get(d.scheduleId) : undefined,
             term: d.billingTermId ? l.terms.get(d.billingTermId) : undefined,
+            revisionRule: d.revisionRuleId ? l.revisionRules.get(d.revisionRuleId) : undefined,
+            baseIndices: d.initialIndexValues?.length
+                ? d.initialIndexValues.map((b: { indexId: string; value: number; period: string }) => `${l.indices.get(b.indexId) ?? b.indexId}=${b.value}@${b.period}`).join('; ')
+                : undefined,
+            revisionMonths: d.revisionRuleId ? d.revisionMonths : undefined, revisionAnchor: d.revisionAnchor, revisionFromStart: d.revisionFromStart,
             vatRate: d.vatRateId ? l.vatRates.get(d.vatRateId) : undefined, meter: d.meterId ? l.meters.get(d.meterId) : undefined,
             p1Type: d.p1Type, energyType: d.energyType, unitPrice: d.unitPrice, unit: d.unit, isActive: d.isActive, comment: d.comment,
         });

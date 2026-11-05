@@ -1,6 +1,9 @@
 import { roundCents, sumCents } from '@/lib/money';
 import { toDay } from '@/lib/services/site-amounts';
-import type { InvoiceLineItem, VatBreakdown } from '@/lib/types';
+import type { Index, IndexValue, InvoiceLineItem, RevisionRule, ServiceInitialIndexValue, VatBreakdown } from '@/lib/types';
+import {
+    revisionAt, revisionConfig, revisionDatesWithin, revisionInForce, revisionText, type RevisionConfig, type RevisionSnapshot,
+} from '@/lib/billing/revision';
 
 /**
  * Facturation des contrats : échéancier calculé à partir des prestations (calcul pur, partagé par le serveur, la
@@ -17,6 +20,9 @@ import type { InvoiceLineItem, VatBreakdown } from '@/lib/types';
  * - **Déjà facturé** : lignes des factures (et proformas) non annulées, par prestation et période ; les factures
  *   antérieures (sans détail par ligne) comptent par site et activité jusqu'à leur fin de période.
  * - **TVA par ligne** : celle de la prestation, sinon celle de l'activité ; jamais supposée (facture bloquée).
+ * - **Révision** (lib/billing/revision) : coefficient de la révision en vigueur, appliqué à l'échéance (coupée à
+ *   chaque date de révision) et imprimé sur la ligne ; un coefficient déjà facturé pour une révision est réutilisé
+ *   tel quel (une correction d'indice ultérieure ne change pas ce qui a été facturé).
  */
 
 // --- Jours (« AAAA-MM-JJ », sans fuseau) ---
@@ -72,10 +78,12 @@ export type BillingContract = {
 export type BillingSite = {
     id: string; name: string; contractId?: string; amounts?: { activityId: string; amount: number }[]; amountsSource?: string;
     billingSchedule?: string; termId?: string;
+    revisionP1?: { ruleId?: string; formulaId?: string | null }; revisionP2?: { ruleId?: string; formulaId?: string | null }; revisionP3?: { ruleId?: string; formulaId?: string | null };
 };
 export type BillingService = {
     id?: string; siteId: string; contractId: string; activityId: string; price?: number | null; startDate?: unknown; endDate?: unknown;
     isActive?: boolean; vatRateId?: string; label?: string; scheduleId?: string; billingTermId?: string;
+    revisionRuleId?: string; initialIndexValues?: ServiceInitialIndexValue[]; revisionMonths?: number; revisionAnchor?: string; revisionFromStart?: boolean;
 };
 export type BillingActivity = { id: string; code: string; label: string; vatRateId?: string };
 export type BillingVatRate = { id: string; code: string; rate: number };
@@ -89,6 +97,10 @@ export type BillingInput = {
     vatRates: BillingVatRate[];
     schedules: NamedRef[];
     terms: NamedRef[];
+    /** Révision des prix (sans elles : aucune prestation révisable ne peut être facturée). */
+    revisionRules?: RevisionRule[];
+    indices?: Index[];
+    indexValues?: IndexValue[];
 };
 
 /** Élément facturable : une prestation, ou un montant saisi d'un site sans prestation. */
@@ -105,6 +117,8 @@ export type BillingItem = {
     scheduleLabel: string;
     terme: Terme;
     vatRateId?: string;
+    /** Révision des prix ; absente : prix ferme. */
+    revision?: RevisionConfig;
 };
 
 export type Echeance = {
@@ -127,7 +141,7 @@ export type BilledInvoice = {
     status?: string;
     cancelledByCreditNoteId?: string;
     periodEndDate?: unknown;
-    lineItems?: Partial<Pick<InvoiceLineItem, 'itemKey' | 'itemKeys' | 'periodEndDate' | 'siteId' | 'activityCode'>>[];
+    lineItems?: Partial<Pick<InvoiceLineItem, 'itemKey' | 'itemKeys' | 'periodEndDate' | 'siteId' | 'activityCode' | 'revision'>>[];
 };
 
 // --- Éléments facturables ---
@@ -167,7 +181,10 @@ export function billingItems(input: BillingInput): { items: BillingItem[]; error
                 const where = `${a.code} sur le site ${site.name}`;
                 const sched = periodicity(where, scheduleName.get(s.scheduleId ?? ''), site.billingSchedule, contract.billingSchedule);
                 if (!sched) continue;
+                const revision = revisionConfig(s, contractStart, input.revisionRules ?? []);
+                if (revision && 'error' in revision) { errors.push(`${where} : ${revision.error}.`); continue; }
                 items.push({
+                    ...(revision && { revision }),
                     key: `svc:${s.id}`, serviceId: s.id, site, activity: a, label: s.label, annual: Number(s.price),
                     from: maxDay(contractStart, toDay(s.startDate)), to: minDay(contractEnd, toDay(s.endDate)),
                     months: sched.months, scheduleLabel: sched.label, terme: termeFor(where, s.billingTermId, site.termId),
@@ -181,6 +198,8 @@ export function billingItems(input: BillingInput): { items: BillingItem[]; error
                 const where = `${a.code} sur le site ${site.name}`;
                 const sched = periodicity(where, site.billingSchedule, contract.billingSchedule);
                 if (!sched) continue;
+                const legacy = [site.revisionP1, site.revisionP2, site.revisionP3].some(r => r?.ruleId || r?.formulaId);
+                if (legacy) warnings.push(`Site ${site.name} : révision portée par le site, non appliquée (la révision se règle sur les prestations).`);
                 items.push({
                     key: `site:${site.id}:${a.id}`, site, activity: a, annual: amount.amount, from: contractStart, to: contractEnd,
                     months: sched.months, scheduleLabel: sched.label, terme: termeFor(where, site.termId), vatRateId: a.vatRateId,
@@ -256,6 +275,12 @@ export function dueInvoiceLines(input: BillingInput, invoices: BilledInvoice[], 
         .filter(e => e.amount !== 0)
         .sort((a, b) => a.start.localeCompare(b.start) || a.item.site.name.localeCompare(b.item.site.name) || a.item.activity.code.localeCompare(b.item.activity.code));
 
+    // Révisions déjà facturées : réutilisées telles quelles (même coefficient pour une même révision).
+    const frozen = new Map<string, RevisionSnapshot>();
+    for (const inv of invoices) {
+        if (inv.status === 'cancelled' || inv.cancelledByCreditNoteId) continue;
+        for (const line of inv.lineItems ?? []) if (line.revision) for (const key of lineItemKeys(line)) frozen.set(`${key}|${line.revision.date}`, line.revision);
+    }
     const vat = new Map(input.vatRates.map(v => [v.id, v]));
     const lineErrors: string[] = [];
     const rateOf = (e: Echeance) => {
@@ -263,41 +288,74 @@ export function dueInvoiceLines(input: BillingInput, invoices: BilledInvoice[], 
         if (!v) lineErrors.push(`TVA non renseignée : ${e.item.activity.code} sur le site ${e.item.site.name} (à définir sur la prestation ou sur l'activité, dans le paramétrage).`);
         return v?.rate;
     };
-    const prorata = (e: { days: number; nominalDays: number }) => (e.days < e.nominalDays ? ` — prorata ${e.days}/${e.nominalDays} j` : '');
-    const period = (e: Echeance) => `du ${frDay(e.start)} au ${frDay(e.end)}`;
+
+    // Morceaux facturés : l'échéance, coupée à chaque date de révision, au coefficient de la révision en vigueur.
+    type Piece = { e: Echeance; start: string; end: string; days: number; base: number; amount: number; revision?: RevisionSnapshot };
+    const pieces: Piece[] = [];
+    for (const e of echeances) {
+        const config = e.item.revision;
+        const cuts = config ? revisionDatesWithin(config, e.start, e.end) : [];
+        const bounds = [e.start, ...cuts];
+        bounds.forEach((start, k) => {
+            const end = k + 1 < bounds.length ? addDays(bounds[k + 1], -1) : e.end;
+            const days = daysIn(start, end);
+            const exact = e.item.annual * (e.item.months / 12) * (days / e.nominalDays);
+            let revision: RevisionSnapshot | undefined;
+            const date = config ? revisionInForce(config, start) : null;
+            if (config && date) {
+                const known = frozen.get(`${e.item.key}|${date}`);
+                const computed = known ?? revisionAt(config, date, input.indices ?? [], input.indexValues ?? []);
+                if ('error' in computed) {
+                    lineErrors.push(`Révision impossible : ${e.item.activity.code} sur le site ${e.item.site.name}, ${computed.error}.`);
+                    return;
+                }
+                revision = computed;
+            }
+            pieces.push({ e, start, end, days, base: roundCents(exact), amount: roundCents(exact * (revision?.coefficient ?? 1)), ...(revision && { revision }) });
+        });
+    }
+
+    const prorata = (p: { days: number; e: Echeance }) => (p.days < p.e.nominalDays ? ` — prorata ${p.days}/${p.e.nominalDays} j` : '');
+    const period = (p: Piece) => `du ${frDay(p.start)} au ${frDay(p.end)}`;
+    const revised = (p: Piece) => (p.revision ? ` — ${revisionText(p.revision)}` : '');
     const lines: InvoiceLineItem[] = [];
 
     if (input.contract.invoicingType === 'global') {
-        // Une ligne par activité, taux et période ; le détail par élément reste dans `items` (suivi du facturé).
-        const groups = new Map<string, { e: Echeance; rate: number; amounts: number[]; keys: string[] }>();
-        for (const e of echeances) {
-            const rate = rateOf(e);
+        // Une ligne par activité, taux, période et révision ; le détail par élément reste dans `itemKeys` (suivi du facturé).
+        const groups = new Map<string, { p: Piece; rate: number; amounts: number[]; bases: number[]; keys: string[] }>();
+        for (const p of pieces) {
+            const rate = rateOf(p.e);
             if (rate === undefined) continue;
-            const key = `${e.item.activity.id}|${rate}|${e.start}|${e.end}`;
-            if (!groups.has(key)) groups.set(key, { e, rate, amounts: [], keys: [] });
-            groups.get(key)!.amounts.push(e.amount);
-            groups.get(key)!.keys.push(e.item.key);
+            const key = `${p.e.item.activity.id}|${rate}|${p.start}|${p.end}|${p.revision ? `${p.revision.rule}@${p.revision.date}=${p.revision.coefficient}` : ''}`;
+            if (!groups.has(key)) groups.set(key, { p, rate, amounts: [], bases: [], keys: [] });
+            const g = groups.get(key)!;
+            g.amounts.push(p.amount);
+            g.bases.push(p.base);
+            g.keys.push(p.e.item.key);
         }
         for (const g of groups.values()) {
             const total = sumCents(g.amounts);
             lines.push({
-                description: `${g.e.item.activity.label} (${g.e.item.scheduleLabel}, ${TERME_LABEL[g.e.item.terme]}) — ${period(g.e)}${prorata(g.e)}`,
-                quantity: 1, unitPrice: total, total, activityCode: g.e.item.activity.code, vatRate: g.rate,
-                periodStartDate: g.e.start, periodEndDate: g.e.end, itemKeys: g.keys,
+                description: `${g.p.e.item.activity.label} (${g.p.e.item.scheduleLabel}, ${TERME_LABEL[g.p.e.item.terme]}) — ${period(g.p)}${prorata(g.p)}${revised(g.p)}`,
+                quantity: 1, unitPrice: total, total, activityCode: g.p.e.item.activity.code, vatRate: g.rate,
+                periodStartDate: g.p.start, periodEndDate: g.p.end, itemKeys: g.keys,
+                ...(g.p.revision && { baseAmount: sumCents(g.bases), revision: g.p.revision }),
             });
         }
     } else {
-        for (const e of echeances) {
-            const rate = rateOf(e);
+        for (const p of pieces) {
+            const rate = rateOf(p.e);
             if (rate === undefined) continue;
+            const item = p.e.item;
             lines.push({
-                description: `${e.item.activity.label}${e.item.label ? ` — ${e.item.label}` : ''} (${e.item.scheduleLabel}, ${TERME_LABEL[e.item.terme]}) — Site : ${e.item.site.name} — ${period(e)}${prorata(e)}`,
-                quantity: 1, unitPrice: e.amount, total: e.amount, siteId: e.item.site.id, activityCode: e.item.activity.code, vatRate: rate,
-                itemKey: e.item.key, ...(e.item.serviceId && { serviceId: e.item.serviceId }), periodStartDate: e.start, periodEndDate: e.end,
+                description: `${item.activity.label}${item.label ? ` — ${item.label}` : ''} (${item.scheduleLabel}, ${TERME_LABEL[item.terme]}) — Site : ${item.site.name} — ${period(p)}${prorata(p)}${revised(p)}`,
+                quantity: 1, unitPrice: p.amount, total: p.amount, siteId: item.site.id, activityCode: item.activity.code, vatRate: rate,
+                itemKey: item.key, ...(item.serviceId && { serviceId: item.serviceId }), periodStartDate: p.start, periodEndDate: p.end,
+                ...(p.revision && { baseAmount: p.base, revision: p.revision }),
             });
         }
     }
-    return { echeances, lines, errors: [...new Set(lineErrors)], warnings };
+    return { echeances, lines: lines.filter(l => l.total !== 0), errors: [...new Set(lineErrors)], warnings };
 }
 
 /** Lignes facturées par un élément (y compris en facturation globale, via `itemKeys`). */
