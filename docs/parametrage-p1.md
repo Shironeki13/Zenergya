@@ -202,3 +202,35 @@ Ces données viennent de BigQuery et ne sont pas des paramètres :
    à la place du Google Sheet et rapproche les données TWIMM par la
    correspondance. Ses résultats (`p1_facturation_*`, `p1_site_*`), indexés par
    les codes Zenergya, se relisent pour facturer et suivre les contrats.
+
+## 6. Mis en œuvre : fondations (paramétrage daté)
+
+Code : `src/lib/p1/stockage.ts` (versions, contrôles, reste à faire), `src/services/p1-admin.ts` (écritures),
+écran « Paramétrage P1 » de la fiche site (`src/components/p1/p1-parametrage-panel.tsx`), import « Paramétrage P1 ».
+
+- **Collection `p1Parametrage`**, écrite par le serveur seulement (lisible par les utilisateurs) : un document par
+  site (`site:<id>`, avec ses postes de consommation), par compteur (`meter:<id>`) et par contrat (`contract:<id>`).
+- **Versions datées** : chaque paramètre est une liste de versions (valeur, date d'effet — vide : valeur
+  d'origine —, motif, pièce, auteur, horodatage). Une nouvelle valeur ajoute une version ; une version active à la
+  même date est refusée (la retirer d'abord) ; un retrait est tracé (date, auteur, motif) et la version reste dans
+  l'historique. La valeur d'un jour est la version active la plus récente à cette date.
+- **Paramètres** :
+  - site : type de marché, période de référence, prix de base chauffage et ECS, station météo, code TWIMM ;
+  - poste de consommation : formule de NC (compteurs du site signés), cible NB et son unité, DJU de référence ;
+  - compteur : usage, énergie, coefficient QE (jamais 1 par défaut), qECS, code TWIMM ;
+  - contrat : régime du compte de prestation, coefficient et frais de gestion, code TWIMM, intéressement au
+    contrat (par marché : répartition, plafond).
+- **Source unique** : la cible NB, le DJU de référence et le qECS sont saisis dans Zenergya (décision du
+  05/11/2026 : engagements contractuels ; le moteur P1 les lira depuis l'export, sa décision des 19 et 21/10/2026
+  est à revoir). L'intéressement lit cible, DJU, QE et station dans le paramétrage P1 en vigueur au début de la
+  saison (à défaut, l'ancienne saisie de la prestation, signalée) ; sans QE connu, il ne se calcule pas. Le
+  formulaire de prestation ne saisit plus ces valeurs.
+- **Reste à faire** par site, à une date, selon la grille du § 2 : ce qui manque pour calculer ; le barème de
+  partage et le prix de l'énergie PFI sont signalés pour le lot suivant.
+- **Reprise** : `npm run p1:reprise` (simulation), puis `-- --apply` : station, type de marché (s'il est dans la
+  grille), poste « Chauffage » (compteur de la prestation, cible, DJU), QE (sauf 1, signalé à vérifier).
+
+Lots suivants : barème de partage par tranches, formules de révision P1 complètes (forme B, paniers, termes du gaz,
+périodicités DJU), qualification des achats, postes de facturation, prix de l'énergie PFI, P2 par exercice,
+périmètre d'intéressement ; puis export vers BigQuery (tables `p_*`) et relecture des résultats du moteur.
+

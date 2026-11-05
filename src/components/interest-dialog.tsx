@@ -12,6 +12,9 @@ import { Textarea } from '@/components/ui/textarea';
 import { toast } from '@/hooks/use-toast';
 import { Separator } from '@/components/ui/separator';
 import { Calculator } from 'lucide-react';
+import { getP1SiteAction } from '@/lib/p1/actions';
+import { valeurAu } from '@/lib/p1/stockage';
+import type { TermeNc } from '@/lib/p1/parametrage';
 
 interface InterestDialogProps {
     open: boolean;
@@ -41,7 +44,10 @@ export function InterestDialog({ open, onOpenChange, service, existingInterest, 
 
     // Calculated
     const [measuredDju, setMeasuredDju] = useState(0);
-    const [conversionCoefficient, setConversionCoefficient] = useState(1); // Default to 1 if no conversion
+    // Coefficient de conversion (QE) : jamais 1 par défaut ; vide tant qu'il n'est pas connu (paramétrage P1 du compteur).
+    const [conversionCoefficient, setConversionCoefficient] = useState<number | null>(null);
+    /** Origine des références : paramétrage P1 daté, ou ancienne saisie de la prestation. */
+    const [referenceSource, setReferenceSource] = useState<'p1' | 'prestation' | null>(null);
 
     // Results
     const [ncMwh, setNcMwh] = useState(0);
@@ -108,7 +114,8 @@ export function InterestDialog({ open, onOpenChange, service, existingInterest, 
             // Wait, Interest type has unitPrice. Service has interestUnitPrice. Let's assume they map.
 
             setMeasuredDju(existingInterest.measuredDju);
-            setConversionCoefficient(existingInterest.conversionCoefficient);
+            setConversionCoefficient(existingInterest.conversionCoefficient ?? null);
+            setReferenceSource(null);
 
             // Results should be recalculated or loaded? Loaded is safer for history, but recalculating ensures consistency if logic changes.
             // Let's load them for display.
@@ -121,14 +128,41 @@ export function InterestDialog({ open, onOpenChange, service, existingInterest, 
 
             setComment(existingInterest.comment || '');
         } else {
-            // New Interest: default values from Service
+            // Nouvel intéressement : références du paramétrage P1 en vigueur (voir l'effet suivant).
             setSeasonLabel(`${new Date().getFullYear() - 1}-${new Date().getFullYear()}`);
-            setReferenceNb(service.referenceNb || 0);
-            setReferenceDju(service.referenceDju || 0);
             setSharingPercentage(service.sharingPercentage || 0);
             setInterestUnitPrice(service.interestUnitPrice || 0);
         }
     }, [existingInterest, service]);
+
+    // Références d'un nouvel intéressement : paramétrage P1 en vigueur au début de la saison (source unique) ;
+    // à défaut, l'ancienne saisie de la prestation, signalée.
+    useEffect(() => {
+        if (!open || existingInterest) return;
+        let cancelled = false;
+        const day = startDate || new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/Paris' });
+        getP1SiteAction(service.siteId, day).then(r => {
+            if (cancelled) return;
+            const view = r.success ? r.data : null;
+            const meter = view?.meters.find(m => m.id === service.meterId);
+            const postes = Object.values(view?.siteDoc?.postes ?? {}).filter(p => !p.retireLe);
+            const poste = postes.find(p => (valeurAu<TermeNc[]>(p.params, 'formuleNc', day) ?? []).some(t => t.codeCompteur === meter?.code)) ?? (postes.length === 1 ? postes[0] : undefined);
+            const nb = poste ? valeurAu<number>(poste.params, 'cibleNb', day) : null;
+            const dju = poste ? valeurAu<number>(poste.params, 'djuReference', day) : null;
+            if (nb && dju) {
+                setReferenceNb(nb); setReferenceDju(dju); setReferenceSource('p1');
+            } else if (service.referenceNb && service.referenceDju) {
+                setReferenceNb(service.referenceNb); setReferenceDju(service.referenceDju); setReferenceSource('prestation');
+            } else {
+                setReferenceNb(0); setReferenceDju(0); setReferenceSource(null);
+            }
+            const qe = meter ? valeurAu<number>(meter.doc?.params, 'qe', day) : null;
+            setConversionCoefficient(qe ?? ((meter?.unit ?? '').toLowerCase() === 'mwh' ? 1 : null));
+            const station = view ? valeurAu<string>(view.siteDoc?.params, 'stationMeteo', day) : null;
+            if (station) setSelectedStation(station);
+        });
+        return () => { cancelled = true; };
+    }, [open, existingInterest, startDate, service]);
 
     // Auto-select reading values when IDs change
     useEffect(() => {
@@ -154,6 +188,16 @@ export function InterestDialog({ open, onOpenChange, service, existingInterest, 
             const rawConsumption = endIndex - startIndex;
             if (rawConsumption < 0) {
                 toast({ title: "Attention", description: "L'index de fin est inférieur à l'index de début.", variant: "destructive" });
+                setIsCalculating(false);
+                return;
+            }
+            if (conversionCoefficient === null || !(conversionCoefficient > 0)) {
+                toast({ title: "Coefficient QE non renseigné", description: "Renseignez le coefficient de conversion du compteur (paramétrage P1) : il n'est jamais supposé égal à 1.", variant: "destructive" });
+                setIsCalculating(false);
+                return;
+            }
+            if (!(referenceNb > 0) || !(referenceDju > 0)) {
+                toast({ title: "Références non renseignées", description: "Cible NB et DJU de référence du poste de consommation (paramétrage P1).", variant: "destructive" });
                 setIsCalculating(false);
                 return;
             }
@@ -221,6 +265,10 @@ export function InterestDialog({ open, onOpenChange, service, existingInterest, 
         // Validation
         if (!seasonLabel || !startDate || !endDate) {
             toast({ title: "Erreur", description: "Veuillez remplir les champs obligatoires.", variant: "destructive" });
+            return;
+        }
+        if (conversionCoefficient === null || !(conversionCoefficient > 0)) {
+            toast({ title: "Coefficient QE non renseigné", description: "Un intéressement ne s'enregistre pas sans coefficient de conversion connu.", variant: "destructive" });
             return;
         }
 
@@ -343,7 +391,7 @@ export function InterestDialog({ open, onOpenChange, service, existingInterest, 
 
                             <div className="space-y-1">
                                 <Label className="text-xs">Coefficient de Conversion</Label>
-                                <Input type="number" step="0.0001" value={conversionCoefficient} onChange={e => setConversionCoefficient(parseFloat(e.target.value))} />
+                                <Input type="number" step="0.0001" value={conversionCoefficient ?? ''} placeholder="non renseigné" onChange={e => setConversionCoefficient(e.target.value === '' ? null : parseFloat(e.target.value))} />
                             </div>
                         </div>
                     </div>
@@ -352,6 +400,8 @@ export function InterestDialog({ open, onOpenChange, service, existingInterest, 
                     <div className="space-y-4">
                         <div className="space-y-2 p-3 bg-muted rounded-md text-sm">
                             <h4 className="font-semibold mb-2">Paramètres Contractuels</h4>
+                            {referenceSource === 'prestation' && <p className="text-xs text-amber-600">Cible et DJU repris de l'ancienne saisie de la prestation : renseignez-les dans le paramétrage P1 du site.</p>}
+                            {referenceSource === null && !existingInterest && <p className="text-xs text-destructive">Cible NB et DJU de référence non renseignés (paramétrage P1 du site).</p>}
                             <div className="grid grid-cols-2 gap-2">
                                 <div>
                                     <span className="text-muted-foreground block text-xs">NB Réf (MWh)</span>
