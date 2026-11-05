@@ -503,14 +503,7 @@ export async function getMeterReadingsByMeter(meterId: string): Promise<MeterRea
     return getCollection<MeterReading>(q);
 }
 
-export async function createMeterReading(data: Omit<MeterReading, 'id'>) {
-    const readingData = {
-        ...data,
-        date: new Date(data.date),
-    };
-    const docRef = await addDoc(collection(db, 'meterReadings'), readingData);
-    return { id: docRef.id, ...readingData };
-}
+// Relevés : écrits par le serveur seulement (services/readings-admin.ts, imports, API).
 
 
 
@@ -1323,13 +1316,6 @@ export async function updateClientAndContract(contractId: string, clientId: stri
 }
 
 // Relevés de Compteurs (Suite)
-export async function updateMeterReading(id: string, data: Partial<Omit<MeterReading, 'id'>>) {
-    // Date en horodatage, comme à la création (tri et filtres par période).
-    return updateSettingItem('meterReadings', id, data.date ? { ...data, date: new Date(data.date) } : data);
-}
-export async function deleteMeterReading(id: string) {
-    return deleteSettingItem('meterReadings', id);
-}
 
 // --- Settlement System Functions ---
 

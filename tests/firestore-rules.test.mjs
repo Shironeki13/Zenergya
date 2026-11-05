@@ -21,6 +21,7 @@ await env.withSecurityRulesDisabled(async (ctx) => {
   await setDoc(doc(db, 'clients', 'cli'), { name: 'Client', externalCode: 'CLI-00001' });
   await setDoc(doc(db, 'contracts', 'ctn'), { label: 'Contrat', contractNumber: 'CTN-00001', siteIds: [] });
   await setDoc(doc(db, 'p1Parametrage', 'site:s'), { kind: 'site', siteId: 's', params: {}, postes: {} });
+  await setDoc(doc(db, 'meterReadings', 'r'), { meterId: 'm', value: 10, type: 'REEL' });
   await setDoc(doc(db, 'quotes', 'brouillon'), { number: 'VEF-DEV2026-0001', status: 'brouillon', version: 1, title: 'A' });
   await setDoc(doc(db, 'quoteVersions', 'v'), { quoteId: 'envoye', version: 1 });
   await setDoc(doc(db, 'projects', 'p'), { code: 'VEF-AFF2026-0001', status: 'en_cours' });
@@ -90,6 +91,10 @@ await t('user reads P1 parametrage', assertSucceeds(getDoc(doc(user, 'p1Parametr
 await t('user cannot write P1 parametrage', assertFails(updateDoc(doc(user, 'p1Parametrage', 'site:s'), { params: { typeMarche: [] } })));
 await t('admin cannot write P1 parametrage', assertFails(setDoc(doc(admin, 'p1Parametrage', 'site:x'), { kind: 'site' })));
 await t('admin cannot delete P1 parametrage', assertFails(deleteDoc(doc(admin, 'p1Parametrage', 'site:s'))));
+await t('user reads meter readings', assertSucceeds(getDoc(doc(user, 'meterReadings', 'r'))));
+await t('user cannot change a meter reading', assertFails(updateDoc(doc(user, 'meterReadings', 'r'), { value: 11 })));
+await t('user cannot create a meter reading', assertFails(setDoc(doc(user, 'meterReadings', 'n'), { meterId: 'm', value: 1 })));
+await t('admin cannot delete a meter reading', assertFails(deleteDoc(doc(admin, 'meterReadings', 'r'))));
 await t('user cannot write P1 actuals', assertFails(setDoc(doc(user, 'p1Reel', 's_2025-10'), { montantHt: 1 })));
 await t('admin cannot write P1 actuals', assertFails(setDoc(doc(admin, 'p1Reel', 's_2025-10'), { montantHt: 1 })));
 await t('user creates site with code', assertSucceeds(setDoc(doc(user, 'sites', 'nouveau'), { name: 'N', code: 'SIT-00002' })));
