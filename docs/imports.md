@@ -82,6 +82,8 @@ activités, marché, échéancier, type de compteur (code ou libellé).
 - Activités : codes séparés par « ; » (renseignées, elles remplacent la liste). Engagement juridique Chorus : ajouté
   à la liste du contrat s'il est nouveau, valable sur la durée du contrat.
 - Changer les dates d'un contrat déjà facturé : avertissement (vérifier les périodes facturées).
+- **Responsable facturation** : e-mail d'un utilisateur (vide : inchangé ; « - » : retiré). Sert au filtre
+  « Responsable facturation » du pilotage ; se modifie aussi sur la fiche du contrat.
 
 ### Prestations et montants facturés
 

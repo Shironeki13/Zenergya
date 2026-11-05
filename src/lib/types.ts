@@ -347,6 +347,7 @@ export type Contract = {
     id: string;
     clientId: string;
     companyId?: string; // Société émettrice (sinon : celle du client)
+    billingManagerId?: string | null; // Responsable facturation (utilisateur ADV) : portefeuille du pilotage
     einvoicingAddress?: string; // Adresse électronique de facturation propre au contrat (prioritaire sur celle du client)
     chorus?: ContractChorusSettings; // Chorus Pro : cadre de facturation, valideur, code service, engagements
     clientName: string; // Denormalized for easy display

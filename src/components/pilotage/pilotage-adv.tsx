@@ -18,6 +18,8 @@ import { ajouterCommentaireAction, historiqueCommentairesAction } from '@/lib/pi
 import { construireTcd, MOTIFS, type CommentaireSuivi, type Focus, type Motif, type ResumeFil, type Totaux } from '@/lib/pilotage/tcd';
 import type { EcheanceSuivi } from '@/lib/pilotage/suivi-facturation';
 import type { SuiviFacturation } from '@/services/pilotage-admin';
+import { correspond, DIMENSIONS, filtresActifs, LIBELLES_DIMENSION, totauxEmis, type Dimension, type Filtres } from '@/lib/pilotage/filtres';
+import { FiltreMulti } from '@/components/pilotage/filtre-multi';
 
 /**
  * Pilotage ADV : synthèse (clients, factures à sortir, retard, blocages) et tableau croisé Client → Contrat →
@@ -35,6 +37,20 @@ const COULEUR_MOTIF: Record<Motif, string> = {
     en_cours: 'border-blue-400 text-blue-700', attente_client: 'border-amber-500 text-amber-700', attente_donnee: 'border-amber-500 text-amber-700',
     parametrage: 'border-purple-400 text-purple-700', litige: 'border-red-500 text-red-700', resolu: 'border-green-500 text-green-700', note: '',
 };
+
+type Periode = 'mois' | 'mois_prec' | 'annee' | 'annee_prec' | '12m';
+const PERIODES: Record<Periode, string> = { mois: 'Mois en cours', mois_prec: 'Mois précédent', annee: 'Année en cours', annee_prec: 'Année précédente', '12m': '12 derniers mois' };
+
+/** Bornes (incluses) d'une période, à partir d'aujourd'hui (AAAA-MM-JJ). */
+function bornes(p: Periode, today: string): [string, string] {
+    const [a, m] = [Number(today.slice(0, 4)), Number(today.slice(5, 7))];
+    const iso = (y: number, mo: number, d: number) => new Date(Date.UTC(y, mo - 1, d)).toISOString().slice(0, 10);
+    if (p === 'mois') return [iso(a, m, 1), today];
+    if (p === 'mois_prec') return [iso(a, m - 1, 1), iso(a, m, 0)];
+    if (p === 'annee') return [`${a}-01-01`, today];
+    if (p === 'annee_prec') return [`${a - 1}-01-01`, `${a - 1}-12-31`];
+    return [iso(a - 1, m, Number(today.slice(8, 10)) + 1), today];
+}
 
 type Cible = { contractId: string; contractNumber: string; itemKey: string | null; libelle: string };
 
@@ -163,6 +179,8 @@ function FilCommentaires({ cible, onClose, onAjout }: { cible: Cible | null; onC
 
 export function PilotageAdv({ data, loading, horizon, onHorizon }: { data: SuiviFacturation | null; loading: boolean; horizon: number; onHorizon: (h: number) => void }) {
     const [focus, setFocus] = useState<Focus>('retard');
+    const [filtres, setFiltres] = useState<Filtres>({});
+    const [periode, setPeriode] = useState<Periode>('annee');
     const [q, setQ] = useState('');
     const [ouverts, setOuverts] = useState<Set<string>>(new Set());
     const [ajouts, setAjouts] = useState<CommentaireSuivi[]>([]);
@@ -175,13 +193,35 @@ export function PilotageAdv({ data, loading, horizon, onHorizon }: { data: Suivi
         return [...(data?.commentaires ?? []), ...ajouts.filter(c => !ids.has(c.id))];
     }, [data, ajouts]);
 
+    // Filtres (société, agence, secteur, responsable, activité, client, site), puis recherche libre.
+    const filtrees = useMemo(() => (data?.echeances ?? []).filter(e => correspond(e.dims, filtres)), [data, filtres]);
     const echeances = useMemo(() => {
         const t = q.trim().toLowerCase();
-        return (data?.echeances ?? []).filter(e => !t || [e.clientName, e.contractNumber, e.site, e.prestation].some(x => x.toLowerCase().includes(t)));
-    }, [data, q]);
+        return filtrees.filter(e => !t || [e.clientName, e.contractNumber, e.site, e.prestation].some(x => x.toLowerCase().includes(t)));
+    }, [filtrees, q]);
+    const enErreur = useMemo(() => (data?.contratsEnErreur ?? []).filter(c => correspond(c.dims, filtres, ['activity', 'site'])), [data, filtres]);
+    const emis = useMemo(() => {
+        if (!data) return null;
+        const [du, au] = bornes(periode, data.today);
+        return { du, au, ...totauxEmis(data.emis, filtres, du, au) };
+    }, [data, filtres, periode]);
+
+    // Options des filtres : agences des sociétés choisies, secteurs des agences choisies, sites des clients choisis.
+    const options = useMemo(() => {
+        const o = data?.options;
+        if (!o) return null;
+        const enfants = (d: Dimension, parent: Dimension) => {
+            const choisis = filtres[parent] ?? [];
+            return choisis.length ? o[d].filter(x => !x.parent || choisis.includes(x.parent)) : o[d];
+        };
+        return { ...o, agency: enfants('agency', 'company'), sector: enfants('sector', 'agency'), site: enfants('site', 'client') };
+    }, [data, filtres]);
+    const nomResponsable = useMemo(() => new Map((data?.options.manager ?? []).map(u => [u.id, u.label])), [data]);
     const { clients, synthese } = useMemo(() => construireTcd(echeances, commentaires, focus), [echeances, commentaires, focus]);
     // Synthèse globale (indépendante du focus et de la recherche).
-    const global = useMemo(() => construireTcd(data?.echeances ?? [], [], 'tout').synthese, [data]);
+    // Synthèse : aux filtres, sans le focus ni la recherche.
+    const global = useMemo(() => construireTcd(filtrees, [], 'tout').synthese, [filtrees]);
+    const nbFiltres = filtresActifs(filtres).length;
 
     const basculer = (k: string) => setOuverts(s => { const n = new Set(s); if (n.has(k)) n.delete(k); else n.add(k); return n; });
     const deplier = (niveau: Niveau) => {
@@ -199,6 +239,33 @@ export function PilotageAdv({ data, loading, horizon, onHorizon }: { data: Suivi
 
     return (
         <div className="space-y-4">
+            {/* Filtres */}
+            <div className="flex flex-wrap items-center gap-2">
+                {options && DIMENSIONS.map(d => (
+                    <FiltreMulti key={d} libelle={LIBELLES_DIMENSION[d]} options={options[d]} valeurs={filtres[d] ?? []}
+                        onChange={v => setFiltres(f => ({ ...f, [d]: v }))} />
+                ))}
+                {nbFiltres > 0 && <Button variant="ghost" size="sm" className="h-9" onClick={() => setFiltres({})}>Réinitialiser ({nbFiltres})</Button>}
+            </div>
+
+            {/* Facturation émise */}
+            <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
+                <Card>
+                    <CardHeader className="pb-1 pt-3 px-4"><CardTitle className="text-xs font-medium text-muted-foreground">Période (factures émises)</CardTitle></CardHeader>
+                    <CardContent className="px-4 pb-3">
+                        <Select value={periode} onValueChange={v => setPeriode(v as Periode)}>
+                            <SelectTrigger className="h-8"><SelectValue /></SelectTrigger>
+                            <SelectContent>{(Object.keys(PERIODES) as Periode[]).map(p => <SelectItem key={p} value={p}>{PERIODES[p]}</SelectItem>)}</SelectContent>
+                        </Select>
+                        {emis && <p className="text-xs text-muted-foreground mt-1">du {fr(emis.du)} au {fr(emis.au)}</p>}
+                    </CardContent>
+                </Card>
+                <Kpi titre="Factures émises" valeur={emis ? `${emis.factures}` : '…'} sous="numérotées, hors proforma" />
+                <Kpi titre="Montant facturé HT" valeur={emis ? eur(emis.montantFactures) : '…'} sous={filtres.activity?.length || filtres.site?.length ? 'lignes des activités / sites choisis' : 'toutes lignes'} />
+                <Kpi titre="Avoirs HT" valeur={emis ? eur(emis.montantAvoirs) : '…'} sous={emis ? `${emis.avoirs} avoir${emis.avoirs > 1 ? 's' : ''}` : ''} />
+                <Kpi titre="Net facturé HT" valeur={emis ? eur(emis.net) : '…'} sous="factures − avoirs" />
+            </div>
+
             {/* Synthèse */}
             <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
                 <Kpi titre="Clients à facturer" valeur={`${global.clientsAFacturer}`} sous={`sur ${global.clients} client${global.clients > 1 ? 's' : ''} avec échéances`} />
@@ -238,10 +305,10 @@ export function PilotageAdv({ data, loading, horizon, onHorizon }: { data: Suivi
                         {loading && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
                     </div>
 
-                    {data && data.contratsEnErreur.length > 0 && (
+                    {enErreur.length > 0 && (
                         <div className="rounded-md border border-destructive p-3 text-sm">
-                            <p className="font-medium text-destructive">Contrats dont l&apos;échéancier ne se calcule pas ({data.contratsEnErreur.length})</p>
-                            {data.contratsEnErreur.map(c => (
+                            <p className="font-medium text-destructive">Contrats dont l&apos;échéancier ne se calcule pas ({enErreur.length})</p>
+                            {enErreur.map(c => (
                                 <p key={c.contractId}><Link className="underline" href={`/contracts/${c.contractId}`}>{c.contractNumber}</Link> — {c.clientName} : {c.erreurs.join(' ')}</p>
                             ))}
                         </div>
@@ -283,6 +350,10 @@ export function PilotageAdv({ data, loading, horizon, onHorizon }: { data: Suivi
                                                         </span>
                                                         <Link href={`/contracts/${ct.contractId}`} onClick={e => e.stopPropagation()} className="ml-2 inline-flex align-middle text-muted-foreground hover:text-foreground" title="Ouvrir le contrat"><ExternalLink className="h-3 w-3" /></Link>
                                                         <span className="ml-2 text-xs text-muted-foreground">{ct.prestations.length} prestation{ct.prestations.length > 1 ? 's' : ''}</span>
+                                                        {(() => {
+                                                            const m = ct.prestations[0]?.echeances[0]?.dims.manager;
+                                                            return <span className={cn('ml-2 text-xs', m ? 'text-muted-foreground' : 'text-amber-700')}>· {m ? nomResponsable.get(m) ?? 'Responsable inconnu' : 'Sans responsable'}</span>;
+                                                        })()}
                                                     </TableCell>
                                                     <Montants t={ct.totaux} focus={focus} />
                                                     <Suivi s={ct.suivi} onOpen={() => setCible({ contractId: ct.contractId, contractNumber: ct.contractNumber, itemKey: null, libelle: ct.contractNumber })} />

@@ -63,6 +63,7 @@ import {
 import type { Activity, Contract, Invoice, Site, RevisionInfo, Amendment, Termination, Renewal, TrusteeChange, BeChange, Client, Contact } from "@/lib/types";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useData } from "@/context/data-context";
+import { ResponsableFacturation } from "@/components/pilotage/responsable-facturation";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import { AmendmentDialog } from "@/components/contracts/events/AmendmentDialog";
@@ -471,6 +472,7 @@ export default function ContractDetailPage() {
                   Facturation : {contract.invoicingType === 'global' ? 'Globale' : 'Détaillée par site'}
                 </span>
               </div>
+              <ResponsableFacturation contractId={contract.id} value={contract.billingManagerId} />
               <div className="flex items-center gap-2">
                 <MapPin className="mr-2 h-4 w-4 text-muted-foreground" />
                 <Badge variant={sites.length > 1 ? "default" : "secondary"}>

@@ -1,5 +1,6 @@
 import { billedUntil, billingItems, daysIn, dueInvoiceLines, echeancesOf, type BilledInvoice, type BillingInput } from '@/lib/billing/contract-billing';
 import { toDay } from '@/lib/services/site-amounts';
+import type { Rattachements } from '@/lib/pilotage/filtres';
 
 /**
  * Suivi de la facturation (calcul pur) : les échéances de chaque contrat, du lendemain du dernier facturé jusqu'à un
@@ -33,12 +34,14 @@ export type EcheanceSuivi = {
     /** Montant de base, avant révision et calcul au relevé ou en acompte. */
     estime: boolean;
     blocage?: string;
+    /** Rattachements pour les filtres (société, agence, secteur, responsable, activité, client, site). */
+    dims: Rattachements;
 };
 
 export type SuiviContrat = { contractId: string; contractNumber: string; clientId: string; clientName: string; echeances: EcheanceSuivi[]; erreurs: string[] };
 
 export function suiviContrat(
-    contract: { id: string; contractNumber: string; clientId?: string; clientName: string },
+    contract: { id: string; contractNumber: string; clientId?: string; clientName: string; dims?: Rattachements },
     input: BillingInput, invoices: BilledInvoice[], today: string, horizon: string,
 ): SuiviContrat {
     const clientId = contract.clientId ?? contract.clientName;
@@ -73,6 +76,7 @@ export function suiviContrat(
                 montant: facturable && montantDu.has(k) ? montantDu.get(k)! : calcule ? null : e.amount,
                 estime: !(facturable && montantDu.has(k)),
                 ...(facturable && blocages.has(item.key) && { blocage: blocages.get(item.key) }),
+                dims: { ...contract.dims, client: clientId, activity: item.activity.id, site: item.site.id },
             });
         }
     }

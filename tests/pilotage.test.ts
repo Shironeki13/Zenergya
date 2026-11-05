@@ -75,7 +75,7 @@ import type { EcheanceSuivi } from '../src/lib/pilotage/suivi-facturation';
 
 const ech = (p: Partial<EcheanceSuivi>): EcheanceSuivi => ({
     contractId: 'k1', contractNumber: 'CTN-1', clientId: 'c1', clientName: 'Alpha', itemKey: 'svc:a', siteId: 's', site: 'Résidence',
-    prestation: 'P2', start: '2025-11-01', end: '2025-11-30', billableOn: '2025-11-01', statut: 'retard', jours: 44, montant: 100, estime: false, ...p,
+    prestation: 'P2', start: '2025-11-01', end: '2025-11-30', billableOn: '2025-11-01', statut: 'retard', jours: 44, montant: 100, estime: false, dims: {}, ...p,
 });
 const ech4 = [
     ech({}),
@@ -119,4 +119,35 @@ test('tcd : focus retard et bloquées ; commentaires rattachés au contrat et à
     assert.equal(k1.suivi!.dernier.motif, 'en_cours');
     assert.equal(k1.prestations.find(p => p.itemKey === 'svc:b')!.suivi!.dernier.texte, 'TVA à créer');
     assert.equal(k1.prestations.find(p => p.itemKey === 'svc:a')!.suivi, undefined);
+});
+
+// ── Filtres et factures émises ───────────────────────────────────────────────────────────────────────────────────
+import { AUCUN, correspond, totauxEmis, type LigneEmise } from '../src/lib/pilotage/filtres';
+
+test('filtres : valeurs multiples (ou), filtres cumulés (et), non renseigné, dimensions ignorées', () => {
+    const r = { company: 'vef', agency: 'lyon', manager: null, activity: 'p2', client: 'c1', site: 's1' };
+    assert.equal(correspond(r, {}), true);
+    assert.equal(correspond(r, { company: ['vef', 'autre'], activity: ['p2'] }), true);
+    assert.equal(correspond(r, { company: ['vef'], agency: ['paris'] }), false);
+    assert.equal(correspond(r, { manager: [AUCUN] }), true);
+    assert.equal(correspond({ ...r, manager: 'u1' }, { manager: [AUCUN] }), false);
+    assert.equal(correspond({ company: 'vef' }, { company: ['vef'], site: ['s9'] }, ['activity', 'site']), true);
+    assert.equal(correspond({ company: 'vef' }, { company: ['vef'], site: ['s9'] }), false);
+    // Les échéances portent leurs rattachements : contrat (société, agence, responsable) et prestation.
+    const s = suiviContrat({ ...head, clientId: 'c1', dims: { company: 'vef', agency: 'lyon', manager: 'u1' } }, input(), facture, '2025-12-15', '2025-12-31');
+    assert.deepEqual(s.echeances[0].dims, { company: 'vef', agency: 'lyon', manager: 'u1', client: 'c1', activity: 'p2', site: 's' });
+});
+
+test('factures émises : nombre et HT par période et filtres, avoirs, net', () => {
+    const l = (doc: string, date: string, ht: number, p: Partial<LigneEmise> = {}): LigneEmise => ({ doc, avoir: doc.startsWith('A:'), date, ht, company: 'vef', activity: 'p2', site: 's1', ...p });
+    const lignes = [
+        l('F:1', '2026-01-10', 100), l('F:1', '2026-01-10', 50, { activity: 'p1', site: 's2' }),
+        l('F:2', '2026-02-05', 300, { company: 'autre' }),
+        l('F:3', '2025-12-20', 999),
+        l('A:1', '2026-02-10', 40),
+    ];
+    assert.deepEqual(totauxEmis(lignes, {}, '2026-01-01', '2026-12-31'), { factures: 2, montantFactures: 450, avoirs: 1, montantAvoirs: 40, net: 410 });
+    assert.deepEqual(totauxEmis(lignes, { activity: ['p1'] }, '2026-01-01', '2026-12-31'), { factures: 1, montantFactures: 50, avoirs: 0, montantAvoirs: 0, net: 50 });
+    assert.deepEqual(totauxEmis(lignes, { company: ['vef'] }, '2026-02-01', '2026-02-28'), { factures: 0, montantFactures: 0, avoirs: 1, montantAvoirs: 40, net: -40 });
+    assert.equal(totauxEmis(lignes, {}).factures, 3);
 });

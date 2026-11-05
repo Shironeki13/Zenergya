@@ -1,7 +1,7 @@
 'use server';
 
 import { requireUser } from '@/lib/auth/server';
-import { ajouterCommentaire, alertesCompteurs, historiqueCommentaires, suiviFacturation, type NouveauCommentaire, type SuiviFacturation } from '@/services/pilotage-admin';
+import { ajouterCommentaire, definirResponsable, alertesCompteurs, historiqueCommentaires, suiviFacturation, type NouveauCommentaire, type SuiviFacturation } from '@/services/pilotage-admin';
 import type { CommentaireSuivi } from '@/lib/pilotage/tcd';
 import type { Alerte } from '@/lib/pilotage/alertes-compteurs';
 
@@ -22,4 +22,8 @@ export async function historiqueCommentairesAction(contractId: string): Promise<
 
 export async function ajouterCommentaireAction(input: NouveauCommentaire): Promise<Result<CommentaireSuivi>> {
     try { const user = await requireUser(); return { success: true, data: await ajouterCommentaire(input, user) }; } catch (e) { return fail(e); }
+}
+
+export async function definirResponsableAction(contractId: string, userId: string | null): Promise<Result<null>> {
+    try { const user = await requireUser(); await definirResponsable(contractId, userId, user.email); return { success: true, data: null }; } catch (e) { return fail(e); }
 }

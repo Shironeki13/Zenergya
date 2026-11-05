@@ -13,6 +13,7 @@ import { addP1Formule, addP1FormuleVersion, addP1Poste, addP1Version, loadSeries
 import { parseTermes, validateFormule, type FormuleVersion, type PerimetreFormule } from '@/lib/p1/formules';
 import type { Energie } from '@/lib/p1/parametrage';
 import type {
+    User,
     Activity, Agency, ChorusFramework, Client, Company, Contact, Contract, ContractChorusSettings, Market, Meter, MeterReading,
     Index, MeterType, PaymentTerm, RevisionRule, Schedule, Sector, Service, ServiceInitialIndexValue, Site, Term, Typology, VatRate,
 } from '@/lib/types';
@@ -77,6 +78,8 @@ type Context = {
     terms: Doc<Term>[]; vatRates: Doc<VatRate>[]; services: Doc<Service>[]; paymentTerms: Doc<PaymentTerm>[];
     revisionRules: Doc<RevisionRule>[]; indices: Doc<Index>[];
     clients: Doc<Client>[]; contracts: Doc<Contract>[]; sites: Doc<Site>[]; contacts: Doc<Contact>[]; meters: Doc<Meter>[];
+    /** Utilisateurs (responsable facturation des contrats). */
+    users: Doc<User>[];
     /** Contrats ayant au moins une facture. */
     invoicedContracts: Set<string>;
     /** Relevés existants des compteurs du fichier (imports de relevés), triés par date. */
@@ -110,7 +113,7 @@ export const readingMillis = dateMillis;
 async function loadContext(entity: ImportEntityKey): Promise<Context> {
     const need = (e: ImportEntityKey[]) => e.includes(entity);
     const empty = Promise.resolve([]);
-    const [companies, agencies, sectors, typologies, meterTypes, activities, markets, schedules, terms, vatRates, services, paymentTerms, revisionRules, indices, clients, contracts, sites, contacts, meters, invoices] = await Promise.all([
+    const [companies, agencies, sectors, typologies, meterTypes, activities, markets, schedules, terms, vatRates, services, paymentTerms, revisionRules, indices, clients, contracts, sites, contacts, meters, invoices, users] = await Promise.all([
         need(['clients', 'contracts']) ? all<Company>('companies') : empty,
         need(['clients']) ? all<Agency>('agencies') : empty,
         need(['clients']) ? all<Sector>('sectors') : empty,
@@ -131,9 +134,10 @@ async function loadContext(entity: ImportEntityKey): Promise<Context> {
         need(['contacts']) ? all<Contact>('contacts') : empty,
         need(['meters', 'services', 'readings', 'p1']) ? all<Meter>('meters') : empty,
         need(['contracts']) ? adminDb.collection('invoices').select('contractId').get().then(s => s.docs.map(d => String(d.get('contractId') ?? ''))) : empty,
+        need(['contracts']) ? all<User>('users') : empty,
     ]);
     return {
-        companies, agencies, sectors, typologies, meterTypes, activities, markets, schedules, terms, vatRates, services, paymentTerms, revisionRules, indices, clients, contracts, sites, contacts, meters,
+        companies, agencies, sectors, typologies, meterTypes, activities, markets, schedules, terms, vatRates, services, paymentTerms, revisionRules, indices, clients, contracts, sites, contacts, meters, users: users as Doc<User>[],
         invoicedContracts: new Set(invoices as string[]), readings: new Map(), lockedReadings: new Map(), lastBilledReading: new Map(),
         indexCodes: entity === 'p1formules' ? (await loadSeries()).codes : [],
         p1Reel: new Map(), p1Regularises: new Set(),
@@ -379,6 +383,14 @@ function planContract(ctx: Context, row: ParsedRow, seen: Map<string, number>): 
         const companyId = ctx.companies.find(c => norm(c.code) === norm(v.company) || norm(c.name) === norm(v.company))?.id;
         if (!companyId) item.messages.push(`Société « ${v.company} » inconnue.`);
         else data.companyId = companyId;
+    }
+    if (v.billingManager) {
+        if (String(v.billingManager).trim() === '-') data.billingManagerId = null;
+        else {
+            const user = ctx.users.find(u => norm(u.email) === norm(v.billingManager));
+            if (!user) item.messages.push(`Responsable facturation « ${v.billingManager} » : aucun utilisateur avec cet e-mail.`);
+            else data.billingManagerId = user.id;
+        }
     }
     if (v.market) {
         const market = ctx.markets.find(m => norm(m.code) === norm(v.market) || norm(m.label) === norm(v.market));

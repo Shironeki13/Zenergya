@@ -121,6 +121,7 @@ export const IMPORT_ENTITIES: Record<ImportEntityKey, ImportEntity> = {
             { key: 'client', label: 'Client', type: 'text', required: 'create', example: 'CLI-00012', help: 'Code client (CLI-…), SIRET ou réf. externe du client.' },
             { key: 'label', label: 'Libellé', type: 'text', required: 'create', example: 'Chauffage résidence Les Lilas', aliases: ['libelle'], help: 'Nom du contrat : « client - libellé ».' },
             { key: 'company', label: 'Société émettrice', type: 'text', refList: 'companies', example: 'VEF', help: 'Code ou nom (vide : celle du client).' },
+            { key: 'billingManager', label: 'Responsable facturation', type: 'text', example: 'adv@exemple.fr', aliases: ['responsable', 'adv', 'gestionnaire'], help: "E-mail d'un utilisateur (vide : inchangé ; « - » : retiré)." },
             { key: 'startDate', label: 'Date de début', type: 'date', required: 'create', example: '2025-07-01', aliases: ['debut'] },
             { key: 'endDate', label: 'Date de fin', type: 'date', required: 'create', example: '2030-06-30', aliases: ['fin'] },
             {

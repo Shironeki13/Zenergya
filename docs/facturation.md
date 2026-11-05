@@ -183,6 +183,18 @@ Poste de travail du service facturation (`src/lib/pilotage/tcd.ts`, `src/compone
   dernier motif s'affiche dans le tableau, l'historique complet dans le fil (celui du contrat reprend ceux de ses
   prestations). La prestation commentée doit appartenir au contrat.
 
+- **Filtres** (en tête, choix multiples avec recherche ; tous cumulés) : société (émettrice du contrat, sinon du
+  client), agence et secteur (du client), **responsable facturation** (du contrat, « Sans responsable » compris),
+  activité et site (de la prestation), client. Les agences se restreignent aux sociétés choisies, les secteurs aux
+  agences, les sites aux clients. Ils s'appliquent à la synthèse, au tableau croisé, aux contrats en erreur (sauf
+  activité et site) et aux factures émises (`src/lib/pilotage/filtres.ts`).
+- **Factures émises** sur une période (mois en cours ou précédent, année en cours ou précédente, 12 derniers mois) :
+  nombre de factures (numérotées, hors proforma ; annulées comprises, leur avoir est compté à part), montant HT, avoirs
+  HT, net HT. Avec un filtre d'activité ou de site, seules les lignes correspondantes comptent (activité par le code
+  de la ligne, site par la ligne ou l'élément facturé).
+- **Responsable facturation** : utilisateur ADV du contrat, choisi sur la fiche du contrat (Détails du contrat) ou par
+  l'import des contrats (colonne « Responsable facturation », e-mail).
+
 ### Liste des échéances (Facturation › Suivi, onglet « Liste des échéances »)
 
 Pour chaque contrat actif, les échéances non facturées jusqu'à l'horizon choisi (30, 60 ou 90 jours), calculées par
