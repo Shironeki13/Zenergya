@@ -163,6 +163,39 @@ pénalités de retard, indemnité forfaitaire de recouvrement de 40 €, absence
 **À faire valider par votre expert-comptable**, notamment le taux des pénalités de retard (repris de l'ancien modèle : 1,5 % par mois)
 et, le cas échéant, la mention « option pour le paiement de la TVA d'après les débits ».
 
+## Pilotage
+
+### Suivi de la facturation (Facturation › Suivi, onglet « À facturer »)
+
+Pour chaque contrat actif, les échéances non facturées jusqu'à l'horizon choisi (30, 60 ou 90 jours), calculées par
+le même moteur que la facture (`src/lib/pilotage/suivi-facturation.ts`, service `pilotage-admin.ts`) :
+
+- **Statut** : *en retard* (facturable depuis N jours), *aujourd'hui*, *à venir* (dans N jours). La date de
+  facturation dépend du terme (à échoir : début de période ; échu : lendemain de la fin).
+- **Montant** : exact pour une échéance facturable (lignes de la facture qui serait émise, révision comprise) ;
+  estimé (~, tarif de base) pour une échéance à venir ; « à la facture » pour les acomptes P1 et l'ECS au relevé,
+  connus seulement au moment de facturer.
+- **Bloquée** : la facture ne peut pas être émise (TVA manquante, relevé ECS absent, indice de révision non publié…),
+  avec la raison. Un contrat dont l'échéancier ne se calcule pas (périodicité manquante…) est listé à part.
+- Filtres : toutes, en retard, à venir, bloquées ; recherche par contrat ou client. Les onglets « Impayés » et
+  « Paiements attendus » restent inchangés.
+
+### Alertes compteurs (Compteurs › Alertes)
+
+Calculées à la demande sur tous les relevés (`src/lib/pilotage/alertes-compteurs.ts`) :
+
+| Alerte | Gravité | Règle |
+|---|---|---|
+| Index en baisse | critique | relevé plus bas que le précédent, hors relevé « corrigé » (12 derniers mois) |
+| Relevé ECS manquant | critique | ECS facturée au relevé sans relevé du dernier mois échu (facture bloquée) |
+| Dérive de consommation | attention | conso/jour du dernier intervalle × > 2 ou < 0,5 par rapport à la même période l'an passé (± 20 jours), sinon à la médiane des 6 derniers intervalles (3 au moins) ; intervalles de 7 jours minimum |
+| Relevés contradictoires | attention | deux index différents le même jour (12 derniers mois) |
+| Sans relevé | attention | compteur en service sans relevé depuis 45 jours, ou jamais relevé |
+| Relevé estimé | info | dernier relevé estimé depuis plus de 30 jours |
+| Consommation nulle | info | compteur ECS à index inchangé depuis 60 jours |
+
+Les seuils sont dans `SEUILS`. Un compteur hors service n'a ni alerte « sans relevé » ni « consommation nulle ».
+
 ## Arrondis
 
 `src/lib/money.ts` : chaque ligne est arrondie au centime, le HT est la somme des lignes arrondies,
@@ -170,6 +203,6 @@ la TVA est calculée sur ce HT puis arrondie, le TTC est HT + TVA.
 
 ## Tests
 
-- `npm test` : arrondis.
+- `npm test` : arrondis, moteur de facturation, P1, pilotage (`tests/pilotage.test.ts`).
 - `npm run test:billing` : numérotation, conversion de proforma, avoirs, archivage des PDF (émulateurs Firestore et Storage, Java requis).
 - `npm run test:rules` : règles Firestore.

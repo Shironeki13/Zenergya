@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -14,21 +14,11 @@ import { format, differenceInDays, addDays, startOfDay } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import Link from 'next/link';
 import type { Invoice } from '@/lib/types';
+import { AFacturer } from '@/components/pilotage/a-facturer';
+import { suiviFacturationAction } from '@/lib/pilotage/actions';
+import type { SuiviFacturation } from '@/services/pilotage-admin';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
-type UpcomingPeriod = {
-    id: string;
-    contractId: string;
-    contractRef: string;
-    clientName: string;
-    siteName: string;
-    serviceType: string; // P1, P2, P3
-    periodStart: Date;
-    periodEnd: Date;
-    schedule: string;
-    estimatedAmount: number;
-};
-
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function DelayBadge({ days }: { days: number }) {
     if (days <= 7) return <Badge variant="outline" className="border-yellow-500 text-yellow-600">{days}j</Badge>;
@@ -52,7 +42,7 @@ function periodLabel(start: Date, end: Date) {
 
 // ── Page ──────────────────────────────────────────────────────────────────────
 export default function SuiviFacturationPage() {
-    const { invoices, contracts, sites, services, schedules, isLoading, reloadData } = useData();
+    const { invoices, isLoading, reloadData } = useData();
     const { toast } = useToast();
     const [markingPaid, setMarkingPaid] = useState<string | null>(null);
 
@@ -81,102 +71,27 @@ export default function SuiviFacturationPage() {
             .sort((a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime());
     }, [invoices, today, in30Days]);
 
-    // ── Périodes à facturer dans 30j ─────────────────────────────────────────
-    // La facturation est paramétrée au niveau du SERVICE (scheduleId, startDate,
-    // endDate, price). On itère sur les services actifs, on génère toutes leurs
-    // périodes depuis leur date de début et on matche chacune par
-    // periodStartDate ±3j + activityCode (même logique que le calendrier site).
-    const upcomingPeriods = useMemo<UpcomingPeriod[]>(() => {
-        if (isLoading) return [];
-
-        const results: UpcomingPeriod[] = [];
-        const THREE_DAYS_MS = 3 * 86_400_000;
-
-        // Lookup maps
-        const contractById = Object.fromEntries(contracts.map(c => [c.id, c]));
-        const siteById = Object.fromEntries(sites.map(s => [s.id, s]));
-        const scheduleById = Object.fromEntries(schedules.map(s => [s.id, s]));
-
-        const scheduleMonths: Record<string, number> = {
-            'mensuel': 1, 'trimestriel': 3, 'semestriel': 6, 'annuel': 12,
-        };
-
-        // Index des factures non-proforma/non-annulées par contrat
-        const invoicesByContract = invoices.reduce<Record<string, Invoice[]>>((acc, inv) => {
-            if (inv.status !== 'proforma' && inv.status !== 'cancelled') {
-                if (!acc[inv.contractId]) acc[inv.contractId] = [];
-                acc[inv.contractId].push(inv);
-            }
-            return acc;
-        }, {});
-
-        for (const service of services) {
-            if (!service.isActive) continue;
-
-            const contract = contractById[service.contractId];
-            if (!contract || contract.status !== 'Actif') continue;
-
-            const site = siteById[service.siteId];
-
-            // Résolution de l'échéancier : scheduleId du service en priorité
-            const schedule = service.scheduleId ? scheduleById[service.scheduleId] : null;
-            const scheduleNameRaw = (schedule?.name ?? contract.billingSchedule ?? '').toLowerCase();
-            const intervalMonths = scheduleMonths[scheduleNameRaw] ?? 0;
-            if (!intervalMonths) continue;
-
-            const serviceEnd = service.endDate
-                ? new Date(service.endDate)
-                : new Date(contract.endDate);
-            const contractInvoices = invoicesByContract[contract.id] ?? [];
-            let cursor = startOfDay(new Date(service.startDate));
-
-            // Parcourir toutes les périodes depuis le début du service
-            while (cursor <= serviceEnd && cursor <= in30Days) {
-                const periodStart = new Date(cursor);
-                const periodEnd = new Date(cursor);
-                periodEnd.setMonth(periodEnd.getMonth() + intervalMonths);
-                periodEnd.setDate(periodEnd.getDate() - 1);
-                if (periodEnd > serviceEnd) periodEnd.setTime(serviceEnd.getTime());
-
-                // Matcher une facture : contractId + periodStartDate ±3j + activityCode === service.type
-                const matched = contractInvoices.find(inv =>
-                    inv.periodStartDate &&
-                    Math.abs(new Date(inv.periodStartDate).getTime() - periodStart.getTime()) < THREE_DAYS_MS &&
-                    inv.lineItems?.some((li: any) => li.activityCode === service.type)
-                );
-
-                // Inclure uniquement si : pas de facture + fin de période dans les 30 prochains jours
-                if (!matched && periodEnd >= today && periodEnd <= in30Days) {
-                    // Montant estimé : price annuel du service × prorata
-                    const factor = intervalMonths / 12;
-                    const estimatedAmount = (service.price ?? 0) * factor;
-
-                    results.push({
-                        id: `${service.id}-${periodStart.toISOString()}`,
-                        contractId: contract.id,
-                        contractRef: contract.contractNumber ?? contract.id.substring(0, 8),
-                        clientName: contract.clientName ?? site?.clientName ?? '—',
-                        siteName: site?.name ?? '—',
-                        serviceType: service.type,
-                        periodStart,
-                        periodEnd,
-                        schedule: schedule?.name ?? contract.billingSchedule ?? 'Annuel',
-                        estimatedAmount,
-                    });
-                }
-
-                cursor.setMonth(cursor.getMonth() + intervalMonths);
-            }
-        }
-
-        return results.sort((a, b) => a.periodEnd.getTime() - b.periodEnd.getTime());
-    }, [isLoading, contracts, sites, services, schedules, invoices, today, in30Days]);
-
     // ── KPIs ──────────────────────────────────────────────────────────────────
     const overdueTotal = overdueInvoices.reduce((s, i) => s + (i.total ?? 0), 0);
     const upcomingDueTotal = upcomingDueInvoices.reduce((s, i) => s + (i.total ?? 0), 0);
-    const upcomingPeriodsTotal = upcomingPeriods.reduce((s, p) => s + p.estimatedAmount, 0);
-    const activeContractsCount = contracts.filter(c => c.status === 'Actif').length;
+    // Échéances à facturer (serveur, même échéancier que la facture).
+    const [horizon, setHorizon] = useState(60);
+    const [suivi, setSuivi] = useState<SuiviFacturation | null>(null);
+    const [suiviLoading, setSuiviLoading] = useState(false);
+    useEffect(() => {
+        let cancelled = false;
+        setSuiviLoading(true);
+        suiviFacturationAction(horizon).then(r => {
+            if (cancelled) return;
+            setSuiviLoading(false);
+            if (r.success) setSuivi(r.data);
+            else toast({ title: 'Suivi indisponible', description: r.error, variant: 'destructive' });
+        });
+        return () => { cancelled = true; };
+    }, [horizon, invoices, toast]);
+    const enRetard = (suivi?.echeances ?? []).filter(e => e.statut !== 'a_venir');
+    const enRetardTotal = enRetard.reduce((t, e) => t + (e.montant ?? 0), 0);
+    const bloquees = (suivi?.echeances ?? []).filter(e => e.blocage).length + (suivi?.contratsEnErreur.length ?? 0);
 
     const handleMarkPaid = async (inv: Invoice) => {
         setMarkingPaid(inv.id);
@@ -205,7 +120,7 @@ export default function SuiviFacturationPage() {
             <div>
                 <h1 className="text-lg font-medium">Suivi de facturation</h1>
                 <p className="text-sm text-muted-foreground">
-                    Retards de paiement, échéances à venir et périodes à facturer dans les 30 prochains jours.
+                    Échéances à facturer (en retard, du jour, à venir), impayés et paiements attendus.
                 </p>
             </div>
 
@@ -237,38 +152,42 @@ export default function SuiviFacturationPage() {
                     </CardContent>
                 </Card>
 
-                <Card className={upcomingPeriods.length > 0 ? 'border-blue-200' : ''}>
+                <Card className={enRetard.length > 0 ? 'border-red-200' : ''}>
                     <CardHeader className="pb-2 pt-4 px-4">
                         <div className="flex items-center justify-between">
-                            <CardTitle className="text-sm font-medium text-muted-foreground">À facturer 30j</CardTitle>
-                            <CalendarDays className={`h-4 w-4 ${upcomingPeriods.length > 0 ? 'text-blue-500' : 'text-muted-foreground'}`} />
+                            <CardTitle className="text-sm font-medium text-muted-foreground">À facturer (retard, jour)</CardTitle>
+                            <CalendarDays className={`h-4 w-4 ${enRetard.length > 0 ? 'text-red-500' : 'text-muted-foreground'}`} />
                         </div>
                     </CardHeader>
                     <CardContent className="px-4 pb-4">
-                        <p className={`text-2xl font-bold ${upcomingPeriods.length > 0 ? 'text-blue-600' : ''}`}>{upcomingPeriods.length}</p>
-                        <p className="text-sm text-muted-foreground">~{formatCurrency(upcomingPeriodsTotal)}</p>
+                        <p className={`text-2xl font-bold ${enRetard.length > 0 ? 'text-red-600' : ''}`}>{suivi ? enRetard.length : '…'}</p>
+                        <p className="text-sm text-muted-foreground">{formatCurrency(enRetardTotal)}</p>
                     </CardContent>
                 </Card>
 
-                <Card>
+                <Card className={bloquees > 0 ? 'border-amber-200' : ''}>
                     <CardHeader className="pb-2 pt-4 px-4">
                         <div className="flex items-center justify-between">
-                            <CardTitle className="text-sm font-medium text-muted-foreground">Contrats actifs</CardTitle>
-                            <Activity className="h-4 w-4 text-green-500" />
+                            <CardTitle className="text-sm font-medium text-muted-foreground">Bloquées</CardTitle>
+                            <Activity className={`h-4 w-4 ${bloquees > 0 ? 'text-amber-500' : 'text-muted-foreground'}`} />
                         </div>
                     </CardHeader>
                     <CardContent className="px-4 pb-4">
-                        <p className="text-2xl font-bold">{activeContractsCount}</p>
-                        <p className="text-sm text-muted-foreground">en cours</p>
+                        <p className={`text-2xl font-bold ${bloquees > 0 ? 'text-amber-600' : ''}`}>{suivi ? bloquees : '…'}</p>
+                        <p className="text-sm text-muted-foreground">échéances ou contrats à débloquer</p>
                     </CardContent>
                 </Card>
             </div>
 
             {/* Tabs */}
-            <Tabs defaultValue={overdueInvoices.length > 0 ? 'overdue' : 'upcoming'}>
+            <Tabs defaultValue="facturer">
                 <TabsList>
+                    <TabsTrigger value="facturer" className="gap-2">
+                        À facturer
+                        {enRetard.length > 0 && <Badge variant="destructive" className="h-5 min-w-[1.25rem] px-1 text-xs">{enRetard.length}</Badge>}
+                    </TabsTrigger>
                     <TabsTrigger value="overdue" className="gap-2">
-                        Retards
+                        Impayés
                         {overdueInvoices.length > 0 && (
                             <Badge variant="destructive" className="h-5 min-w-[1.25rem] px-1 text-xs">
                                 {overdueInvoices.length}
@@ -276,14 +195,18 @@ export default function SuiviFacturationPage() {
                         )}
                     </TabsTrigger>
                     <TabsTrigger value="upcoming" className="gap-2">
-                        À venir — 30j
-                        {(upcomingDueInvoices.length + upcomingPeriods.length) > 0 && (
+                        Paiements attendus — 30j
+                        {upcomingDueInvoices.length > 0 && (
                             <Badge variant="secondary" className="h-5 min-w-[1.25rem] px-1 text-xs">
-                                {upcomingDueInvoices.length + upcomingPeriods.length}
+                                {upcomingDueInvoices.length}
                             </Badge>
                         )}
                     </TabsTrigger>
                 </TabsList>
+
+                <TabsContent value="facturer">
+                    <AFacturer data={suivi} loading={suiviLoading} horizon={horizon} onHorizon={setHorizon} />
+                </TabsContent>
 
                 {/* ── Tab Retards ─────────────────────────────────────────────── */}
                 <TabsContent value="overdue">
@@ -443,87 +366,6 @@ export default function SuiviFacturationPage() {
                         </CardContent>
                     </Card>
 
-                    {/* Section B : Périodes à facturer dans 30j */}
-                    <Card>
-                        <CardHeader className="pb-3 flex-row items-start justify-between space-y-0">
-                            <div>
-                                <CardTitle className="text-base">Périodes à facturer</CardTitle>
-                                <p className="text-sm text-muted-foreground mt-1">
-                                    Périodes de facturation arrivant à terme dans les 30 prochains jours, sans facture émise.
-                                </p>
-                            </div>
-                            <Link href="/billing/batch">
-                                <Button size="sm" variant="outline" className="gap-1 shrink-0">
-                                    Facturation groupée
-                                    <ExternalLink className="h-3 w-3" />
-                                </Button>
-                            </Link>
-                        </CardHeader>
-                        <CardContent>
-                            <div className="border rounded-md">
-                                <Table>
-                                    <TableHeader>
-                                        <TableRow>
-                                            <TableHead>Client</TableHead>
-                                            <TableHead>Site</TableHead>
-                                            <TableHead>Prestation</TableHead>
-                                            <TableHead>Période</TableHead>
-                                            <TableHead>Périodicité</TableHead>
-                                            <TableHead>Fin dans</TableHead>
-                                            <TableHead className="text-right">Montant estimé HT</TableHead>
-                                            <TableHead className="w-[48px]" />
-                                        </TableRow>
-                                    </TableHeader>
-                                    <TableBody>
-                                        {upcomingPeriods.length === 0 ? (
-                                            <TableRow>
-                                                <TableCell colSpan={8} className="text-center h-16 text-muted-foreground">
-                                                    Aucune période à facturer dans les 30 prochains jours.
-                                                </TableCell>
-                                            </TableRow>
-                                        ) : (
-                                            upcomingPeriods.map(period => {
-                                                const daysLeft = differenceInDays(startOfDay(period.periodEnd), today);
-                                                return (
-                                                    <TableRow key={period.id}>
-                                                        <TableCell className="font-medium">{period.clientName}</TableCell>
-                                                        <TableCell className="text-sm text-muted-foreground">
-                                                            {period.siteName}
-                                                        </TableCell>
-                                                        <TableCell>
-                                                            <Badge variant="outline" className="font-mono text-xs">{period.serviceType}</Badge>
-                                                        </TableCell>
-                                                        <TableCell className="text-sm">
-                                                            {periodLabel(period.periodStart, period.periodEnd)}
-                                                        </TableCell>
-                                                        <TableCell>
-                                                            <Badge variant="secondary">{period.schedule}</Badge>
-                                                        </TableCell>
-                                                        <TableCell>
-                                                            <DaysLeftBadge days={daysLeft} />
-                                                        </TableCell>
-                                                        <TableCell className="text-right font-medium">
-                                                            {period.estimatedAmount > 0
-                                                                ? formatCurrency(period.estimatedAmount)
-                                                                : <span className="text-muted-foreground">—</span>
-                                                            }
-                                                        </TableCell>
-                                                        <TableCell className="text-right">
-                                                            <Link href={`/contracts/${period.contractId}`}>
-                                                                <Button size="icon" variant="ghost" className="h-7 w-7">
-                                                                    <ExternalLink className="h-3 w-3" />
-                                                                </Button>
-                                                            </Link>
-                                                        </TableCell>
-                                                    </TableRow>
-                                                );
-                                            })
-                                        )}
-                                    </TableBody>
-                                </Table>
-                            </div>
-                        </CardContent>
-                    </Card>
                 </TabsContent>
             </Tabs>
         </div>

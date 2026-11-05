@@ -29,7 +29,7 @@ import {
   ShieldAlert,
   Store,
   Loader2,
-  Send, Scale } from 'lucide-react';
+  Send, Scale, AlertTriangle } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import {
@@ -72,6 +72,7 @@ function MainAppLayout({ children }: { children: React.ReactNode }) {
 
   const navItems = [
     { href: '/meters', icon: Gauge, label: 'Compteurs' },
+    { href: '/meters/alertes', icon: AlertTriangle, label: 'Alertes compteurs' },
     ...(isAdmin ? [{ href: '/users', icon: Users, label: 'Utilisateurs' }] : []),
     ...(isAdmin ? [{ href: '/imports', icon: Upload, label: 'Imports' }] : []),
     ...(isAdmin ? [{ href: '/api-keys', icon: KeyRound, label: 'Accès API' }] : []),
