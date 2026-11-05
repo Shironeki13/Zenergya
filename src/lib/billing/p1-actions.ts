@@ -12,7 +12,7 @@ const fail = (e: unknown): { success: false; error: string } => ({ success: fals
 
 export type RegulPreviewView = {
     errors: string[];
-    detail: { siteId: string; site: string; reel: number; acomptes: number; ecart: number }[];
+    detail: { siteId: string; site: string; usage: 'total' | 'chauffage' | 'ecs'; reel: number; acomptes: number; ecart: number }[];
     lines: Pick<InvoiceLineItem, 'description' | 'total' | 'vatRate'>[];
     facture: { subtotal: number; tax: number; total: number } | null;
     avoir: { subtotal: number; tax: number; total: number } | null;

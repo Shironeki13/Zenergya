@@ -1013,10 +1013,12 @@ function planP1Reel(ctx: Context, row: ParsedRow, seen: Map<string, number>): Pl
     else if (!mois) item.messages.push(`Mois « ${v.mois} » illisible (AAAA-MM).`);
     if (v.montant === null && !row.errors.some(e => e.startsWith('Montant'))) item.messages.push('Montant P1 HT obligatoire.');
     if (item.messages.length || !site || !mois || v.montant === null) return item;
-    const id = `${site.id}_${mois}`;
-    if (seen.has(id)) { item.messages.push(`Même site et même mois que la ligne ${seen.get(id)}.`); return item; }
+    const usage = (v.usage as 'total' | 'chauffage' | 'ecs' | null) ?? 'total';
+    // Identifiant : « site_mois » pour le total (antérieur aux usages), « site_mois_usage » sinon.
+    const id = usage === 'total' ? `${site.id}_${mois}` : `${site.id}_${mois}_${usage}`;
+    if (seen.has(id)) { item.messages.push(`Même site, même mois et même usage que la ligne ${seen.get(id)}.`); return item; }
     seen.set(id, row.line);
-    item.label = `${site.code ?? site.name} — ${mois}`;
+    item.label = `${site.code ?? site.name} — ${mois}${usage === 'total' ? '' : ` (${usage === 'ecs' ? 'ECS' : 'chauffage'})`}`;
     const montant = Number(v.montant);
     const current = ctx.p1Reel.get(id);
     if (current !== undefined && current === montant) { Object.assign(item, { action: 'unchanged', targetId: id }); return item; }
@@ -1026,7 +1028,7 @@ function planP1Reel(ctx: Context, row: ParsedRow, seen: Map<string, number>): Pl
     }
     Object.assign(item, {
         action: current === undefined ? 'create' : 'update', targetId: id,
-        data: { siteId: site.id, codeSite: site.code ?? null, contractId: site.contractId || null, mois, montantHt: montant },
+        data: { siteId: site.id, codeSite: site.code ?? null, contractId: site.contractId || null, mois, usage, montantHt: montant },
     });
     if (current !== undefined) item.warnings.push(`Remplace ${current} €.`);
     return item;

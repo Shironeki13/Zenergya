@@ -616,9 +616,9 @@ export type InvoiceLineItem = {
     periodEndDate?: string;   // AAAA-MM-JJ
     baseAmount?: number;      // Montant avant révision
     /** Acompte P1 : détail par mois (quantité estimée, prix révisé, montant) ; sert à la régularisation. */
-    p1Acompte?: { siteId: string; mois: { mois: string; quantite: number; prix: number; montant: number }[] };
+    p1Acompte?: { siteId: string; usage?: 'chauffage' | 'ecs'; mois: { mois: string; quantite: number; prix: number; montant: number }[] };
     /** Régularisation P1 : site et mois régularisés (réel du moteur − acomptes), ou intéressement facturé. */
-    p1Regul?: { siteId: string; mois: string[]; reel: number; acomptes: number } | { siteId: string; interestId: string };
+    p1Regul?: { siteId: string; usage?: 'chauffage' | 'ecs' | 'total'; mois: string[]; reel: number; acomptes: number } | { siteId: string; interestId: string };
     revision?: { date: string; coefficient: number; rule: string; indices: { code: string; periods: string[]; value: number; base: number; basePeriod: string }[] };
 };
 

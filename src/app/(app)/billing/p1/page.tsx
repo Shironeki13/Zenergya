@@ -77,11 +77,12 @@ export default function P1RegularisationPage() {
                     <div className="space-y-3">
                         {preview.errors.length > 0 && <div className="rounded-md border border-destructive p-3 text-sm text-destructive">{preview.errors.map(e => <p key={e}>{e}</p>)}</div>}
                         <Table>
-                            <TableHeader><TableRow><TableHead>Site</TableHead><TableHead className="text-right">Réel du moteur</TableHead><TableHead className="text-right">Acomptes facturés</TableHead><TableHead className="text-right">Écart HT</TableHead></TableRow></TableHeader>
+                            <TableHeader><TableRow><TableHead>Site</TableHead><TableHead>Usage</TableHead><TableHead className="text-right">Réel du moteur</TableHead><TableHead className="text-right">Acomptes facturés</TableHead><TableHead className="text-right">Écart HT</TableHead></TableRow></TableHeader>
                             <TableBody>
                                 {preview.detail.map(d => (
-                                    <TableRow key={d.siteId}>
-                                        <TableCell>{d.site}</TableCell><TableCell className="text-right">{eur(d.reel)}</TableCell>
+                                    <TableRow key={`${d.siteId}-${d.usage}`}>
+                                        <TableCell>{d.site}</TableCell><TableCell>{({ total: 'total', chauffage: 'chauffage', ecs: 'ECS' })[d.usage]}</TableCell>
+                                        <TableCell className="text-right">{eur(d.reel)}</TableCell>
                                         <TableCell className="text-right">{eur(d.acomptes)}</TableCell>
                                         <TableCell className={`text-right font-medium ${d.ecart < 0 ? 'text-green-700' : ''}`}>{eur(d.ecart)}</TableCell>
                                     </TableRow>

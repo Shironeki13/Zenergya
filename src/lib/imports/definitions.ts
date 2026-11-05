@@ -356,11 +356,16 @@ export const IMPORT_ENTITIES: Record<ImportEntityKey, ImportEntity> = {
         label: 'Réel P1 du moteur',
         description: 'Montant P1 HT réel de chaque site et de chaque mois, calculé par le moteur P1 (table p1_facturation_site : total P1 du mois). '
             + 'Sert à régulariser les acomptes P1.',
-        matching: 'Site + mois : un montant identique est inchangé ; un autre montant remplace le précédent, sauf si le mois est déjà régularisé (refusé).',
+        matching: 'Site + mois + usage : un montant identique est inchangé ; un autre montant remplace le précédent, sauf si le mois est déjà régularisé (refusé).',
         fields: [
             { key: 'site', label: 'Site', type: 'text', required: 'create', example: 'SIT-00021', aliases: ['code_site'], help: 'Code du site (SIT-…) ou réf. externe.' },
             { key: 'mois', label: 'Mois', type: 'text', required: 'create', example: '2025-11', help: 'AAAA-MM (ou MM/AAAA, ou une date du mois).' },
-            { key: 'montant', label: 'Montant P1 HT', type: 'number', allowZero: true, required: 'create', example: '12450,80', aliases: ['total_p1', 'montant'], help: '€ HT, réel facturable du mois (chauffage, ECS et annexes).' },
+            { key: 'montant', label: 'Montant P1 HT', type: 'number', allowZero: true, required: 'create', example: '12450,80', aliases: ['total_p1', 'montant'], help: '€ HT, réel facturable du mois.' },
+            {
+                key: 'usage', label: 'Usage', type: 'enum', example: 'Total',
+                options: [{ value: 'total', label: 'Total', aliases: ['total_p1'] }, { value: 'chauffage', label: 'Chauffage' }, { value: 'ecs', label: 'ECS', aliases: ['eau chaude'] }],
+                help: 'Vide : total (chauffage, ECS et annexes, p1_facturation_site). Chauffage ou ECS : réel par usage (p1_facturation_chauffage, p1_facturation_ecs), nécessaire si leurs TVA diffèrent.',
+            },
         ],
     },
 };
