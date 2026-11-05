@@ -431,6 +431,27 @@ export async function createCreditNote(
     return { id: creditNoteRef.id, creditNoteNumber };
 }
 
+/**
+ * Avoir de régularisation (P1) : un avoir partiel qui **n'annule pas** les factures qu'il cite (factures d'acompte),
+ * numéroté dans la même transaction que son écriture, et refusé si le contrat a été facturé depuis la préparation.
+ */
+export async function createRegularisationCreditNote(data: NewCreditNote, company: Company, guard: BillingGuard): Promise<{ id: string; creditNoteNumber: string }> {
+    assertCompanyCode(company);
+    const ref = adminDb.collection('creditNotes').doc();
+    const issuedAt = new Date();
+    const series = await prepareSeries('creditNote', company.code, issuedAt);
+    const einvoicing = await computeEInvoicingState({ clientId: data.clientId, contractId: data.contractId, company, documentDate: issuedAt.toISOString() });
+    const creditNoteNumber = await adminDb.runTransaction(async (tx) => {
+        const bump = await checkBillingGuard(tx, guard);
+        const reserved = await reserveNumber(tx, series);
+        reserved.commit();
+        tx.set(ref, { ...data, creditNoteNumber: reserved.number, companyId: company.id, date: new Date(data.date), issuedAt, einvoicing });
+        bump();
+        return reserved.number;
+    });
+    return { id: ref.id, creditNoteNumber };
+}
+
 // --- Indices ---
 
 export async function createIndex(data: Omit<Index, 'id'>): Promise<Index> {

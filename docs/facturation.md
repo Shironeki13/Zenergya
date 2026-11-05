@@ -57,7 +57,26 @@ Calcul : `src/lib/billing/revision.ts`.
 - **Figé une fois facturé** : le coefficient d'une révision déjà facturée est réutilisé pour les échéances suivantes
   de la même révision ; une correction d'indice publiée après coup ne change ni le passé ni la suite de la période.
 
-Pas encore géré : facturation du P1 sur consommation (acomptes, régularisation, intéressement).
+### Acomptes P1 et régularisation
+
+Calcul : `src/lib/billing/contract-billing.ts` (`acompteP1`), `src/lib/billing/p1-regularisation.ts` ; écran
+Facturation → Régularisation P1.
+
+- **Acompte P1** : mode de facturation d'une prestation P1 (fiche site, « Facturation du P1 »). À chaque échéance
+  (périodicité et terme de la prestation), montant = pour chaque mois couvert (au prorata de ses jours) quantité
+  annuelle × part du mois × prix révisé P1 du mois. Quantité : paramètre P1 du site « Quantité annuelle des
+  acomptes », sinon somme des cibles NB de ses postes (en MWh). Part : « Répartition des acomptes P1 » du contrat
+  (12 parts, ex. linéaire ou saison de chauffe). Prix : prix de base du site × coefficient de la formule P1 (indice
+  reporté : prix provisoire). Le montant annuel de la prestation est ignoré, la révision des prestations ne
+  s'applique pas (le prix est déjà révisé). Le détail mensuel est conservé sur la ligne. Facturation globale non
+  prise en charge pour les acomptes.
+- **Réel du moteur** : import « Réel P1 du moteur » (site, mois, montant P1 HT : `p1_facturation_site`), collection
+  `p1Reel` écrite par le serveur. Un mois déjà régularisé ne change plus.
+- **Régularisation** (contrat, période) : par site, réel − acomptes facturés (factures non annulées) ; plus les
+  intéressements calculés dont la saison finit dans la période. Lignes positives : une facture ; négatives : un
+  **avoir de régularisation** qui n'annule pas les factures d'acompte. Un mois facturé en acompte sans réel bloque ;
+  un mois déjà régularisé ne se régularise pas deux fois ; les mois régularisés ne sont plus facturés en acompte.
+- L'aperçu de la facturation groupée est calculé au serveur, exactement comme la facture (acomptes compris).
 
 ## Numérotation (factures et avoirs)
 

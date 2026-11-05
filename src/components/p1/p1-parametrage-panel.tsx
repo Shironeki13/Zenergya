@@ -33,6 +33,13 @@ import type { P1SiteView, P1Target } from '@/services/p1-admin';
  * date, l'historique de chaque paramètre, l'ajout d'une version (date d'effet, motif) et son retrait tracé.
  */
 
+const MOIS_COURTS = ['janv.', 'févr.', 'mars', 'avr.', 'mai', 'juin', 'juil.', 'août', 'sept.', 'oct.', 'nov.', 'déc.'];
+/** Répartitions usuelles des acomptes (janvier à décembre). */
+const PRESETS_REPARTITION: { label: string; parts: number[] }[] = [
+    { label: 'Linéaire (12 mois)', parts: Array(12).fill(8.3333) },
+    { label: 'Saison de chauffe (octobre à mai, 8 mois)', parts: [12.5, 12.5, 12.5, 12.5, 12.5, 0, 0, 0, 0, 12.5, 12.5, 12.5] },
+];
+
 const today = () => new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/Paris' });
 const frDay = (d?: string | null) => (d ? d.split('-').reverse().join('/') : 'origine');
 const fmtNum = (n: number, unit?: string) => `${n.toLocaleString('fr-FR', { maximumFractionDigits: 6 })}${unit ? ` ${unit}` : ''}`;
@@ -42,6 +49,7 @@ function formatValue(scope: P1Scope, key: string, value: unknown): string {
     const def = paramDef(scope, key)!;
     if (def.kind === 'formule') return formatFormuleNc(value as TermeNc[]);
     if (def.kind === 'bareme') return formatBareme(value as TrancheBareme[]);
+    if (def.kind === 'repartition') return (value as number[]).map((p, i) => `${MOIS_COURTS[i]} ${p.toLocaleString('fr-FR')} %`).join(' · ');
     if (def.kind === 'interessement') {
         return (value as InteressementMarche[]).map(i => `${i.marche} (${i.repartition === 'contrat' ? 'au contrat' : 'prorata NB'}${i.plafondPct !== null ? `, plafond ${i.plafondPct} % P2${i.plafonne ? '' : ' non plafonné'}` : ''})`).join(' ; ');
     }
@@ -273,7 +281,13 @@ function VersionDialog({ editing, onClose, onSubmit, busy, stations }: {
                         ) : (
                             <Input value={value} onChange={e => setValue(e.target.value)}
                                 placeholder={def.kind === 'formule' ? 'CPT-00012 + CPT-00013 - CPT-00020' : def.kind === 'bareme' ? 'économie 0-10 % 50 % ; économie 10-100 % 70 % ; dépassement 0-100 % 30 %' : ''}
-                                inputMode={def.kind === 'text' || def.kind === 'formule' || def.kind === 'bareme' ? 'text' : 'decimal'} />
+                                inputMode={def.kind === 'text' || def.kind === 'formule' || def.kind === 'bareme' || def.kind === 'repartition' ? 'text' : 'decimal'} />
+                        )}
+                        {def.kind === 'repartition' && (
+                            <div className="flex flex-wrap gap-2 pt-1">
+                                {PRESETS_REPARTITION.map(p => <Button key={p.label} type="button" size="sm" variant="outline" onClick={() => setValue(p.parts.join(' ; '))}>{p.label}</Button>)}
+                                <p className="w-full text-xs text-muted-foreground">12 parts en %, de janvier à décembre, séparées par « ; » et sommant à 100.</p>
+                            </div>
                         )}
                         {def.kind === 'formule' && editing.meterCodes && <p className="text-xs text-muted-foreground">Compteurs du site : {editing.meterCodes.join(', ') || 'aucun'}.</p>}
                     </div>

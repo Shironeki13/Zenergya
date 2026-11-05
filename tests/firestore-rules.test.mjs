@@ -90,6 +90,8 @@ await t('user reads P1 parametrage', assertSucceeds(getDoc(doc(user, 'p1Parametr
 await t('user cannot write P1 parametrage', assertFails(updateDoc(doc(user, 'p1Parametrage', 'site:s'), { params: { typeMarche: [] } })));
 await t('admin cannot write P1 parametrage', assertFails(setDoc(doc(admin, 'p1Parametrage', 'site:x'), { kind: 'site' })));
 await t('admin cannot delete P1 parametrage', assertFails(deleteDoc(doc(admin, 'p1Parametrage', 'site:s'))));
+await t('user cannot write P1 actuals', assertFails(setDoc(doc(user, 'p1Reel', 's_2025-10'), { montantHt: 1 })));
+await t('admin cannot write P1 actuals', assertFails(setDoc(doc(admin, 'p1Reel', 's_2025-10'), { montantHt: 1 })));
 await t('user creates site with code', assertSucceeds(setDoc(doc(user, 'sites', 'nouveau'), { name: 'N', code: 'SIT-00002' })));
 await t('user updates site without code', assertSucceeds(updateDoc(doc(user, 'sites', 'ancien'), { name: 'Ancien site 2' })));
 await t('user deletes site', assertSucceeds(deleteDoc(doc(user, 'sites', 'nouveau'))));

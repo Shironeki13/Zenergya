@@ -49,7 +49,7 @@ service cloud.firestore {
     // Paramétrage P1 : versions datées, écrites par le serveur seulement (ajout ou retrait tracé, jamais
     // d'écrasement) ; lisibles par les utilisateurs de l'application.
     function isServerWritten(coll) {
-      return coll in ['p1Parametrage'];
+      return coll in ['p1Parametrage', 'p1Reel'];
     }
 
     // Devis : modification et suppression traitées à part (voir match /quotes).

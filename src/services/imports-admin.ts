@@ -86,6 +86,9 @@ type Context = {
     stationCodes: string[];
     /** Codes des indices connus (formules P1). */
     indexCodes: string[];
+    /** Réel P1 importé (site_mois → montant) et mois déjà régularisés (site|mois). */
+    p1Reel: Map<string, number>;
+    p1Regularises: Set<string>;
     /** Relevés repris dans un intéressement ou une régularisation (index figé). */
     lockedReadings: Map<string, string>;
 };
@@ -122,7 +125,7 @@ async function loadContext(entity: ImportEntityKey): Promise<Context> {
         need(['services']) ? all<Index>('indices') : empty,
         need(['clients', 'contracts', 'sites', 'contacts']) ? all<Client>('clients') : empty,
         need(['contracts', 'sites', 'services', 'readings', 'p1', 'p1formules']) ? all<Contract>('contracts') : empty,
-        need(['sites', 'services', 'meters', 'readings', 'p1', 'p1formules']) ? all<Site>('sites') : empty,
+        need(['sites', 'services', 'meters', 'readings', 'p1', 'p1formules', 'p1reel']) ? all<Site>('sites') : empty,
         need(['contacts']) ? all<Contact>('contacts') : empty,
         need(['meters', 'services', 'readings', 'p1']) ? all<Meter>('meters') : empty,
         need(['contracts']) ? adminDb.collection('invoices').select('contractId').get().then(s => s.docs.map(d => String(d.get('contractId') ?? ''))) : empty,
@@ -131,6 +134,7 @@ async function loadContext(entity: ImportEntityKey): Promise<Context> {
         companies, agencies, sectors, typologies, meterTypes, activities, markets, schedules, terms, vatRates, services, paymentTerms, revisionRules, indices, clients, contracts, sites, contacts, meters,
         invoicedContracts: new Set(invoices as string[]), readings: new Map(), lockedReadings: new Map(),
         indexCodes: entity === 'p1formules' ? (await loadSeries()).codes : [],
+        p1Reel: new Map(), p1Regularises: new Set(),
         p1Docs: entity === 'p1' || entity === 'p1formules' ? new Map((await adminDb.collection('p1Parametrage').get()).docs.map(d => [d.id, d.data() as P1SiteDoc])) : new Map(),
         stationCodes: entity === 'p1' ? (await adminDb.collection('weatherStations').select('code').get()).docs.map(d => String(d.get('code') ?? '')) : [],
     } as Context;
@@ -966,6 +970,68 @@ function planP1Formule(ctx: Context, row: ParsedRow, seen: Map<string, number>):
     return item;
 }
 
+/** Réel P1 déjà importé des sites du fichier, et mois déjà régularisés (factures et avoirs de leurs contrats). */
+async function loadP1Reel(ctx: Context, refs: CellValue[]): Promise<void> {
+    const sites = [...new Set(refs.map(r => findSite(ctx, r)).filter((s): s is Doc<Site> => !!s))];
+    const ids = sites.map(s => s.id);
+    const contracts = [...new Set(sites.map(s => s.contractId).filter(Boolean))];
+    const chunk = <T>(l: T[]) => Array.from({ length: Math.ceil(l.length / 30) }, (_, i) => l.slice(i * 30, i * 30 + 30));
+    const [reel, invoices, creditNotes] = await Promise.all([
+        Promise.all(chunk(ids).map(c => adminDb.collection('p1Reel').where('siteId', 'in', c).get())).then(s => s.flatMap(x => x.docs)),
+        Promise.all(chunk(contracts).map(c => adminDb.collection('invoices').where('contractId', 'in', c).get())).then(s => s.flatMap(x => x.docs)),
+        Promise.all(chunk(contracts).map(c => adminDb.collection('creditNotes').where('contractId', 'in', c).get())).then(s => s.flatMap(x => x.docs)),
+    ]);
+    for (const d of reel) ctx.p1Reel.set(d.id, Number(d.get('montantHt')));
+    for (const d of [...invoices, ...creditNotes]) {
+        if (d.get('status') === 'cancelled' || d.get('status') === 'proforma' || d.get('cancelledByCreditNoteId')) continue;
+        for (const l of (d.get('lineItems') ?? []) as { p1Regul?: { siteId: string; mois?: string[] } }[]) {
+            for (const m of l.p1Regul?.mois ?? []) ctx.p1Regularises.add(`${l.p1Regul!.siteId}|${m}`);
+        }
+    }
+}
+
+/** Mois « AAAA-MM » lu d'un texte (AAAA-MM, MM/AAAA, date) ; null sinon. */
+function moisOf(v: CellValue): string | null {
+    const t = String(v ?? '').trim();
+    const fr = /^(\d{1,2})\/(\d{4})$/.exec(t);
+    if (fr && +fr[1] >= 1 && +fr[1] <= 12) return `${fr[2]}-${fr[1].padStart(2, '0')}`;
+    const iso = /^(\d{4})-(\d{2})/.exec(t);
+    if (iso && +iso[2] >= 1 && +iso[2] <= 12) return `${iso[1]}-${iso[2]}`;
+    const day = /^\d{1,2}\/(\d{1,2})\/(\d{4})/.exec(t);
+    return day && +day[1] >= 1 && +day[1] <= 12 ? `${day[2]}-${day[1].padStart(2, '0')}` : null;
+}
+
+/** Réel P1 du moteur : site + mois ; un montant d'un mois déjà régularisé ne change plus. */
+function planP1Reel(ctx: Context, row: ParsedRow, seen: Map<string, number>): PlanItem {
+    const v = row.values;
+    const item: PlanItem = { line: row.line, action: 'error', label: `${v.site ?? ''} ${v.mois ?? ''}`.trim(), messages: [...row.errors], warnings: [] };
+    const site = v.site ? findSite(ctx, v.site) : undefined;
+    if (!v.site) item.messages.push('Site obligatoire.');
+    else if (!site) item.messages.push(`Site ${v.site} introuvable (code SIT-… ou réf. externe).`);
+    const mois = v.mois ? moisOf(v.mois) : null;
+    if (!v.mois) item.messages.push('Mois obligatoire.');
+    else if (!mois) item.messages.push(`Mois « ${v.mois} » illisible (AAAA-MM).`);
+    if (v.montant === null && !row.errors.some(e => e.startsWith('Montant'))) item.messages.push('Montant P1 HT obligatoire.');
+    if (item.messages.length || !site || !mois || v.montant === null) return item;
+    const id = `${site.id}_${mois}`;
+    if (seen.has(id)) { item.messages.push(`Même site et même mois que la ligne ${seen.get(id)}.`); return item; }
+    seen.set(id, row.line);
+    item.label = `${site.code ?? site.name} — ${mois}`;
+    const montant = Number(v.montant);
+    const current = ctx.p1Reel.get(id);
+    if (current !== undefined && current === montant) { Object.assign(item, { action: 'unchanged', targetId: id }); return item; }
+    if (ctx.p1Regularises.has(`${site.id}|${mois}`)) {
+        item.messages.push(`Mois déjà régularisé (réel ${current ?? '?'} €) : un nouveau montant ne s'applique plus (corriger par une facture ou un avoir).`);
+        return item;
+    }
+    Object.assign(item, {
+        action: current === undefined ? 'create' : 'update', targetId: id,
+        data: { siteId: site.id, codeSite: site.code ?? null, contractId: site.contractId || null, mois, montantHt: montant },
+    });
+    if (current !== undefined) item.warnings.push(`Remplace ${current} €.`);
+    return item;
+}
+
 /** Plan d'import : ce que deviendrait chaque ligne, sans rien écrire. */
 export async function planImport(entity: ImportEntityKey, table: unknown[][]): Promise<ImportPlan> {
     const def = IMPORT_ENTITIES[entity];
@@ -980,6 +1046,7 @@ export async function planImport(entity: ImportEntityKey, table: unknown[][]): P
         const refs = new Set(parsed.rows.map(r => upper(r.values.meter)));
         await loadReadings(ctx, ctx.meters.filter(m => refs.has(upper(m.code)) || (m.externalRef && refs.has(upper(m.externalRef)))).map(m => m.id));
     }
+    if (entity === 'p1reel') await loadP1Reel(ctx, parsed.rows.map(r => r.values.site));
     const seen = new Map<string, number>();
     const pending = new Map<string, { at: number; value: number }[]>();
     const pendingServices = new Map<string, { line: number; startDate: string; endDate: string }[]>();
@@ -994,6 +1061,7 @@ export async function planImport(entity: ImportEntityKey, table: unknown[][]): P
             case 'readings': return planReading(ctx, row, seen, pending);
             case 'p1': return planP1(ctx, row, seen);
             case 'p1formules': return planP1Formule(ctx, row, seen);
+            case 'p1reel': return planP1Reel(ctx, row, seen);
         }
     });
     for (const i of items) counts[i.action]++;
@@ -1009,7 +1077,7 @@ const CODES: Partial<Record<ImportEntityKey, { counter: string; prefix: string; 
     meters: { counter: 'meter', prefix: 'CPT', field: 'code', collection: 'meters' },
 };
 const COLLECTIONS: Record<ImportEntityKey, string> = {
-    clients: 'clients', contracts: 'contracts', sites: 'sites', services: 'services', contacts: 'contacts', meters: 'meters', readings: 'meterReadings', p1: 'p1Parametrage', p1formules: 'p1Parametrage',
+    clients: 'clients', contracts: 'contracts', sites: 'sites', services: 'services', contacts: 'contacts', meters: 'meters', readings: 'meterReadings', p1: 'p1Parametrage', p1formules: 'p1Parametrage', p1reel: 'p1Reel',
 };
 
 /** Réserve `n` numéros au-delà du compteur et du plus grand code existant (pas de doublon possible). */
@@ -1079,6 +1147,7 @@ export async function applyImport(entity: ImportEntityKey, table: unknown[][], m
     if (plan.fileErrors.length) throw new Error(plan.fileErrors.join(' '));
     if (entity === 'p1') return applyP1(plan, meta);
     if (entity === 'p1formules') return applyP1Formules(plan, meta);
+    if (entity === 'p1reel') return applyP1Reel(plan, meta);
     const creates = plan.items.filter(i => i.action === 'create');
     const updates = plan.items.filter(i => i.action === 'update');
     const codes = await reserveCodes(entity, creates.length);
@@ -1212,4 +1281,25 @@ async function applyP1Formules(plan: ImportPlan, meta: { fileName?: string; by?:
         created: count, updated: 0, unchanged: plan.counts.unchanged, rejected: errors.length, errors: errors.slice(0, 200),
     });
     return { importId: log.id, created: count, updated: 0, unchanged: plan.counts.unchanged, errors, results };
+}
+
+/** Écriture du réel P1 : un document par site et par mois (identifiant « site_mois »). */
+async function applyP1Reel(plan: ImportPlan, meta: { fileName?: string; by?: string; source?: 'file' | 'api' }): Promise<ImportReport> {
+    const now = new Date().toISOString();
+    const writes = plan.items.filter(i => i.action === 'create' || i.action === 'update');
+    for (let i = 0; i < writes.length; i += 400) {
+        const batch = adminDb.batch();
+        for (const item of writes.slice(i, i + 400)) {
+            batch.set(adminDb.collection('p1Reel').doc(item.targetId!), { ...item.data, importedAt: now, by: meta.by ?? 'import', fileName: meta.fileName ?? '' });
+        }
+        await batch.commit();
+    }
+    const results: ImportReport['results'] = plan.items.filter(i => i.action !== 'error')
+        .map(i => ({ line: i.line, action: i.action as 'create' | 'update' | 'unchanged', id: i.targetId!, ...(i.warnings.length && { warnings: i.warnings }) }));
+    const errors = plan.items.filter(i => i.action === 'error').map(i => ({ line: i.line, messages: i.messages }));
+    const log = await adminDb.collection('imports').add({
+        entity: 'p1reel', fileName: meta.fileName ?? '', at: now, by: meta.by ?? 'import', source: meta.source ?? 'file',
+        created: plan.counts.create, updated: plan.counts.update, unchanged: plan.counts.unchanged, rejected: errors.length, errors: errors.slice(0, 200),
+    });
+    return { importId: log.id, created: plan.counts.create, updated: plan.counts.update, unchanged: plan.counts.unchanged, errors, results };
 }

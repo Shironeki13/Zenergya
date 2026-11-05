@@ -46,7 +46,7 @@ export const REPARTITIONS = ['contrat', 'prorata_nb'] as const;
 
 export type InteressementMarche = { marche: TypeMarche; repartition: typeof REPARTITIONS[number]; plafondPct: number | null; plafonne: boolean };
 
-type Kind = 'enum' | 'positive' | 'nonNegative' | 'text' | 'station' | 'formule' | 'interessement' | 'bareme';
+type Kind = 'enum' | 'positive' | 'nonNegative' | 'text' | 'station' | 'formule' | 'interessement' | 'bareme' | 'repartition';
 export type ParamDef = { label: string; kind: Kind; options?: readonly string[]; unit?: string; help?: string };
 
 export const P1_PARAMS: Record<P1Scope, Record<string, ParamDef>> = {
@@ -56,6 +56,7 @@ export const P1_PARAMS: Record<P1Scope, Record<string, ParamDef>> = {
         prixBase: { label: 'Prix de base chauffage', kind: 'positive', unit: '€/MWh' },
         prixBaseEcs: { label: 'Prix de base ECS', kind: 'positive', unit: '€/m³' },
         stationMeteo: { label: 'Station météo', kind: 'station', help: 'Code de la station (paramétrage) : DJU de la cible corrigée.' },
+        quantiteAcompte: { label: 'Quantité annuelle des acomptes', kind: 'positive', unit: 'MWh / an', help: 'Base des acomptes P1 ; vide : somme des cibles NB des postes (en MWh).' },
         correspondanceTwimm: { label: 'Code site TWIMM', kind: 'text' },
     },
     poste: {
@@ -76,6 +77,7 @@ export const P1_PARAMS: Record<P1Scope, Record<string, ParamDef>> = {
         coefficientGestion: { label: 'Coefficient de gestion', kind: 'positive', help: 'Régime « coefficient » : HT × coefficient.' },
         fraisGestionAnnuels: { label: 'Frais de gestion annuels', kind: 'nonNegative', unit: '€ HT / an' },
         correspondanceTwimm: { label: 'Code contrat TWIMM', kind: 'text' },
+        repartitionAcomptes: { label: 'Répartition des acomptes P1', kind: 'repartition', help: '12 parts mensuelles en %, de janvier à décembre, sommant à 100 (ex. linéaire : 8,33 × 12).' },
         interessement: { label: 'Intéressement au contrat', kind: 'interessement', help: 'Par marché : écart partagé une fois sur la somme des sites, répartition, plafond.' },
     },
 };
@@ -134,6 +136,15 @@ export function validateParam(scope: P1Scope, key: string, raw: unknown, ctx: Va
             const unknown = ctx.siteMeterCodes ? codes.filter(c => !ctx.siteMeterCodes!.some(m => m.toUpperCase() === c)) : [];
             if (unknown.length) return { error: `${def.label} : compteur(s) absent(s) du site : ${unknown.join(', ')}.` };
             return { value: termes.map(t => ({ codeCompteur: t.codeCompteur.toUpperCase(), signe: t.signe })) };
+        }
+        case 'repartition': {
+            const parts = typeof raw === 'string' ? raw.split(';').map(x => num(x)) : (raw as number[]);
+            if (!Array.isArray(parts) || parts.length !== 12 || parts.some(p => !Number.isFinite(p) || p < 0)) {
+                return { error: `${def.label} : 12 parts positives ou nulles, de janvier à décembre, séparées par « ; ».` };
+            }
+            const total = parts.reduce((a, b) => a + b, 0);
+            if (Math.abs(total - 100) > 0.05) return { error: `${def.label} : les parts somment à ${+total.toFixed(4)} % au lieu de 100 %.` };
+            return { value: parts };
         }
         case 'bareme': {
             const tranches = typeof raw === 'string' ? parseBareme(raw) : (raw as TrancheBareme[]);
