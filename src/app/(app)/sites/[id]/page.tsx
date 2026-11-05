@@ -18,6 +18,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { toast } from '@/hooks/use-toast';
 import { billingItems, echeancesOf, lineItemKeys } from '@/lib/billing/contract-billing';
 import { toDay } from '@/lib/services/site-amounts';
+import { P1ParametragePanel } from '@/components/p1/p1-parametrage-panel';
 import { updateSite, createService, updateService, deleteService, createMeter, updateMeter, deleteMeter } from '@/services/firestore';
 import type { Site, Contract, Service, Meter, RevisionRule, Activity, Term, Schedule, PricingRule, ServiceType, ServiceInitialIndexValue, Index, IndexValue, ServiceBillingLine, BillingLineType } from '@/lib/types';
 import { MeterReadingsDialog } from '@/components/meter-readings-dialog';
@@ -385,10 +386,11 @@ export default function SiteDetailsPage() {
             initialIndexValues: serviceIndices,
 
             // Interest Params
-            referenceNb: selectedType === 'P1' && p1Type === 'CHAUFFAGE' ? Number(referenceNb) : undefined,
-            referenceDju: selectedType === 'P1' && p1Type === 'CHAUFFAGE' ? Number(referenceDju) : undefined,
-            heatingContractType: selectedType === 'P1' && p1Type === 'CHAUFFAGE' ? heatingContractType : undefined,
-            heatingWeatherStation: selectedType === 'P1' && p1Type === 'CHAUFFAGE' ? heatingWeatherStation : undefined,
+            // Références P1 : saisies dans le paramétrage P1 daté ; l'ancienne saisie de la prestation est conservée telle quelle.
+            referenceNb: editingService?.referenceNb,
+            referenceDju: editingService?.referenceDju,
+            heatingContractType: editingService?.heatingContractType,
+            heatingWeatherStation: editingService?.heatingWeatherStation,
             sharingPercentage: selectedType === 'P1' && p1Type === 'CHAUFFAGE' ? Number(sharingPercentage) : undefined,
             interestUnitPrice: selectedType === 'P1' && p1Type === 'CHAUFFAGE' ? Number(interestUnitPrice) : undefined,
             settlementRuleId: settlementRuleId || undefined,
@@ -397,7 +399,7 @@ export default function SiteDetailsPage() {
             includeAnnex: selectedType === 'P1' ? includeAnnex : undefined,
             billingLines: selectedType === 'P1' ? billingLines.filter(l => l.vatRateId) : undefined,
             paymentTermDays: selectedType === 'P1' ? Number(paymentTermDays) : undefined,
-            conversionCoefficient: selectedType === 'P1' ? Number(conversionCoefficient) : undefined,
+            conversionCoefficient: editingService?.conversionCoefficient,
         };
 
         try {
@@ -1030,6 +1032,7 @@ export default function SiteDetailsPage() {
 
                 {/* Right Column: Main Content */}
                 <div className="lg:col-span-2">
+                    <div className="mb-6"><P1ParametragePanel siteId={siteId} /></div>
                     <Tabs value={selectedType} onValueChange={(v) => setSelectedType(v as ServiceType)} className="w-full">
                         <TabsList className="grid w-full grid-cols-3 mb-6">
                             <TabsTrigger value="P1">P1 — Énergie</TabsTrigger>
@@ -1548,38 +1551,10 @@ export default function SiteDetailsPage() {
                             <div className="space-y-4 border p-4 rounded-md mt-4">
                                 <h3 className="font-semibold text-sm">Paramètres d'Intéressement</h3>
                                 <div className="grid grid-cols-2 gap-4">
-                                    <div className="space-y-2">
-                                        <Label>NB de Référence (MWh)</Label>
-                                        <Input type="number" step="0.001" value={referenceNb} onChange={e => setReferenceNb(parseFloat(e.target.value))} />
-                                    </div>
-                                    <div className="space-y-2">
-                                        <Label>DJU de Référence</Label>
-                                        <Input type="number" step="1" value={referenceDju} onChange={e => setReferenceDju(parseFloat(e.target.value))} />
-                                    </div>
-                                    <div className="space-y-2">
-                                        <Label>Type de Contrat</Label>
-                                        <Select value={heatingContractType} onValueChange={setHeatingContractType}>
-                                            <SelectTrigger><SelectValue placeholder="Sélectionner" /></SelectTrigger>
-                                            <SelectContent>
-                                                <SelectItem value="MCI">MCI</SelectItem>
-                                                <SelectItem value="MTI">MTI</SelectItem>
-                                                <SelectItem value="MF">MF</SelectItem>
-                                                <SelectItem value="AUTRE">Autre</SelectItem>
-                                            </SelectContent>
-                                        </Select>
-                                    </div>
-                                    <div className="space-y-2">
-                                        <Label>Station Météo</Label>
-                                        <Select value={heatingWeatherStation} onValueChange={setHeatingWeatherStation}>
-                                            <SelectTrigger><SelectValue placeholder="Sélectionner" /></SelectTrigger>
-                                            <SelectContent>
-                                                {weatherStations.map(ws => (
-                                                    <SelectItem key={ws.code} value={ws.code}>{ws.name} ({ws.code})</SelectItem>
-                                                ))}
-                                                <SelectItem value="MANUAL">Saisie Manuelle (Si absente)</SelectItem>
-                                            </SelectContent>
-                                        </Select>
-                                    </div>
+                                    <p className="col-span-2 text-xs text-muted-foreground">
+                                        Type de marché, cible NB, DJU de référence et station météo se saisissent, datés, dans le
+                                        « Paramétrage P1 » du site (source unique, utilisée par l'intéressement).
+                                    </p>
                                     <div className="space-y-2">
                                         <Label>Pourcentage de Partage (%)</Label>
                                         <Input type="number" step="0.1" value={sharingPercentage} onChange={e => setSharingPercentage(parseFloat(e.target.value))} />
@@ -1932,17 +1907,9 @@ export default function SiteDetailsPage() {
                                 </div>
 
                                 <div className="grid grid-cols-2 gap-4">
-                                    <div className="space-y-2">
-                                        <Label>Coefficient de conversion</Label>
-                                        <Input
-                                            type="number"
-                                            step="0.0001"
-                                            value={conversionCoefficient}
-                                            onChange={e => setConversionCoefficient(parseFloat(e.target.value) || 1)}
-                                            placeholder="1.0"
-                                        />
-                                        <p className="text-xs text-muted-foreground">Ex : 11.6 pour m³→kWh (PCS gaz naturel)</p>
-                                    </div>
+                                    <p className="col-span-2 text-xs text-muted-foreground">
+                                        Coefficient de conversion (QE) : sur le compteur, daté, dans le « Paramétrage P1 » du site (jamais 1 par défaut).
+                                    </p>
                                 </div>
 
                                 {/* Billing Lines */}

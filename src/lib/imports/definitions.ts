@@ -1,3 +1,5 @@
+import { P1_PARAMS } from '@/lib/p1/stockage';
+
 /**
  * Imports en masse : description des données importables.
  *
@@ -26,7 +28,7 @@ export type ImportField = {
     allowZero?: boolean;
 };
 
-export type ImportEntityKey = 'clients' | 'contracts' | 'sites' | 'services' | 'contacts' | 'meters' | 'readings';
+export type ImportEntityKey = 'clients' | 'contracts' | 'sites' | 'services' | 'contacts' | 'meters' | 'readings' | 'p1';
 
 export type ImportEntity = {
     key: ImportEntityKey;
@@ -38,6 +40,14 @@ export type ImportEntity = {
 };
 
 const OUI_NON = 'oui / non';
+
+/** Paramètres P1 importables : « portée.clé » (voir lib/p1/stockage). Libellés repris du catalogue. */
+const P1_PARAM_OPTIONS = Object.entries(P1_PARAMS)
+    .flatMap(([scope, defs]) => Object.entries(defs).filter(([, d]) => d.kind !== 'interessement').map(([key, d]) => ({
+        value: `${scope}.${key}`,
+        label: `${d.label} (${({ site: 'site', poste: 'poste', meter: 'compteur', contract: 'contrat' } as Record<string, string>)[scope]})`,
+        aliases: [key, `${scope}.${key}`],
+    })));
 
 /** Référence dans un autre système (ancienne codification, TWIMM…) : 2e clé de correspondance, après le code Zenergya. */
 const externalRef = (what: string): ImportField => ({
@@ -287,6 +297,23 @@ export const IMPORT_ENTITIES: Record<ImportEntityKey, ImportEntity> = {
                 help: 'Vide à la création : Réel. Automatique : télérelève.',
             },
             { key: 'comment', label: 'Commentaire', type: 'text', example: '', aliases: ['remarque'] },
+        ],
+    },
+    p1: {
+        key: 'p1',
+        label: 'Paramétrage P1 (versions datées)',
+        description: 'Une ligne = une version d\'un paramètre P1 (site, poste de consommation, compteur, contrat) : valeur, date d\'effet, motif. '
+            + 'Une version ne remplace jamais la précédente : elle vaut à partir de sa date d\'effet.',
+        matching: 'Élément + paramètre (+ poste) + date d\'effet : une version identique déjà saisie est inchangée ; une valeur différente à la même date est refusée '
+            + '(retirez d\'abord la version à l\'écran, avec son motif). Un poste absent est créé.',
+        fields: [
+            { key: 'element', label: 'Élément', type: 'text', required: 'create', example: 'SIT-00021', help: 'Code du site (SIT-…), du compteur (CPT-…) ou du contrat (CTN-…), ou sa réf. externe.' },
+            { key: 'poste', label: 'Poste', type: 'text', example: '', help: 'Paramètres de poste : désignation du poste de consommation du site (créé s\'il n\'existe pas).' },
+            { key: 'parametre', label: 'Paramètre', type: 'enum', required: 'create', example: 'Type de marché (site)', options: P1_PARAM_OPTIONS },
+            { key: 'valeur', label: 'Valeur', type: 'text', required: 'create', example: 'MCI', help: 'Formule de NC : « CPT-00012 + CPT-00013 - CPT-00020 ». Nombres : virgule ou point.' },
+            { key: 'dateEffet', label: 'Date d\'effet', type: 'date', help: 'Vide : valeur d\'origine du marché.' },
+            { key: 'motif', label: 'Motif', type: 'text', required: 'create', example: 'contrat d\'origine' },
+            { key: 'document', label: 'Pièce justificative', type: 'text', help: 'Lien (facultatif).' },
         ],
     },
 };

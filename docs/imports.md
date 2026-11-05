@@ -1,7 +1,7 @@
 # Imports en masse
 
 Menu **Imports** (administrateurs). Données importables : **clients et prospects**, **contrats**, **sites**,
-**prestations et montants**, **contacts**, **compteurs**, **relevés de compteurs**. (Les articles de la bibliothèque de prix ont leur propre import : voir `bibliotheque-prix.md`.)
+**prestations et montants**, **paramétrage P1**, **contacts**, **compteurs**, **relevés de compteurs**. (Les articles de la bibliothèque de prix ont leur propre import : voir `bibliotheque-prix.md`.)
 
 ## Déroulé
 
@@ -114,6 +114,14 @@ Relevés : dates `AAAA-MM-JJ` ou `JJ/MM/AAAA` (heure `HH:MM` facultative ; les d
 telles quelles), index positif ou nul. Refusés : date future, même compteur et même instant sur deux lignes, index
 modifié d'un relevé repris dans un intéressement ou une régularisation. Signalés sans bloquer : index en baisse par
 rapport au relevé précédent (ou supérieur au suivant), compteur hors service. Détails : `api-externe.md`.
+
+### Paramétrage P1 (versions datées)
+
+Une ligne = une version : élément (code SIT, CPT ou CTN, ou réf. externe), poste (pour les paramètres de poste,
+créé s'il n'existe pas), paramètre (liste de la notice), valeur, date d'effet (vide : valeur d'origine), motif,
+pièce. Formule de NC : `CPT-00012 + CPT-00013 - CPT-00020` (compteurs du site). Une version identique déjà saisie
+est inchangée ; une autre valeur à la même date est refusée (la retirer à l'écran, avec son motif). Voir
+`parametrage-p1.md`.
 
 ## Fichiers Excel
 

@@ -531,7 +531,8 @@ async function createSettingItem(collectionName: string, data: DocumentData): Pr
 
 async function updateSettingItem(collectionName: string, id: string, data: DocumentData): Promise<void> {
     const docRef = doc(db, collectionName, id);
-    await updateDoc(docRef, data);
+    // Champ non fourni (undefined) : valeur existante conservée (Firestore refuse undefined).
+    await updateDoc(docRef, Object.fromEntries(Object.entries(data).filter(([, v]) => v !== undefined)));
 }
 
 async function deleteSettingItem(collectionName: string, id: string): Promise<void> {

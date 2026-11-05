@@ -46,6 +46,12 @@ service cloud.firestore {
       return coll in ['apiKeys', 'apiUsage', 'apiIdempotency', 'apiLogs'];
     }
 
+    // Paramétrage P1 : versions datées, écrites par le serveur seulement (ajout ou retrait tracé, jamais
+    // d'écrasement) ; lisibles par les utilisateurs de l'application.
+    function isServerWritten(coll) {
+      return coll in ['p1Parametrage'];
+    }
+
     // Devis : modification et suppression traitées à part (voir match /quotes).
     function isQuoteChange(coll) {
       return coll == 'quotes' && request.method in ['update', 'delete'];
@@ -55,7 +61,7 @@ service cloud.firestore {
     // d'où une règle générique qui exclut explicitement les collections traitées à part.
     match /{coll}/{docId} {
       allow read: if isAppUser() && !isServerOnly(coll);
-      allow create, update, delete: if !isAccounting(coll) && !isServerOnly(coll) && codeInchange(coll) && !isQuoteChange(coll)
+      allow create, update, delete: if !isAccounting(coll) && !isServerOnly(coll) && !isServerWritten(coll) && codeInchange(coll) && !isQuoteChange(coll)
         && (isAdmin() || (isAppUser() && !isAdminOnly(coll)));
     }
 

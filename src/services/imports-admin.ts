@@ -8,6 +8,8 @@ import { scheduleOf, termeOf } from '@/lib/billing/contract-billing';
 import { parseAnchor } from '@/lib/billing/revision';
 import { periodsOverlap, toDay } from '@/lib/services/site-amounts';
 import { recomputeSiteAmounts } from '@/services/site-amounts-admin';
+import { P1_DOC_ID, P1_PARAMS, validateParam, type NewVersion, type P1ContractDoc, type P1MeterDoc, type P1Scope, type P1SiteDoc } from '@/lib/p1/stockage';
+import { addP1Poste, addP1Version, type P1Target } from '@/services/p1-admin';
 import type {
     Activity, Agency, ChorusFramework, Client, Company, Contact, Contract, ContractChorusSettings, Market, Meter, MeterReading,
     Index, MeterType, PaymentTerm, RevisionRule, Schedule, Sector, Service, ServiceInitialIndexValue, Site, Term, Typology, VatRate,
@@ -77,6 +79,9 @@ type Context = {
     invoicedContracts: Set<string>;
     /** Relevés existants des compteurs du fichier (imports de relevés), triés par date. */
     readings: Map<string, StoredReading[]>;
+    /** Paramétrage P1 (imports P1) : documents par identifiant, codes des stations météo. */
+    p1Docs: Map<string, P1SiteDoc | P1MeterDoc | P1ContractDoc>;
+    stationCodes: string[];
     /** Relevés repris dans un intéressement ou une régularisation (index figé). */
     lockedReadings: Map<string, string>;
 };
@@ -112,15 +117,17 @@ async function loadContext(entity: ImportEntityKey): Promise<Context> {
         need(['services']) ? all<RevisionRule>('revisionRules') : empty,
         need(['services']) ? all<Index>('indices') : empty,
         need(['clients', 'contracts', 'sites', 'contacts']) ? all<Client>('clients') : empty,
-        need(['contracts', 'sites', 'services', 'readings']) ? all<Contract>('contracts') : empty,
-        need(['sites', 'services', 'meters', 'readings']) ? all<Site>('sites') : empty,
+        need(['contracts', 'sites', 'services', 'readings', 'p1']) ? all<Contract>('contracts') : empty,
+        need(['sites', 'services', 'meters', 'readings', 'p1']) ? all<Site>('sites') : empty,
         need(['contacts']) ? all<Contact>('contacts') : empty,
-        need(['meters', 'services', 'readings']) ? all<Meter>('meters') : empty,
+        need(['meters', 'services', 'readings', 'p1']) ? all<Meter>('meters') : empty,
         need(['contracts']) ? adminDb.collection('invoices').select('contractId').get().then(s => s.docs.map(d => String(d.get('contractId') ?? ''))) : empty,
     ]);
     return {
         companies, agencies, sectors, typologies, meterTypes, activities, markets, schedules, terms, vatRates, services, paymentTerms, revisionRules, indices, clients, contracts, sites, contacts, meters,
         invoicedContracts: new Set(invoices as string[]), readings: new Map(), lockedReadings: new Map(),
+        p1Docs: entity === 'p1' ? new Map((await adminDb.collection('p1Parametrage').get()).docs.map(d => [d.id, d.data() as P1SiteDoc])) : new Map(),
+        stationCodes: entity === 'p1' ? (await adminDb.collection('weatherStations').select('code').get()).docs.map(d => String(d.get('code') ?? '')) : [],
     } as Context;
 }
 
@@ -819,6 +826,68 @@ function planService(ctx: Context, row: ParsedRow, pending: Map<string, { line: 
     return item;
 }
 
+/** Paramétrage P1 : une ligne = une version (jamais d'écrasement : une autre valeur à la même date est refusée). */
+function planP1(ctx: Context, row: ParsedRow, seen: Map<string, number>): PlanItem {
+    const v = row.values;
+    const item: PlanItem = { line: row.line, action: 'error', label: `${v.element ?? ''} ${v.parametre ?? ''}`.trim(), messages: [...row.errors], warnings: [] };
+    if (!v.element || !v.parametre || v.valeur === null || !v.motif) {
+        if (!v.element) item.messages.push('Élément obligatoire.');
+        if (!v.parametre && !row.errors.some(e => e.startsWith('Paramètre'))) item.messages.push('Paramètre obligatoire.');
+        if (v.valeur === null) item.messages.push('Valeur obligatoire (une valeur inconnue ne se saisit pas).');
+        if (!v.motif) item.messages.push('Motif obligatoire.');
+        return item;
+    }
+    if (item.messages.length) return item;
+    const [scope, key] = String(v.parametre).split('.') as [P1Scope, string];
+    let id: string | undefined;
+    let elementLabel = String(v.element);
+    if (scope === 'site' || scope === 'poste') {
+        const site = findSite(ctx, v.element);
+        id = site?.id; if (site) elementLabel = site.code ?? site.name;
+    } else if (scope === 'meter') {
+        const meter = findMeter(ctx, v.element);
+        id = meter?.id; if (meter) elementLabel = meter.code;
+    } else {
+        const contract = findContract(ctx, v.element);
+        id = contract?.id; if (contract) elementLabel = contract.contractNumber ?? contract.id;
+    }
+    if (!id) { item.messages.push(`Élément « ${v.element} » introuvable pour un paramètre de ${({ site: 'site', poste: 'poste (site)', meter: 'compteur', contract: 'contrat' })[scope]}.`); return item; }
+    if (scope === 'poste' && !v.poste) { item.messages.push('Poste obligatoire pour ce paramètre (désignation du poste de consommation).'); return item; }
+
+    const dateEffet = v.dateEffet ? isoDay(Date.parse(String(v.dateEffet))) : null;
+    const siteId = scope === 'site' || scope === 'poste' ? id : undefined;
+    const checked = validateParam(scope, key, String(v.valeur), {
+        stationCodes: ctx.stationCodes,
+        ...(siteId && { siteMeterCodes: ctx.meters.filter(m => m.siteId === siteId).map(m => m.code) }),
+    });
+    if ('error' in checked) { item.messages.push(checked.error); return item; }
+
+    const docId = scope === 'meter' ? P1_DOC_ID.meter(id) : scope === 'contract' ? P1_DOC_ID.contract(id) : P1_DOC_ID.site(id);
+    const doc = ctx.p1Docs.get(docId);
+    const poste = scope === 'poste' ? Object.values((doc as P1SiteDoc | undefined)?.postes ?? {}).find(p => !p.retireLe && norm(p.designation) === norm(v.poste)) : undefined;
+    const versions = (scope === 'poste' ? poste?.params[key] : doc?.params[key]) ?? [];
+    const dupKey = `${docId}|${key}|${norm(v.poste)}|${dateEffet ?? ''}`;
+    if (seen.has(dupKey)) { item.messages.push(`Même paramètre et même date d'effet que la ligne ${seen.get(dupKey)}.`); return item; }
+    seen.set(dupKey, row.line);
+
+    item.label = `${elementLabel}${scope === 'poste' ? ` / ${v.poste}` : ''} — ${P1_PARAMS[scope][key].label} ${dateEffet ? `au ${dateEffet.split('-').reverse().join('/')}` : '(origine)'}`;
+    const active = versions.find(x => !x.retireLe && (x.dateEffet ?? null) === dateEffet);
+    if (active) {
+        if (sameValue(active.valeur, checked.value)) { Object.assign(item, { action: 'unchanged', targetId: docId }); return item; }
+        item.messages.push(`Une autre valeur est déjà en vigueur ${dateEffet ? 'à cette date' : 'comme valeur d\'origine'} : retirez cette version à l'écran (avec son motif) pour la remplacer.`);
+        return item;
+    }
+    if (scope === 'poste' && !poste) item.warnings.push(`Poste « ${v.poste} » créé.`);
+    Object.assign(item, {
+        action: 'create',
+        data: {
+            target: { scope, id, ...(scope === 'poste' && { posteDesignation: String(v.poste).trim(), posteId: poste?.id }) }, key,
+            version: { valeur: checked.value, dateEffet, motif: String(v.motif), document: v.document ? String(v.document) : null },
+        },
+    });
+    return item;
+}
+
 /** Plan d'import : ce que deviendrait chaque ligne, sans rien écrire. */
 export async function planImport(entity: ImportEntityKey, table: unknown[][]): Promise<ImportPlan> {
     const def = IMPORT_ENTITIES[entity];
@@ -845,6 +914,7 @@ export async function planImport(entity: ImportEntityKey, table: unknown[][]): P
             case 'contacts': return planContact(ctx, row, seen);
             case 'meters': return planMeter(ctx, row, seen);
             case 'readings': return planReading(ctx, row, seen, pending);
+            case 'p1': return planP1(ctx, row, seen);
         }
     });
     for (const i of items) counts[i.action]++;
@@ -860,7 +930,7 @@ const CODES: Partial<Record<ImportEntityKey, { counter: string; prefix: string; 
     meters: { counter: 'meter', prefix: 'CPT', field: 'code', collection: 'meters' },
 };
 const COLLECTIONS: Record<ImportEntityKey, string> = {
-    clients: 'clients', contracts: 'contracts', sites: 'sites', services: 'services', contacts: 'contacts', meters: 'meters', readings: 'meterReadings',
+    clients: 'clients', contracts: 'contracts', sites: 'sites', services: 'services', contacts: 'contacts', meters: 'meters', readings: 'meterReadings', p1: 'p1Parametrage',
 };
 
 /** Réserve `n` numéros au-delà du compteur et du plus grand code existant (pas de doublon possible). */
@@ -928,6 +998,7 @@ export type ImportReport = {
 export async function applyImport(entity: ImportEntityKey, table: unknown[][], meta: { fileName?: string; by?: string; source?: 'file' | 'api' }): Promise<ImportReport> {
     const plan = await planImport(entity, table);
     if (plan.fileErrors.length) throw new Error(plan.fileErrors.join(' '));
+    if (entity === 'p1') return applyP1(plan, meta);
     const creates = plan.items.filter(i => i.action === 'create');
     const updates = plan.items.filter(i => i.action === 'update');
     const codes = await reserveCodes(entity, creates.length);
@@ -998,4 +1069,37 @@ export async function applyImport(entity: ImportEntityKey, table: unknown[][], m
         errors: errors.slice(0, 200),
     });
     return { importId: log.id, created: creates.length, updated: updates.length, unchanged: plan.counts.unchanged, errors, results };
+}
+
+/** Écriture d'un import P1 : versions ajoutées une à une (transactions du paramétrage P1), postes créés au besoin. */
+async function applyP1(plan: ImportPlan, meta: { fileName?: string; by?: string; source?: 'file' | 'api' }): Promise<ImportReport> {
+    const by = meta.by ?? 'import';
+    const now = new Date().toISOString();
+    const results: ImportReport['results'] = [];
+    const errors = plan.items.filter(i => i.action === 'error').map(i => ({ line: i.line, messages: i.messages }));
+    const postes = new Map<string, string>();
+    let created = 0;
+    for (const item of plan.items.filter(i => i.action === 'create')) {
+        const { target, key, version } = item.data as { target: P1Target & { posteDesignation?: string }; key: string; version: NewVersion };
+        try {
+            if (target.scope === 'poste' && !target.posteId) {
+                const k = `${target.id}|${norm(target.posteDesignation)}`;
+                target.posteId = postes.get(k) ?? await addP1Poste(target.id, target.posteDesignation!, by);
+                postes.set(k, target.posteId);
+            }
+            const v = await addP1Version({ scope: target.scope, id: target.id, ...(target.posteId && { posteId: target.posteId }) }, key, version, by);
+            results.push({ line: item.line, action: 'create', id: v.id, ...(item.warnings.length && { warnings: item.warnings }) });
+            created++;
+        } catch (e) {
+            errors.push({ line: item.line, messages: [(e as Error).message] });
+        }
+    }
+    for (const item of plan.items.filter(i => i.action === 'unchanged')) results.push({ line: item.line, action: 'unchanged', id: item.targetId! });
+    results.sort((a, b) => a.line - b.line);
+    errors.sort((a, b) => a.line - b.line);
+    const log = await adminDb.collection('imports').add({
+        entity: 'p1', fileName: meta.fileName ?? '', at: now, by, source: meta.source ?? 'file',
+        created, updated: 0, unchanged: plan.counts.unchanged, rejected: errors.length, errors: errors.slice(0, 200),
+    });
+    return { importId: log.id, created, updated: 0, unchanged: plan.counts.unchanged, errors, results };
 }

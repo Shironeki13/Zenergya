@@ -20,6 +20,7 @@ await env.withSecurityRulesDisabled(async (ctx) => {
   await setDoc(doc(db, 'meters', 'm'), { name: 'Compteur', code: 'CPT-00001' });
   await setDoc(doc(db, 'clients', 'cli'), { name: 'Client', externalCode: 'CLI-00001' });
   await setDoc(doc(db, 'contracts', 'ctn'), { label: 'Contrat', contractNumber: 'CTN-00001', siteIds: [] });
+  await setDoc(doc(db, 'p1Parametrage', 'site:s'), { kind: 'site', siteId: 's', params: {}, postes: {} });
   await setDoc(doc(db, 'quotes', 'brouillon'), { number: 'VEF-DEV2026-0001', status: 'brouillon', version: 1, title: 'A' });
   await setDoc(doc(db, 'quoteVersions', 'v'), { quoteId: 'envoye', version: 1 });
   await setDoc(doc(db, 'projects', 'p'), { code: 'VEF-AFF2026-0001', status: 'en_cours' });
@@ -85,6 +86,10 @@ await t('admin cannot change client code', assertFails(updateDoc(doc(admin, 'cli
 await t('user updates client keeping its code', assertSucceeds(updateDoc(doc(user, 'clients', 'cli'), { name: 'Client 2', externalRef: 'TW-1' })));
 await t('user cannot change contract number', assertFails(updateDoc(doc(user, 'contracts', 'ctn'), { contractNumber: 'CTN-09999' })));
 await t('user updates contract keeping its number', assertSucceeds(updateDoc(doc(user, 'contracts', 'ctn'), { clientName: 'Client 2' })));
+await t('user reads P1 parametrage', assertSucceeds(getDoc(doc(user, 'p1Parametrage', 'site:s'))));
+await t('user cannot write P1 parametrage', assertFails(updateDoc(doc(user, 'p1Parametrage', 'site:s'), { params: { typeMarche: [] } })));
+await t('admin cannot write P1 parametrage', assertFails(setDoc(doc(admin, 'p1Parametrage', 'site:x'), { kind: 'site' })));
+await t('admin cannot delete P1 parametrage', assertFails(deleteDoc(doc(admin, 'p1Parametrage', 'site:s'))));
 await t('user creates site with code', assertSucceeds(setDoc(doc(user, 'sites', 'nouveau'), { name: 'N', code: 'SIT-00002' })));
 await t('user updates site without code', assertSucceeds(updateDoc(doc(user, 'sites', 'ancien'), { name: 'Ancien site 2' })));
 await t('user deletes site', assertSucceeds(deleteDoc(doc(user, 'sites', 'nouveau'))));
