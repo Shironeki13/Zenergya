@@ -77,6 +77,7 @@ export async function prepareP1Regularisation(contractId: string, debut: string,
             return {
                 id: site.id, name: String(site.get('name') ?? site.id), activityCode: String(activity?.code ?? 'P1'),
                 vatRates: Object.fromEntries(Object.entries(vat).filter(([, v]) => v !== undefined)),
+                ecsAuReleve: ofSite.some(d => d.get('p1Type') === 'ECS' && d.get('p1Mode') === 'releve'),
             };
         }),
         reel, documents,

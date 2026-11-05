@@ -235,6 +235,20 @@ export const IMPORT_ENTITIES: Record<ImportEntityKey, ImportEntity> = {
             { key: 'revisionAnchor', label: 'Date anniversaire de révision', type: 'text', example: '01/01', help: 'JJ/MM (vide : jour du début du contrat).' },
             { key: 'revisionFromStart', label: 'Révisé dès le début', type: 'boolean', help: 'oui : révisé dès le début du contrat ; non (vide) : prix de base jusqu\'à la première révision.' },
             { key: 'unitPrice', label: 'Prix unitaire de base', type: 'number', allowZero: true, help: 'P1 : prix de l\'unité (révisable).' },
+            {
+                key: 'p1Mode', label: 'Facturation P1', type: 'enum', example: '',
+                options: [
+                    { value: 'forfait', label: 'Forfait' }, { value: 'acompte', label: 'Acomptes', aliases: ['acompte'] },
+                    { value: 'releve', label: 'Au relevé', aliases: ['releve', 'relevé'] },
+                ],
+                help: 'P1 : forfait (montant annuel), acomptes (régularisés sur le réel), au relevé (ECS : volume relevé chaque mois × prix au m³). Vide : forfait.',
+            },
+            {
+                key: 'p1PrixSource', label: 'Prix au m³', type: 'enum',
+                options: [{ value: 'p1', label: 'Paramétrage P1', aliases: ['p1'] }, { value: 'prestation', label: 'Prestation', aliases: ['prix unitaire'] }],
+                help: 'Au relevé : paramétrage P1 (prix de base ECS × formule ECS) ou prix unitaire de la prestation × sa révision. Vide : paramétrage P1.',
+            },
+            { key: 'coefficientPrix', label: 'Coefficient de prix', type: 'number', help: 'Au relevé : coefficient appliqué au prix chaque mois (facultatif).' },
             { key: 'unit', label: 'Unité du prix', type: 'text', example: '€/MWh' },
             { key: 'isActive', label: 'Active', type: 'boolean', example: 'oui', help: 'Vide à la création : oui. Non : jamais facturée.' },
             { key: 'comment', label: 'Commentaire', type: 'text' },

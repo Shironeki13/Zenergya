@@ -62,7 +62,9 @@ export default function SiteDetailsPage() {
     const [revisionMonths, setRevisionMonths] = useState<string>('12');
     const [revisionAnchor, setRevisionAnchor] = useState<string>('');
     const [revisionFromStart, setRevisionFromStart] = useState<boolean>(false);
-    const [p1Mode, setP1Mode] = useState<'forfait' | 'acompte'>('forfait');
+    const [p1Mode, setP1Mode] = useState<'forfait' | 'acompte' | 'releve'>('forfait');
+    const [p1PrixSource, setP1PrixSource] = useState<'p1' | 'prestation'>('p1');
+    const [coefficientPrix, setCoefficientPrix] = useState<string>('');
     const [price, setPrice] = useState<number>(0);
     const [meterId, setMeterId] = useState<string>('');
     const [isMeterComboOpen, setIsMeterComboOpen] = useState(false);
@@ -207,6 +209,8 @@ export default function SiteDetailsPage() {
         setRevisionAnchor('');
         setRevisionFromStart(false);
         setP1Mode('forfait');
+        setP1PrixSource('p1');
+        setCoefficientPrix('');
         setPrice(0);
         setMeterId('');
         setStartDate(contract?.startDate || new Date().toISOString().split('T')[0]);
@@ -307,6 +311,8 @@ export default function SiteDetailsPage() {
         setRevisionAnchor(service.revisionAnchor ?? '');
         setRevisionFromStart(!!service.revisionFromStart);
         setP1Mode(service.p1Mode ?? 'forfait');
+        setP1PrixSource(service.p1PrixSource ?? 'p1');
+        setCoefficientPrix(service.coefficientPrix ? String(service.coefficientPrix) : '');
         setPrice(service.price || 0);
         setMeterId(service.meterId || '');
         setStartDate(service.startDate || '');
@@ -365,6 +371,10 @@ export default function SiteDetailsPage() {
             pricingRuleId,
             revisionRuleId,
             ...(selectedType === 'P1' && { p1Mode }),
+            ...(selectedType === 'P1' && p1Mode === 'releve' && {
+                p1PrixSource,
+                ...(Number(coefficientPrix.replace(',', '.')) > 0 ? { coefficientPrix: Number(coefficientPrix.replace(',', '.')) } : {}),
+            }),
             // Calendrier de révision (lib/billing/revision) : seulement avec une règle ; sans règle, prix ferme.
             ...(revisionRuleId ? {
                 revisionMonths: Number(revisionMonths) || 12,
@@ -650,7 +660,7 @@ export default function SiteDetailsPage() {
                 return l.activityCode === item.activity.code && (!l.siteId || l.siteId === site.id)
                     && (toDay(inv.periodStartDate) ?? '') <= e.start && (toDay(inv.periodEndDate) ?? '') >= e.end;
             })) ?? null;
-            return { periodStart: new Date(e.start), periodEnd: new Date(e.end), dueDate: new Date(e.billableOn), invoice, amount: item.p1Acompte ? null : e.amount };
+            return { periodStart: new Date(e.start), periodEnd: new Date(e.end), dueDate: new Date(e.billableOn), invoice, amount: item.p1Acompte || item.p1Releve ? null : e.amount };
         });
     })();
 
@@ -1014,7 +1024,7 @@ export default function SiteDetailsPage() {
                                                         {p.periodEnd.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: '2-digit' })}
                                                     </TableCell>
                                                     <TableCell className="text-xs py-1.5">{p.dueDate.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: '2-digit' })}</TableCell>
-                                                    <TableCell className="text-xs py-1.5 text-right">{p.amount === null ? 'acompte P1' : p.amount.toLocaleString('fr-FR', { style: 'currency', currency: 'EUR' })}</TableCell>
+                                                    <TableCell className="text-xs py-1.5 text-right">{p.amount === null ? (activeService?.p1Mode === 'releve' ? 'au relevé' : 'acompte P1') : p.amount.toLocaleString('fr-FR', { style: 'currency', currency: 'EUR' })}</TableCell>
                                                     <TableCell className="py-1.5">
                                                         {p.invoice
                                                             ? <Link href={`/invoices/${p.invoice.id}`} className="text-xs text-green-600 hover:underline font-medium">
@@ -1554,15 +1564,38 @@ export default function SiteDetailsPage() {
                         {selectedType === 'P1' && (
                             <div className="space-y-2 border p-4 rounded-md mt-4">
                                 <Label>Facturation du P1</Label>
-                                <Select value={p1Mode} onValueChange={v => setP1Mode(v as 'forfait' | 'acompte')}>
+                                <Select value={p1Mode} onValueChange={v => setP1Mode(v as 'forfait' | 'acompte' | 'releve')}>
                                     <SelectTrigger><SelectValue /></SelectTrigger>
                                     <SelectContent>
                                         <SelectItem value="forfait">Forfait (montant annuel de la prestation)</SelectItem>
                                         <SelectItem value="acompte">Acomptes P1 (quantité × répartition × prix révisé P1), régularisés sur le réel</SelectItem>
+                                        {p1Type === 'ECS' && <SelectItem value="releve">Au relevé : chaque mois, volume relevé (index du mois − index précédent) × prix au m³</SelectItem>}
                                     </SelectContent>
                                 </Select>
+                                {p1Mode === 'releve' && (
+                                    <div className="grid grid-cols-2 gap-3 pt-2">
+                                        <div className="space-y-1">
+                                            <Label className="text-xs">Prix au m³</Label>
+                                            <Select value={p1PrixSource} onValueChange={v => setP1PrixSource(v as 'p1' | 'prestation')}>
+                                                <SelectTrigger><SelectValue /></SelectTrigger>
+                                                <SelectContent>
+                                                    <SelectItem value="p1">Paramétrage P1 : prix de base ECS du site × formule ECS</SelectItem>
+                                                    <SelectItem value="prestation">Prestation : prix unitaire (€/m³) × sa formule de révision</SelectItem>
+                                                </SelectContent>
+                                            </Select>
+                                        </div>
+                                        <div className="space-y-1">
+                                            <Label className="text-xs">Coefficient de prix (facultatif)</Label>
+                                            <Input inputMode="decimal" value={coefficientPrix} onChange={e => setCoefficientPrix(e.target.value)} placeholder="ex. 1,05" />
+                                        </div>
+                                        <p className="col-span-2 text-xs text-muted-foreground">
+                                            Compteurs : celui de la prestation, sinon ceux du site d&apos;usage « ECS » (paramétrage P1), au m³. Facturation mensuelle à terme échu ;
+                                            un relevé manquant ou un index en baisse bloque la facture. Les relevés facturés sont figés.
+                                        </p>
+                                    </div>
+                                )}
                                 {p1Mode === 'acompte' && (
-                                    <p className="text-xs text-muted-foreground">
+                                    <p className="text-xs text-muted-foreground pt-1">
                                         Montant calculé à chaque échéance à partir du paramétrage P1 du site et du contrat : chauffage (quantité annuelle ou cibles NB,
                                         prix de base, formule chauffage, répartition) ; ECS si le type P1 est ECS (volume annuel ECS en m³, prix de base ECS, formule ECS,
                                         répartition ECS). Le montant annuel ci-dessous est ignoré. Régularisation : Facturation → Régularisation P1.

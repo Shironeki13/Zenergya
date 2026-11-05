@@ -162,6 +162,20 @@ async function loadReadings(ctx: Context, meterIds: string[]): Promise<void> {
     for (const st of settlements) {
         for (const id of [st.p1Detail?.startReadingId, st.p1Detail?.endReadingId]) if (id) ctx.lockedReadings.set(id, `la régularisation du ${st.startDate ?? ''} au ${st.endDate ?? ''}`.trim());
     }
+    // Relevés facturés (ECS au relevé) : figés, une correction passe par un avoir.
+    const siteIds = new Set(ctx.meters.filter(m => meterIds.includes(m.id)).map(m => m.siteId));
+    const contractIds = [...new Set(ctx.sites.filter(s => siteIds.has(s.id)).map(s => s.contractId).filter(Boolean))];
+    for (let i = 0; i < contractIds.length; i += 30) {
+        const invoices = await adminDb.collection('invoices').where('contractId', 'in', contractIds.slice(i, i + 30)).get();
+        for (const inv of invoices.docs) {
+            if (inv.get('status') === 'cancelled' || inv.get('cancelledByCreditNoteId')) continue;
+            for (const l of (inv.get('lineItems') ?? []) as { p1Releve?: { compteurs: { debut: { readingId: string }; fin: { readingId: string } }[] } }[]) {
+                for (const c of l.p1Releve?.compteurs ?? []) for (const id of [c.debut.readingId, c.fin.readingId]) {
+                    ctx.lockedReadings.set(id, `la facture ${inv.get('invoiceNumber') ?? inv.id} (ECS au relevé)`);
+                }
+            }
+        }
+    }
 }
 
 // --- Désignation des éléments : code Zenergya, réf. externe, clé métier ---
@@ -758,7 +772,9 @@ function planService(ctx: Context, row: ParsedRow, pending: Map<string, { line: 
     const taken = refTakenBy(ctx.services, v.externalRef, existing?.id);
     if (taken) item.messages.push(`Réf. externe ${v.externalRef} déjà portée par une autre prestation.`);
 
-    const data = plain(v, ['externalRef', 'label', 'price', 'p1Type', 'energyType', 'unitPrice', 'unit', 'isActive', 'comment']);
+    const data = plain(v, ['externalRef', 'label', 'price', 'p1Type', 'energyType', 'unitPrice', 'unit', 'isActive', 'comment', 'p1Mode', 'p1PrixSource', 'coefficientPrix']);
+    if ((v.p1Mode === 'acompte' || v.p1Mode === 'releve') && activity.type !== 'P1') item.messages.push('Acomptes ou relevé : prestation P1 seulement.');
+    if (v.p1Mode === 'releve' && (v.p1Type ?? existing?.p1Type) !== 'ECS') item.messages.push('Au relevé : prestation P1 de type ECS seulement.');
     if (startDay && startDay !== toDay(existing?.startDate)) data.startDate = startDay;
     if (endDay && endDay !== toDay(existing?.endDate)) data.endDate = endDay;
     if (existing && v.activity && activity.id !== existing.activityId) Object.assign(data, { activityId: activity.id, type: activity.type });

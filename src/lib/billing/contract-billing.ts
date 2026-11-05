@@ -84,8 +84,21 @@ export type BillingService = {
     id?: string; siteId: string; contractId: string; activityId: string; price?: number | null; startDate?: unknown; endDate?: unknown;
     isActive?: boolean; vatRateId?: string; label?: string; scheduleId?: string; billingTermId?: string;
     revisionRuleId?: string; initialIndexValues?: ServiceInitialIndexValue[]; revisionMonths?: number; revisionAnchor?: string; revisionFromStart?: boolean;
-    p1Mode?: 'forfait' | 'acompte';
+    p1Mode?: 'forfait' | 'acompte' | 'releve';
     p1Type?: string;
+    p1PrixSource?: 'p1' | 'prestation';
+    coefficientPrix?: number;
+    unitPrice?: number;
+    meterId?: string;
+};
+
+/** Relevé d'un compteur (date AAAA-MM-JJ, heure de Paris). */
+export type ReleveReading = { id: string; date: string; value: number; type?: string };
+
+/** ECS au relevé : compteurs ECS facturés d'une prestation et leurs relevés (calculé au serveur). */
+export type P1ReleveSource = {
+    /** Compteurs ECS de la prestation (son compteur, sinon les compteurs d'usage ECS du site) ; message si aucun. */
+    meters: (siteId: string, serviceMeterId: string | undefined, mois: string) => { id: string; code: string; unit?: string; readings: ReleveReading[] }[] | string;
 };
 
 export type UsageP1 = 'chauffage' | 'ecs';
@@ -117,6 +130,8 @@ export type BillingInput = {
     indexValues?: IndexValue[];
     /** Acomptes P1 : sans source, une prestation en acompte ne peut pas être facturée. */
     p1?: P1AcompteSource;
+    /** ECS au relevé : sans source, une prestation au relevé ne peut pas être facturée. */
+    releves?: P1ReleveSource;
 };
 
 /** Élément facturable : une prestation, ou un montant saisi d'un site sans prestation. */
@@ -139,6 +154,8 @@ export type BillingItem = {
     p1Acompte?: boolean;
     /** Usage de l'acompte P1 (prestation P1 de type ECS : ECS ; sinon chauffage). */
     p1Usage?: UsageP1;
+    /** ECS au relevé : volume relevé chaque mois × prix au m³ (paramétrage P1 ou prix de la prestation révisé) × coefficient. */
+    p1Releve?: { meterId?: string; prixSource: 'p1' | 'prestation'; unitPrice: number | null; coefficient: number | null };
 };
 
 export type Echeance = {
@@ -161,7 +178,7 @@ export type BilledInvoice = {
     status?: string;
     cancelledByCreditNoteId?: string;
     periodEndDate?: unknown;
-    lineItems?: Partial<Pick<InvoiceLineItem, 'itemKey' | 'itemKeys' | 'periodEndDate' | 'siteId' | 'activityCode' | 'revision' | 'p1Regul'>>[];
+    lineItems?: Partial<Pick<InvoiceLineItem, 'itemKey' | 'itemKeys' | 'periodEndDate' | 'siteId' | 'activityCode' | 'revision' | 'p1Regul' | 'p1Releve'>>[];
 };
 
 // --- Éléments facturables ---
@@ -198,7 +215,9 @@ export function billingItems(input: BillingInput): { items: BillingItem[]; error
             for (const s of own) {
                 const a = activity.get(s.activityId);
                 const acompte = s.p1Mode === 'acompte';
-                if (!a || !contract.activityIds.includes(a.id) || (!acompte && !Number(s.price))) continue;
+                const releve = s.p1Mode === 'releve';
+                if (!a || !contract.activityIds.includes(a.id) || (!acompte && !releve && !Number(s.price))) continue;
+                if (releve && s.p1Type !== 'ECS') { errors.push(`${a.code} sur le site ${site.name} : facturation au relevé pour une prestation P1 ECS seulement.`); continue; }
                 if (acompte && s.p1Type && !['CHAUFFAGE', 'ECS'].includes(s.p1Type)) {
                     errors.push(`${a.code} sur le site ${site.name} : acompte P1 pour le chauffage ou l'ECS seulement (type ${s.p1Type}).`);
                     continue;
@@ -206,12 +225,26 @@ export function billingItems(input: BillingInput): { items: BillingItem[]; error
                 const where = `${a.code} sur le site ${site.name}`;
                 const sched = periodicity(where, scheduleName.get(s.scheduleId ?? ''), site.billingSchedule, contract.billingSchedule);
                 if (!sched) continue;
-                // Un acompte P1 est déjà au prix révisé P1 : pas de révision de la prestation par-dessus.
-                const revision = acompte ? null : revisionConfig(s, contractStart, input.revisionRules ?? []);
+                if (s.p1Mode === 'releve') {
+                    if (sched.months !== 1) { errors.push(`${where} : ECS au relevé facturée chaque mois (périodicité mensuelle attendue).`); continue; }
+                    if (termeOf(termName.get(s.billingTermId || site.termId || '')) !== 'echu') {
+                        errors.push(`${where} : ECS au relevé facturée à terme échu (le relevé du mois n'est connu qu'en fin de mois).`); continue;
+                    }
+                }
+                // Un acompte P1 (ou un relevé au prix P1) est déjà au prix révisé P1 : pas de révision de la prestation par-dessus.
+                const prixP1 = acompte || (releve && (s.p1PrixSource ?? 'p1') === 'p1');
+                const revision = prixP1 ? null : revisionConfig(s, contractStart, input.revisionRules ?? []);
                 if (revision && 'error' in revision) { errors.push(`${where} : ${revision.error}.`); continue; }
                 items.push({
                     ...(revision && { revision }),
                     ...(acompte && { p1Acompte: true, p1Usage: s.p1Type === 'ECS' ? 'ecs' as const : 'chauffage' as const }),
+                    ...(releve && {
+                        p1Releve: {
+                            ...(s.meterId && { meterId: s.meterId }), prixSource: s.p1PrixSource ?? 'p1',
+                            unitPrice: typeof s.unitPrice === 'number' && s.unitPrice > 0 ? s.unitPrice : null,
+                            coefficient: typeof s.coefficientPrix === 'number' && s.coefficientPrix > 0 ? s.coefficientPrix : null,
+                        },
+                    }),
                     key: `svc:${s.id}`, serviceId: s.id, site, activity: a, label: s.label, annual: Number(s.price),
                     from: maxDay(contractStart, toDay(s.startDate)), to: minDay(contractEnd, toDay(s.endDate)),
                     months: sched.months, scheduleLabel: sched.label, terme: termeFor(where, s.billingTermId, site.termId),
@@ -308,7 +341,7 @@ export function dueInvoiceLines(input: BillingInput, invoices: BilledInvoice[], 
     if (errors.length) return { echeances: [], lines: [], errors, warnings };
     const billed = billedUntil(items, invoices);
     const echeances = items.flatMap(item => echeancesOf(item, contractStart, billed.get(item.key) ?? null, until))
-        .filter(e => e.amount !== 0 || e.item.p1Acompte)
+        .filter(e => e.amount !== 0 || e.item.p1Acompte || e.item.p1Releve)
         .sort((a, b) => a.start.localeCompare(b.start) || a.item.site.name.localeCompare(b.item.site.name) || a.item.activity.code.localeCompare(b.item.activity.code));
 
     // Révisions déjà facturées : réutilisées telles quelles (même coefficient pour une même révision).
@@ -326,9 +359,17 @@ export function dueInvoiceLines(input: BillingInput, invoices: BilledInvoice[], 
     };
 
     // Morceaux facturés : l'échéance, coupée à chaque date de révision, au coefficient de la révision en vigueur.
-    type Piece = { e: Echeance; start: string; end: string; days: number; base: number; amount: number; revision?: RevisionSnapshot; p1?: P1Mois[] };
+    type Piece = { e: Echeance; start: string; end: string; days: number; base: number; amount: number; revision?: RevisionSnapshot; p1?: P1Mois[]; releve?: NonNullable<InvoiceLineItem['p1Releve']> };
     const pieces: Piece[] = [];
+    const lastIndex = dernierIndexFacture(invoices);
     for (const e of echeances) {
+        if (e.item.p1Releve) {
+            const r = releveEcs(e, input, lastIndex, frozen);
+            if (typeof r === 'string') { lineErrors.push(`ECS au relevé impossible : site ${e.item.site.name}, ${r}.`); continue; }
+            for (const c of r.detail.compteurs) lastIndex.set(c.meterId, c.fin);   // échéances suivantes du même appel
+            pieces.push({ e, start: e.start, end: e.end, days: e.days, base: r.detail.montant, amount: r.detail.montant, releve: r.detail, ...(r.revision && { revision: r.revision }) });
+            continue;
+        }
         if (e.item.p1Acompte) {
             const r = acompteP1(e, input.p1);
             if (typeof r === 'string') { lineErrors.push(`Acompte P1 impossible : site ${e.item.site.name}, ${r}.`); continue; }
@@ -357,7 +398,14 @@ export function dueInvoiceLines(input: BillingInput, invoices: BilledInvoice[], 
         });
     }
 
-    const prorata = (p: { days: number; e: Echeance; p1?: P1Mois[] }) => (p.days < p.e.nominalDays && !p.p1 ? ` — prorata ${p.days}/${p.e.nominalDays} j` : '');
+    const prorata = (p: { days: number; e: Echeance; p1?: P1Mois[]; releve?: unknown }) => (p.days < p.e.nominalDays && !p.p1 && !p.releve ? ` — prorata ${p.days}/${p.e.nominalDays} j` : '');
+    const releveText = (p: Piece) => {
+        if (!p.releve) return '';
+        const fr = (d: string) => d.split('-').reverse().join('/');
+        const n = (x: number) => x.toLocaleString('fr-FR', { maximumFractionDigits: 3 });
+        return ` — ${p.releve.compteurs.map(c => `${c.code} : ${n(c.fin.index)} (${fr(c.fin.date)}${c.fin.type && c.fin.type !== 'REEL' ? `, ${c.fin.type.toLowerCase()}` : ''}) − ${n(c.debut.index)} (${fr(c.debut.date)}) = ${n(c.volume)} m³`).join(' ; ')}`
+            + ` — ${n(p.releve.volume)} m³ × ${p.releve.prix.toLocaleString('fr-FR', { maximumFractionDigits: 4 })} €/m³`;
+    };
     const p1Text = (p: Piece) => {
         if (!p.p1) return '';
         const q = p.p1.reduce((a, m) => a + m.quantite, 0);
@@ -376,7 +424,7 @@ export function dueInvoiceLines(input: BillingInput, invoices: BilledInvoice[], 
         for (const p of pieces) {
             const rate = rateOf(p.e);
             if (rate === undefined) continue;
-            if (p.p1) { lineErrors.push(`Acompte P1 : facturation globale non prise en charge (site ${p.e.item.site.name}) ; passez le contrat en multi-site.`); continue; }
+            if (p.p1 || p.releve) { lineErrors.push(`${p.p1 ? 'Acompte P1' : 'ECS au relevé'} : facturation globale non prise en charge (site ${p.e.item.site.name}) ; passez le contrat en multi-site.`); continue; }
             const key = `${p.e.item.activity.id}|${rate}|${p.start}|${p.end}|${p.revision ? `${p.revision.rule}@${p.revision.date}=${p.revision.coefficient}` : ''}`;
             if (!groups.has(key)) groups.set(key, { p, rate, amounts: [], bases: [], keys: [] });
             const g = groups.get(key)!;
@@ -399,11 +447,12 @@ export function dueInvoiceLines(input: BillingInput, invoices: BilledInvoice[], 
             if (rate === undefined) continue;
             const item = p.e.item;
             lines.push({
-                description: `${p.p1 ? 'Acompte ' : ''}${item.activity.label}${item.label ? ` — ${item.label}` : ''} (${item.scheduleLabel}, ${TERME_LABEL[item.terme]}) — Site : ${item.site.name} — ${period(p)}${prorata(p)}${revised(p)}${p1Text(p)}`,
+                description: `${p.p1 ? 'Acompte ' : p.releve ? 'ECS au relevé — ' : ''}${item.activity.label}${item.label ? ` — ${item.label}` : ''} (${item.scheduleLabel}, ${TERME_LABEL[item.terme]}) — Site : ${item.site.name} — ${period(p)}${prorata(p)}${p1Text(p)}${releveText(p)}${revised(p)}`,
                 quantity: 1, unitPrice: p.amount, total: p.amount, siteId: item.site.id, activityCode: item.activity.code, vatRate: rate,
                 itemKey: item.key, ...(item.serviceId && { serviceId: item.serviceId }), periodStartDate: p.start, periodEndDate: p.end,
                 ...(p.revision && { baseAmount: p.base, revision: p.revision }),
                 ...(p.p1 && { p1Acompte: { siteId: item.site.id, usage: item.p1Usage ?? 'chauffage', mois: p.p1 } }),
+                ...(p.releve && { p1Releve: p.releve }),
             });
         }
     }
@@ -411,6 +460,75 @@ export function dueInvoiceLines(input: BillingInput, invoices: BilledInvoice[], 
 }
 
 export type P1Mois = { mois: string; quantite: number; prix: number; montant: number };
+
+type IndexFacture = { readingId: string; date: string; index: number };
+
+/** Dernier relevé facturé de chaque compteur (lignes « ECS au relevé » des factures non annulées). */
+export function dernierIndexFacture(invoices: BilledInvoice[]): Map<string, IndexFacture> {
+    const out = new Map<string, IndexFacture>();
+    for (const inv of invoices) {
+        if (inv.status === 'cancelled' || inv.cancelledByCreditNoteId) continue;
+        for (const l of inv.lineItems ?? []) for (const c of l.p1Releve?.compteurs ?? []) {
+            const cur = out.get(c.meterId);
+            if (!cur || c.fin.date > cur.date) out.set(c.meterId, { readingId: c.fin.readingId, date: c.fin.date, index: c.fin.index });
+        }
+    }
+    return out;
+}
+
+/**
+ * ECS au relevé d'une échéance mensuelle : pour chaque compteur ECS, volume = index du dernier relevé du mois −
+ * index du dernier relevé facturé (à défaut, dernier relevé antérieur au mois) ; prix au m³ du paramétrage P1 (prix
+ * de base ECS × formule ECS) ou de la prestation (prix unitaire × sa révision), × coefficient de prix.
+ */
+function releveEcs(e: Echeance, input: BillingInput, lastIndex: Map<string, IndexFacture>, frozen: Map<string, RevisionSnapshot>):
+    { detail: NonNullable<InvoiceLineItem['p1Releve']>; revision?: RevisionSnapshot } | string {
+    const cfg = e.item.p1Releve!;
+    if (!input.releves) return 'relevés indisponibles pour ce calcul';
+    const mois = e.start.slice(0, 7);
+    const meters = input.releves.meters(e.item.site.id, cfg.meterId, mois);
+    if (typeof meters === 'string') return meters;
+    const compteurs: NonNullable<InvoiceLineItem['p1Releve']>['compteurs'] = [];
+    for (const m of meters) {
+        if (!/^m(3|³)$/i.test((m.unit ?? '').trim())) return `compteur ${m.code} en ${m.unit || '?'} : un compteur ECS au m³ est attendu`;
+        const fin = [...m.readings].filter(r => r.date.slice(0, 7) === mois).sort((a, b) => a.date.localeCompare(b.date)).pop();
+        if (!fin) return `aucun relevé du compteur ${m.code} en ${mois.split('-').reverse().join('/')}`;
+        const deja = lastIndex.get(m.id);
+        const debutReading = deja ?? (() => {
+            const r = [...m.readings].filter(x => x.date < `${mois}-01`).sort((a, b) => a.date.localeCompare(b.date)).pop();
+            return r ? { readingId: r.id, date: r.date, index: r.value } : null;
+        })();
+        if (!debutReading) return `aucun relevé du compteur ${m.code} avant ${mois.split('-').reverse().join('/')} (index de départ)`;
+        if (debutReading.date >= fin.date) return `relevé du compteur ${m.code} du ${fin.date} déjà facturé`;
+        const volume = Math.round((fin.value - debutReading.index) * 1e6) / 1e6;
+        if (volume < 0) return `index du compteur ${m.code} en baisse (${debutReading.index} → ${fin.value}) : changement ou remise à zéro du compteur à traiter`;
+        compteurs.push({ meterId: m.id, code: m.code, debut: debutReading, fin: { readingId: fin.id, date: fin.date, index: fin.value, ...(fin.type && { type: fin.type }) }, volume });
+    }
+    const volume = Math.round(compteurs.reduce((a, c) => a + c.volume, 0) * 1e6) / 1e6;
+    let prix: number;
+    let revision: RevisionSnapshot | undefined;
+    if (cfg.prixSource === 'p1') {
+        if (!input.p1) return 'paramétrage P1 indisponible pour le prix ECS';
+        const p = input.p1.prix(e.item.site.id, mois, 'ecs');
+        if (typeof p === 'string') return `prix ECS ${mois} : ${p}`;
+        prix = p;
+    } else {
+        if (cfg.unitPrice === null) return 'prix unitaire de la prestation (€/m³) non renseigné';
+        prix = cfg.unitPrice;
+        const config = e.item.revision;
+        const date = config ? revisionInForce(config, e.start) : null;
+        if (config && date) {
+            const known = frozen.get(`${e.item.key}|${date}`);
+            const r = known ?? revisionAt(config, date, input.indices ?? [], input.indexValues ?? []);
+            if ('error' in r) return r.error;
+            revision = r;
+            prix *= r.coefficient;
+        }
+    }
+    if (cfg.coefficient !== null) prix *= cfg.coefficient;
+    prix = Math.round(prix * 1e6) / 1e6;
+    return { detail: { siteId: e.item.site.id, mois, volume, prix, montant: roundCents(volume * prix), compteurs }, ...(revision && { revision }) };
+}
 
 /**
  * Acompte P1 d'une échéance : pour chaque mois couvert (au prorata des jours du mois), quantité annuelle × part du

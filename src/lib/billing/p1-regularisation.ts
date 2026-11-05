@@ -33,6 +33,8 @@ export type RegulSite = {
     activityCode: string;
     /** TVA des prestations P1 du site, par usage (à défaut des lignes d'acompte). */
     vatRates?: Partial<Record<UsageP1, number>>;
+    /** ECS facturée au relevé (déjà au réel) : seul le chauffage se régularise. */
+    ecsAuReleve?: boolean;
 };
 
 export type RegulInput = {
@@ -98,6 +100,11 @@ export function regularisationP1(input: RegulInput): RegulResult {
         const parUsage = mois.some(m => has('chauffage', m) || has('ecs', m));
         const auTotal = mois.some(m => has('total', m));
         if (parUsage && auTotal) { errors.push(`Site ${site.name} : réel importé à la fois au total et par usage sur la période ; n'en gardez qu'un.`); continue; }
+        if (site.ecsAuReleve) {
+            // L'ECS est déjà facturée au réel (relevés) : un réel total la compterait deux fois.
+            if (auTotal) { errors.push(`Site ${site.name} : ECS facturée au relevé, le réel total la compterait deux fois : importez le réel chauffage seul (usage chauffage).`); continue; }
+            if (acomptes.ecs.size) { errors.push(`Site ${site.name} : acomptes ECS et ECS au relevé sur la même période.`); continue; }
+        }
 
         const regulariser = (usage: UsageReel, acompteMois: Map<string, number[]>, vatRate: number | undefined) => {
             const manquants = mois.filter(m => acompteMois.has(m) && !has(usage, m));
@@ -121,8 +128,8 @@ export function regularisationP1(input: RegulInput): RegulResult {
             });
         };
 
-        if (parUsage) {
-            for (const usage of ['chauffage', 'ecs'] as const) regulariser(usage, acomptes[usage], tva[usage]);
+        if (parUsage || site.ecsAuReleve) {
+            for (const usage of site.ecsAuReleve ? ['chauffage'] as const : ['chauffage', 'ecs'] as const) regulariser(usage, acomptes[usage], tva[usage]);
         } else {
             // Au total : chauffage et ECS confondus, possible seulement avec une TVA commune.
             const usages = (['chauffage', 'ecs'] as const).filter(u => acomptes[u].size > 0);
