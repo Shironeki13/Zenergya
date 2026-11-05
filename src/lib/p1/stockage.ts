@@ -56,7 +56,8 @@ export const P1_PARAMS: Record<P1Scope, Record<string, ParamDef>> = {
         prixBase: { label: 'Prix de base chauffage', kind: 'positive', unit: '€/MWh' },
         prixBaseEcs: { label: 'Prix de base ECS', kind: 'positive', unit: '€/m³' },
         stationMeteo: { label: 'Station météo', kind: 'station', help: 'Code de la station (paramétrage) : DJU de la cible corrigée.' },
-        quantiteAcompte: { label: 'Quantité annuelle des acomptes', kind: 'positive', unit: 'MWh / an', help: 'Base des acomptes P1 ; vide : somme des cibles NB des postes (en MWh).' },
+        quantiteAcompte: { label: 'Quantité annuelle des acomptes', kind: 'positive', unit: 'MWh / an', help: 'Base des acomptes P1 chauffage ; vide : somme des cibles NB des postes (en MWh).' },
+        quantiteAcompteEcs: { label: 'Volume annuel des acomptes ECS', kind: 'positive', unit: 'm³ / an', help: 'Base des acomptes P1 ECS (au prix de base ECS du site et à la formule ECS).' },
         correspondanceTwimm: { label: 'Code site TWIMM', kind: 'text' },
     },
     poste: {
@@ -77,7 +78,8 @@ export const P1_PARAMS: Record<P1Scope, Record<string, ParamDef>> = {
         coefficientGestion: { label: 'Coefficient de gestion', kind: 'positive', help: 'Régime « coefficient » : HT × coefficient.' },
         fraisGestionAnnuels: { label: 'Frais de gestion annuels', kind: 'nonNegative', unit: '€ HT / an' },
         correspondanceTwimm: { label: 'Code contrat TWIMM', kind: 'text' },
-        repartitionAcomptes: { label: 'Répartition des acomptes P1', kind: 'repartition', help: '12 parts mensuelles en %, de janvier à décembre, sommant à 100 (ex. linéaire : 8,33 × 12).' },
+        repartitionAcomptes: { label: 'Répartition des acomptes P1', kind: 'repartition', help: 'Chauffage : 12 parts mensuelles en %, de janvier à décembre, sommant à 100 (ex. saison de chauffe).' },
+        repartitionAcomptesEcs: { label: 'Répartition des acomptes ECS', kind: 'repartition', help: 'ECS : 12 parts mensuelles en %, sommant à 100 (en général linéaire).' },
         interessement: { label: 'Intéressement au contrat', kind: 'interessement', help: 'Par marché : écart partagé une fois sur la somme des sites, répartition, plafond.' },
     },
 };

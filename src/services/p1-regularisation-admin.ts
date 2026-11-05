@@ -52,7 +52,7 @@ export async function prepareP1Regularisation(contractId: string, debut: string,
     for (const d of reelDocs) {
         const siteId = String(d.get('siteId'));
         if (!reel.has(siteId)) reel.set(siteId, new Map());
-        reel.get(siteId)!.set(String(d.get('mois')), Number(d.get('montantHt')));
+        reel.get(siteId)!.set(`${d.get('usage') ?? 'total'}|${d.get('mois')}`, Number(d.get('montantHt')));
     }
     const documents: RegulDocument[] = [
         ...invoices.map(i => ({ id: i.id, kind: 'invoice' as const, status: i.status, cancelledByCreditNoteId: i.cancelledByCreditNoteId, lineItems: i.lineItems ?? [] })),
@@ -61,10 +61,23 @@ export async function prepareP1Regularisation(contractId: string, debut: string,
     const result = regularisationP1({
         mois,
         sites: sites.map(site => {
-            const svc = p1Services.find(d => d.get('siteId') === site.id && d.get('p1Mode') === 'acompte') ?? p1Services.find(d => d.get('siteId') === site.id);
-            const activity = svc ? activities.get(String(svc.get('activityId'))) : undefined;
-            const vatId = (svc?.get('vatRateId') as string | undefined) || (activity?.vatRateId as string | undefined);
-            return { id: site.id, name: String(site.get('name') ?? site.id), activityCode: String(activity?.code ?? 'P1'), ...(vatId && vatRates.has(vatId) && { vatRate: vatRates.get(vatId)! }) };
+            const ofSite = p1Services.filter(d => d.get('siteId') === site.id);
+            // TVA par usage : prestation P1 ECS pour l'ECS, autre prestation P1 (en acompte de préférence) pour le chauffage.
+            const pick = (ecs: boolean) => ofSite.filter(d => (d.get('p1Type') === 'ECS') === ecs).sort((a, b) => Number(b.get('p1Mode') === 'acompte') - Number(a.get('p1Mode') === 'acompte'))[0];
+            const rateOf = (svc?: FirebaseFirestore.QueryDocumentSnapshot) => {
+                if (!svc) return undefined;
+                const activity = activities.get(String(svc.get('activityId')));
+                const vatId = (svc.get('vatRateId') as string | undefined) || (activity?.vatRateId as string | undefined);
+                return vatId && vatRates.has(vatId) ? vatRates.get(vatId)! : undefined;
+            };
+            const chauffage = pick(false);
+            const ecs = pick(true);
+            const activity = activities.get(String((chauffage ?? ecs)?.get('activityId')));
+            const vat = { chauffage: rateOf(chauffage), ecs: rateOf(ecs) };
+            return {
+                id: site.id, name: String(site.get('name') ?? site.id), activityCode: String(activity?.code ?? 'P1'),
+                vatRates: Object.fromEntries(Object.entries(vat).filter(([, v]) => v !== undefined)),
+            };
         }),
         reel, documents,
         interests: interests.map(i => {

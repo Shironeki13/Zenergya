@@ -85,16 +85,19 @@ export type BillingService = {
     isActive?: boolean; vatRateId?: string; label?: string; scheduleId?: string; billingTermId?: string;
     revisionRuleId?: string; initialIndexValues?: ServiceInitialIndexValue[]; revisionMonths?: number; revisionAnchor?: string; revisionFromStart?: boolean;
     p1Mode?: 'forfait' | 'acompte';
+    p1Type?: string;
 };
+
+export type UsageP1 = 'chauffage' | 'ecs';
 
 /** Acomptes P1 (calculés au serveur à partir du paramétrage P1 daté) : quantité, répartition, prix révisé du mois. */
 export type P1AcompteSource = {
-    /** Quantité annuelle (MWh) du site à une date ; message si non renseignée. */
-    quantite: (siteId: string, mois: string) => number | string;
-    /** 12 parts mensuelles (%) du contrat à une date ; message si non renseignée. */
-    repartition: (mois: string) => number[] | string;
-    /** Prix révisé P1 chauffage du site pour un mois (€/MWh) ; message si non calculable. */
-    prix: (siteId: string, mois: string) => number | string;
+    /** Quantité annuelle du site (MWh en chauffage, m³ en ECS) à une date ; message si non renseignée. */
+    quantite: (siteId: string, mois: string, usage: UsageP1) => number | string;
+    /** 12 parts mensuelles (%) du contrat pour l'usage, à une date ; message si non renseignée. */
+    repartition: (mois: string, usage: UsageP1) => number[] | string;
+    /** Prix révisé P1 du site pour l'usage et le mois (€/MWh, €/m³ en ECS) ; message si non calculable. */
+    prix: (siteId: string, mois: string, usage: UsageP1) => number | string;
 };
 export type BillingActivity = { id: string; code: string; label: string; vatRateId?: string };
 export type BillingVatRate = { id: string; code: string; rate: number };
@@ -134,6 +137,8 @@ export type BillingItem = {
     revision?: RevisionConfig;
     /** Acompte P1 : montant calculé par mois (paramétrage P1), le prix de la prestation est ignoré. */
     p1Acompte?: boolean;
+    /** Usage de l'acompte P1 (prestation P1 de type ECS : ECS ; sinon chauffage). */
+    p1Usage?: UsageP1;
 };
 
 export type Echeance = {
@@ -194,6 +199,10 @@ export function billingItems(input: BillingInput): { items: BillingItem[]; error
                 const a = activity.get(s.activityId);
                 const acompte = s.p1Mode === 'acompte';
                 if (!a || !contract.activityIds.includes(a.id) || (!acompte && !Number(s.price))) continue;
+                if (acompte && s.p1Type && !['CHAUFFAGE', 'ECS'].includes(s.p1Type)) {
+                    errors.push(`${a.code} sur le site ${site.name} : acompte P1 pour le chauffage ou l'ECS seulement (type ${s.p1Type}).`);
+                    continue;
+                }
                 const where = `${a.code} sur le site ${site.name}`;
                 const sched = periodicity(where, scheduleName.get(s.scheduleId ?? ''), site.billingSchedule, contract.billingSchedule);
                 if (!sched) continue;
@@ -202,7 +211,7 @@ export function billingItems(input: BillingInput): { items: BillingItem[]; error
                 if (revision && 'error' in revision) { errors.push(`${where} : ${revision.error}.`); continue; }
                 items.push({
                     ...(revision && { revision }),
-                    ...(acompte && { p1Acompte: true }),
+                    ...(acompte && { p1Acompte: true, p1Usage: s.p1Type === 'ECS' ? 'ecs' as const : 'chauffage' as const }),
                     key: `svc:${s.id}`, serviceId: s.id, site, activity: a, label: s.label, annual: Number(s.price),
                     from: maxDay(contractStart, toDay(s.startDate)), to: minDay(contractEnd, toDay(s.endDate)),
                     months: sched.months, scheduleLabel: sched.label, terme: termeFor(where, s.billingTermId, site.termId),
@@ -352,7 +361,10 @@ export function dueInvoiceLines(input: BillingInput, invoices: BilledInvoice[], 
     const p1Text = (p: Piece) => {
         if (!p.p1) return '';
         const q = p.p1.reduce((a, m) => a + m.quantite, 0);
-        return ` — acompte sur ${q.toLocaleString('fr-FR', { maximumFractionDigits: 2 })} MWh estimés au prix révisé P1 (${p.p1.map(m => `${m.mois} : ${m.prix.toLocaleString('fr-FR', { maximumFractionDigits: 4 })} €/MWh`).join(', ')})`;
+        const ecs = p.e.item.p1Usage === 'ecs';
+        const unite = ecs ? 'm³' : 'MWh';
+        return ` — acompte${ecs ? ' ECS' : ''} sur ${q.toLocaleString('fr-FR', { maximumFractionDigits: 2 })} ${unite} estimés au prix révisé P1 `
+            + `(${p.p1.map(m => `${m.mois} : ${m.prix.toLocaleString('fr-FR', { maximumFractionDigits: 4 })} €/${unite}`).join(', ')})`;
     };
     const period = (p: Piece) => `du ${frDay(p.start)} au ${frDay(p.end)}`;
     const revised = (p: Piece) => (p.revision ? ` — ${revisionText(p.revision)}` : '');
@@ -391,7 +403,7 @@ export function dueInvoiceLines(input: BillingInput, invoices: BilledInvoice[], 
                 quantity: 1, unitPrice: p.amount, total: p.amount, siteId: item.site.id, activityCode: item.activity.code, vatRate: rate,
                 itemKey: item.key, ...(item.serviceId && { serviceId: item.serviceId }), periodStartDate: p.start, periodEndDate: p.end,
                 ...(p.revision && { baseAmount: p.base, revision: p.revision }),
-                ...(p.p1 && { p1Acompte: { siteId: item.site.id, mois: p.p1 } }),
+                ...(p.p1 && { p1Acompte: { siteId: item.site.id, usage: item.p1Usage ?? 'chauffage', mois: p.p1 } }),
             });
         }
     }
@@ -414,11 +426,12 @@ export function acompteP1(e: Echeance, p1: P1AcompteSource | undefined): { total
         const monthEnd = new Date(Date.UTC(y, mo, 0)).toISOString().slice(0, 10);
         const end = monthEnd < e.end ? monthEnd : e.end;
         const share = daysIn(cursor, end) / daysIn(`${m}-01`, monthEnd);
-        const quantiteAn = p1.quantite(e.item.site.id, m);
+        const usage = e.item.p1Usage ?? 'chauffage';
+        const quantiteAn = p1.quantite(e.item.site.id, m, usage);
         if (typeof quantiteAn === 'string') return quantiteAn;
-        const repartition = p1.repartition(m);
+        const repartition = p1.repartition(m, usage);
         if (typeof repartition === 'string') return repartition;
-        const prix = p1.prix(e.item.site.id, m);
+        const prix = p1.prix(e.item.site.id, m, usage);
         if (typeof prix === 'string') return `prix ${m} : ${prix}`;
         const quantite = quantiteAn * (repartition[mo - 1] / 100) * share;
         mois.push({ mois: m, quantite: Math.round(quantite * 1e6) / 1e6, prix, montant: roundCents(quantite * prix) });

@@ -64,15 +64,21 @@ Facturation → Régularisation P1.
 
 - **Acompte P1** : mode de facturation d'une prestation P1 (fiche site, « Facturation du P1 »). À chaque échéance
   (périodicité et terme de la prestation), montant = pour chaque mois couvert (au prorata de ses jours) quantité
-  annuelle × part du mois × prix révisé P1 du mois. Quantité : paramètre P1 du site « Quantité annuelle des
-  acomptes », sinon somme des cibles NB de ses postes (en MWh). Part : « Répartition des acomptes P1 » du contrat
-  (12 parts, ex. linéaire ou saison de chauffe). Prix : prix de base du site × coefficient de la formule P1 (indice
-  reporté : prix provisoire). Le montant annuel de la prestation est ignoré, la révision des prestations ne
+  annuelle × part du mois × prix révisé P1 du mois (indice reporté : prix provisoire). Par usage :
+  - **chauffage** : quantité « Quantité annuelle des acomptes » du site, sinon somme des cibles NB de ses postes
+    (MWh) ; « Répartition des acomptes P1 » du contrat (ex. saison de chauffe) ; prix de base du site × formule P1
+    chauffage ;
+  - **ECS** (prestation P1 de type ECS) : « Volume annuel des acomptes ECS » du site (m³) ; « Répartition des
+    acomptes ECS » du contrat (en général linéaire) ; prix de base ECS du site × formule P1 ECS.
+  Les autres types P1 (eau froide, autre) ne se facturent pas en acompte. Le montant annuel de la prestation est ignoré, la révision des prestations ne
   s'applique pas (le prix est déjà révisé). Le détail mensuel est conservé sur la ligne. Facturation globale non
   prise en charge pour les acomptes.
-- **Réel du moteur** : import « Réel P1 du moteur » (site, mois, montant P1 HT : `p1_facturation_site`), collection
-  `p1Reel` écrite par le serveur. Un mois déjà régularisé ne change plus.
-- **Régularisation** (contrat, période) : par site, réel − acomptes facturés (factures non annulées) ; plus les
+- **Réel du moteur** : import « Réel P1 du moteur » (site, mois, montant P1 HT, usage), collection `p1Reel` écrite
+  par le serveur. Usage vide : total du mois (`p1_facturation_site`) ; « chauffage » ou « ECS » : réel par usage
+  (`p1_facturation_chauffage`, `p1_facturation_ecs`). Un mois déjà régularisé ne change plus.
+- **Régularisation** (contrat, période) : par site, réel − acomptes facturés (factures non annulées) — au total (une
+  ligne, possible seulement si les acomptes chauffage et ECS ont la même TVA) ou par usage (une ligne par usage, à
+  sa TVA ; mélanger total et usages sur une période est refusé) ; plus les
   intéressements calculés dont la saison finit dans la période. Lignes positives : une facture ; négatives : un
   **avoir de régularisation** qui n'annule pas les factures d'acompte. Un mois facturé en acompte sans réel bloque ;
   un mois déjà régularisé ne se régularise pas deux fois ; les mois régularisés ne sont plus facturés en acompte.

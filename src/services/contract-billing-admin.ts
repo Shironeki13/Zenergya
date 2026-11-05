@@ -60,9 +60,10 @@ export async function loadBillingInput(contract: Contract): Promise<BillingInput
 }
 
 /**
- * Source des acomptes P1 d'un contrat, à partir du paramétrage P1 daté : quantité annuelle du site (sinon somme des
- * cibles NB de ses postes, en MWh), répartition mensuelle du contrat, prix révisé P1 chauffage du mois (prix de base
- * du site × coefficient de la formule la plus précise).
+ * Source des acomptes P1 d'un contrat, à partir du paramétrage P1 daté, par usage :
+ * - chauffage : quantité annuelle du site (sinon somme des cibles NB de ses postes, en MWh), répartition du contrat,
+ *   prix de base du site × formule chauffage ;
+ * - ECS : volume annuel ECS du site (m³), répartition ECS du contrat, prix de base ECS du site × formule ECS.
  */
 export async function p1Source(contractId: string, siteIds: string[], series?: SerieValues): Promise<P1AcompteSource> {
     const meters = siteIds.length ? (await Promise.all(Array.from({ length: Math.ceil(siteIds.length / 30) }, (_, i) =>
@@ -77,8 +78,9 @@ export async function p1Source(contractId: string, siteIds: string[], series?: S
         .map(m => valeurAu<Energie>((docs.get(P1_DOC_ID.meter(m.id)) as P1MeterDoc | undefined)?.params, 'energie', date))
         .filter((e): e is Energie => !!e))];
     return {
-        quantite: (siteId, mois) => {
+        quantite: (siteId, mois, usage) => {
             const site = docs.get(P1_DOC_ID.site(siteId)) as P1SiteDoc | undefined;
+            if (usage === 'ecs') return valeurAu<number>(site?.params, 'quantiteAcompteEcs', day(mois)) ?? 'volume annuel des acomptes ECS (site) non renseigné';
             const propre = valeurAu<number>(site?.params, 'quantiteAcompte', day(mois));
             if (propre) return propre;
             const postes = Object.values(site?.postes ?? {}).filter(p => !p.retireLe && valeurAu<TermeNc[]>(p.params, 'formuleNc', day(mois)));
@@ -92,12 +94,15 @@ export async function p1Source(contractId: string, siteIds: string[], series?: S
             }
             return total;
         },
-        repartition: (mois) => valeurAu<number[]>(contractDoc?.params, 'repartitionAcomptes', day(mois)) ?? 'répartition des acomptes P1 du contrat non renseignée',
-        prix: (siteId, mois) => {
+        repartition: (mois, usage) => valeurAu<number[]>(contractDoc?.params, usage === 'ecs' ? 'repartitionAcomptesEcs' : 'repartitionAcomptes', day(mois))
+            ?? `répartition des acomptes ${usage === 'ecs' ? 'ECS' : 'P1'} du contrat non renseignée`,
+        prix: (siteId, mois, usage) => {
             const site = docs.get(P1_DOC_ID.site(siteId)) as P1SiteDoc | undefined;
-            const f = formuleAu(contractDoc, siteId, energiesOf(siteId, day(mois)), 'chauffage', day(mois));
-            if (!f) return 'aucune formule de révision P1 chauffage en vigueur';
-            const r = prixRevise(f.version, valeurAu<number>(site?.params, 'prixBase', day(mois)), mois, seriesValues);
+            const f = formuleAu(contractDoc, siteId, energiesOf(siteId, day(mois)), usage, day(mois));
+            if (!f) return `aucune formule de révision P1 ${usage === 'ecs' ? 'ECS' : 'chauffage'} en vigueur`;
+            const base = valeurAu<number>(site?.params, usage === 'ecs' ? 'prixBaseEcs' : 'prixBase', day(mois));
+            if (usage === 'ecs' && base === null) return 'prix de base ECS du site non renseigné';
+            const r = prixRevise(f.version, base, mois, seriesValues);
             return 'causes' in r ? r.causes.join(' ; ') : r.prix;
         },
     };

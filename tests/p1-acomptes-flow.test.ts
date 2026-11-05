@@ -56,7 +56,7 @@ test('acomptes : quantité × part du mois × prix révisé P1, facture et aper�
     // 1 200 × 12,5 % × 80 = 12 000 par mois, TVA 5,5 %.
     assert.deepEqual(inv.lineItems.map(l => [l.periodStartDate, l.total]), [['2025-10-01', 12000], ['2025-11-01', 12000]]);
     assert.deepEqual([inv.subtotal, inv.tax, inv.total], [24000, 1320, 25320]);
-    assert.deepEqual(inv.lineItems[0].p1Acompte, { siteId: 'ac-s', mois: [{ mois: '2025-10', quantite: 150, prix: 80, montant: 12000 }] });
+    assert.deepEqual(inv.lineItems[0].p1Acompte, { siteId: 'ac-s', usage: 'chauffage', mois: [{ mois: '2025-10', quantite: 150, prix: 80, montant: 12000 }] });
 });
 
 test('régularisation : réel importé − acomptes → avoir ; intéressement → facture ; ni double régularisation ni réel modifié après coup', async () => {
@@ -89,4 +89,35 @@ test('régularisation : réel importé − acomptes → avoir ; intéressement �
     // Décembre : seul le nouvel acompte se facture (octobre et novembre ne reviennent pas).
     const dec = await bill('2025-12-05');
     assert.deepEqual(dec.lineItems.map(l => [l.periodStartDate, l.total]), [['2025-12-01', 12000]]);
+});
+
+test('ECS : acompte au m³ à sa TVA, réel par usage, régularisation une ligne par usage', async () => {
+    await set('vatRates', 'ac-20', { code: 'TVA20A', rate: 20 });
+    await set('services', 'ac-ecs', {
+        siteId: 'ac-s', contractId: 'ac-k', activityId: 'ac-p1', type: 'P1', p1Type: 'ECS', price: 0, startDate: '2026-01-01', endDate: '2026-09-30',
+        isActive: true, vatRateId: 'ac-20', scheduleId: 'ac-mens', billingTermId: 'ac-echoir', p1Mode: 'acompte',
+    });
+    await assert.rejects(prepareContractInvoice('ac-k', '2026-01-05', { isProforma: false }), /volume annuel des acomptes ECS \(site\) non renseigné/);
+    await addP1Version({ scope: 'site', id: 'ac-s' }, 'quantiteAcompteEcs', origine(2400), 'a@v.fr');
+    await addP1Version({ scope: 'site', id: 'ac-s' }, 'prixBaseEcs', origine(6.5), 'a@v.fr');
+    await addP1Version({ scope: 'contract', id: 'ac-k' }, 'repartitionAcomptesEcs', origine(Array(12).fill(8.3333).join(';')), 'a@v.fr');
+    await assert.rejects(prepareContractInvoice('ac-k', '2026-01-05', { isProforma: false }), /aucune formule de révision P1 ECS en vigueur/);
+    const f = await addP1Formule('ac-k', { nom: 'ECS fixe', usage: 'ecs', perimetre: { type: 'contrat' } }, 'a@v.fr');
+    await addP1FormuleVersion('ac-k', f, {
+        forme: 'A', mode: 'standard', baseEnergetique: 'PCS', unitePrix: 'EUR/m3', dateM0: '2025-01', m0Manquante: null, regimeKmol: 'variable',
+        prixMoleculeNegocie: null, prixFixe: true, periodicite: 'mensuel', termes: parseTermes('p0=1') as never,
+    }, { dateEffet: null, motif: 'marché' }, 'a@v.fr');
+
+    const jan = await bill('2026-01-05');
+    // Chauffage : 1 200 × 12,5 % × 80 = 12 000 (5,5 %) ; ECS : 2 400 × 8,3333 % × 6,5 = 199,9992 m³ → 1 299,99 (20 %).
+    assert.deepEqual(jan.lineItems.map(l => [l.p1Acompte?.usage, l.total, l.vatRate]).sort(), [['chauffage', 12000, 5.5], ['ecs', 1299.99, 20]]);
+
+    await applyImport('p1reel', [['Site', 'Mois', 'Montant P1 HT', 'Usage'], ['SIT-02201', '2026-01', '11800', 'chauffage'], ['SIT-02201', '2026-01', '1350', 'ECS']], { by: 'import@v.fr' });
+    const prep = await prepareP1Regularisation('ac-k', '2026-01', '2026-01');
+    assert.deepEqual(prep.errors, []);
+    assert.deepEqual(prep.detail.map(d => [d.usage, d.reel, d.acomptes, d.ecart]), [['chauffage', 11800, 12000, -200], ['ecs', 1350, 1299.99, 50.01]]);
+    const out = await emitP1Regularisation('ac-k', '2026-01', '2026-01', '2026-02-02');
+    const cn = (await adminDb.collection('creditNotes').doc(out.creditNote!.id).get()).data()!;
+    const inv = (await adminDb.collection('invoices').doc(out.invoice!.id).get()).data()!;
+    assert.deepEqual([cn.subtotal, cn.tax, inv.subtotal, inv.tax], [-200, -11, 50.01, 10]);
 });

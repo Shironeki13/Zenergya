@@ -1563,8 +1563,9 @@ export default function SiteDetailsPage() {
                                 </Select>
                                 {p1Mode === 'acompte' && (
                                     <p className="text-xs text-muted-foreground">
-                                        Montant calculé à chaque échéance à partir du paramétrage P1 du site (quantité annuelle ou cibles NB, prix de base,
-                                        formule) et de la répartition du contrat ; le montant annuel ci-dessous est ignoré. Régularisation : Facturation → Régularisation P1.
+                                        Montant calculé à chaque échéance à partir du paramétrage P1 du site et du contrat : chauffage (quantité annuelle ou cibles NB,
+                                        prix de base, formule chauffage, répartition) ; ECS si le type P1 est ECS (volume annuel ECS en m³, prix de base ECS, formule ECS,
+                                        répartition ECS). Le montant annuel ci-dessous est ignoré. Régularisation : Facturation → Régularisation P1.
                                     </p>
                                 )}
                             </div>
