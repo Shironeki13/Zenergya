@@ -4,6 +4,7 @@ import { adminDb } from '@/lib/firebase-admin';
 import { IMPORT_ENTITIES, type ImportEntityKey } from '@/lib/imports/definitions';
 import { parseTable, type CellValue, type ParsedRow } from '@/lib/imports/engine';
 import { chorusNeedsValidator } from '@/lib/einvoicing';
+import { scheduleOf, termeOf } from '@/lib/billing/contract-billing';
 import { periodsOverlap, toDay } from '@/lib/services/site-amounts';
 import { recomputeSiteAmounts } from '@/services/site-amounts-admin';
 import type {
@@ -101,7 +102,7 @@ async function loadContext(entity: ImportEntityKey): Promise<Context> {
         need(['meters']) ? all<MeterType>('meterTypes') : empty,
         need(['contracts', 'services']) ? all<Activity>('activities') : empty,
         need(['contracts']) ? all<Market>('markets') : empty,
-        need(['contracts']) ? all<Schedule>('schedules') : empty,
+        need(['contracts', 'services']) ? all<Schedule>('schedules') : empty,
         need(['services']) ? all<Term>('terms') : empty,
         need(['services']) ? all<VatRate>('vatRates') : empty,
         need(['services']) ? all<Service>('services') : empty,
@@ -690,9 +691,16 @@ function planService(ctx: Context, row: ParsedRow, pending: Map<string, { line: 
     if (startDay && startDay !== toDay(existing?.startDate)) data.startDate = startDay;
     if (endDay && endDay !== toDay(existing?.endDate)) data.endDate = endDay;
     if (existing && v.activity && activity.id !== existing.activityId) Object.assign(data, { activityId: activity.id, type: activity.type });
-    if (v.billingTerm) {
-        const term = ctx.terms.find(t => norm(t.name) === norm(v.billingTerm));
-        if (!term) item.messages.push(`Périodicité « ${v.billingTerm} » inconnue.`);
+    if (v.schedule) {
+        const schedule = ctx.schedules.find(t => norm(t.name) === norm(v.schedule));
+        if (!schedule) item.messages.push(`Périodicité « ${v.schedule} » inconnue.`);
+        else if (!scheduleOf(schedule.name)) item.messages.push(`Périodicité « ${schedule.name} » non facturable (mensuel, trimestriel, semestriel ou annuel).`);
+        else data.scheduleId = schedule.id;
+    }
+    if (v.term) {
+        const term = ctx.terms.find(t => norm(t.name) === norm(v.term));
+        if (!term) item.messages.push(`Terme « ${v.term} » inconnu.`);
+        else if (!termeOf(term.name)) item.messages.push(`Terme « ${term.name} » illisible (à échoir ou échu).`);
         else data.billingTermId = term.id;
     }
     if (v.vatRate) {

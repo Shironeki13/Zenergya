@@ -29,7 +29,7 @@ before(async () => {
     await set('activities', 'sv-p1', { code: 'P1S', label: 'Chauffage S', type: 'P1' });
     await set('activities', 'sv-p2', { code: 'P2S', label: 'Maintenance S', type: 'P2' });
     await set('activities', 'sv-p3', { code: 'P3S', label: 'Gros entretien S', type: 'P3' });
-    await set('terms', 'sv-t', { name: 'Trimestriel S' });
+    await set('schedules', 'sv-t', { name: 'Trimestriel S' });
     await set('vatRates', 'sv-v', { code: 'TVA20S', rate: 0.2 });
     await set('clients', 'sv-cli', { name: 'Client prestations', externalCode: 'CLI-07700' });
     await set('contracts', 'sv-k1', {

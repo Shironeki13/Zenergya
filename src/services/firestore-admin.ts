@@ -270,12 +270,36 @@ function toInvoiceDoc(data: NewInvoice) {
 /**
  * Crée une facture. Hors proforma, le numéro est attribué dans la même transaction que l'écriture.
  */
-export async function createInvoice(data: NewInvoice, company: Company): Promise<{ id: string; invoiceNumber?: string }> {
+/** Verrou optimiste de facturation : la facture n'est écrite que si le contrat n'a pas été facturé entre-temps. */
+export type BillingGuard = { contractId: string; billingVersion: number };
+
+async function checkBillingGuard(tx: FirebaseFirestore.Transaction, guard: BillingGuard) {
+    const ref = adminDb.collection('contracts').doc(guard.contractId);
+    const snap = await tx.get(ref);
+    if (Number(snap.get('billingVersion') ?? 0) !== guard.billingVersion) {
+        throw new Error('Ce contrat vient d\'être facturé par ailleurs : relancez la facturation pour repartir de son état à jour.');
+    }
+    return () => tx.update(ref, { billingVersion: guard.billingVersion + 1 });
+}
+
+/**
+ * Crée une facture. Hors proforma, le numéro est attribué dans la même transaction que l'écriture. Avec un verrou
+ * de facturation, la facture est refusée si le contrat a été facturé depuis la préparation (pas de double facture).
+ */
+export async function createInvoice(data: NewInvoice, company: Company, guard?: BillingGuard): Promise<{ id: string; invoiceNumber?: string }> {
     const ref = adminDb.collection('invoices').doc();
     const doc = { ...toInvoiceDoc(data), companyId: company.id };
 
     if (data.status === 'proforma') {
-        await ref.set(doc);
+        if (!guard) {
+            await ref.set(doc);
+        } else {
+            await adminDb.runTransaction(async (tx) => {
+                const bump = await checkBillingGuard(tx, guard);
+                tx.set(ref, doc);
+                bump();
+            });
+        }
         return { id: ref.id };
     }
 
@@ -284,9 +308,12 @@ export async function createInvoice(data: NewInvoice, company: Company): Promise
     const series = await prepareSeries('invoice', company.code, issuedAt);
     const einvoicing = await computeEInvoicingState({ clientId: data.clientId, contractId: data.contractId, company, documentDate: data.date });
     const invoiceNumber = await adminDb.runTransaction(async (tx) => {
+        // Lectures avant écritures : verrou du contrat, puis compteur de numérotation.
+        const bump = guard ? await checkBillingGuard(tx, guard) : undefined;
         const reserved = await reserveNumber(tx, series);
         reserved.commit();
         tx.set(ref, { ...doc, invoiceNumber: reserved.number, issuedAt, einvoicing });
+        bump?.();
         return reserved.number;
     });
     return { id: ref.id, invoiceNumber };

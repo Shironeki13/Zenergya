@@ -15,6 +15,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { toast } from '@/hooks/use-toast';
+import { billingItems, echeancesOf, lineItemKeys } from '@/lib/billing/contract-billing';
+import { toDay } from '@/lib/services/site-amounts';
 import { updateSite, createService, updateService, deleteService, createMeter, updateMeter, deleteMeter } from '@/services/firestore';
 import type { Site, Contract, Service, Meter, RevisionRule, Activity, Term, Schedule, PricingRule, ServiceType, ServiceInitialIndexValue, Index, IndexValue, ServiceBillingLine, BillingLineType } from '@/lib/types';
 import { MeterReadingsDialog } from '@/components/meter-readings-dialog';
@@ -610,40 +612,30 @@ export default function SiteDetailsPage() {
         });
     })();
 
-    // Calendrier théorique de facturation
-    const scheduleToMonths: Record<string, number> = {
-        'mensuel': 1, 'trimestriel': 3, 'semestriel': 6, 'annuel': 12,
-    };
+    // Calendrier de facturation de la prestation : même échéancier que la facturation (lib/billing/contract-billing).
     const billingPeriods = (() => {
-        if (!activeService || !activeTerm || !activeSchedule || !contract) return [];
-        const intervalMonths = scheduleToMonths[activeSchedule.name.toLowerCase()] ?? 0;
-        if (!intervalMonths) return [];
-        const termLower = activeTerm.name.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-        const isEchu = termLower.includes('echu') && !termLower.includes('echoir');
-        const start = new Date(activeService.startDate);
-        const end = activeService.endDate ? new Date(activeService.endDate) : (contract.endDate ? new Date(contract.endDate) : null);
-        const today = new Date();
-        const periods: { periodStart: Date; periodEnd: Date; dueDate: Date; invoice: typeof invoices[0] | null }[] = [];
-        let cursor = new Date(start);
-        const limit = end ?? today;
-        while (cursor <= limit) {
-            const periodStart = new Date(cursor);
-            const periodEnd = new Date(cursor);
-            periodEnd.setMonth(periodEnd.getMonth() + intervalMonths);
-            periodEnd.setDate(periodEnd.getDate() - 1);
-            const dueDate = isEchu
-                ? new Date(cursor.getFullYear(), cursor.getMonth() + intervalMonths, cursor.getDate())
-                : new Date(cursor);
-            const matched = invoices.find(inv =>
-                inv.contractId === contract.id &&
-                inv.periodStartDate &&
-                Math.abs(new Date(inv.periodStartDate).getTime() - periodStart.getTime()) < 3 * 86400000 &&
-                inv.lineItems?.some((li: any) => li.activityCode === activeService.type)
-            );
-            periods.push({ periodStart, periodEnd, dueDate, invoice: matched ?? null });
-            cursor.setMonth(cursor.getMonth() + intervalMonths);
-        }
-        return periods;
+        if (!activeService || !contract || !site) return [];
+        const input = {
+            contract: {
+                id: contract.id, siteIds: contract.siteIds ?? [], activityIds: contract.activityIds ?? [], invoicingType: contract.invoicingType,
+                startDate: contract.startDate, endDate: contract.endDate, billingSchedule: contract.billingSchedule,
+            },
+            sites: [site], services, activities, vatRates, schedules, terms,
+        };
+        const item = billingItems(input).items.find(i => i.serviceId === activeService.id);
+        const contractStart = toDay(contract.startDate);
+        if (!item || !contractStart) return [];
+        const contractInvoices = invoices.filter(inv => inv.contractId === contract.id && inv.status !== 'cancelled' && !inv.cancelledByCreditNoteId);
+        return echeancesOf(item, contractStart, null, item.to, 120).map(e => {
+            // Facture qui couvre l'échéance : ligne de cette prestation sur cette période (ou facture antérieure par site et activité).
+            const invoice = contractInvoices.find(inv => (inv.lineItems ?? []).some(l => {
+                const keys = lineItemKeys(l);
+                if (keys.length) return keys.includes(item.key) && !!l.periodStartDate && l.periodStartDate <= e.start && (toDay(l.periodEndDate) ?? '') >= e.end;
+                return l.activityCode === item.activity.code && (!l.siteId || l.siteId === site.id)
+                    && (toDay(inv.periodStartDate) ?? '') <= e.start && (toDay(inv.periodEndDate) ?? '') >= e.end;
+            })) ?? null;
+            return { periodStart: new Date(e.start), periodEnd: new Date(e.end), dueDate: new Date(e.billableOn), invoice, amount: e.amount };
+        });
     })();
 
     // Consommation = écart entre les deux derniers relevés réels du compteur
@@ -992,7 +984,8 @@ export default function SiteDetailsPage() {
                                         <TableHeader>
                                             <TableRow>
                                                 <TableHead className="text-xs">Période</TableHead>
-                                                <TableHead className="text-xs">Émission</TableHead>
+                                                <TableHead className="text-xs">Facturable le</TableHead>
+                                                <TableHead className="text-xs text-right">HT</TableHead>
                                                 <TableHead className="text-xs">Statut</TableHead>
                                             </TableRow>
                                         </TableHeader>
@@ -1005,6 +998,7 @@ export default function SiteDetailsPage() {
                                                         {p.periodEnd.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: '2-digit' })}
                                                     </TableCell>
                                                     <TableCell className="text-xs py-1.5">{p.dueDate.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: '2-digit' })}</TableCell>
+                                                    <TableCell className="text-xs py-1.5 text-right">{p.amount.toLocaleString('fr-FR', { style: 'currency', currency: 'EUR' })}</TableCell>
                                                     <TableCell className="py-1.5">
                                                         {p.invoice
                                                             ? <Link href={`/invoices/${p.invoice.id}`} className="text-xs text-green-600 hover:underline font-medium">

@@ -1,36 +1,44 @@
 # Facturation : numérotation, avoirs et arrondis
 
-## Facturation des contrats (montant, TVA, échéance)
+## Facturation des contrats : échéancier des prestations
 
-Calcul : `src/lib/billing/contract-billing.ts` (partagé par le serveur et l'aperçu de la facturation groupée) ;
-préparation : `src/services/contract-billing-admin.ts`.
+Calcul : `src/lib/billing/contract-billing.ts` (partagé par le serveur, la facturation groupée et le calendrier de
+la fiche site) ; préparation : `src/services/contract-billing-admin.ts`.
 
-- **Période** : selon l'échéancier du contrat (mensuel, trimestriel, semestriel, annuel), à la suite de la
-  dernière période facturée (factures émises et proformas en attente ; les factures annulées par avoir ne comptent
-  pas). Un échéancier inconnu ou absent bloque la facture (pas d'annuel supposé).
-- **Lignes** : un site piloté par ses prestations est facturé **prestation par prestation** (prestations actives
-  de l'activité du contrat) ; un site sans prestation, sur ses montants saisis. Montant de la période pleine =
-  montant annuel × mois / 12.
-- **Prorata au jour près** : une période raccourcie (fin du contrat, prestation qui commence ou se termine en cours
-  de période) est facturée au prorata des jours couverts sur les jours de la période pleine, indiqué sur la ligne
-  (« prorata 61/92 j »).
-- **TVA par ligne** : celle de la prestation, sinon la **TVA par défaut de l'activité** (paramétrage). Aucun taux
-  n'est supposé : une TVA manquante bloque la facture et liste les lignes concernées. Totaux **par taux**
-  (ventilation de TVA sur la facture et le PDF).
-- **Échéance** : conditions de paiement du contrat, sinon du client (délai en jours, éventuellement fin de mois) ;
-  sans condition : 30 jours (délai légal par défaut). Le paramétrage refuse un délai au-delà du maximum légal
-  (60 jours, ou 45 jours fin de mois). Un proforma converti en facture a son échéance recalculée à sa date
-  d'émission.
-- **Facturation groupée** : aperçu calculé comme la facture (HT et TVA), contrats en erreur signalés et non
-  sélectionnables ; les périodes d'un même contrat s'émettent dans l'ordre, chacune vérifiant qu'elle est bien la
-  suivante (plus de double facturation d'une même période).
+- **Éléments facturés** : chaque prestation active d'un site piloté par ses prestations ; pour un site sans
+  prestation, chaque montant saisi (site × activité).
+- **Périodicité** (mensuel, trimestriel, semestriel, annuel) : celle de la prestation, sinon celle du site, sinon
+  l'échéancier du contrat. Les périodes sont **calées sur le début du contrat** : toutes les prestations d'un
+  contrat partagent les mêmes bornes. Une périodicité inconnue ou absente bloque (pas d'annuel supposé).
+- **Terme** : **à échoir** (facturable dès le premier jour de la période) ou **échu** (facturable le lendemain de
+  sa fin) ; celui de la prestation, sinon du site, sinon à échoir (signalé dans la facturation groupée). Un terme
+  illisible bloque.
+- **Une facture par contrat** regroupe toutes les échéances facturables à la date demandée (date de facture, ou
+  « facturer jusqu'au » en facturation groupée, ce qui permet d'anticiper un terme à échoir) : rattrapage compris,
+  une ligne par échéance avec sa période et son terme.
+- **Prorata au jour près** : une échéance raccourcie (début ou fin de prestation ou de contrat en cours de période)
+  est facturée au prorata des jours sur la période pleine (« prorata 17/31 j »).
+- **Déjà facturé** : chaque ligne porte l'élément facturé et sa période ; les factures et proformas non annulés
+  comptent, les factures annulées par avoir ne comptent pas (leurs échéances redeviennent facturables). Les
+  factures antérieures à l'échéancier (sans ce détail) comptent par site et activité jusqu'à leur fin de période.
+- **Pas de double facturation** : la facture n'est enregistrée que si le contrat n'a pas été facturé depuis la
+  préparation (version de facturation du contrat vérifiée dans la transaction qui attribue le numéro).
+- **TVA par ligne** : celle de la prestation, sinon la **TVA par défaut de l'activité** ; aucun taux supposé (une
+  TVA manquante bloque la facture et liste les lignes concernées). Totaux et ventilation **par taux**.
+- **Échéance de paiement** : conditions du contrat, sinon du client (délai en jours, éventuellement fin de mois) ;
+  sans condition : 30 jours. Plafonds légaux contrôlés au paramétrage (60 jours, ou 45 jours fin de mois). Un
+  proforma converti a son échéance recalculée à sa date d'émission.
+- **Facturation groupée** : un aperçu par contrat (nombre d'échéances, périodes, HT, TVA, avertissements) calculé
+  comme la facture ; contrats en erreur signalés et non sélectionnables.
+- **Fiche site** : le calendrier de facturation d'une prestation montre ses échéances (période, date à partir de
+  laquelle elle est facturable, montant HT) et la facture qui couvre chacune.
 
-À paramétrer avant de facturer : **TVA par défaut de chaque activité** (Paramétrage → Activités) et **délai de
-chaque condition de paiement** (Paramétrage → Règlements) ; conditions de paiement sur les clients (fiche client,
-import) ou les contrats (import, API).
+À paramétrer avant de facturer : TVA par défaut de chaque activité, délai de chaque condition de paiement, et sur
+les prestations leur périodicité et leur terme (fiche site ou import des prestations, colonnes « Périodicité » et
+« Terme »).
 
-Pas encore géré : révision des prix (indices), terme à échoir / échu, facturation du P1 sur consommation
-(acomptes, régularisation, intéressement).
+Pas encore géré : révision des prix (indices), facturation du P1 sur consommation (acomptes, régularisation,
+intéressement).
 
 ## Numérotation (factures et avoirs)
 

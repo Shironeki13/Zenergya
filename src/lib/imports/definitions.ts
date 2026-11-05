@@ -195,7 +195,8 @@ export const IMPORT_ENTITIES: Record<ImportEntityKey, ImportEntity> = {
             { key: 'startDate', label: 'Date de début', type: 'date', required: 'create', example: '2025-07-01', aliases: ['debut'] },
             { key: 'endDate', label: 'Date de fin', type: 'date', example: '2026-06-30', aliases: ['fin'], help: 'Incluse. Vide à la création : fin du contrat.' },
             { key: 'price', label: 'Montant annuel HT', type: 'number', allowZero: true, required: 'create', example: '4800', aliases: ['montant', 'prix'], help: '€ HT par an (montant forfaitaire), facturé selon l\'échéancier du contrat.' },
-            { key: 'billingTerm', label: 'Périodicité', type: 'text', refList: 'terms', example: 'Trimestriel', aliases: ['terme'] },
+            { key: 'schedule', label: 'Périodicité', type: 'text', refList: 'schedules', example: 'Trimestriel', help: 'Mensuel, trimestriel, semestriel, annuel (vide : celle du site, sinon du contrat).' },
+            { key: 'term', label: 'Terme', type: 'text', refList: 'terms', example: 'À échoir', help: 'À échoir (facturé en début de période) ou échu (après la période). Vide : à échoir.' },
             { key: 'vatRate', label: 'TVA', type: 'text', refList: 'vatRates', example: 'TVA20', help: 'Code du taux de TVA (paramétrage).' },
             { key: 'meter', label: 'Compteur', type: 'text', example: '', help: 'P1 : code du compteur (CPT-…) ou réf. externe, du même site.' },
             {
