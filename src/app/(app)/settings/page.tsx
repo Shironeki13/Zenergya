@@ -5,6 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger, DialogClose } from "@/components/ui/dialog";
@@ -682,7 +683,7 @@ const SectorsSection = () => {
 // Section pour les Activités
 const ActivitiesSection = () => {
     const { toast } = useToast();
-    const { activities, isLoading, reloadData } = useData();
+    const { activities, vatRates, isLoading, reloadData } = useData();
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [dialogOpen, setDialogOpen] = useState(false);
     const [editingActivity, setEditingActivity] = useState<Activity | null>(null);
@@ -690,14 +691,16 @@ const ActivitiesSection = () => {
     const [code, setCode] = useState('');
     const [label, setLabel] = useState('');
     const [type, setType] = useState<'P1' | 'P2' | 'P3'>('P1');
+    const [activityVatRateId, setActivityVatRateId] = useState('');
 
-    const resetForm = () => { setCode(''); setLabel(''); setType('P1'); setEditingActivity(null); };
+    const resetForm = () => { setCode(''); setLabel(''); setType('P1'); setActivityVatRateId(''); setEditingActivity(null); };
 
     const handleOpenDialog = (activity: Activity | null = null) => {
         setEditingActivity(activity);
         setCode(activity ? activity.code : '');
         setLabel(activity ? activity.label : '');
         setType(activity ? activity.type : 'P1');
+        setActivityVatRateId(activity?.vatRateId ?? '');
         setDialogOpen(true);
     };
 
@@ -707,10 +710,10 @@ const ActivitiesSection = () => {
         setIsSubmitting(true);
         try {
             if (editingActivity) {
-                await updateActivity(editingActivity.id, { code, label, type });
+                await updateActivity(editingActivity.id, { code, label, type, vatRateId: activityVatRateId });
                 toast({ title: "Succès", description: "Activité mise à jour." });
             } else {
-                await createActivity({ code, label, type });
+                await createActivity({ code, label, type, vatRateId: activityVatRateId });
                 toast({ title: "Succès", description: "Activité créée." });
             }
             await reloadData();
@@ -751,7 +754,7 @@ const ActivitiesSection = () => {
             <CardContent>
                 <div className="border rounded-md">
                     <Table>
-                        <TableHeader><TableRow><TableHead className="w-[150px]">Code</TableHead><TableHead>Libellé</TableHead><TableHead>Type</TableHead><TableHead className="w-[100px] text-right">Actions</TableHead></TableRow></TableHeader>
+                        <TableHeader><TableRow><TableHead className="w-[150px]">Code</TableHead><TableHead>Libellé</TableHead><TableHead>Type</TableHead><TableHead>TVA par défaut</TableHead><TableHead className="w-[100px] text-right">Actions</TableHead></TableRow></TableHeader>
                         <TableBody>
                             {isLoading ? (<TableRow><TableCell colSpan={4} className="text-center h-24"><Loader2 className="mx-auto h-8 w-8 animate-spin text-muted-foreground" /></TableCell></TableRow>
                             ) : activities.length === 0 ? (<TableRow><TableCell colSpan={4} className="text-center">Aucune activité.</TableCell></TableRow>
@@ -1653,22 +1656,36 @@ const PaymentTermsSection = () => {
     const [itemToDelete, setItemToDelete] = useState<PaymentTerm | null>(null);
     const [code, setCode] = useState('');
     const [deadline, setDeadline] = useState('');
+    const [days, setDays] = useState<string>('');
+    const [endOfMonth, setEndOfMonth] = useState(false);
 
-    const resetForm = () => { setCode(''); setDeadline(''); setEditingItem(null); };
+    const resetForm = () => { setCode(''); setDeadline(''); setDays(''); setEndOfMonth(false); setEditingItem(null); };
 
     const handleOpenDialog = (item: PaymentTerm | null = null) => {
         setEditingItem(item);
         setCode(item ? item.code : '');
         setDeadline(item ? item.deadline : '');
+        setDays(item?.days !== undefined ? String(item.days) : '');
+        setEndOfMonth(item?.endOfMonth ?? false);
         setDialogOpen(true);
     };
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!code.trim() || !deadline.trim()) return;
+        const delay = Number(days);
+        if (days.trim() === '' || !Number.isInteger(delay) || delay < 0) {
+            toast({ title: "Délai requis", description: "Indiquez le délai de paiement en jours (0 : à réception).", variant: "destructive" });
+            return;
+        }
+        // Délais maximaux entre entreprises (art. L441-10 du code de commerce) : 60 jours, ou 45 jours fin de mois.
+        if ((endOfMonth && delay > 45) || delay > 60) {
+            toast({ title: "Délai au-delà du maximum légal", description: "60 jours après la facture, ou 45 jours fin de mois.", variant: "destructive" });
+            return;
+        }
         setIsSubmitting(true);
         try {
-            const data = { code, deadline };
+            const data = { code, deadline, days: delay, endOfMonth };
             if (editingItem) {
                 await updatePaymentTerm(editingItem.id, data);
                 toast({ title: "Succès", description: "Règlement mis à jour." });
@@ -1702,14 +1719,15 @@ const PaymentTermsSection = () => {
             <CardContent>
                 <div className="border rounded-md">
                     <Table>
-                        <TableHeader><TableRow><TableHead>Code</TableHead><TableHead>Échéance</TableHead><TableHead className="w-[100px] text-right">Actions</TableHead></TableRow></TableHeader>
+                        <TableHeader><TableRow><TableHead>Code</TableHead><TableHead>Échéance</TableHead><TableHead>Délai</TableHead><TableHead className="w-[100px] text-right">Actions</TableHead></TableRow></TableHeader>
                         <TableBody>
-                            {isLoading ? (<TableRow><TableCell colSpan={3} className="text-center h-24"><Loader2 className="mx-auto h-8 w-8 animate-spin text-muted-foreground" /></TableCell></TableRow>)
-                                : paymentTerms.length === 0 ? (<TableRow><TableCell colSpan={3} className="text-center">Aucun règlement.</TableCell></TableRow>)
+                            {isLoading ? (<TableRow><TableCell colSpan={4} className="text-center h-24"><Loader2 className="mx-auto h-8 w-8 animate-spin text-muted-foreground" /></TableCell></TableRow>)
+                                : paymentTerms.length === 0 ? (<TableRow><TableCell colSpan={4} className="text-center">Aucun règlement.</TableCell></TableRow>)
                                     : (paymentTerms.map(item => (
                                         <TableRow key={item.id}>
                                             <TableCell className="font-medium">{item.code}</TableCell>
                                             <TableCell>{item.deadline}</TableCell>
+                                            <TableCell>{typeof item.days === 'number' ? `${item.days} j${item.endOfMonth ? ' fin de mois' : ''}` : <span className="text-destructive">à préciser</span>}</TableCell>
                                             <TableCell className="text-right">
                                                 <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleOpenDialog(item)}><Edit className="h-4 w-4" /></Button>
                                                 <Dialog open={!!itemToDelete && itemToDelete.id === item.id} onOpenChange={(isOpen) => !isOpen && setItemToDelete(null)}>
@@ -1731,6 +1749,11 @@ const PaymentTermsSection = () => {
                         <form onSubmit={handleSubmit} className="space-y-4">
                             <div className="space-y-2"><Label htmlFor="payCode">Code Règlement</Label><Input id="payCode" value={code} onChange={e => setCode(e.target.value)} required /></div>
                             <div className="space-y-2"><Label htmlFor="payDeadline">Échéance</Label><Input id="payDeadline" value={deadline} onChange={e => setDeadline(e.target.value)} required placeholder="Ex: 30 jours net" /></div>
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className="space-y-2"><Label htmlFor="payDays">Délai (jours)</Label><Input id="payDays" type="number" min={0} max={60} value={days} onChange={e => setDays(e.target.value)} required placeholder="30" /></div>
+                                <div className="flex items-end gap-2 pb-2"><Checkbox id="payEom" checked={endOfMonth} onCheckedChange={v => setEndOfMonth(!!v)} /><Label htmlFor="payEom">Fin de mois</Label></div>
+                            </div>
+                            <p className="text-xs text-muted-foreground">Échéance = date de facture + délai{endOfMonth ? ', reportée à la fin du mois atteint' : ''}.</p>
                             <DialogFooter><DialogClose asChild><Button variant="outline">Annuler</Button></DialogClose><Button type="submit" disabled={isSubmitting}>{isSubmitting ? "Enregistrement..." : "Enregistrer"}</Button></DialogFooter>
                         </form>
                     </DialogContent>

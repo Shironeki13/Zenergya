@@ -40,7 +40,7 @@ type ClientFormValues = z.infer<typeof ClientSchema>
 export default function NewClientPage() {
   const router = useRouter();
   const { toast } = useToast()
-  const { currentUser, companies, agencies, sectors, reloadData } = useData();
+  const { currentUser, companies, agencies, sectors, paymentTerms, reloadData } = useData();
   const [typologies, setTypologies] = useState<Typology[]>([]);
   const [isDataLoading, setIsDataLoading] = useState(true);
 
@@ -69,6 +69,7 @@ export default function NewClientPage() {
       representedBy: "",
       externalCode: "",
       externalRef: "",
+      paymentTermId: "",
       isBe: false,
       beName: "",
       beEmail: "",
@@ -298,6 +299,20 @@ export default function NewClientPage() {
                     <FormMessage />
                   </FormItem>
                 )} />}
+                <FormField control={form.control} name="paymentTermId" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Conditions de paiement</FormLabel>
+                    <Select onValueChange={v => field.onChange(v === 'aucune' ? '' : v)} value={field.value || 'aucune'}>
+                      <FormControl><SelectTrigger><SelectValue /></SelectTrigger></FormControl>
+                      <SelectContent>
+                        <SelectItem value="aucune">Délai légal : 30 jours</SelectItem>
+                        {paymentTerms.map(t => <SelectItem key={t.id} value={t.id}>{t.code} — {t.deadline}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                    <FormDescription>Échéance des factures (un contrat peut avoir les siennes).</FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )} />
                 <FormField control={form.control} name="externalRef" render={({ field }) => (
                   <FormItem>
                     <FormLabel>Réf. externe</FormLabel>

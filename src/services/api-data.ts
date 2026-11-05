@@ -26,7 +26,7 @@ export const MAX_BATCH = 500;
 type Lookups = {
     companies: Map<string, string>; agencies: Map<string, string>; sectors: Map<string, string>; typologies: Map<string, string>;
     clients: Map<string, string>; contracts: Map<string, string>; sites: Map<string, string>; meters: Map<string, string>;
-    activities: Map<string, string>; markets: Map<string, string>; terms: Map<string, string>; vatRates: Map<string, string>;
+    activities: Map<string, string>; markets: Map<string, string>; terms: Map<string, string>; vatRates: Map<string, string>; paymentTerms: Map<string, string>;
 };
 
 let cache: { at: number; value: Lookups } | null = null;
@@ -36,14 +36,14 @@ async function lookups(): Promise<Lookups> {
     if (cache && Date.now() - cache.at < 60_000) return cache.value;
     const map = async (collection: string, field: (d: FirebaseFirestore.DocumentData) => string) =>
         new Map((await adminDb.collection(collection).get()).docs.map(d => [d.id, field(d.data())]));
-    const [companies, agencies, sectors, typologies, clients, contracts, sites, meters, activities, markets, terms, vatRates] = await Promise.all([
+    const [companies, agencies, sectors, typologies, clients, contracts, sites, meters, activities, markets, terms, vatRates, paymentTerms] = await Promise.all([
         map('companies', d => d.code || d.name), map('agencies', d => d.name), map('sectors', d => d.name),
         map('typologies', d => d.name), map('clients', d => d.externalCode || d.clientNumber || ''),
         map('contracts', d => d.contractNumber || ''), map('sites', d => d.code || ''), map('meters', d => d.code || ''),
         map('activities', d => d.code || d.label), map('markets', d => d.code || d.label),
-        map('terms', d => d.name || ''), map('vatRates', d => d.code || ''),
+        map('terms', d => d.name || ''), map('vatRates', d => d.code || ''), map('paymentTerms', d => d.code || ''),
     ]);
-    cache = { at: Date.now(), value: { companies, agencies, sectors, typologies, clients, contracts, sites, meters, activities, markets, terms, vatRates } };
+    cache = { at: Date.now(), value: { companies, agencies, sectors, typologies, clients, contracts, sites, meters, activities, markets, terms, vatRates, paymentTerms } };
     return cache.value;
 }
 
@@ -66,6 +66,7 @@ function serialize(resource: ApiResource, id: string, d: FirebaseFirestore.Docum
             chorusLegalCommitmentNumber: d.chorusLegalCommitmentNumber, chorusLegalCommitmentRequired: d.chorusLegalCommitmentRequired,
             chorusMarketNumber: d.chorusMarketNumber, einvoicingRegime: d.einvoicingRegime, einvoicingAddress: d.einvoicingAddress,
             quoteCoefficient: d.quoteCoefficient, quoteLaborRate: d.quoteLaborRate,
+            paymentTerm: d.paymentTermId ? l.paymentTerms.get(d.paymentTermId) : undefined,
         });
         case 'contracts': return compact({
             code: d.contractNumber, externalRef: d.externalRef, client: l.clients.get(d.clientId), label: d.label, name: d.name,
@@ -78,7 +79,7 @@ function serialize(resource: ApiResource, id: string, d: FirebaseFirestore.Docum
             renewalDuration: d.renewalDuration, noticePeriod: d.noticePeriod, signedByCompany: d.signedByCompany, signedByClient: d.signedByClient,
             chorusFramework: d.chorus?.framework, chorusValidatorSiret: d.chorus?.validatorSiret, chorusServiceCode: d.chorus?.serviceCode,
             chorusMarketNumber: d.chorus?.marketNumber, chorusLegalCommitments: d.chorus?.legalCommitments?.length ? d.chorus.legalCommitments : undefined,
-            einvoicingAddress: d.einvoicingAddress,
+            einvoicingAddress: d.einvoicingAddress, paymentTerm: d.paymentTermId ? l.paymentTerms.get(d.paymentTermId) : undefined,
             sites: (d.siteIds ?? []).map((id: string) => l.sites.get(id)).filter(Boolean),
         });
         case 'services': return compact({

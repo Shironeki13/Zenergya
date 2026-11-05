@@ -1,5 +1,7 @@
 import 'server-only';
 import { Timestamp, FieldPath, type DocumentData, type Query } from 'firebase-admin/firestore';
+import { dueDateFor, type PaymentTermLike } from '@/lib/billing/contract-billing';
+import { toDay } from '@/lib/services/site-amounts';
 import { adminDb } from '@/lib/firebase-admin';
 import type { Activity, Client, Company, Contract, CreditNote, EInvoicingState, Index, IndexValue, Invoice, Site, Typology } from '@/lib/types';
 import { canRecompute, canTransition, initialEInvoicingState, resolveEInvoicing, STATUS_LABELS } from '@/lib/einvoicing';
@@ -132,6 +134,15 @@ export async function reserveNumber(tx: FirebaseFirestore.Transaction, series: P
  * Société émettrice d'une facture : celle du contrat, sinon celle du client,
  * sinon la seule société configurée. Refus explicite si elle ne peut pas être déterminée.
  */
+/** Conditions de paiement applicables : celles du contrat, sinon celles du client ; null : délai légal par défaut. */
+export async function resolvePaymentTerm(contract: Pick<Contract, 'paymentTermId'> | null, client: Pick<Client, 'paymentTermId'> | null): Promise<PaymentTermLike | null> {
+    const id = contract?.paymentTermId || client?.paymentTermId;
+    if (!id) return null;
+    const snap = await adminDb.collection('paymentTerms').doc(id).get();
+    if (!snap.exists) throw new Error('Conditions de paiement introuvables (paramétrage).');
+    return snap.data() as PaymentTermLike;
+}
+
 export async function resolveIssuingCompany(contract: Contract | null, client: Client | null): Promise<Company> {
     const companyId = contract?.companyId || client?.companyId;
     if (companyId) {
@@ -284,15 +295,19 @@ export async function createInvoice(data: NewInvoice, company: Company): Promise
 /**
  * Transforme un proforma en facture définitive : numéro attribué, date d'émission = aujourd'hui.
  */
-export async function convertProformaToInvoice(invoiceId: string, paymentDelayDays = 30): Promise<string> {
+export async function convertProformaToInvoice(invoiceId: string): Promise<string> {
     const ref = adminDb.collection('invoices').doc(invoiceId);
     const proforma = await getInvoice(invoiceId);
     if (!proforma) throw new Error('Facture introuvable.');
     if (proforma.status !== 'proforma') throw new Error("Cette facture n'est pas un proforma.");
 
-    const company = proforma.companyId
-        ? await getCompany(proforma.companyId)
-        : await resolveIssuingCompany(await getContract(proforma.contractId), await getClient(proforma.clientId));
+    const [contract, client] = await Promise.all([
+        proforma.contractId ? getContract(proforma.contractId) : Promise.resolve(null),
+        getClient(proforma.clientId),
+    ]);
+    const company = proforma.companyId ? await getCompany(proforma.companyId) : await resolveIssuingCompany(contract, client);
+    // Échéance recalculée à partir de la date d'émission, selon les conditions de paiement du contrat ou du client.
+    const term = await resolvePaymentTerm(contract, client);
     if (!company) throw new Error('Société émettrice introuvable.');
     assertCompanyCode(company);
     const issuedAt = new Date();
@@ -307,9 +322,9 @@ export async function convertProformaToInvoice(invoiceId: string, paymentDelayDa
             throw new Error('Ce proforma a déjà été converti ou supprimé.');
         }
         const reserved = await reserveNumber(tx, series);
-        const date = new Date(issuedAt.toISOString().split('T')[0]);
-        const dueDate = new Date(date);
-        dueDate.setDate(dueDate.getDate() + paymentDelayDays);
+        const day = toDay(issuedAt)!;
+        const date = new Date(day);
+        const dueDate = new Date(dueDateFor(day, term));
 
         reserved.commit();
         tx.update(ref, {

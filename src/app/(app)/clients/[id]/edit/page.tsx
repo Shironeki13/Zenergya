@@ -23,6 +23,7 @@ import { useToast } from "@/hooks/use-toast"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { updateClient, getClient, getTypologies, getContractsByClient } from "@/services/firestore"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { useData } from "@/context/data-context"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { Switch } from "@/components/ui/switch"
 import { Separator } from "@/components/ui/separator"
@@ -41,6 +42,7 @@ export default function EditClientPage() {
   const params = useParams();
   const id = params.id as string;
   const { toast } = useToast()
+  const { paymentTerms } = useData()
 
   const [client, setClient] = React.useState<Client | null>(null);
   const [typologies, setTypologies] = useState<Typology[]>([]);
@@ -58,6 +60,7 @@ export default function EditClientPage() {
       representedBy: "",
       externalCode: "",
       externalRef: "",
+      paymentTermId: "",
       isBe: false,
       beName: "",
       beEmail: "",
@@ -127,6 +130,7 @@ export default function EditClientPage() {
           chorusServiceCodeRequired: clientData.chorusServiceCodeRequired ?? false,
           relation: clientData.relation ?? 'client',
           externalRef: clientData.externalRef ?? '',
+          paymentTermId: clientData.paymentTermId ?? '',
           quoteCoefficient: clientData.quoteCoefficient ?? null,
           quoteLaborRate: clientData.quoteLaborRate ?? null,
           chorusLegalCommitmentRequired: clientData.chorusLegalCommitmentRequired ?? false,
@@ -271,6 +275,20 @@ export default function EditClientPage() {
                 <Input value={form.watch('externalCode') ?? ''} readOnly disabled className="font-mono" />
                 <FormDescription>Attribué par Zenergya, non modifiable.</FormDescription>
               </FormItem>
+              <FormField control={form.control} name="paymentTermId" render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Conditions de paiement</FormLabel>
+                  <Select onValueChange={v => field.onChange(v === 'aucune' ? '' : v)} value={field.value || 'aucune'}>
+                    <FormControl><SelectTrigger><SelectValue /></SelectTrigger></FormControl>
+                    <SelectContent>
+                      <SelectItem value="aucune">Délai légal : 30 jours</SelectItem>
+                      {paymentTerms.map(t => <SelectItem key={t.id} value={t.id}>{t.code} — {t.deadline}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                  <FormDescription>Échéance des factures (un contrat peut avoir les siennes).</FormDescription>
+                  <FormMessage />
+                </FormItem>
+              )} />
               <FormField control={form.control} name="externalRef" render={({ field }) => (
                 <FormItem>
                   <FormLabel>Réf. externe</FormLabel>

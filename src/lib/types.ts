@@ -159,6 +159,7 @@ export const ClientBaseSchema = z.object({
     representedBy: z.string().optional(),
     externalCode: z.string().optional(),
     externalRef: z.string().optional(), // Réf. externe (ancienne codification) ; externalCode porte le code client CLI
+    paymentTermId: z.string().optional(), // Conditions de paiement (vide : 30 jours)
     isBe: z.boolean().default(false),
     beName: z.string().optional(),
     beEmail: z.string().email({ message: "Email BE invalide." }).optional().or(z.literal('')),
@@ -205,6 +206,7 @@ export type Client = z.infer<typeof ClientSchema> & {
     sireneCheck?: SireneCheck; // Dernier contrôle du SIRET dans le répertoire des entreprises (API de l'État)
     typologyName?: string; // denormalized for display
     clientNumber?: string; // N° Chrono
+    paymentTermId?: string; // Conditions de paiement (sinon 30 jours)
     externalRef?: string; // Réf. externe : code du client dans un autre système (ancienne codification)
     createdAt?: string; // Timestamp
     createdBy?: string; // User ID/Name
@@ -369,6 +371,7 @@ export type Contract = {
     externalRef?: string; // Réf. externe : n° du contrat dans un autre système (ancienne codification)
     validatedAt?: string;
     validatedBy?: string;
+    paymentTermId?: string; // Conditions de paiement propres au contrat (prioritaires sur celles du client)
 
     // Global amounts
     baseAmountP1?: number; // Montant global base marché P1 HT/AN
@@ -758,6 +761,7 @@ export type Activity = {
     code: string;
     label: string;
     type: 'P1' | 'P2' | 'P3';
+    vatRateId?: string; // TVA par défaut de l'activité (sinon celle de la prestation) ; aucune TVA supposée
 }
 
 export type Schedule = {
@@ -795,7 +799,9 @@ export type RevisionFormula = {
 export type PaymentTerm = {
     id: string;
     code: string;
-    deadline: string;
+    deadline: string; // Libellé (ex. « 45 jours fin de mois »)
+    days?: number; // Délai en jours après la date de facture
+    endOfMonth?: boolean; // Échéance reportée à la fin du mois atteint
 }
 
 export type PricingRule = {
@@ -847,6 +853,7 @@ export const GenerateInvoiceInputSchema = z.object({
     contractId: z.string().describe('The ID of the contract to generate an invoice for.'),
     invoiceDate: z.string().describe('The date for the invoice in ISO format.'),
     isProforma: z.boolean().describe('Whether to generate a proforma invoice instead of a final one.'),
+    periodStartDate: z.string().optional().describe('Début de période attendu (AAAA-MM-JJ) : refus si cette période est déjà facturée.'),
 });
 export type GenerateInvoiceInput = z.infer<typeof GenerateInvoiceInputSchema>;
 

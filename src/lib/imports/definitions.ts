@@ -9,7 +9,7 @@
 export type FieldType = 'text' | 'number' | 'boolean' | 'enum' | 'siret' | 'email' | 'postalCode' | 'date';
 
 /** Listes de référence, lues dans le paramétrage (onglet « Listes » du modèle XLSX). */
-export type RefList = 'companies' | 'agencies' | 'sectors' | 'typologies' | 'meterTypes' | 'activities' | 'markets' | 'schedules' | 'terms' | 'vatRates';
+export type RefList = 'companies' | 'agencies' | 'sectors' | 'typologies' | 'meterTypes' | 'activities' | 'markets' | 'schedules' | 'terms' | 'vatRates' | 'paymentTerms';
 
 export type ImportField = {
     key: string;
@@ -90,6 +90,7 @@ export const IMPORT_ENTITIES: Record<ImportEntityKey, ImportEntity> = {
             { key: 'einvoicingAddress', label: 'Adresse de facturation électronique', type: 'text', help: 'SIREN, SIREN_SIRET ou SIREN_SIRET_CODE.' },
             { key: 'quoteCoefficient', label: 'Coefficient devis', type: 'number', example: '1,35', help: 'Coefficient de vente propre au client (vide : celui de la société).' },
             { key: 'quoteLaborRate', label: 'Taux horaire MO devis', type: 'number', example: '58', help: '€ HT / h (vide : celui de la société).' },
+            { key: 'paymentTerm', label: 'Conditions de paiement', type: 'text', refList: 'paymentTerms', example: '', aliases: ['reglement'], help: 'Code des conditions de paiement (onglet Listes) ; jamais renseignées : 30 jours.' },
         ],
     },
     contracts: {
@@ -151,6 +152,7 @@ export const IMPORT_ENTITIES: Record<ImportEntityKey, ImportEntity> = {
             { key: 'chorusMarketNumber', label: 'N° de marché Chorus', type: 'text' },
             { key: 'chorusLegalCommitment', label: "N° d'engagement juridique", type: 'text', help: 'Engagement valable sur toute la durée du contrat (ajouté s\'il est nouveau).' },
             { key: 'einvoicingAddress', label: 'Adresse de facturation électronique', type: 'text', help: 'Propre au contrat (prioritaire sur celle du client).' },
+            { key: 'paymentTerm', label: 'Conditions de paiement', type: 'text', refList: 'paymentTerms', example: '', aliases: ['reglement'], help: 'Propres au contrat, prioritaires sur celles du client (code, onglet Listes).' },
         ],
     },
     sites: {

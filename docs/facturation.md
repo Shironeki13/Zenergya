@@ -1,5 +1,37 @@
 # Facturation : numérotation, avoirs et arrondis
 
+## Facturation des contrats (montant, TVA, échéance)
+
+Calcul : `src/lib/billing/contract-billing.ts` (partagé par le serveur et l'aperçu de la facturation groupée) ;
+préparation : `src/services/contract-billing-admin.ts`.
+
+- **Période** : selon l'échéancier du contrat (mensuel, trimestriel, semestriel, annuel), à la suite de la
+  dernière période facturée (factures émises et proformas en attente ; les factures annulées par avoir ne comptent
+  pas). Un échéancier inconnu ou absent bloque la facture (pas d'annuel supposé).
+- **Lignes** : un site piloté par ses prestations est facturé **prestation par prestation** (prestations actives
+  de l'activité du contrat) ; un site sans prestation, sur ses montants saisis. Montant de la période pleine =
+  montant annuel × mois / 12.
+- **Prorata au jour près** : une période raccourcie (fin du contrat, prestation qui commence ou se termine en cours
+  de période) est facturée au prorata des jours couverts sur les jours de la période pleine, indiqué sur la ligne
+  (« prorata 61/92 j »).
+- **TVA par ligne** : celle de la prestation, sinon la **TVA par défaut de l'activité** (paramétrage). Aucun taux
+  n'est supposé : une TVA manquante bloque la facture et liste les lignes concernées. Totaux **par taux**
+  (ventilation de TVA sur la facture et le PDF).
+- **Échéance** : conditions de paiement du contrat, sinon du client (délai en jours, éventuellement fin de mois) ;
+  sans condition : 30 jours (délai légal par défaut). Le paramétrage refuse un délai au-delà du maximum légal
+  (60 jours, ou 45 jours fin de mois). Un proforma converti en facture a son échéance recalculée à sa date
+  d'émission.
+- **Facturation groupée** : aperçu calculé comme la facture (HT et TVA), contrats en erreur signalés et non
+  sélectionnables ; les périodes d'un même contrat s'émettent dans l'ordre, chacune vérifiant qu'elle est bien la
+  suivante (plus de double facturation d'une même période).
+
+À paramétrer avant de facturer : **TVA par défaut de chaque activité** (Paramétrage → Activités) et **délai de
+chaque condition de paiement** (Paramétrage → Règlements) ; conditions de paiement sur les clients (fiche client,
+import) ou les contrats (import, API).
+
+Pas encore géré : révision des prix (indices), terme à échoir / échu, facturation du P1 sur consommation
+(acomptes, régularisation, intéressement).
+
 ## Numérotation (factures et avoirs)
 
 Exigence légale (CGI, annexe II, art. 242 nonies A) : numéros uniques, chronologiques et continus, par société émettrice.
