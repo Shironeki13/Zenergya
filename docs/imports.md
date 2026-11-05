@@ -117,9 +117,28 @@ telles quelles), index positif ou nul. Refusés : date future, même compteur et
 modifié d'un relevé repris dans un intéressement ou une régularisation. Signalés sans bloquer : index en baisse par
 rapport au relevé précédent (ou supérieur au suivant), compteur hors service. Détails : `api-externe.md`.
 
-### Paramétrage P1 (versions datées)
+### Paramétrage P1 dans les imports Sites, Compteurs, Contrats
 
-Une ligne = une version : élément (code SIT, CPT ou CTN, ou réf. externe), poste (pour les paramètres de poste,
+Chaque paramètre P1 a sa colonne « P1 · … » dans l'import de l'élément qui le porte :
+
+- **Sites** : type de marché, période de référence, prix de base chauffage et ECS, station météo (l'ancienne colonne
+  « Station météo » y est reprise), quantités des acomptes, code TWIMM ; et le **poste de consommation** (« P1 ·
+  Poste », vide : « Chauffage », créé s'il n'existe pas) : formule de NC, cible NB et son unité, DJU de référence. Un
+  site à plusieurs postes : une ligne par poste.
+- **Compteurs** : usage, énergie, QE, qECS, code TWIMM.
+- **Contrats** : régime du compte de prestation, coefficient et frais de gestion, code TWIMM, répartitions des
+  acomptes (12 parts « ; »), barèmes de partage par marché.
+
+« P1 · Date d'effet » et « P1 · Motif » valent pour toute la ligne. Une valeur crée une **version** datée (jamais
+d'écrasement) : sans date d'effet, valeur d'origine si le paramètre n'a encore aucune valeur ; identique à la valeur
+en vigueur : rien ; différente : ligne refusée (indiquer la date d'effet du changement). À une date d'effet déjà
+saisie, une autre valeur est refusée (retirer la version à l'écran). Une erreur P1 refuse toute la ligne ; une ligne
+qui ne change que le P1 compte comme une mise à jour. L'aperçu liste les versions qui seront ajoutées.
+
+### Paramétrage P1 détaillé (avancé)
+
+Pour les cas que les colonnes ne couvrent pas (plusieurs versions d'un même paramètre dans un fichier, reprise
+d'historique, intéressement). Une ligne = une version : élément (code SIT, CPT ou CTN, ou réf. externe), poste (pour les paramètres de poste,
 créé s'il n'existe pas), paramètre (liste de la notice), valeur, date d'effet (vide : valeur d'origine), motif,
 pièce. Formule de NC : `CPT-00012 + CPT-00013 - CPT-00020` (compteurs du site). Une version identique déjà saisie
 est inchangée ; une autre valeur à la même date est refusée (la retirer à l'écran, avec son motif). Voir
@@ -128,7 +147,7 @@ dépassement 0-100 % 30 % ».
 
 ### Réel P1 du moteur
 
-Site (code SIT ou réf. externe), mois (AAAA-MM, MM/AAAA ou date), montant P1 HT du mois (table
+Résultat du moteur P1, pas un paramétrage (affiché sur la fiche du site, Paramétrage P1 › Réel P1 du moteur). Site (code SIT ou réf. externe), mois (AAAA-MM, MM/AAAA ou date), montant P1 HT du mois (table
 `p1_facturation_site` du moteur). Un montant identique est inchangé, un autre remplace le précédent, sauf pour un
 mois déjà régularisé (refusé). Sert à la régularisation des acomptes P1 (voir `facturation.md`).
 

@@ -776,7 +776,7 @@ export default function NewContractPage() {
 
                         {p1IsSelected && (
                             <Card>
-                                <CardHeader><CardTitle>Détails Prestation P1</CardTitle></CardHeader>
+                                <CardHeader><CardTitle>Détails Prestation P1</CardTitle><p className="text-xs text-muted-foreground">Valeurs P1 initiales : reprises dans le paramétrage P1 daté des sites à la validation du contrat, puis modifiables sur la fiche du site (chaque changement y est daté).</p></CardHeader>
                                 <CardContent className="space-y-6">
                                     <div className="flex gap-8">
                                         <FormField

@@ -105,7 +105,6 @@ export default function SiteDetailsPage() {
     const [isEditingBillingParams, setIsEditingBillingParams] = useState(false);
     const [bpAnnex, setBpAnnex] = useState(false);
     const [bpDays, setBpDays] = useState(30);
-    const [bpCoeff, setBpCoeff] = useState(1);
     const [bpLines, setBpLines] = useState<ServiceBillingLine[]>([
         { lineType: 'CONSOMMATION', label: '', vatRateId: '', isActive: true }
     ]);
@@ -269,7 +268,6 @@ export default function SiteDetailsPage() {
         if (!activeService) return;
         setBpAnnex(activeService.includeAnnex ?? false);
         setBpDays(activeService.paymentTermDays ?? 30);
-        setBpCoeff(activeService.conversionCoefficient ?? 1);
         const lines = activeService.billingLines ?? [];
         const hasConsomm = lines.some(l => l.lineType === 'CONSOMMATION');
         setBpLines(hasConsomm ? lines : [{ lineType: 'CONSOMMATION', label: '', vatRateId: '', isActive: true }, ...lines]);
@@ -283,7 +281,6 @@ export default function SiteDetailsPage() {
                 includeAnnex: bpAnnex,
                 billingLines: bpLines.filter(l => l.vatRateId),
                 paymentTermDays: bpDays,
-                conversionCoefficient: bpCoeff,
             });
             await reloadData();
             setIsEditingBillingParams(false);
@@ -868,8 +865,8 @@ export default function SiteDetailsPage() {
                                                 <span className="font-medium">{activeService.paymentTermDays ? `${activeService.paymentTermDays} j` : '—'}</span>
                                             </div>
                                             <div>
-                                                <span className="text-muted-foreground block">Coeff. conv.</span>
-                                                <span className="font-medium">{activeService.conversionCoefficient ?? 1}</span>
+                                                <span className="text-muted-foreground block">Conversion (QE)</span>
+                                                <span className="font-medium">Paramétrage P1 du compteur</span>
                                             </div>
                                         </div>
                                         {activeService.billingLines && activeService.billingLines.length > 0 && (
@@ -906,17 +903,6 @@ export default function SiteDetailsPage() {
                                                     </SelectContent>
                                                 </Select>
                                             </div>
-                                        </div>
-                                        <div className="space-y-1">
-                                            <Label className="text-xs">Coefficient de conversion</Label>
-                                            <Input
-                                                type="number"
-                                                step="0.0001"
-                                                value={bpCoeff}
-                                                onChange={e => setBpCoeff(parseFloat(e.target.value) || 1)}
-                                                className="h-7 text-xs"
-                                                placeholder="1.0"
-                                            />
                                         </div>
                                         <div className="space-y-2">
                                             <div className="flex items-center justify-between">

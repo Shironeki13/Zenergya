@@ -1,7 +1,8 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { AlertTriangle, CheckCircle2, ChevronDown, ChevronUp, History, Loader2, Plus } from 'lucide-react';
+import Link from 'next/link';
+import { AlertTriangle, CheckCircle2, ChevronDown, ChevronUp, ExternalLink, History, Loader2, Plus } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -22,11 +23,11 @@ import {
 import { formatBareme } from '@/lib/p1/bareme';
 import { formatTermes, parseTermes, type FormuleVersion } from '@/lib/p1/formules';
 import {
-    addP1FormuleAction, addP1FormuleVersionAction, addP1PosteAction, addP1VersionAction, getP1SiteAction, previewPrixP1Action,
+    addP1FormuleAction, addP1FormuleVersionAction, addP1PosteAction, addP1VersionAction, getP1ContractAction, getP1MeterAction, getP1ReelAction, getP1SiteAction, previewPrixP1Action,
     retireP1FormuleAction, retireP1FormuleVersionAction, retireP1PosteAction, retireP1VersionAction,
 } from '@/lib/p1/actions';
 import type { PrixP1Preview } from '@/services/p1-admin';
-import type { P1SiteView, P1Target } from '@/services/p1-admin';
+import type { P1ContractView, P1MeterView, P1ReelLigne, P1SiteView, P1Target } from '@/services/p1-admin';
 
 /**
  * Paramétrage P1 daté d'un site : ce qui manque pour calculer (selon le type de marché), la valeur en vigueur à une
@@ -58,15 +59,60 @@ function formatValue(scope: P1Scope, key: string, value: unknown): string {
 }
 
 type Editing = { target: P1Target; key: string; title: string; meterCodes?: string[] } | null;
+type Run = (fn: () => Promise<{ success: boolean; error?: string }>, ok: string) => Promise<boolean>;
 
-export function P1ParametragePanel({ siteId }: { siteId: string }) {
+/** Saisie d'une version (et retrait tracé) : état et fenêtre communs aux écrans site, compteur et contrat. */
+function useEdition(reload: () => Promise<void>) {
     const { toast } = useToast();
     const { weatherStations } = useData();
+    const [editing, setEditing] = useState<Editing>(null);
+    const [busy, setBusy] = useState(false);
+    const run: Run = async (fn, ok) => {
+        setBusy(true);
+        const r = await fn();
+        setBusy(false);
+        if (!r.success) { toast({ title: 'Opération refusée', description: r.error, variant: 'destructive' }); return false; }
+        toast({ title: ok });
+        await reload();
+        return true;
+    };
+    const retire = (target: P1Target, key: string, v: P1Version<unknown>) => {
+        const motif = window.prompt(`Retirer la version ${frDay(v.dateEffet)} (${v.motif}) : motif du retrait ?`);
+        if (motif) run(() => retireP1VersionAction(target, key, v.id, motif), 'Version retirée');
+    };
+    const rows = (scope: P1Scope, target: P1Target, params: P1Params | undefined, date: string, keys = Object.keys(P1_PARAMS[scope]), opts: { meterCodes?: string[]; readOnly?: boolean } = {}) => (
+        <div className="divide-y rounded-md border">
+            {keys.map(key => (
+                <ParamRow key={key} scope={scope} paramKey={key} params={params} date={date} readOnly={opts.readOnly}
+                    onAdd={() => setEditing({ target, key, title: paramDef(scope, key)!.label, meterCodes: opts.meterCodes })}
+                    onRetire={v => retire(target, key, v)} />
+            ))}
+        </div>
+    );
+    const dialog = (
+        <VersionDialog editing={editing} onClose={() => setEditing(null)} busy={busy} stations={weatherStations.map(s => s.code)}
+            onSubmit={async (valeur, dateEffet, motif, document) => {
+                if (!editing) return;
+                const ok = await run(() => addP1VersionAction(editing.target, editing.key, { valeur, dateEffet, motif, document }), 'Version enregistrée');
+                if (ok) setEditing(null);
+            }} />
+    );
+    return { busy, run, rows, dialog };
+}
+
+function DateVigueur({ date, onChange }: { date: string; onChange: (d: string) => void }) {
+    return <div className="space-y-1"><Label>Valeurs en vigueur au</Label><Input type="date" value={date} onChange={e => onChange(e.target.value || today())} className="w-44" /></div>;
+}
+
+/**
+ * Paramétrage P1 du site : paramètres du site et postes de consommation (saisis ici) ; compteurs et contrat en
+ * lecture, chacun se paramétrant sur sa propre fiche ; aperçu des prix révisés et réel P1 du moteur.
+ */
+export function P1ParametragePanel({ siteId }: { siteId: string }) {
+    const { toast } = useToast();
     const [date, setDate] = useState(today());
     const [view, setView] = useState<P1SiteView | null>(null);
     const [open, setOpen] = useState(false);
-    const [editing, setEditing] = useState<Editing>(null);
-    const [busy, setBusy] = useState(false);
 
     const load = useCallback(async () => {
         const r = await getP1SiteAction(siteId, date);
@@ -74,42 +120,18 @@ export function P1ParametragePanel({ siteId }: { siteId: string }) {
         else toast({ title: 'Paramétrage P1', description: r.error, variant: 'destructive' });
     }, [siteId, date, toast]);
     useEffect(() => { load(); }, [load]);
-
-    const run = async (fn: () => Promise<{ success: boolean; error?: string }>, ok: string) => {
-        setBusy(true);
-        const r = await fn();
-        setBusy(false);
-        if (!r.success) { toast({ title: 'Opération refusée', description: r.error, variant: 'destructive' }); return false; }
-        toast({ title: ok });
-        await load();
-        return true;
-    };
-
-    const retire = (target: P1Target, key: string, v: P1Version<unknown>) => {
-        const motif = window.prompt(`Retirer la version ${frDay(v.dateEffet)} (${v.motif}) : motif du retrait ?`);
-        if (motif) run(() => retireP1VersionAction(target, key, v.id, motif), 'Version retirée');
-    };
+    const { busy, run, rows, dialog } = useEdition(load);
 
     if (!view) return <Card><CardContent className="py-6"><Loader2 className="mx-auto h-5 w-5 animate-spin" /></CardContent></Card>;
     const { reste } = view;
     const meterCodes = view.meters.map(m => m.code);
     const postes = Object.values(view.siteDoc?.postes ?? {}).filter(p => !p.retireLe);
 
-    const rows = (scope: P1Scope, target: P1Target, params: P1Params | undefined, keys = Object.keys(P1_PARAMS[scope]), meterCodesForFormula?: string[]) => (
-        <div className="divide-y rounded-md border">
-            {keys.map(key => (
-                <ParamRow key={key} scope={scope} paramKey={key} params={params} date={date}
-                    onAdd={() => setEditing({ target, key, title: paramDef(scope, key)!.label, meterCodes: meterCodesForFormula })}
-                    onRetire={v => retire(target, key, v)} />
-            ))}
-        </div>
-    );
-
     return (
         <Card>
             <CardHeader className="cursor-pointer pb-3" onClick={() => setOpen(o => !o)}>
                 <CardTitle className="flex items-center justify-between text-base">
-                    <span>Paramétrage P1 (daté)</span>
+                    <span>Paramétrage P1</span>
                     <span className="flex items-center gap-2">
                         {reste.typeMarche ? <Badge variant="outline">{reste.typeMarche}</Badge> : null}
                         {!reste.suivi ? <Badge variant="secondary">Hors suivi P1</Badge>
@@ -118,12 +140,15 @@ export function P1ParametragePanel({ siteId }: { siteId: string }) {
                         {open ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
                     </span>
                 </CardTitle>
-                <CardDescription>Décisions contractuelles du suivi P1 : chaque valeur a une date d'effet et un motif ; un avenant ajoute une version, il n'écrase rien.</CardDescription>
+                <CardDescription>
+                    Chaque valeur a une date d&apos;effet et un motif : un avenant ajoute une version, il n&apos;écrase rien. Le site et ses postes se
+                    paramètrent ici ; les compteurs sur leur fiche, le contrat (commun à ses sites) sur la sienne.
+                </CardDescription>
             </CardHeader>
             {open && (
                 <CardContent className="space-y-6">
                     <div className="flex flex-wrap items-end gap-4">
-                        <div className="space-y-1"><Label htmlFor="p1-date">Valeurs en vigueur au</Label><Input id="p1-date" type="date" value={date} onChange={e => setDate(e.target.value || today())} className="w-44" /></div>
+                        <DateVigueur date={date} onChange={setDate} />
                         {(reste.manque.length > 0 || reste.aVenir.length > 0 || reste.alertes.length > 0) && (
                             <div className="flex-1 rounded-md border border-dashed p-3 text-sm">
                                 {reste.manque.length > 0 && <p><span className="font-medium">Reste à faire :</span> {reste.manque.join(' · ')}</p>}
@@ -135,7 +160,7 @@ export function P1ParametragePanel({ siteId }: { siteId: string }) {
 
                     <section className="space-y-2">
                         <h3 className="text-sm font-semibold">Site {view.site.code}</h3>
-                        {rows('site', { scope: 'site', id: siteId }, view.siteDoc?.params,
+                        {rows('site', { scope: 'site', id: siteId }, view.siteDoc?.params, date,
                             [...Object.keys(P1_PARAMS.site), ...(reste.typeMarche && EXIGENCES_MARCHE[reste.typeMarche].bareme ? [baremeKey(reste.typeMarche)] : [])])}
                     </section>
 
@@ -147,7 +172,7 @@ export function P1ParametragePanel({ siteId }: { siteId: string }) {
                                 if (name) run(() => addP1PosteAction(siteId, name), 'Poste créé');
                             }}><Plus className="mr-1 h-3 w-3" />Poste</Button>
                         </div>
-                        {postes.length === 0 && <p className="text-sm text-muted-foreground">Aucun poste : la formule de NC (compteurs signés) et l'engagement (cible, DJU) se saisissent par poste.</p>}
+                        {postes.length === 0 && <p className="text-sm text-muted-foreground">Aucun poste : la formule de NC (compteurs signés) et l&apos;engagement (cible, DJU) se saisissent par poste.</p>}
                         {postes.map(p => (
                             <div key={p.id} className="space-y-1">
                                 <div className="flex items-center justify-between text-sm">
@@ -157,47 +182,165 @@ export function P1ParametragePanel({ siteId }: { siteId: string }) {
                                         if (motif) run(() => retireP1PosteAction(siteId, p.id, motif), 'Poste retiré');
                                     }}>Retirer</Button>
                                 </div>
-                                {rows('poste', { scope: 'poste', id: siteId, posteId: p.id }, p.params, undefined, meterCodes)}
+                                {rows('poste', { scope: 'poste', id: siteId, posteId: p.id }, p.params, date, undefined, { meterCodes })}
                             </div>
                         ))}
                     </section>
 
                     <section className="space-y-2">
-                        <h3 className="text-sm font-semibold">Compteurs</h3>
+                        <h3 className="text-sm font-semibold">Compteurs <span className="font-normal text-muted-foreground">(paramétrés sur leur fiche)</span></h3>
                         {view.meters.length === 0 && <p className="text-sm text-muted-foreground">Aucun compteur sur ce site.</p>}
                         {view.meters.map(m => (
                             <div key={m.id} className="space-y-1">
-                                <p className="text-sm"><span className="font-mono">{m.code}</span> — {m.name}{m.unit ? ` (${m.unit})` : ''}</p>
-                                {rows('meter', { scope: 'meter', id: m.id }, m.doc?.params)}
+                                <div className="flex items-center justify-between text-sm">
+                                    <span><span className="font-mono">{m.code}</span> — {m.name}{m.unit ? ` (${m.unit})` : ''}</span>
+                                    <P1CompteurDialog meterId={m.id} onSaved={load} trigger={<Button size="sm" variant="outline" className="h-7">Modifier (compteur)</Button>} />
+                                </div>
+                                {rows('meter', { scope: 'meter', id: m.id }, m.doc?.params, date, undefined, { readOnly: true })}
                             </div>
                         ))}
                     </section>
 
                     {view.contract && (
                         <section className="space-y-2">
-                            <h3 className="text-sm font-semibold">Contrat {view.contract.code} <span className="font-normal text-muted-foreground">(commun à tous ses sites)</span></h3>
-                            {rows('contract', { scope: 'contract', id: view.contract.id }, view.contractDoc?.params,
-                                [...Object.keys(P1_PARAMS.contract), ...MARCHES_BAREME.map(baremeKey)])}
-                            <FormulesSection contractId={view.contract.id} siteId={siteId} formules={Object.values(view.contractDoc?.formules ?? {})}
-                                date={date} busy={busy} run={run} />
-                            <PrixPreview siteId={siteId} />
+                            <div className="flex items-center justify-between">
+                                <h3 className="text-sm font-semibold">Contrat {view.contract.code} <span className="font-normal text-muted-foreground">(commun à tous ses sites, paramétré sur le contrat)</span></h3>
+                                <Link href={`/contracts/${view.contract.id}#p1`}><Button size="sm" variant="outline" className="h-7 gap-1">Ouvrir le contrat<ExternalLink className="h-3 w-3" /></Button></Link>
+                            </div>
+                            {rows('contract', { scope: 'contract', id: view.contract.id }, view.contractDoc?.params, date,
+                                [...Object.keys(P1_PARAMS.contract), ...MARCHES_BAREME.map(baremeKey)].filter(k => valeurAu(view.contractDoc?.params, k, date) !== null || k in P1_PARAMS.contract), { readOnly: true })}
+                            <p className="text-xs text-muted-foreground">
+                                Formules de révision du contrat : {Object.values(view.contractDoc?.formules ?? {}).filter(f => !f.retireLe).map(f => f.nom).join(', ') || 'aucune'}.
+                            </p>
                         </section>
                     )}
+
+                    <PrixPreview sites={[{ id: siteId, code: view.site.code, name: view.site.name }]} />
+                    <ReelP1 siteId={siteId} />
                 </CardContent>
             )}
-
-            <VersionDialog editing={editing} onClose={() => setEditing(null)} busy={busy} stations={weatherStations.map(s => s.code)}
-                onSubmit={async (valeur, dateEffet, motif, document) => {
-                    if (!editing) return;
-                    const ok = await run(() => addP1VersionAction(editing.target, editing.key, { valeur, dateEffet, motif, document }), 'Version enregistrée');
-                    if (ok) setEditing(null);
-                }} />
+            {dialog}
         </Card>
     );
 }
 
-function ParamRow({ scope, paramKey, params, date, onAdd, onRetire }: {
-    scope: P1Scope; paramKey: string; params: P1Params | undefined; date: string; onAdd: () => void; onRetire: (v: P1Version<unknown>) => void;
+/** Paramétrage P1 d'un compteur (usage, énergie, QE, qECS, code TWIMM), depuis sa fiche ou celle de son site. */
+export function P1CompteurDialog({ meterId, trigger, onSaved }: { meterId: string; trigger: React.ReactNode; onSaved?: () => void }) {
+    const { toast } = useToast();
+    const [open, setOpen] = useState(false);
+    const [date, setDate] = useState(today());
+    const [view, setView] = useState<P1MeterView | null>(null);
+    const load = useCallback(async () => {
+        const r = await getP1MeterAction(meterId);
+        if (r.success) setView(r.data);
+        else toast({ title: 'Paramétrage P1', description: r.error, variant: 'destructive' });
+    }, [meterId, toast]);
+    useEffect(() => { if (open) load(); }, [open, load]);
+    // Après une saisie : la fiche du compteur et l'écran appelant (site) se rechargent.
+    const { rows, dialog } = useEdition(async () => { await load(); onSaved?.(); });
+    return (
+        <Dialog open={open} onOpenChange={setOpen}>
+            <span onClick={e => { e.stopPropagation(); setOpen(true); }}>{trigger}</span>
+            <DialogContent className="max-w-3xl max-h-[85vh] overflow-y-auto">
+                <DialogHeader>
+                    <DialogTitle>Paramétrage P1 — compteur {view?.meter.code ?? ''}</DialogTitle>
+                    <DialogDescription>
+                        {view ? `${view.meter.name}${view.meter.unit ? ` (${view.meter.unit})` : ''} — site ${view.meter.siteName}. ` : ''}
+                        Chaque valeur a une date d&apos;effet et un motif ; un changement (compteur remplacé, nouveau QE) ajoute une version.
+                    </DialogDescription>
+                </DialogHeader>
+                {!view ? <Loader2 className="mx-auto h-5 w-5 animate-spin" /> : (
+                    <div className="space-y-3">
+                        <DateVigueur date={date} onChange={setDate} />
+                        {rows('meter', { scope: 'meter', id: meterId }, view.doc?.params, date)}
+                    </div>
+                )}
+                {dialog}
+            </DialogContent>
+        </Dialog>
+    );
+}
+
+/** Paramétrage P1 du contrat (commun à ses sites) : régime, gestion, répartitions, intéressement, barèmes, formules. */
+export function P1ContratPanel({ contractId }: { contractId: string }) {
+    const { toast } = useToast();
+    const [date, setDate] = useState(today());
+    const [view, setView] = useState<P1ContractView | null>(null);
+    const [open, setOpen] = useState(false);
+    const load = useCallback(async () => {
+        const r = await getP1ContractAction(contractId);
+        if (r.success) setView(r.data);
+        else toast({ title: 'Paramétrage P1', description: r.error, variant: 'destructive' });
+    }, [contractId, toast]);
+    useEffect(() => { load(); }, [load]);
+    const { busy, run, rows, dialog } = useEdition(load);
+    useEffect(() => { if (typeof window !== 'undefined' && window.location.hash === '#p1') setOpen(true); }, []);
+
+    return (
+        <Card id="p1">
+            <CardHeader className="cursor-pointer pb-3" onClick={() => setOpen(o => !o)}>
+                <CardTitle className="flex items-center justify-between text-base">
+                    <span>Paramétrage P1 du contrat</span>
+                    {open ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                </CardTitle>
+                <CardDescription>
+                    Commun à tous les sites du contrat : régime du compte de prestation, gestion, répartition des acomptes, intéressement, barèmes de partage,
+                    formules de révision. Les paramètres propres à un site (type de marché, prix de base, postes) se saisissent sur le site.
+                </CardDescription>
+            </CardHeader>
+            {open && (
+                <CardContent className="space-y-6">
+                    {!view ? <Loader2 className="mx-auto h-5 w-5 animate-spin" /> : (
+                        <>
+                            <DateVigueur date={date} onChange={setDate} />
+                            <section className="space-y-2">
+                                <h3 className="text-sm font-semibold">Paramètres</h3>
+                                {rows('contract', { scope: 'contract', id: contractId }, view.doc?.params, date, [...Object.keys(P1_PARAMS.contract), ...MARCHES_BAREME.map(baremeKey)])}
+                            </section>
+                            <FormulesSection contractId={contractId} sites={view.sites} formules={Object.values(view.doc?.formules ?? {})} date={date} busy={busy} run={run} />
+                            {view.sites.length > 0 && <PrixPreview sites={view.sites} />}
+                        </>
+                    )}
+                </CardContent>
+            )}
+            {dialog}
+        </Card>
+    );
+}
+
+/** Réel P1 du moteur du site (import « Réel P1 du moteur ») : montants mensuels, base de la régularisation. */
+function ReelP1({ siteId }: { siteId: string }) {
+    const [lignes, setLignes] = useState<P1ReelLigne[] | null>(null);
+    const [tout, setTout] = useState(false);
+    useEffect(() => { getP1ReelAction(siteId).then(r => setLignes(r.success ? r.data : [])); }, [siteId]);
+    const eur = (n: number) => n.toLocaleString('fr-FR', { style: 'currency', currency: 'EUR' });
+    const affichees = (lignes ?? []).slice(0, tout ? undefined : 12);
+    return (
+        <div className="space-y-2 pt-2">
+            <h4 className="text-sm font-semibold">Réel P1 du moteur</h4>
+            <p className="text-xs text-muted-foreground">Montant P1 HT réellement dû, calculé par le moteur et importé chaque mois ; la régularisation le compare aux acomptes facturés (Facturation › P1).</p>
+            {lignes === null ? <Loader2 className="h-4 w-4 animate-spin" /> : lignes.length === 0 ? <p className="text-sm text-muted-foreground">Aucun réel importé pour ce site.</p> : (
+                <>
+                    <table className="w-full text-xs">
+                        <thead><tr className="text-muted-foreground"><th className="text-left font-normal">Mois</th><th className="text-left font-normal">Usage</th><th className="text-right font-normal">Montant HT</th><th className="text-left font-normal pl-4">Import</th></tr></thead>
+                        <tbody>{affichees.map(l => (
+                            <tr key={l.id} className="border-t">
+                                <td>{l.mois.split('-').reverse().join('/')}</td>
+                                <td>{l.usage === 'chauffage' ? 'Chauffage' : l.usage === 'ecs' ? 'ECS' : 'Total'}</td>
+                                <td className="text-right font-medium">{eur(l.montantHt)}</td>
+                                <td className="pl-4 text-muted-foreground">{l.importedAt ? new Date(l.importedAt).toLocaleDateString('fr-FR') : ''}{l.fileName ? ` — ${l.fileName}` : ''}</td>
+                            </tr>
+                        ))}</tbody>
+                    </table>
+                    {lignes.length > 12 && <Button size="sm" variant="link" className="h-auto p-0 text-xs" onClick={() => setTout(t => !t)}>{tout ? 'Les 12 derniers' : `Tout afficher (${lignes.length})`}</Button>}
+                </>
+            )}
+        </div>
+    );
+}
+
+function ParamRow({ scope, paramKey, params, date, onAdd, onRetire, readOnly }: {
+    scope: P1Scope; paramKey: string; params: P1Params | undefined; date: string; onAdd: () => void; onRetire: (v: P1Version<unknown>) => void; readOnly?: boolean;
 }) {
     const [history, setHistory] = useState(false);
     const def = paramDef(scope, paramKey)!;
@@ -209,7 +352,7 @@ function ParamRow({ scope, paramKey, params, date, onAdd, onRetire }: {
                 <span className="w-56 text-muted-foreground" title={def.help}>{def.label}</span>
                 <span className={`flex-1 ${current === null ? 'italic text-muted-foreground' : 'font-medium'}`}>{current === null ? 'non renseigné' : formatValue(scope, paramKey, current)}</span>
                 {versions.length > 0 && <Button size="sm" variant="ghost" className="h-7 gap-1 px-2" onClick={() => setHistory(h => !h)}><History className="h-3 w-3" />{versions.length}</Button>}
-                <Button size="sm" variant="outline" className="h-7 px-2" onClick={onAdd}><Plus className="h-3 w-3" /></Button>
+                {!readOnly && <Button size="sm" variant="outline" className="h-7 px-2" onClick={onAdd} title="Nouvelle version"><Plus className="h-3 w-3" /></Button>}
             </div>
             {history && (
                 <ul className="mt-2 space-y-1 border-l pl-3 text-xs">
@@ -220,7 +363,7 @@ function ParamRow({ scope, paramKey, params, date, onAdd, onRetire }: {
                             <span className="text-muted-foreground"> (saisi le {new Date(v.saisiLe).toLocaleDateString('fr-FR')} par {v.saisiPar})</span>
                             {v.retireLe
                                 ? <span className="no-underline"> — retiré le {new Date(v.retireLe).toLocaleDateString('fr-FR')} par {v.retirePar} : {v.motifRetrait}</span>
-                                : <Button size="sm" variant="link" className="h-auto p-0 pl-2 text-xs" onClick={() => onRetire(v)}>retirer</Button>}
+                                : !readOnly && <Button size="sm" variant="link" className="h-auto p-0 pl-2 text-xs" onClick={() => onRetire(v)}>retirer</Button>}
                         </li>
                     ))}
                 </ul>
@@ -319,9 +462,9 @@ const perimetreText = (f: P1Formule) => f.perimetre.type === 'contrat' ? 'tout l
 const versionText = (v: FormuleVersion) => v.prixFixe ? 'prix fixe (non révisé)'
     : `forme ${v.forme}, ${v.periodicite.replace(/_/g, ' ')}, M0 ${v.dateM0 ?? `inconnu (${v.m0Manquante})`} : ${formatTermes(v.termes) || 'aucun terme'}`;
 
-type Run = (fn: () => Promise<{ success: boolean; error?: string }>, ok: string) => Promise<boolean>;
+type SiteRef = { id: string; code: string; name: string };
 
-function FormulesSection({ contractId, siteId, formules, date, busy, run }: { contractId: string; siteId: string; formules: P1Formule[]; date: string; busy: boolean; run: Run }) {
+function FormulesSection({ contractId, sites, formules, date, busy, run }: { contractId: string; sites: SiteRef[]; formules: P1Formule[]; date: string; busy: boolean; run: Run }) {
     const [creating, setCreating] = useState(false);
     const [editing, setEditing] = useState<P1Formule | null>(null);
     const actives = formules.filter(f => !f.retireLe);
@@ -365,7 +508,7 @@ function FormulesSection({ contractId, siteId, formules, date, busy, run }: { co
                     </div>
                 );
             })}
-            {creating && <NewFormuleDialog onClose={() => setCreating(false)} busy={busy} siteId={siteId}
+            {creating && <NewFormuleDialog onClose={() => setCreating(false)} busy={busy} sites={sites}
                 onSubmit={async f => { if (await run(() => addP1FormuleAction(contractId, f), 'Formule créée')) setCreating(false); }} />}
             {editing && <FormuleVersionDialog formule={editing} date={date} onClose={() => setEditing(null)} busy={busy}
                 onSubmit={async (v, meta) => { if (await run(() => addP1FormuleVersionAction(contractId, editing.id, v, meta), 'Version enregistrée')) setEditing(null); }} />}
@@ -373,15 +516,16 @@ function FormulesSection({ contractId, siteId, formules, date, busy, run }: { co
     );
 }
 
-function NewFormuleDialog({ onClose, onSubmit, busy, siteId }: {
-    onClose: () => void; busy: boolean; siteId: string;
+function NewFormuleDialog({ onClose, onSubmit, busy, sites }: {
+    onClose: () => void; busy: boolean; sites: SiteRef[];
     onSubmit: (f: { nom: string; usage: 'chauffage' | 'ecs'; perimetre: P1Formule['perimetre'] }) => void;
 }) {
     const [nom, setNom] = useState('');
     const [usage, setUsage] = useState<'chauffage' | 'ecs'>('chauffage');
     const [type, setType] = useState<'contrat' | 'energies' | 'site'>('contrat');
     const [energies, setEnergies] = useState<Energie[]>([]);
-    const perimetre: P1Formule['perimetre'] = type === 'contrat' ? { type: 'contrat' } : type === 'energies' ? { type: 'energies', energies } : { type: 'sites', siteIds: [siteId] };
+    const [siteIds, setSiteIds] = useState<string[]>([]);
+    const perimetre: P1Formule['perimetre'] = type === 'contrat' ? { type: 'contrat' } : type === 'energies' ? { type: 'energies', energies } : { type: 'sites', siteIds };
     return (
         <Dialog open onOpenChange={o => !o && onClose()}>
             <DialogContent>
@@ -394,15 +538,20 @@ function NewFormuleDialog({ onClose, onSubmit, busy, siteId }: {
                                 <SelectContent><SelectItem value="chauffage">Chauffage</SelectItem><SelectItem value="ecs">ECS</SelectItem></SelectContent></Select></div>
                         <div className="space-y-1"><Label>Périmètre</Label>
                             <Select value={type} onValueChange={v => setType(v as typeof type)}><SelectTrigger><SelectValue /></SelectTrigger>
-                                <SelectContent><SelectItem value="contrat">Tout le contrat</SelectItem><SelectItem value="energies">Des énergies</SelectItem><SelectItem value="site">Ce site</SelectItem></SelectContent></Select></div>
+                                <SelectContent><SelectItem value="contrat">Tout le contrat</SelectItem><SelectItem value="energies">Des énergies</SelectItem><SelectItem value="site">Des sites</SelectItem></SelectContent></Select></div>
                     </div>
                     {type === 'energies' && (
                         <div className="flex flex-wrap gap-3">{ENERGIES.map(e => (
                             <label key={e} className="flex items-center gap-1 text-sm"><Checkbox checked={energies.includes(e)} onCheckedChange={v => setEnergies(l => v ? [...l, e] : l.filter(x => x !== e))} />{e.replace(/_/g, ' ')}</label>
                         ))}</div>
                     )}
+                    {type === 'site' && (
+                        <div className="flex flex-col gap-1 max-h-48 overflow-y-auto">{sites.map(x => (
+                            <label key={x.id} className="flex items-center gap-2 text-sm"><Checkbox checked={siteIds.includes(x.id)} onCheckedChange={v => setSiteIds(l => v ? [...l, x.id] : l.filter(y => y !== x.id))} /><span className="font-mono text-xs">{x.code}</span> {x.name}</label>
+                        ))}</div>
+                    )}
                 </div>
-                <DialogFooter><Button variant="outline" onClick={onClose}>Annuler</Button><Button disabled={busy || !nom.trim()} onClick={() => onSubmit({ nom, usage, perimetre })}>Créer</Button></DialogFooter>
+                <DialogFooter><Button variant="outline" onClick={onClose}>Annuler</Button><Button disabled={busy || !nom.trim() || (type === 'site' && siteIds.length === 0)} onClick={() => onSubmit({ nom, usage, perimetre })}>Créer</Button></DialogFooter>
             </DialogContent>
         </Dialog>
     );
@@ -468,7 +617,8 @@ function FormuleVersionDialog({ formule, date, onClose, onSubmit, busy }: {
     );
 }
 
-function PrixPreview({ siteId }: { siteId: string }) {
+function PrixPreview({ sites }: { sites: SiteRef[] }) {
+    const [siteId, setSiteId] = useState(sites[0]?.id ?? '');
     const [debut, setDebut] = useState(() => today().slice(0, 7));
     const [usage, setUsage] = useState<'chauffage' | 'ecs'>('chauffage');
     const [preview, setPreview] = useState<PrixP1Preview | null>(null);
@@ -485,6 +635,11 @@ function PrixPreview({ siteId }: { siteId: string }) {
         <div className="space-y-2 pt-2">
             <h4 className="text-sm font-semibold">Prix révisés (aperçu)</h4>
             <div className="flex flex-wrap items-end gap-3">
+                {sites.length > 1 && (
+                    <div className="space-y-1"><Label>Site</Label>
+                        <Select value={siteId} onValueChange={v => { setSiteId(v); setPreview(null); }}><SelectTrigger className="w-56"><SelectValue /></SelectTrigger>
+                            <SelectContent>{sites.map(x => <SelectItem key={x.id} value={x.id}>{x.code} — {x.name}</SelectItem>)}</SelectContent></Select></div>
+                )}
                 <div className="space-y-1"><Label>À partir de</Label><Input type="month" value={debut} onChange={e => setDebut(e.target.value)} className="w-40" /></div>
                 <div className="space-y-1"><Label>Usage</Label>
                     <Select value={usage} onValueChange={v => setUsage(v as 'chauffage' | 'ecs')}><SelectTrigger className="w-36"><SelectValue /></SelectTrigger>

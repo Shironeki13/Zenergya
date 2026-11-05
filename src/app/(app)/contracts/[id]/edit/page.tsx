@@ -585,6 +585,7 @@ export default function EditContractPage() {
                                             <FormItem><FormControl><Input placeholder="Formule P3" {...field} /></FormControl></FormItem>
                                         )} />
                                     </div>
+                                    <p className="text-xs text-muted-foreground">Valeurs P1 initiales : reprises dans le paramétrage P1 daté des sites à la validation du contrat, puis modifiables sur la fiche du site (chaque changement y est daté).</p>
                                     <div className="grid grid-cols-2 gap-4">
                                         <FormField control={form.control} name={`sites.${index}.heatingReferenceDju`} render={({ field }) => (
                                             <FormItem><FormLabel>DJU Référence</FormLabel>

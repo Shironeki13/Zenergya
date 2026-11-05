@@ -68,6 +68,49 @@ export async function getP1Site(siteId: string, date = toDay(new Date())!): Prom
 
 type ResteInput = Parameters<typeof resteAFaire>[0];
 
+/** Paramétrage P1 d'un compteur (écran du compteur). */
+export type P1MeterView = { meter: { id: string; code: string; name: string; unit?: string; siteId: string; siteName: string }; doc: P1MeterDoc | null };
+
+export async function getP1Meter(meterId: string): Promise<P1MeterView> {
+    const m = await adminDb.collection('meters').doc(String(meterId)).get();
+    if (!m.exists) throw new Error('Compteur introuvable.');
+    const siteId = String(m.get('siteId') ?? '');
+    const [doc, site] = await Promise.all([coll().doc(P1_DOC_ID.meter(m.id)).get(), siteId ? adminDb.collection('sites').doc(siteId).get() : null]);
+    return {
+        meter: { id: m.id, code: String(m.get('code') ?? m.id), name: String(m.get('name') ?? ''), unit: m.get('unit') ?? undefined, siteId, siteName: String(site?.get('name') ?? '') },
+        doc: doc.exists ? doc.data() as P1MeterDoc : null,
+    };
+}
+
+/** Paramétrage P1 d'un contrat (écran du contrat) : paramètres, barèmes, formules ; ses sites (périmètres, aperçu). */
+export type P1ContractView = { contract: { id: string; code: string }; doc: P1ContractDoc | null; sites: { id: string; code: string; name: string }[] };
+
+export async function getP1Contract(contractId: string): Promise<P1ContractView> {
+    const c = await adminDb.collection('contracts').doc(String(contractId)).get();
+    if (!c.exists) throw new Error('Contrat introuvable.');
+    const siteIds: string[] = Array.isArray(c.get('siteIds')) ? c.get('siteIds') : [];
+    const [doc, sites] = await Promise.all([
+        coll().doc(P1_DOC_ID.contract(c.id)).get(),
+        siteIds.length ? adminDb.getAll(...siteIds.map(id => adminDb.collection('sites').doc(id))) : Promise.resolve([]),
+    ]);
+    return {
+        contract: { id: c.id, code: String(c.get('contractNumber') ?? c.id) },
+        doc: doc.exists ? doc.data() as P1ContractDoc : null,
+        sites: sites.filter(s => s.exists).map(s => ({ id: s.id, code: String(s.get('code') ?? s.id), name: String(s.get('name') ?? '') })),
+    };
+}
+
+/** Réel P1 du moteur d'un site (import « Réel P1 du moteur »), du plus récent au plus ancien. */
+export type P1ReelLigne = { id: string; mois: string; usage: string | null; montantHt: number; importedAt?: string; fileName?: string };
+
+export async function getP1Reel(siteId: string): Promise<P1ReelLigne[]> {
+    const snap = await adminDb.collection('p1Reel').where('siteId', '==', String(siteId)).get();
+    return snap.docs.map(d => ({
+        id: d.id, mois: String(d.get('mois')), usage: d.get('usage') ?? null, montantHt: Number(d.get('montantHt')),
+        importedAt: d.get('importedAt') ?? undefined, fileName: d.get('fileName') ?? undefined,
+    })).sort((a, b) => b.mois.localeCompare(a.mois) || String(a.usage).localeCompare(String(b.usage)));
+}
+
 /** Énergies d'un site : celles de ses compteurs (paramétrage P1) à une date. */
 function siteEnergies(meterDocs: (P1MeterDoc | null)[], date: string): Energie[] {
     return [...new Set(meterDocs.map(d => valeurAu<Energie>(d?.params, 'energie', date)).filter((e): e is Energie => !!e))];

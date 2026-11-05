@@ -16,6 +16,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { repriseP1ContratAction } from "@/lib/p1/actions";
 import { useData } from '@/context/data-context';
 import type { Contract } from '@/lib/types';
 import { updateContract } from '@/services/firestore';
@@ -41,6 +42,17 @@ export default function ContractsValidationPage() {
         title: "Statut mis à jour",
         description: `Le contrat a été ${validationStatus === 'validated' ? 'validé' : 'refusé'}.`
       });
+      // Valeurs P1 saisies à la création (DJU, station, NB…) : reprises dans le paramétrage P1 daté des sites.
+      if (validationStatus === 'validated') {
+        const r = await repriseP1ContratAction(contractId);
+        if (!r.success) toast({ title: "Paramétrage P1 non repris", description: r.error, variant: "destructive" });
+        else if (r.data.reprises.length || r.data.signalements.length) {
+          toast({
+            title: `Paramétrage P1 : ${r.data.reprises.length} valeur(s) reprise(s)`,
+            description: r.data.signalements.length ? `À compléter sur le site : ${r.data.signalements.join(' ')}` : 'Visible dans le paramétrage P1 des sites.',
+          });
+        }
+      }
       await reloadData();
     } catch (error) {
       toast({

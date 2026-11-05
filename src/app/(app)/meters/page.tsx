@@ -9,11 +9,12 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
-import { PlusCircle, Edit, Trash2, BookOpen, Loader2, Search, Download } from 'lucide-react';
+import { PlusCircle, Edit, Trash2, BookOpen, Loader2, Search, Download, Gauge } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { createMeter, updateMeter, deleteMeter } from '@/services/firestore';
 import type { Meter } from '@/lib/types';
 import { MeterReadingsDialog } from '@/components/meter-readings-dialog';
+import { P1CompteurDialog } from '@/components/p1/p1-parametrage-panel';
 import { Badge } from '@/components/ui/badge';
 import { useData } from '@/context/data-context';
 import { downloadCSV } from '@/lib/utils';
@@ -219,6 +220,11 @@ export default function MetersPage() {
                         </Button>
                       }
                     />
+                    <P1CompteurDialog meterId={meter.id} trigger={
+                      <Button variant="ghost" size="icon" className="h-8 w-8" title="Paramétrage P1 (usage, énergie, QE…)">
+                        <Gauge className="h-4 w-4" />
+                      </Button>
+                    } />
                     <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleOpenDialog(meter)}>
                       <Edit className="h-4 w-4" />
                     </Button>

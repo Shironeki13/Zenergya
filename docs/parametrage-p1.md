@@ -259,4 +259,22 @@ révision P1 ».
 Lots suivants : qualification des achats, postes de facturation, prix de l'énergie PFI, P2 par exercice, périmètre
 d'intéressement ; acomptes P1 ; puis export vers BigQuery (tables `p_*`) et relecture des résultats du moteur.
 
+## 8. Où se paramètre le P1
+
+Le stockage reste unique (`p1Parametrage`, versions datées écrites par le serveur) ; chaque paramètre se saisit sur
+l'élément qui le porte :
+
+| Élément | Écran | Import | Paramètres |
+|---|---|---|---|
+| Site | Fiche du site › Paramétrage P1 | Sites (colonnes « P1 · … ») | type de marché, prix de base, station, acomptes, TWIMM ; postes : formule de NC, cible NB, DJU |
+| Compteur | Compteurs › bouton P1 (aussi depuis la fiche du site) | Compteurs | usage, énergie, QE, qECS, TWIMM |
+| Contrat | Fiche du contrat › Paramétrage P1 du contrat | Contrats | régime CP, gestion, répartitions, intéressement, barèmes, formules de révision |
+
+- La fiche du site montre en lecture les paramètres de ses compteurs et de son contrat (calculabilité, reste à faire),
+  l'aperçu des prix révisés et le **réel P1 du moteur** importé (base de la régularisation).
+- **Anciennes saisies** : les valeurs P1 des assistants de création de contrat (DJU, station, NB ; depuis un PDF,
+  DJU et NB du contrat mono-site) deviennent des versions d'origine **à la validation du contrat** (motif « création
+  du contrat CTN-… ») ; un paramètre qui a déjà une version n'est pas touché. Le coefficient de conversion n'est plus
+  saisi sur la prestation : c'est le QE du compteur. `npm run p1:reprise` reprend une fois l'existant (même logique,
+  `src/services/p1-reprise-admin.ts`).
 

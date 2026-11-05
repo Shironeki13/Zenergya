@@ -54,6 +54,31 @@ const P1_PARAM_OPTIONS = Object.entries(P1_PARAMS)
         { value: `site.bareme:${m}`, label: `Barème de partage ${m} (site)`, aliases: [`bareme ${m} site`] },
     ]));
 
+/**
+ * Paramétrage P1 dans les imports Sites, Compteurs et Contrats : une colonne « P1 · … » par paramètre (clé
+ * `p1:<portée>:<paramètre>`), plus la date d'effet et le motif communs à la ligne. Une valeur crée une version datée
+ * du paramétrage P1 (jamais d'écrasement) ; vide : inchangé.
+ */
+export const P1_COLONNE = (scope: string, key: string) => `p1:${scope}:${key}`;
+const P1_EXEMPLES: Record<string, string> = {
+    typeMarche: 'MCI', prixBase: '92,5', stationMeteo: 'LYON-BRON', usage: 'entrant', energie: 'gaz', qe: '0,01142',
+    cibleNb: '850', cibleNbUnite: 'MWh', djuReference: '2150', formuleNc: 'CPT-00012 + CPT-00013',
+};
+const p1Colonnes = (scope: 'site' | 'poste' | 'meter' | 'contract', extra: [string, string][] = []): ImportField[] => [
+    ...Object.entries(P1_PARAMS[scope]).filter(([, d]) => d.kind !== 'interessement').map(([key, d]) => ({ key, label: d.label, help: d.help, unit: d.unit })),
+    ...extra.map(([key, label]) => ({ key, label, help: P1_BAREME_AIDE, unit: undefined })),
+].map(({ key, label, help, unit }) => ({
+    key: P1_COLONNE(scope, key), label: `P1 · ${scope === 'poste' ? 'Poste · ' : ''}${label}`, type: 'text' as FieldType,
+    ...(P1_EXEMPLES[key] && { example: P1_EXEMPLES[key] }),
+    help: [unit, help].filter(Boolean).join(' — ') || undefined,
+    ...(scope === 'site' && key === 'stationMeteo' && { aliases: ['station meteo'] }),
+}));
+const P1_BAREME_AIDE = 'Tranches : « économie 0-10 % 50 % ; économie 10-100 % 70 % ; dépassement 0-100 % 30 % ».';
+const P1_COMMUNES: ImportField[] = [
+    { key: 'p1DateEffet', label: 'P1 · Date d\'effet', type: 'date', help: 'Date d\'effet des valeurs P1 de la ligne. Vide : valeur d\'origine si le paramètre n\'a encore aucune valeur ; sinon, obligatoire pour en changer.' },
+    { key: 'p1Motif', label: 'P1 · Motif', type: 'text', example: 'avenant 2', help: 'Motif du changement (historique P1). Vide : « import ».' },
+];
+
 /** Référence dans un autre système (ancienne codification, TWIMM…) : 2e clé de correspondance, après le code Zenergya. */
 const externalRef = (what: string): ImportField => ({
     key: 'externalRef', label: 'Réf. externe', type: 'text', aliases: ['ref externe', 'reference externe', 'externalRef'],
@@ -112,7 +137,8 @@ export const IMPORT_ENTITIES: Record<ImportEntityKey, ImportEntity> = {
         key: 'contracts',
         label: 'Contrats',
         description: 'Contrats des clients : période, statut, activités, montants de base, facturation, reconduction, Chorus Pro. '
-            + 'Les sites se rattachent aux contrats dans l\'import des sites (colonne Contrat). Un contrat importé est validé (trace : validé par import).',
+            + 'Les sites se rattachent aux contrats dans l\'import des sites (colonne Contrat). Un contrat importé est validé (trace : validé par import). '
+            + "Colonnes « P1 · … » : paramétrage P1 daté (une valeur = une version à la date d'effet de la ligne, jamais d'écrasement). Paramètres P1 communs à tous les sites du contrat : régime, gestion, répartition des acomptes, barèmes.",
         matching: 'N° de contrat (CTN-…), sinon réf. externe : le contrat existant est mis à jour ; sinon il est créé (n° CTN attribué). '
             + 'Sans ces clés, un contrat du même client, de même libellé et de période qui se recouvre est un doublon probable : ligne refusée.',
         fields: [
@@ -169,12 +195,14 @@ export const IMPORT_ENTITIES: Record<ImportEntityKey, ImportEntity> = {
             { key: 'chorusLegalCommitment', label: "N° d'engagement juridique", type: 'text', help: 'Engagement valable sur toute la durée du contrat (ajouté s\'il est nouveau).' },
             { key: 'einvoicingAddress', label: 'Adresse de facturation électronique', type: 'text', help: 'Propre au contrat (prioritaire sur celle du client).' },
             { key: 'paymentTerm', label: 'Conditions de paiement', type: 'text', refList: 'paymentTerms', example: '', aliases: ['reglement'], help: 'Propres au contrat, prioritaires sur celles du client (code, onglet Listes).' },
+            ...p1Colonnes('contract', MARCHES_BAREME.map(m => [`bareme:${m}`, `Barème de partage ${m}`])),
+            ...P1_COMMUNES,
         ],
     },
     sites: {
         key: 'sites',
         label: 'Sites',
-        description: "Sites des clients, rattachés le cas échéant à un contrat.",
+        description: "Sites des clients, rattachés le cas échéant à un contrat. Colonnes « P1 · … » : paramétrage P1 daté (une valeur = une version à la date d'effet de la ligne, jamais d'écrasement). Paramètres P1 du site (type de marché, prix de base, station…) et de son poste de consommation (formule de NC, cible NB, DJU).",
         matching: 'Code site (SIT-…), sinon réf. externe, sinon client + n° de site : le site existant est mis à jour ; sinon un site est créé (code SIT attribué). '
             + 'Sans aucune de ces clés, un site du même client à la même adresse est un doublon probable : ligne refusée.',
         fields: [
@@ -190,7 +218,10 @@ export const IMPORT_ENTITIES: Record<ImportEntityKey, ImportEntity> = {
             { key: 'address', label: 'Adresse', type: 'text', required: 'create', example: '5 rue des Lilas' },
             { key: 'postalCode', label: 'Code postal', type: 'postalCode', example: '69003', aliases: ['cp'] },
             { key: 'city', label: 'Ville', type: 'text', example: 'Lyon', aliases: ['commune'] },
-            { key: 'heatingWeatherStation', label: 'Station météo', type: 'text', example: 'LYON-BRON' },
+            ...p1Colonnes('site'),
+            { key: 'p1Poste', label: 'P1 · Poste', type: 'text', example: 'Chauffage', help: 'Poste de consommation des colonnes « P1 · Poste · … » (créé s\'il n\'existe pas). Vide : « Chauffage ». Un site à plusieurs postes : une ligne par poste.' },
+            ...p1Colonnes('poste'),
+            ...P1_COMMUNES,
         ],
     },
     services: {
@@ -278,7 +309,7 @@ export const IMPORT_ENTITIES: Record<ImportEntityKey, ImportEntity> = {
     meters: {
         key: 'meters',
         label: 'Compteurs',
-        description: 'Compteurs des sites.',
+        description: "Compteurs des sites. Colonnes « P1 · … » : paramétrage P1 daté (une valeur = une version à la date d'effet de la ligne, jamais d'écrasement). Paramètres P1 du compteur : usage, énergie, QE, qECS.",
         matching: 'Code compteur (CPT-…), sinon réf. externe, sinon site + PDL/PCE : le compteur existant est mis à jour ; sinon il est créé (code CPT attribué). '
             + 'Sans aucune de ces clés, un compteur du même site et de même nom est un doublon probable : ligne refusée.',
         fields: [
@@ -294,6 +325,8 @@ export const IMPORT_ENTITIES: Record<ImportEntityKey, ImportEntity> = {
                 options: [{ value: 'on', label: 'En service', aliases: ['actif', 'on'] }, { value: 'off', label: 'Hors service', aliases: ['inactif', 'off'] }],
                 help: 'Vide à la création : En service.',
             },
+            ...p1Colonnes('meter'),
+            ...P1_COMMUNES,
         ],
     },
     readings: {
@@ -321,8 +354,9 @@ export const IMPORT_ENTITIES: Record<ImportEntityKey, ImportEntity> = {
     },
     p1: {
         key: 'p1',
-        label: 'Paramétrage P1 (versions datées)',
-        description: 'Une ligne = une version d\'un paramètre P1 (site, poste de consommation, compteur, contrat) : valeur, date d\'effet, motif. '
+        label: 'Paramétrage P1 détaillé (avancé)',
+        description: 'Le paramétrage P1 courant se fait dans les imports Sites, Compteurs et Contrats (colonnes « P1 · … »). Cet import sert aux cas avancés : '
+            + 'plusieurs versions d\'un même paramètre dans un fichier, sites à plusieurs postes, reprise d\'historique. Une ligne = une version d\'un paramètre P1 (site, poste de consommation, compteur, contrat) : valeur, date d\'effet, motif. '
             + 'Une version ne remplace jamais la précédente : elle vaut à partir de sa date d\'effet.',
         matching: 'Élément + paramètre (+ poste) + date d\'effet : une version identique déjà saisie est inchangée ; une valeur différente à la même date est refusée '
             + '(retirez d\'abord la version à l\'écran, avec son motif). Un poste absent est créé.',
@@ -369,8 +403,8 @@ export const IMPORT_ENTITIES: Record<ImportEntityKey, ImportEntity> = {
     p1reel: {
         key: 'p1reel',
         label: 'Réel P1 du moteur',
-        description: 'Montant P1 HT réel de chaque site et de chaque mois, calculé par le moteur P1 (table p1_facturation_site : total P1 du mois). '
-            + 'Sert à régulariser les acomptes P1.',
+        description: 'Résultat du moteur P1 (pas un paramétrage) : montant P1 HT réellement dû par site et par mois (table p1_facturation_site). '
+            + 'La régularisation le compare aux acomptes P1 facturés (Facturation › P1). Visible sur la fiche du site (Paramétrage P1 › Réel P1 du moteur).',
         matching: 'Site + mois + usage : un montant identique est inchangé ; un autre montant remplace le précédent, sauf si le mois est déjà régularisé (refusé).',
         fields: [
             { key: 'site', label: 'Site', type: 'text', required: 'create', example: 'SIT-00021', aliases: ['code_site'], help: 'Code du site (SIT-…) ou réf. externe.' },

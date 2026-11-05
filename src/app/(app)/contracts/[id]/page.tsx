@@ -64,6 +64,7 @@ import type { Activity, Contract, Invoice, Site, RevisionInfo, Amendment, Termin
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useData } from "@/context/data-context";
 import { ResponsableFacturation } from "@/components/pilotage/responsable-facturation";
+import { P1ContratPanel } from "@/components/p1/p1-parametrage-panel";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import { AmendmentDialog } from "@/components/contracts/events/AmendmentDialog";
@@ -695,6 +696,8 @@ export default function ContractDetailPage() {
       <ContractEInvoicingCard contract={contract} client={client} onSaved={reloadData} />
 
       {/* Tabs */}
+      {activities.some(a => contract.activityIds?.includes(a.id) && a.type === "P1") && <P1ContratPanel contractId={contract.id} />}
+
       <Tabs defaultValue="amendments" className="w-full">
         <TabsList>
           <TabsTrigger value="amendments">Avenants ({amendments.length})</TabsTrigger>

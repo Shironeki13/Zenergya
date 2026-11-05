@@ -8,7 +8,7 @@ import { scheduleOf, termeOf } from '@/lib/billing/contract-billing';
 import { parseAnchor } from '@/lib/billing/revision';
 import { periodsOverlap, toDay } from '@/lib/services/site-amounts';
 import { recomputeSiteAmounts } from '@/services/site-amounts-admin';
-import { ENERGIES, P1_DOC_ID, paramDef, validateParam, type NewVersion, type P1ContractDoc, type P1MeterDoc, type P1Scope, type P1SiteDoc } from '@/lib/p1/stockage';
+import { ENERGIES, P1_DOC_ID, paramDef, validateParam, valeurAu, type NewVersion, type P1ContractDoc, type P1MeterDoc, type P1Scope, type P1SiteDoc } from '@/lib/p1/stockage';
 import { addP1Formule, addP1FormuleVersion, addP1Poste, addP1Version, loadSeries, type P1Target } from '@/services/p1-admin';
 import { parseTermes, validateFormule, type FormuleVersion, type PerimetreFormule } from '@/lib/p1/formules';
 import type { Energie } from '@/lib/p1/parametrage';
@@ -43,7 +43,11 @@ export type PlanItem = {
     data?: Record<string, unknown>; // champs à écrire (résolus)
     /** Effets sur les autres éléments, appliqués à l'écriture (retrait d'un ancien contrat, report d'un renommage). */
     effects?: Effects;
+    /** Versions du paramétrage P1 à ajouter (colonnes « P1 · … » des imports Sites, Compteurs, Contrats). */
+    p1?: P1Ecriture[];
 };
+
+type P1Ecriture = { scope: P1Scope; key: string; poste?: { id?: string; designation: string }; version: NewVersion; label: string };
 
 type Effects = {
     removeFromContract?: string;
@@ -132,7 +136,7 @@ async function loadContext(entity: ImportEntityKey): Promise<Context> {
         need(['contracts', 'sites', 'services', 'readings', 'p1', 'p1formules']) ? all<Contract>('contracts') : empty,
         need(['sites', 'services', 'meters', 'readings', 'p1', 'p1formules', 'p1reel']) ? all<Site>('sites') : empty,
         need(['contacts']) ? all<Contact>('contacts') : empty,
-        need(['meters', 'services', 'readings', 'p1']) ? all<Meter>('meters') : empty,
+        need(['meters', 'services', 'readings', 'p1', 'sites']) ? all<Meter>('meters') : empty,
         need(['contracts']) ? adminDb.collection('invoices').select('contractId').get().then(s => s.docs.map(d => String(d.get('contractId') ?? ''))) : empty,
         need(['contracts']) ? all<User>('users') : empty,
     ]);
@@ -141,8 +145,8 @@ async function loadContext(entity: ImportEntityKey): Promise<Context> {
         invoicedContracts: new Set(invoices as string[]), readings: new Map(), lockedReadings: new Map(), lastBilledReading: new Map(),
         indexCodes: entity === 'p1formules' ? (await loadSeries()).codes : [],
         p1Reel: new Map(), p1Regularises: new Set(),
-        p1Docs: entity === 'p1' || entity === 'p1formules' ? new Map((await adminDb.collection('p1Parametrage').get()).docs.map(d => [d.id, d.data() as P1SiteDoc])) : new Map(),
-        stationCodes: entity === 'p1' ? (await adminDb.collection('weatherStations').select('code').get()).docs.map(d => String(d.get('code') ?? '')) : [],
+        p1Docs: ['p1', 'p1formules', 'sites', 'meters', 'contracts'].includes(entity) ? new Map((await adminDb.collection('p1Parametrage').get()).docs.map(d => [d.id, d.data() as P1SiteDoc])) : new Map(),
+        stationCodes: entity === 'p1' || entity === 'sites' ? (await adminDb.collection('weatherStations').select('code').get()).docs.map(d => String(d.get('code') ?? '')) : [],
     } as Context;
 }
 
@@ -531,7 +535,7 @@ function planSite(ctx: Context, row: ParsedRow, seen: Map<string, number>): Plan
     }
 
     const clientId = client?.id ?? existing?.clientId;
-    const data = plain(v, ['externalRef', 'name', 'siteNumber', 'address', 'postalCode', 'city', 'heatingWeatherStation']);
+    const data = plain(v, ['externalRef', 'name', 'siteNumber', 'address', 'postalCode', 'city']);
     if (client) Object.assign(data, { clientId: client.id, clientName: client.name });
 
     // Contrat : désigné par n° ou réf. externe, et du même client. Seul endroit où se fait le lien contrat ↔ site.
@@ -1103,8 +1107,86 @@ export async function planImport(entity: ImportEntityKey, table: unknown[][]): P
             case 'p1reel': return planP1Reel(ctx, row, seen);
         }
     });
+    if (entity === 'sites' || entity === 'meters' || entity === 'contracts') {
+        items.forEach((item, k) => planColonnesP1(ctx, entity, parsed.rows[k], item));
+    }
     for (const i of items) counts[i.action]++;
     return { entity, fileErrors: [], ignoredColumns: parsed.ignoredColumns, missingColumns: parsed.missingColumns, items, counts };
+}
+
+// --- Colonnes P1 des imports Sites, Compteurs, Contrats ---
+
+const P1_SCOPES: Record<'sites' | 'meters' | 'contracts', P1Scope[]> = { sites: ['site', 'poste'], meters: ['meter'], contracts: ['contract'] };
+const DOC_P1: Record<'sites' | 'meters' | 'contracts', (id: string) => string> = { sites: P1_DOC_ID.site, meters: P1_DOC_ID.meter, contracts: P1_DOC_ID.contract };
+
+/**
+ * Valeurs P1 d'une ligne : une version par colonne renseignée, à la date d'effet de la ligne. Sans date d'effet : valeur
+ * d'origine si le paramètre n'a pas encore de valeur ; identique à la valeur en vigueur : rien ; différente : refusée
+ * (une date d'effet est nécessaire pour la changer). Même date d'effet qu'une version existante : identique, rien ;
+ * différente, refusée (retrait à l'écran). Une erreur P1 refuse toute la ligne.
+ */
+function planColonnesP1(ctx: Context, entity: 'sites' | 'meters' | 'contracts', row: ParsedRow, item: PlanItem): void {
+    if (item.action === 'error') return;
+    const v = row.values;
+    const remplies = P1_SCOPES[entity].flatMap(scope => Object.keys(v)
+        .filter(k => k.startsWith(`p1:${scope}:`) && v[k] !== null && String(v[k]).trim() !== '')
+        .map(k => ({ scope, key: k.slice(`p1:${scope}:`.length), raw: String(v[k]).trim() })));
+    if (!remplies.length) return;
+    const dateEffet = v.p1DateEffet ? isoDay(Date.parse(String(v.p1DateEffet))) : null;
+    const motif = v.p1Motif ? String(v.p1Motif).trim() : 'import';
+    const doc = item.targetId ? ctx.p1Docs.get(DOC_P1[entity](item.targetId)) : undefined;
+    const designation = v.p1Poste ? String(v.p1Poste).trim() : 'Chauffage';
+    const poste = Object.values((doc as P1SiteDoc | undefined)?.postes ?? {}).find(p => !p.retireLe && norm(p.designation) === norm(designation));
+    const meterCodes = entity === 'sites' && item.targetId ? ctx.meters.filter(m => m.siteId === item.targetId).map(m => m.code) : [];
+    const today = isoDay(Date.now());
+    const ecritures: P1Ecriture[] = [];
+    const messages: string[] = [];
+    for (const { scope, key, raw } of remplies) {
+        const def = paramDef(scope, key);
+        if (!def) continue;
+        const nom = `P1${scope === 'poste' ? ` · ${designation}` : ''} · ${def.label}`;
+        const checked = validateParam(scope, key, raw, { stationCodes: ctx.stationCodes, siteMeterCodes: meterCodes });
+        if ('error' in checked) { messages.push(`${nom} : ${checked.error}`); continue; }
+        const versions = ((scope === 'poste' ? poste?.params[key] : doc?.params[key]) ?? []).filter(x => !x.retireLe);
+        if (dateEffet) {
+            const meme = versions.find(x => (x.dateEffet ?? null) === dateEffet);
+            if (meme) {
+                if (!sameValue(meme.valeur, checked.value)) messages.push(`${nom} : une autre valeur est déjà en vigueur au ${dateEffet.split('-').reverse().join('/')} (retirez-la à l'écran pour la remplacer).`);
+                continue;
+            }
+        } else if (versions.length) {
+            const enVigueur = valeurAu(scope === 'poste' ? poste?.params : doc?.params, key, today);
+            if (!sameValue(enVigueur, checked.value)) messages.push(`${nom} : valeur différente de celle en vigueur ; indiquez « P1 · Date d'effet » pour la changer.`);
+            continue;
+        }
+        ecritures.push({
+            scope, key, ...(scope === 'poste' && { poste: { id: poste?.id, designation } }),
+            version: { valeur: checked.value, dateEffet, motif, document: null },
+            label: `${nom} = ${raw}${dateEffet ? ` au ${dateEffet.split('-').reverse().join('/')}` : ' (origine)'}`,
+        });
+    }
+    if (messages.length) {
+        Object.assign(item, { action: 'error', messages: [...item.messages, ...messages] });
+        return;
+    }
+    if (!ecritures.length) return;
+    item.p1 = ecritures;
+    const nouveauPoste = ecritures.some(e => e.scope === 'poste') && !poste;
+    item.warnings.push(`Paramétrage P1 : ${ecritures.map(e => e.label).join(' ; ')}${nouveauPoste ? ` (poste « ${designation} » créé)` : ''}.`);
+    if (item.action === 'unchanged') Object.assign(item, { action: 'update', data: {} });
+}
+
+/** Écrit les versions P1 d'une ligne importée (après l'écriture de l'élément). */
+async function ecrireP1(id: string, ecritures: P1Ecriture[], by: string): Promise<void> {
+    let posteId: string | undefined;
+    for (const e of ecritures) {
+        if (e.scope === 'poste') {
+            posteId ??= e.poste!.id ?? await addP1Poste(id, e.poste!.designation, by);
+            await addP1Version({ scope: 'poste', id, posteId }, e.key, e.version, by);
+        } else {
+            await addP1Version({ scope: e.scope, id }, e.key, e.version, by);
+        }
+    }
 }
 
 // --- Écriture ---
@@ -1227,7 +1309,10 @@ export async function applyImport(entity: ImportEntityKey, table: unknown[][], m
     for (const item of updates) {
         const ref = coll.doc(item.targetId!);
         const stamp = entity === 'meters' ? { lastModified: now, modifiedBy: meta.by ?? 'import' } : {};
-        writes.push(b => b.update(ref, toStored(entity, { ...item.data, ...stamp }) as FirebaseFirestore.UpdateData<FirebaseFirestore.DocumentData>));
+        // Ligne qui ne change que le paramétrage P1 : rien à écrire sur l'élément lui-même.
+        if (Object.keys(item.data ?? {}).length || Object.keys(stamp).length) {
+            writes.push(b => b.update(ref, toStored(entity, { ...item.data, ...stamp }) as FirebaseFirestore.UpdateData<FirebaseFirestore.DocumentData>));
+        }
         results.push({ line: item.line, action: 'update', id: ref.id, ...warn(item) });
         if (entity === 'sites') contractLink(item, ref.id);
         if (item.effects?.renameClient) followUps.push(renameClientWrites(item.effects.renameClient));
@@ -1242,6 +1327,12 @@ export async function applyImport(entity: ImportEntityKey, table: unknown[][], m
         const batch = adminDb.batch();
         writes.slice(i, i + 400).forEach(w => w(batch));
         await batch.commit();
+    }
+
+    // Paramétrage P1 (colonnes « P1 · … ») : versions ajoutées une fois l'élément écrit (identifiant d'une création).
+    const ids = new Map(results.map(r => [r.line, r.id]));
+    for (const item of [...creates, ...updates].filter(i => i.p1?.length)) {
+        await ecrireP1(ids.get(item.line)!, item.p1!, meta.by ?? 'import');
     }
 
     // Montants des sites dont les prestations (ou le contrat) ont changé.

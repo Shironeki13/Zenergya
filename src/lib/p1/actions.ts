@@ -5,8 +5,10 @@ import type { NewVersion } from '@/lib/p1/stockage';
 import type { FormuleVersion, PerimetreFormule } from '@/lib/p1/formules';
 import {
     addP1Formule, addP1FormuleVersion, addP1Poste, addP1Version, getP1Site, previewPrixP1, retireP1Formule, retireP1FormuleVersion,
-    retireP1Poste, retireP1Version, type P1SiteView, type P1Target, type PrixP1Preview,
+    retireP1Poste, retireP1Version, getP1Contract, getP1Meter, getP1Reel,
+    type P1ContractView, type P1MeterView, type P1ReelLigne, type P1SiteView, type P1Target, type PrixP1Preview,
 } from '@/services/p1-admin';
+import { repriseP1Contrat } from '@/services/p1-reprise-admin';
 
 /** Paramétrage P1 : lecture et écritures par version, au nom de l'utilisateur connecté (tracé sur chaque version). */
 
@@ -51,4 +53,21 @@ export async function retireP1FormuleAction(contractId: string, formuleId: strin
 
 export async function previewPrixP1Action(siteId: string, usage: 'chauffage' | 'ecs', debut: string): Promise<Result<PrixP1Preview>> {
     try { await requireUser(); return { success: true, data: JSON.parse(JSON.stringify(await previewPrixP1(siteId, usage, debut))) }; } catch (e) { return fail(e); }
+}
+
+export async function getP1MeterAction(meterId: string): Promise<Result<P1MeterView>> {
+    try { await requireUser(); return { success: true, data: await getP1Meter(meterId) }; } catch (e) { return fail(e); }
+}
+
+export async function getP1ContractAction(contractId: string): Promise<Result<P1ContractView>> {
+    try { await requireUser(); return { success: true, data: await getP1Contract(contractId) }; } catch (e) { return fail(e); }
+}
+
+export async function getP1ReelAction(siteId: string): Promise<Result<P1ReelLigne[]>> {
+    try { await requireUser(); return { success: true, data: await getP1Reel(siteId) }; } catch (e) { return fail(e); }
+}
+
+/** À la validation d'un contrat : les valeurs P1 saisies à sa création deviennent des versions d'origine. */
+export async function repriseP1ContratAction(contractId: string): Promise<Result<{ reprises: string[]; signalements: string[] }>> {
+    try { const user = await requireUser(); return { success: true, data: await repriseP1Contrat(contractId, user.email) }; } catch (e) { return fail(e); }
 }
