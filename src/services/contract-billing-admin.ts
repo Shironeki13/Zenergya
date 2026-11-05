@@ -7,9 +7,9 @@ import {
 } from '@/lib/billing/contract-billing';
 import { toDay } from '@/lib/services/site-amounts';
 import {
-    getActivities, getClient, getContract, getInvoicesByContract, resolveIssuingCompany, resolvePaymentTerm,
+    getActivities, getClient, getContract, getIndexValues, getIndices, getInvoicesByContract, resolveIssuingCompany, resolvePaymentTerm,
 } from '@/services/firestore-admin';
-import type { Activity, Client, Company, Contract, Invoice, VatRate } from '@/lib/types';
+import type { Activity, Client, Company, Contract, Invoice, RevisionRule, VatRate } from '@/lib/types';
 
 /**
  * Facture d'un contrat à une date : toutes les échéances facturables de ses prestations (et montants de sites sans
@@ -33,20 +33,23 @@ export async function loadBillingInput(contract: Contract): Promise<BillingInput
     const siteIds = contract.siteIds ?? [];
     const chunks: string[][] = [];
     for (let i = 0; i < siteIds.length; i += 30) chunks.push(siteIds.slice(i, i + 30));
-    const [sites, services, activities, vatRates, schedules, terms] = await Promise.all([
+    const [sites, services, activities, vatRates, schedules, terms, revisionRules, indices, indexValues] = await Promise.all([
         Promise.all(chunks.map(c => adminDb.collection('sites').where(FieldPath.documentId(), 'in', c).get())).then(s => s.flatMap(x => docs<BillingSite>(x))),
         adminDb.collection('services').where('contractId', '==', contract.id).get().then(s => docs<BillingService>(s)),
         getActivities(),
         adminDb.collection('vatRates').get().then(s => docs<VatRate>(s)),
         adminDb.collection('schedules').get().then(s => docs<NamedRef>(s)),
         adminDb.collection('terms').get().then(s => docs<NamedRef>(s)),
+        adminDb.collection('revisionRules').get().then(s => docs<RevisionRule>(s)),
+        getIndices(),
+        getIndexValues(),
     ]);
     return {
         contract: {
             id: contract.id, siteIds, activityIds: contract.activityIds ?? [], invoicingType: contract.invoicingType,
             startDate: contract.startDate, endDate: contract.endDate, billingSchedule: contract.billingSchedule,
         },
-        sites, services, activities: activities as Activity[], vatRates, schedules, terms,
+        sites, services, activities: activities as Activity[], vatRates, schedules, terms, revisionRules, indices, indexValues,
     };
 }
 

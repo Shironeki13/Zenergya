@@ -102,6 +102,9 @@ l'énergie (facturation : voir `facturation.md`).
   la période sort de celle du contrat.
 - Changement de prix daté : terminer la prestation la veille et en créer une nouvelle à partir de la date d'effet ;
   l'historique des prix est conservé.
+- Révision : « Règle de révision » (code), « Indices de base » (`CODE=valeur@AAAA-MM`, séparés par « ; », un par
+  indice de la règle), « Révision tous les (mois) », « Date anniversaire de révision » (JJ/MM), « Révisé dès le
+  début ». Voir `facturation.md`.
 - Fin vide à la création : fin du contrat. Un site déplacé vers un contrat sans prestation n'a plus de montant (les
   prestations de l'ancien contrat ne se facturent pas sur le nouveau).
 - **Bascule** (une fois, après le déploiement) : `npm run montants:prestations` affiche site par site l'écart entre

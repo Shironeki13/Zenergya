@@ -1359,6 +1359,10 @@ const RevisionRulesSection = () => {
     const [description, setDescription] = useState('');
     const [type, setType] = useState<RevisionRuleType>('PONDERE_SIMPLE');
     const [nbMonths, setNbMonths] = useState(3);
+    const [lagMonths, setLagMonths] = useState(1);
+    const [decimals, setDecimals] = useState(4);
+    const [paramA, setParamA] = useState<string>('');
+    const [paramB, setParamB] = useState<string>('');
     const [ruleIndices, setRuleIndices] = useState<{ indexId: string; coefficient: number }[]>([]);
     const [activityId, setActivityId] = useState<string>('');
     const [p1Type, setP1Type] = useState<string>('');
@@ -1369,6 +1373,10 @@ const RevisionRulesSection = () => {
         setDescription('');
         setType('PONDERE_SIMPLE');
         setNbMonths(3);
+        setLagMonths(1);
+        setDecimals(4);
+        setParamA('');
+        setParamB('');
         setRuleIndices([]);
         setActivityId('');
         setP1Type('');
@@ -1383,6 +1391,10 @@ const RevisionRulesSection = () => {
             setDescription(item.description || '');
             setType(item.type);
             setNbMonths(item.nbMonths);
+            setLagMonths(item.lagMonths ?? 1);
+            setDecimals(item.decimals ?? 4);
+            setParamA(item.paramA !== undefined ? String(item.paramA) : '');
+            setParamB(item.paramB !== undefined ? String(item.paramB) : '');
             setRuleIndices(item.indices || []);
             setActivityId(item.activityId || '');
             setP1Type(item.p1Type || '');
@@ -1423,7 +1435,10 @@ const RevisionRulesSection = () => {
 
         setIsSubmitting(true);
         try {
-            const data = { name, code, description, type, nbMonths, indices: validIndices, activityId, p1Type };
+            const data = {
+                name, code, description, type, nbMonths, lagMonths, decimals, indices: validIndices, activityId, p1Type,
+                ...(type === 'PONDERE_A_B' && { paramA: Number(paramA) || 0, paramB: Number(paramB) || 0 }),
+            };
             if (editingItem) {
                 await updateRevisionRule(editingItem.id, data);
                 toast({ title: "Succès", description: "Règle de révision mise à jour." });
@@ -1584,6 +1599,32 @@ const RevisionRulesSection = () => {
                                         </Select>
                                     </div>
                                 )}
+                            </div>
+
+                            <div className="grid grid-cols-4 gap-3">
+                                <div className="space-y-2 col-span-4 md:col-span-1">
+                                    <Label>Type</Label>
+                                    <Select value={type} onValueChange={v => setType(v as RevisionRuleType)}>
+                                        <SelectTrigger><SelectValue /></SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="PONDERE_SIMPLE">Σ coeff × In/I0</SelectItem>
+                                            <SelectItem value="PONDERE_A_B">a + b × Σ coeff × In/I0</SelectItem>
+                                            <SelectItem value="MONO_MOIS">Un indice : In/I0</SelectItem>
+                                            <SelectItem value="FIXE">Prix ferme (1)</SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+                                <div className="space-y-2"><Label htmlFor="ruleNb">Moyenne (mois)</Label><Input id="ruleNb" type="number" min={1} max={12} value={nbMonths} onChange={e => setNbMonths(Math.max(1, Number(e.target.value) || 1))} /></div>
+                                <div className="space-y-2"><Label htmlFor="ruleLag">Décalage (mois)</Label><Input id="ruleLag" type="number" min={0} max={12} value={lagMonths} onChange={e => setLagMonths(Math.max(0, Number(e.target.value) || 0))} /></div>
+                                <div className="space-y-2"><Label htmlFor="ruleDec">Décimales</Label><Input id="ruleDec" type="number" min={2} max={6} value={decimals} onChange={e => setDecimals(Math.min(6, Math.max(2, Number(e.target.value) || 4)))} /></div>
+                                {type === 'PONDERE_A_B' && (<>
+                                    <div className="space-y-2"><Label htmlFor="ruleA">a (part fixe)</Label><Input id="ruleA" type="number" step="0.01" value={paramA} onChange={e => setParamA(e.target.value)} placeholder="0,15" /></div>
+                                    <div className="space-y-2"><Label htmlFor="ruleB">b</Label><Input id="ruleB" type="number" step="0.01" value={paramB} onChange={e => setParamB(e.target.value)} placeholder="0,85" /></div>
+                                </>)}
+                                <p className="col-span-4 text-xs text-muted-foreground">
+                                    À chaque révision, chaque indice vaut la moyenne des {nbMonths} mois qui finissent {lagMonths} mois avant le mois de la révision
+                                    {lagMonths === 1 ? ' (dernier mois avant la révision)' : ''} ; coefficient arrondi à {decimals} décimales.
+                                </p>
                             </div>
 
                             <div className="space-y-2">

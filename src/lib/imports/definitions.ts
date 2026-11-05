@@ -9,7 +9,7 @@
 export type FieldType = 'text' | 'number' | 'boolean' | 'enum' | 'siret' | 'email' | 'postalCode' | 'date';
 
 /** Listes de référence, lues dans le paramétrage (onglet « Listes » du modèle XLSX). */
-export type RefList = 'companies' | 'agencies' | 'sectors' | 'typologies' | 'meterTypes' | 'activities' | 'markets' | 'schedules' | 'terms' | 'vatRates' | 'paymentTerms';
+export type RefList = 'companies' | 'agencies' | 'sectors' | 'typologies' | 'meterTypes' | 'activities' | 'markets' | 'schedules' | 'terms' | 'vatRates' | 'paymentTerms' | 'revisionRules';
 
 export type ImportField = {
     key: string;
@@ -211,6 +211,14 @@ export const IMPORT_ENTITIES: Record<ImportEntityKey, ImportEntity> = {
                     { value: 'Biomasse', label: 'Biomasse', aliases: ['bois'] },
                 ],
             },
+            { key: 'revisionRule', label: 'Règle de révision', type: 'text', refList: 'revisionRules', example: '', help: 'Code de la règle (onglet Listes). Vide : prix ferme.' },
+            {
+                key: 'baseIndices', label: 'Indices de base', type: 'text', example: '', aliases: ['i0'],
+                help: 'Valeurs de base (I0) : CODE=valeur@AAAA-MM, séparés par « ; » (ex. ICHT-E=121,4@2024-01; FSD2=135,2@2024-01). Un par indice de la règle.',
+            },
+            { key: 'revisionMonths', label: 'Révision tous les (mois)', type: 'number', example: '12', help: '12, 6, 3 ou 1 (vide : 12).' },
+            { key: 'revisionAnchor', label: 'Date anniversaire de révision', type: 'text', example: '01/01', help: 'JJ/MM (vide : jour du début du contrat).' },
+            { key: 'revisionFromStart', label: 'Révisé dès le début', type: 'boolean', help: 'oui : révisé dès le début du contrat ; non (vide) : prix de base jusqu\'à la première révision.' },
             { key: 'unitPrice', label: 'Prix unitaire de base', type: 'number', allowZero: true, help: 'P1 : prix de l\'unité (révisable).' },
             { key: 'unit', label: 'Unité du prix', type: 'text', example: '€/MWh' },
             { key: 'isActive', label: 'Active', type: 'boolean', example: 'oui', help: 'Vide à la création : oui. Non : jamais facturée.' },

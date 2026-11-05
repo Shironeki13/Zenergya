@@ -5,11 +5,12 @@ import { IMPORT_ENTITIES, type ImportEntityKey } from '@/lib/imports/definitions
 import { parseTable, type CellValue, type ParsedRow } from '@/lib/imports/engine';
 import { chorusNeedsValidator } from '@/lib/einvoicing';
 import { scheduleOf, termeOf } from '@/lib/billing/contract-billing';
+import { parseAnchor } from '@/lib/billing/revision';
 import { periodsOverlap, toDay } from '@/lib/services/site-amounts';
 import { recomputeSiteAmounts } from '@/services/site-amounts-admin';
 import type {
     Activity, Agency, ChorusFramework, Client, Company, Contact, Contract, ContractChorusSettings, Market, Meter, MeterReading,
-    MeterType, PaymentTerm, Schedule, Sector, Service, Site, Term, Typology, VatRate,
+    Index, MeterType, PaymentTerm, RevisionRule, Schedule, Sector, Service, ServiceInitialIndexValue, Site, Term, Typology, VatRate,
 } from '@/lib/types';
 
 /**
@@ -70,6 +71,7 @@ type Context = {
     companies: Doc<Company>[]; agencies: Doc<Agency>[]; sectors: Doc<Sector>[]; typologies: Doc<Typology>[];
     meterTypes: Doc<MeterType>[]; activities: Doc<Activity>[]; markets: Doc<Market>[]; schedules: Doc<Schedule>[];
     terms: Doc<Term>[]; vatRates: Doc<VatRate>[]; services: Doc<Service>[]; paymentTerms: Doc<PaymentTerm>[];
+    revisionRules: Doc<RevisionRule>[]; indices: Doc<Index>[];
     clients: Doc<Client>[]; contracts: Doc<Contract>[]; sites: Doc<Site>[]; contacts: Doc<Contact>[]; meters: Doc<Meter>[];
     /** Contrats ayant au moins une facture. */
     invoicedContracts: Set<string>;
@@ -94,7 +96,7 @@ export const readingMillis = dateMillis;
 async function loadContext(entity: ImportEntityKey): Promise<Context> {
     const need = (e: ImportEntityKey[]) => e.includes(entity);
     const empty = Promise.resolve([]);
-    const [companies, agencies, sectors, typologies, meterTypes, activities, markets, schedules, terms, vatRates, services, paymentTerms, clients, contracts, sites, contacts, meters, invoices] = await Promise.all([
+    const [companies, agencies, sectors, typologies, meterTypes, activities, markets, schedules, terms, vatRates, services, paymentTerms, revisionRules, indices, clients, contracts, sites, contacts, meters, invoices] = await Promise.all([
         need(['clients', 'contracts']) ? all<Company>('companies') : empty,
         need(['clients']) ? all<Agency>('agencies') : empty,
         need(['clients']) ? all<Sector>('sectors') : empty,
@@ -107,6 +109,8 @@ async function loadContext(entity: ImportEntityKey): Promise<Context> {
         need(['services']) ? all<VatRate>('vatRates') : empty,
         need(['services']) ? all<Service>('services') : empty,
         need(['clients', 'contracts']) ? all<PaymentTerm>('paymentTerms') : empty,
+        need(['services']) ? all<RevisionRule>('revisionRules') : empty,
+        need(['services']) ? all<Index>('indices') : empty,
         need(['clients', 'contracts', 'sites', 'contacts']) ? all<Client>('clients') : empty,
         need(['contracts', 'sites', 'services', 'readings']) ? all<Contract>('contracts') : empty,
         need(['sites', 'services', 'meters', 'readings']) ? all<Site>('sites') : empty,
@@ -115,7 +119,7 @@ async function loadContext(entity: ImportEntityKey): Promise<Context> {
         need(['contracts']) ? adminDb.collection('invoices').select('contractId').get().then(s => s.docs.map(d => String(d.get('contractId') ?? ''))) : empty,
     ]);
     return {
-        companies, agencies, sectors, typologies, meterTypes, activities, markets, schedules, terms, vatRates, services, paymentTerms, clients, contracts, sites, contacts, meters,
+        companies, agencies, sectors, typologies, meterTypes, activities, markets, schedules, terms, vatRates, services, paymentTerms, revisionRules, indices, clients, contracts, sites, contacts, meters,
         invoicedContracts: new Set(invoices as string[]), readings: new Map(), lockedReadings: new Map(),
     } as Context;
 }
@@ -656,6 +660,57 @@ function planReading(ctx: Context, row: ParsedRow, seen: Map<string, number>, pe
     return item;
 }
 
+/** Indices de base « CODE=valeur@AAAA-MM; … » lus ; erreurs explicites. */
+export function parseBaseIndices(text: string, indices: { id: string; code: string }[]): { values: ServiceInitialIndexValue[]; errors: string[] } {
+    const values: ServiceInitialIndexValue[] = [];
+    const errors: string[] = [];
+    for (const part of text.split(';').map(p => p.trim()).filter(Boolean)) {
+        const m = /^([^=]+)=\s*([\d\s.,]+)\s*@\s*(\d{4})-(\d{2})$/.exec(part);
+        const index = m ? indices.find(i => norm(i.code) === norm(m[1])) : undefined;
+        const value = m ? Number(m[2].replace(/\s/g, '').replace(',', '.')) : NaN;
+        if (!m) errors.push(`Indice de base « ${part} » : CODE=valeur@AAAA-MM attendu.`);
+        else if (!index) errors.push(`Indice « ${m[1].trim()} » inconnu.`);
+        else if (!(value > 0)) errors.push(`Indice ${index.code} : valeur de base positive attendue.`);
+        else if (Number(m[4]) < 1 || Number(m[4]) > 12) errors.push(`Indice ${index.code} : mois ${m[3]}-${m[4]} invalide.`);
+        else if (values.some(v => v.indexId === index.id)) errors.push(`Indice ${index.code} en double.`);
+        else values.push({ indexId: index.id, value, period: `${m[3]}-${m[4]}` });
+    }
+    return { values, errors };
+}
+
+/** Révision de la prestation : règle, indices de base (un par indice de la règle), calendrier. */
+function planRevision(ctx: Context, v: Record<string, CellValue>, data: Record<string, unknown>, existing: Doc<Service> | undefined, item: PlanItem) {
+    let rule = existing?.revisionRuleId ? ctx.revisionRules.find(r => r.id === existing.revisionRuleId) : undefined;
+    if (v.revisionRule) {
+        rule = ctx.revisionRules.find(r => norm(r.code) === norm(v.revisionRule) || norm(r.name) === norm(v.revisionRule));
+        if (!rule) { item.messages.push(`Règle de révision « ${v.revisionRule} » inconnue.`); return; }
+        data.revisionRuleId = rule.id;
+    }
+    let base = existing?.initialIndexValues ?? [];
+    if (v.baseIndices) {
+        const parsed = parseBaseIndices(String(v.baseIndices), ctx.indices);
+        item.messages.push(...parsed.errors);
+        base = parsed.values;
+        data.initialIndexValues = parsed.values;
+    }
+    if (v.revisionMonths !== null && v.revisionMonths !== undefined) {
+        if (![1, 3, 6, 12].includes(Number(v.revisionMonths))) item.messages.push('Révision tous les : 1, 3, 6 ou 12 mois.');
+        else data.revisionMonths = Number(v.revisionMonths);
+    }
+    if (v.revisionAnchor) {
+        const anchor = parseAnchor(String(v.revisionAnchor));
+        if (!anchor) item.messages.push(`Date anniversaire de révision « ${v.revisionAnchor} » invalide (JJ/MM).`);
+        else data.revisionAnchor = anchor;
+    }
+    if (v.revisionFromStart !== null && v.revisionFromStart !== undefined) data.revisionFromStart = v.revisionFromStart;
+    if (rule && rule.type !== 'FIXE' && (v.revisionRule || v.baseIndices)) {
+        const missing = rule.indices.filter(ri => !base.some(b => b.indexId === ri.indexId))
+            .map(ri => ctx.indices.find(i => i.id === ri.indexId)?.code ?? ri.indexId);
+        if (missing.length) item.messages.push(`Indices de base manquants pour la règle ${rule.code} : ${missing.join(', ')}.`);
+    }
+    if (!rule && (v.baseIndices || v.revisionMonths || v.revisionAnchor)) item.warnings.push('Calendrier ou indices de révision sans règle de révision : prix ferme.');
+}
+
 function planService(ctx: Context, row: ParsedRow, pending: Map<string, { line: number; startDate: string; endDate: string }[]>): PlanItem {
     const v = row.values;
     const item: PlanItem = { line: row.line, action: 'error', label: `${v.site ?? ''} ${v.activity ?? ''}`.trim(), messages: [...row.errors], warnings: [] };
@@ -715,6 +770,7 @@ function planService(ctx: Context, row: ParsedRow, pending: Map<string, { line: 
         else if (activity.type !== 'P1') item.messages.push('Un compteur ne se rattache qu\'à une prestation P1.');
         else data.meterId = meter.id;
     }
+    planRevision(ctx, v, data, existing, item);
     if (!existing && v.price === null) item.messages.push('Montant annuel HT obligatoire pour créer une prestation.');
     if (!existing && !startDay) item.messages.push('Date de début obligatoire pour créer une prestation.');
 
