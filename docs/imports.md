@@ -172,11 +172,12 @@ est inchangée ; une autre à la même date est refusée.
 
 La lecture des fichiers Excel exige une version corrigée de la librairie SheetJS (`xlsx` ≥ 0.19.3) : la 0.18.5
 publiée sur npm a des failles à la lecture de fichiers fournis par l'utilisateur (CVE-2023-30533,
-CVE-2024-22363). **Installée : 0.20.3**, distribuée par SheetJS sur son CDN (plus publiée sur npm) ; `package.json`
-pointe sur `https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz` et `package-lock.json` en fixe l'empreinte. npm 12
-refuse par défaut les paquets téléchargés par URL : pour changer de version,
-`npm install --save --allow-remote=all https://cdn.sheetjs.com/xlsx-<version>/xlsx-<version>.tgz` (`npm ci` installe
-depuis le lockfile). Avec une version non corrigée, le dépôt d'un fichier Excel est refusé (importer en CSV).
+CVE-2024-22363). **Installée : 0.20.3**, distribuée par SheetJS sur son CDN (plus publiée sur npm), **conservée
+dans le dépôt** : `vendor/xlsx-0.20.3.tgz`, dépendance `file:vendor/xlsx-0.20.3.tgz` (empreinte fixée par
+`package-lock.json`). Ainsi `npm ci` fonctionne partout, y compris avec npm 12 qui refuse par défaut les paquets
+téléchargés par URL, et l'image Docker copie `vendor/` avant `npm ci`. Changer de version : télécharger
+`https://cdn.sheetjs.com/xlsx-<version>/xlsx-<version>.tgz` dans `vendor/`, `npm install --save file:vendor/xlsx-<version>.tgz`,
+supprimer l'ancienne archive. Avec une version non corrigée, le dépôt d'un fichier Excel est refusé (importer en CSV).
 
 Dates : une cellule date est lue en `AAAA-MM-JJ` (avec l'heure si elle est saisie), quel que soit son format
 d'affichage (le format par défaut d'Excel, `m/j/aa`, serait ambigu) ; les autres cellules sont lues telles

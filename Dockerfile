@@ -3,7 +3,9 @@
 
 FROM mirror.gcr.io/library/node:20-bookworm-slim AS deps
 WORKDIR /app
+# vendor/ : paquets hors npm (SheetJS, distribué par son éditeur), installés depuis le dépôt.
 COPY package.json package-lock.json ./
+COPY vendor ./vendor
 RUN npm ci --no-audit --no-fund
 
 FROM mirror.gcr.io/library/node:20-bookworm-slim AS builder
