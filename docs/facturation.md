@@ -73,6 +73,16 @@ Facturation → Régularisation P1.
   Les autres types P1 (eau froide, autre) ne se facturent pas en acompte. Le montant annuel de la prestation est ignoré, la révision des prestations ne
   s'applique pas (le prix est déjà révisé). Le détail mensuel est conservé sur la ligne. Facturation globale non
   prise en charge pour les acomptes.
+- **ECS au relevé** (prestation P1 de type ECS, « Au relevé ») : facturée **chaque mois, à terme échu**, sur les
+  relevés des compteurs ECS (le compteur de la prestation, sinon les compteurs d'usage « ECS » du paramétrage P1,
+  au m³). Volume du mois = index du dernier relevé du mois − index du dernier relevé facturé (à défaut, dernier
+  relevé antérieur au mois), compteur par compteur. Prix au m³ : paramétrage P1 (prix de base ECS du site ×
+  formule P1 ECS) ou prestation (prix unitaire × sa formule de révision), × coefficient de prix facultatif. La
+  ligne indique compteurs, relevés (dates, index, relevé estimé), volume et prix. Bloquant : relevé du mois
+  manquant, index en baisse (changement ou remise à zéro du compteur), compteur pas au m³, périodicité non
+  mensuelle, terme à échoir. Un relevé facturé est **figé** (import, API) : une correction passe par un avoir.
+  Pas de régularisation de consommation pour l'ECS au relevé (déjà au réel) : sur ces sites, la régularisation ne
+  porte que sur le chauffage (réel par usage « chauffage » ; un réel total est refusé).
 - **Réel du moteur** : import « Réel P1 du moteur » (site, mois, montant P1 HT, usage), collection `p1Reel` écrite
   par le serveur. Usage vide : total du mois (`p1_facturation_site`) ; « chauffage » ou « ECS » : réel par usage
   (`p1_facturation_chauffage`, `p1_facturation_ecs`). Un mois déjà régularisé ne change plus.

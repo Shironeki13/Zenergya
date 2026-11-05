@@ -14,7 +14,7 @@ import { P1_DOC_ID, formuleAu, valeurAu, type P1ContractDoc, type P1MeterDoc, ty
 import { prixRevise, type SerieValues } from '@/lib/p1/formules';
 import type { Energie, TermeNc } from '@/lib/p1/parametrage';
 import { loadSeries } from '@/services/p1-admin';
-import type { P1AcompteSource } from '@/lib/billing/contract-billing';
+import type { P1AcompteSource, P1ReleveSource, ReleveReading } from '@/lib/billing/contract-billing';
 
 /**
  * Facture d'un contrat à une date : toutes les échéances facturables de ses prestations (et montants de sites sans
@@ -49,13 +49,42 @@ export async function loadBillingInput(contract: Contract): Promise<BillingInput
         getIndices(),
         getIndexValues(),
     ]);
-    const p1 = services.some(s => s.p1Mode === 'acompte') ? await p1Source(contract.id, siteIds) : undefined;
+    const p1 = services.some(s => s.p1Mode === 'acompte' || s.p1Mode === 'releve') ? await p1Source(contract.id, siteIds) : undefined;
+    const releves = services.some(s => s.p1Mode === 'releve') ? await releveSource(siteIds) : undefined;
     return {
         contract: {
             id: contract.id, siteIds, activityIds: contract.activityIds ?? [], invoicingType: contract.invoicingType,
             startDate: contract.startDate, endDate: contract.endDate, billingSchedule: contract.billingSchedule,
         },
-        sites, services, activities: activities as Activity[], vatRates, schedules, terms, revisionRules, indices, indexValues, ...(p1 && { p1 }),
+        sites, services, activities: activities as Activity[], vatRates, schedules, terms, revisionRules, indices, indexValues, ...(p1 && { p1 }), ...(releves && { releves }),
+    };
+}
+
+/**
+ * ECS au relevé : compteurs d'une prestation (son compteur, sinon les compteurs du site d'usage « ECS » dans le
+ * paramétrage P1 au mois facturé) et tous leurs relevés (date au jour, heure de Paris).
+ */
+export async function releveSource(siteIds: string[]): Promise<P1ReleveSource> {
+    const chunk = <T>(l: T[]) => Array.from({ length: Math.ceil(l.length / 30) }, (_, i) => l.slice(i * 30, i * 30 + 30));
+    const meters = (await Promise.all(chunk(siteIds).map(c => adminDb.collection('meters').where('siteId', 'in', c).get()))).flatMap(s => s.docs);
+    const p1Docs = meters.length ? new Map((await adminDb.getAll(...meters.map(m => adminDb.collection('p1Parametrage').doc(P1_DOC_ID.meter(m.id))))).filter(d => d.exists).map(d => [d.id, d.data() as P1MeterDoc])) : new Map();
+    const readings = (await Promise.all(chunk(meters.map(m => m.id)).map(c => adminDb.collection('meterReadings').where('meterId', 'in', c).get()))).flatMap(s => s.docs);
+    const byMeter = new Map<string, ReleveReading[]>();
+    for (const r of readings) {
+        const meterId = String(r.get('meterId'));
+        if (!byMeter.has(meterId)) byMeter.set(meterId, []);
+        byMeter.get(meterId)!.push({ id: r.id, date: toDay(r.get('date'))!, value: Number(r.get('value')), type: r.get('type') ?? undefined });
+    }
+    const view = (m: FirebaseFirestore.QueryDocumentSnapshot) => ({ id: m.id, code: String(m.get('code') ?? m.id), unit: m.get('unit') as string | undefined, readings: byMeter.get(m.id) ?? [] });
+    return {
+        meters: (siteId, serviceMeterId, mois) => {
+            if (serviceMeterId) {
+                const m = meters.find(x => x.id === serviceMeterId);
+                return m ? [view(m)] : 'compteur de la prestation introuvable';
+            }
+            const ecs = meters.filter(m => m.get('siteId') === siteId && valeurAu<string>(p1Docs.get(P1_DOC_ID.meter(m.id))?.params, 'usage', `${mois}-01`) === 'ecs');
+            return ecs.length ? ecs.map(view) : 'aucun compteur ECS : choisissez le compteur de la prestation, ou l\'usage « ECS » des compteurs dans le paramétrage P1';
+        },
     };
 }
 
