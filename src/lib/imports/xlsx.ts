@@ -68,9 +68,16 @@ export async function xlsxTemplate(entity: ImportEntity, lists: Partial<Record<R
 export async function readXlsxTable(buffer: ArrayBuffer): Promise<string[][]> {
     const XLSX = await import('xlsx');
     if (!versionAtLeast(XLSX.version, MIN_SAFE_XLSX_VERSION)) throw new UnsafeXlsxError(XLSX.version);
-    const wb = XLSX.read(buffer, { type: 'array', cellFormula: false, cellHTML: false, cellStyles: false });
+    const wb = XLSX.read(buffer, { type: 'array', cellFormula: false, cellHTML: false, cellStyles: false, cellDates: true, UTC: true });
     const name = wb.SheetNames.includes('Données') ? 'Données' : wb.SheetNames[0];
     if (!name) return [];
-    // Dates Excel restituées en AAAA-MM-JJ HH:MM (sinon au format américain m/j/aa, ambigu).
-    return XLSX.utils.sheet_to_json<string[]>(wb.Sheets[name], { header: 1, raw: false, defval: '', blankrows: false, dateNF: 'yyyy-mm-dd hh:mm' });
+    const sheet = wb.Sheets[name];
+    // Cellules date : restituées en AAAA-MM-JJ (HH:MM si une heure est saisie), quel que soit leur format d'affichage
+    // (le format date par défaut d'Excel s'affiche m/j/aa, ambigu). Les autres cellules : texte affiché.
+    for (const [ref, cell] of Object.entries(sheet)) {
+        if (ref.startsWith('!') || !cell || cell.t !== 'd' || !(cell.v instanceof Date)) continue;
+        const iso = cell.v.toISOString();
+        cell.w = iso.slice(11, 16) === '00:00' ? iso.slice(0, 10) : `${iso.slice(0, 10)} ${iso.slice(11, 16)}`;
+    }
+    return XLSX.utils.sheet_to_json<string[]>(sheet, { header: 1, raw: false, defval: '', blankrows: false });
 }

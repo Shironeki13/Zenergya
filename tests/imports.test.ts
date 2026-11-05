@@ -146,3 +146,20 @@ test('montants du site calculés à partir des prestations en vigueur', async ()
     assert.equal(toDay('2025-06-30T22:00:00.000Z'), '2025-07-01');
     assert.equal(toDay(new Date('2025-12-31T23:30:00Z')), '2026-01-01');
 });
+
+test('lecture Excel : dates en AAAA-MM-JJ quel que soit leur format d\'affichage, textes conservés, modèles relus', async () => {
+    const XLSX = await import('xlsx');
+    const { readXlsxTable, xlsxTemplate } = await import('../src/lib/imports/xlsx');
+    const ws = XLSX.utils.aoa_to_sheet([['Compteur *', 'Date du relevé *', 'Index *', 'Commentaire'],
+        ['CPT-00001', 46053, 1234.5, '01000'], ['CPT-00002', 46053.4375, 7, ''], ['CPT-00003', 46053, 8, '']]);
+    // Format date par défaut d'Excel (m/j/aa), format français avec heure, format français.
+    ws.B2.z = 'm/d/yy'; ws.B3.z = 'dd/mm/yyyy hh:mm'; ws.B4.z = 'dd/mm/yyyy';
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Données');
+    const table = await readXlsxTable(XLSX.write(wb, { bookType: 'xlsx', type: 'array' }));
+    assert.deepEqual(table.slice(1).map(r => [r[1], r[3]]), [['2026-01-31', '01000'], ['2026-01-31 10:30', ''], ['2026-01-31', '']]);
+    assert.deepEqual(parseTable(IMPORT_ENTITIES.readings, table).rows.flatMap(r => r.errors), []);
+    for (const entity of IMPORT_ENTITY_LIST) {
+        assert.deepEqual(parseTable(entity, await readXlsxTable(await xlsxTemplate(entity, {}))).rows.flatMap(r => r.errors), [], entity.key);
+    }
+});
