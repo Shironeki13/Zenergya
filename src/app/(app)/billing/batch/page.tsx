@@ -9,7 +9,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Loader2, CalendarIcon } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useData } from '@/context/data-context';
-import { contractInvoiceLines, frDay, nextBillingPeriod, vatTotals, type BillingPeriod } from '@/lib/billing/contract-billing';
+import { dueInvoiceLines, frDay, vatTotals } from '@/lib/billing/contract-billing';
 import { toDay } from '@/lib/services/site-amounts';
 
 const eur = (n: number) => n.toLocaleString('fr-FR', { style: 'currency', currency: 'EUR' });
@@ -26,60 +26,52 @@ type BillableItem = {
     contractId: string;
     contractNumber: string;
     clientName: string;
+    /** Première et dernière dates des échéances facturées. */
     periodStart: string;
     periodEnd: string;
-    billingSchedule: string;
+    echeances: number;
     subtotal: number;
     tax: number;
-    /** Facture impossible (TVA manquante, échéancier inconnu…) : ligne non sélectionnable. */
+    warnings: string[];
+    /** Facture impossible (TVA manquante, périodicité inconnue…) : ligne non sélectionnable. */
     error?: string;
 };
 
 export default function BatchBillingPage() {
-    const { contracts, invoices, sites, services, activities, vatRates, isLoading } = useData();
+    const { contracts, invoices, sites, services, activities, vatRates, schedules, terms, isLoading } = useData();
     const { toast } = useToast();
     const [isGenerating, setIsGenerating] = useState(false);
     const [selectedItems, setSelectedItems] = useState<string[]>([]);
     const [dueDate, setDueDate] = useState<Date>(new Date());
 
-    // Même calcul que le serveur (lib/billing/contract-billing) : périodes, prorata au jour près, TVA par ligne.
+    // Même calcul que le serveur (lib/billing/contract-billing) : échéances des prestations facturables à la date
+    // choisie (terme et périodicité de chacune), prorata au jour près, TVA par ligne. Une facture par contrat.
     const billableItems = useMemo(() => {
         if (isLoading) return [];
         const until = toDay(dueDate)!;
         const results: BillableItem[] = [];
         for (const contract of contracts.filter(c => c.status === 'Actif')) {
-            const base = { contractId: contract.id, contractNumber: contract.contractNumber ?? contract.id, clientName: contract.clientName };
-            let last = invoices
-                .filter(inv => inv.contractId === contract.id && inv.status !== 'cancelled' && !inv.cancelledByCreditNoteId && inv.periodEndDate)
-                .map(inv => toDay(inv.periodEndDate)!)
-                .sort()
-                .pop() ?? null;
-            for (let guard = 0; guard < 120; guard++) {
-                let period: BillingPeriod | null;
-                try {
-                    period = nextBillingPeriod(contract, last);
-                } catch (e) {
-                    results.push({ ...base, id: `${contract.id}-erreur`, periodStart: '', periodEnd: '', billingSchedule: contract.billingSchedule ?? '', subtotal: 0, tax: 0, error: (e as Error).message });
-                    break;
-                }
-                if (!period || period.start > until) break;
-                const { lines, errors } = contractInvoiceLines({
-                    contract: { id: contract.id, siteIds: contract.siteIds ?? [], activityIds: contract.activityIds ?? [], invoicingType: contract.invoicingType },
-                    sites, services, activities, vatRates,
-                }, period);
-                const totals = vatTotals(lines);
-                results.push({
-                    ...base, id: `${contract.id}-${period.start}`, periodStart: period.start, periodEnd: period.end, billingSchedule: period.label,
-                    subtotal: totals.subtotal, tax: totals.tax,
-                    ...(errors.length ? { error: errors.join(' ') } : lines.length === 0 ? { error: 'Aucune prestation facturable sur cette période.' } : {}),
-                });
-                // Une période en erreur bloque les suivantes (elles se facturent dans l'ordre).
-                if (errors.length) break;
-                last = period.end;
-            }
+            const input = {
+                contract: {
+                    id: contract.id, siteIds: contract.siteIds ?? [], activityIds: contract.activityIds ?? [], invoicingType: contract.invoicingType,
+                    startDate: contract.startDate, endDate: contract.endDate, billingSchedule: contract.billingSchedule,
+                },
+                sites, services, activities, vatRates, schedules, terms,
+            };
+            const due = dueInvoiceLines(input, invoices.filter(inv => inv.contractId === contract.id), until);
+            if (!due.errors.length && due.lines.length === 0) continue;
+            const totals = vatTotals(due.lines);
+            const starts = due.echeances.map(e => e.start).sort();
+            const ends = due.echeances.map(e => e.end).sort();
+            results.push({
+                id: contract.id, contractId: contract.id, contractNumber: contract.contractNumber ?? contract.id, clientName: contract.clientName,
+                periodStart: starts[0] ?? '', periodEnd: ends[ends.length - 1] ?? '', echeances: due.echeances.length,
+                subtotal: totals.subtotal, tax: totals.tax, warnings: due.warnings,
+                ...(due.errors.length && { error: due.errors.join(' ') }),
+            });
         }
         return results;
-    }, [isLoading, contracts, invoices, sites, services, activities, vatRates, dueDate]);
+    }, [isLoading, contracts, invoices, sites, services, activities, vatRates, schedules, terms, dueDate]);
     const selectable = billableItems.filter(item => !item.error);
 
     const handleSelect = (id: string, checked: boolean) => {
@@ -107,18 +99,12 @@ export default function BatchBillingPage() {
 
         const itemsToGenerate = selectable.filter(item => selectedItems.includes(item.id));
         const invoiceDate = toDay(new Date())!;
-        // Les périodes d'un même contrat se facturent l'une après l'autre, dans l'ordre (chacune vérifie qu'elle
-        // est bien la suivante) ; les contrats sont traités en parallèle.
-        const byContract = new Map<string, BillableItem[]>();
-        for (const item of itemsToGenerate) byContract.set(item.contractId, [...(byContract.get(item.contractId) ?? []), item]);
-        const promises = [...byContract.values()].map(async (items) => {
-            const outcomes: { success: boolean; error?: string }[] = [];
-            for (const item of items.sort((a, b) => a.periodStart.localeCompare(b.periodStart))) {
-                const r = await generateInvoice({ contractId: item.contractId, invoiceDate, isProforma: false, periodStartDate: item.periodStart });
-                outcomes.push(r.success ? r : { success: false, error: `${item.contractNumber} : ${r.error}` });
-                if (!r.success) break;
-            }
-            return outcomes;
+        const until = toDay(dueDate)!;
+        // Une facture par contrat, avec toutes ses échéances facturables à la date choisie. Le serveur refuse une
+        // facture si le contrat a été facturé entre-temps (pas de double facturation).
+        const promises = itemsToGenerate.map(async (item) => {
+            const r = await generateInvoice({ contractId: item.contractId, invoiceDate, isProforma: false, until });
+            return [r.success ? r : { success: false, error: `${item.contractNumber} : ${r.error}` }];
         });
 
         try {
@@ -162,12 +148,12 @@ export default function BatchBillingPage() {
                     <div>
                         <CardTitle>Facturation Groupée</CardTitle>
                         <CardDescription>
-                            Générez toutes les factures arrivées à échéance jusqu'à la date sélectionnée.
+                            Une facture par contrat, avec toutes les échéances facturables à la date choisie (terme et périodicité de chaque prestation).
                         </CardDescription>
                     </div>
                     <div className="flex items-center gap-4">
                         <div className="grid gap-2">
-                            <Label>Date d'échéance</Label>
+                            <Label>Facturer jusqu'au</Label>
                             <Popover>
                                 <PopoverTrigger asChild>
                                     <Button
@@ -211,8 +197,8 @@ export default function BatchBillingPage() {
                             </TableHead>
                             <TableHead>Client</TableHead>
                             <TableHead>Contrat</TableHead>
-                            <TableHead>Période</TableHead>
-                            <TableHead>Échéancier</TableHead>
+                            <TableHead>Échéances</TableHead>
+                            <TableHead>Périodes</TableHead>
                             <TableHead className="text-right">Montant HT</TableHead>
                             <TableHead className="text-right">TVA</TableHead>
                         </TableRow>
@@ -237,10 +223,13 @@ export default function BatchBillingPage() {
                                     <TableCell className="font-medium">{item.clientName}</TableCell>
                                     <TableCell className="font-mono text-xs">{item.contractNumber}</TableCell>
                                     {item.error ? (
-                                        <TableCell colSpan={4} className="text-sm text-destructive">{item.periodStart ? `${frDay(item.periodStart)} - ${frDay(item.periodEnd)} : ` : ''}{item.error}</TableCell>
+                                        <TableCell colSpan={4} className="text-sm text-destructive">{item.error}</TableCell>
                                     ) : (<>
+                                        <TableCell>
+                                            {item.echeances}
+                                            {item.warnings.length > 0 && <span className="block text-xs text-amber-600" title={item.warnings.join('\n')}>{item.warnings.length} avertissement(s)</span>}
+                                        </TableCell>
                                         <TableCell>{frDay(item.periodStart)} - {frDay(item.periodEnd)}</TableCell>
-                                        <TableCell>{item.billingSchedule}</TableCell>
                                         <TableCell className="text-right">{eur(item.subtotal)}</TableCell>
                                         <TableCell className="text-right">{eur(item.tax)}</TableCell>
                                     </>)}

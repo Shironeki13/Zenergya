@@ -86,7 +86,8 @@ activités, marché, échéancier, type de compteur (code ou libellé).
 ### Prestations et montants facturés
 
 Une prestation = **site × activité** sur le contrat du site, avec un **montant annuel HT**, une période de validité,
-la TVA, la périodicité, et pour le P1 le compteur, le type P1 et l'énergie.
+la TVA, la **périodicité** et le **terme** (à échoir ou échu) de facturation, et pour le P1 le compteur, le type P1 et
+l'énergie (facturation : voir `facturation.md`).
 
 - **Source unique de ce qui est facturé** : les montants du site (lus par la facturation) sont **calculés** à partir
   des prestations **en vigueur** (actives, date du jour dans leur période) : somme par activité. Un site qui a des
@@ -96,7 +97,8 @@ la TVA, la périodicité, et pour le P1 le compteur, le type P1 et l'énergie.
   se termine change les montants) : planifier `POST /api/sites/amounts` (voir `securite.md`).
 - Contrôles : site rattaché à un contrat ; activité **parmi celles du contrat** (sinon elle ne serait pas facturée) ;
   pas de **recouvrement** entre deux prestations actives du même site et de la même activité (facturées deux fois) ;
-  compteur du même site, et seulement pour le P1 ; fin après le début ; périodicité et TVA connues. Avertissement si
+  compteur du même site, et seulement pour le P1 ; fin après le début ; périodicité (mensuel, trimestriel, semestriel,
+  annuel), terme (à échoir, échu) et TVA connus. Avertissement si
   la période sort de celle du contrat.
 - Changement de prix daté : terminer la prestation la veille et en créer une nouvelle à partir de la date d'effet ;
   l'historique des prix est conservé.

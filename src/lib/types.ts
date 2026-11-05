@@ -608,6 +608,12 @@ export type InvoiceLineItem = {
     activityCode: string; // To group items by P1, P2, etc.
     vatRate?: number; // Taux de TVA de la ligne, en % (factures multi-taux, ex. issues d'un devis)
     unit?: string;
+    // Échéancier des contrats : élément facturé (prestation ou montant de site) et période de la ligne.
+    itemKey?: string;        // « svc:<id> » ou « site:<site>:<activité> »
+    itemKeys?: string[];     // facturation globale : éléments regroupés sur la ligne
+    serviceId?: string;
+    periodStartDate?: string; // AAAA-MM-JJ
+    periodEndDate?: string;   // AAAA-MM-JJ
 };
 
 /** Ventilation de la TVA par taux (rate en %). Absente : TVA unique (`taxRate`). */
@@ -853,7 +859,7 @@ export const GenerateInvoiceInputSchema = z.object({
     contractId: z.string().describe('The ID of the contract to generate an invoice for.'),
     invoiceDate: z.string().describe('The date for the invoice in ISO format.'),
     isProforma: z.boolean().describe('Whether to generate a proforma invoice instead of a final one.'),
-    periodStartDate: z.string().optional().describe('Début de période attendu (AAAA-MM-JJ) : refus si cette période est déjà facturée.'),
+    until: z.string().optional().describe("Facturer les échéances facturables jusqu'à cette date (AAAA-MM-JJ) ; par défaut, la date de facture."),
 });
 export type GenerateInvoiceInput = z.infer<typeof GenerateInvoiceInputSchema>;
 
