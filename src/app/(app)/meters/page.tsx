@@ -1,5 +1,9 @@
 'use client';
 
+import Link from 'next/link';
+import { DataTable, type Colonne } from '@/components/data-table/data-table';
+import type { FiltreTable } from '@/components/data-table/logique';
+import { useConfirm } from '@/components/confirm-provider';
 import { optionsSites } from '@/lib/select-options';
 import { SearchableSelect } from '@/components/ui/searchable-select';
 import { useState, useMemo } from 'react';
@@ -20,17 +24,15 @@ import { P1CompteurDialog } from '@/components/p1/p1-parametrage-panel';
 import { Badge } from '@/components/ui/badge';
 import { useData } from '@/context/data-context';
 import { downloadCSV } from '@/lib/utils';
-import { SearchParamSync } from '@/components/navigation/search-param-sync';
 
 export default function MetersPage() {
-  const { sites, meters, meterTypes, reloadData, isLoading } = useData();
+  const { sites, meters, meterTypes, meterReadings, reloadData, isLoading } = useData();
+  const confirmer = useConfirm();
   const { toast } = useToast();
 
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingMeter, setEditingMeter] = useState<Meter | null>(null);
-  const [meterToDelete, setMeterToDelete] = useState<Meter | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [searchTerm, setSearchTerm] = useState('');
 
   // Form state
   const [code, setCode] = useState('');
@@ -108,153 +110,94 @@ export default function MetersPage() {
     }
   };
 
-  const handleDelete = async () => {
-    if (!meterToDelete) return;
+  const handleDelete = async (meter: Meter) => {
+    if (!(await confirmer({ title: `Supprimer le compteur ${meter.code} ?`, description: 'Action irréversible : ses relevés ne seront plus rattachés à un compteur existant.', confirmLabel: 'Supprimer', destructive: true }))) return;
     try {
-      await deleteMeter(meterToDelete.id);
-      toast({ title: 'Compteur supprimé', description: 'Le compteur a été supprimé avec succès.' });
+      await deleteMeter(meter.id);
+      toast({ title: 'Compteur supprimé', description: `${meter.code} a été supprimé.` });
       await reloadData();
-      setMeterToDelete(null);
     } catch (error) {
       toast({ title: 'Erreur', description: 'Impossible de supprimer le compteur.', variant: 'destructive' });
     }
   };
 
-  const metersWithDetails = useMemo(() => {
-    const siteMap = new Map(sites.map(s => [s.id, { name: s.name, clientName: s.clientName }]));
-    return meters.map(meter => ({
-      ...meter,
-      siteName: siteMap.get(meter.siteId)?.name || 'N/A',
-      clientName: siteMap.get(meter.siteId)?.clientName || 'N/A',
-    }));
-  }, [meters, sites]);
-
-  const filteredMeters = useMemo(() => {
-    if (!searchTerm) {
-      return metersWithDetails;
+  type Ligne = Meter & { site: string; client: string; dernierReleve: string | null };
+  const lignes: Ligne[] = useMemo(() => {
+    const siteMap = new Map(sites.map(s => [s.id, s]));
+    const derniers = new Map<string, string>();
+    for (const r of meterReadings) {
+      const d = derniers.get(r.meterId);
+      if (!d || Date.parse(r.date) > Date.parse(d)) derniers.set(r.meterId, r.date);
     }
-    return metersWithDetails.filter(meter =>
-      meter.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      meter.code.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (meter.reference && meter.reference.toLowerCase().includes(searchTerm.toLowerCase())) ||
-      meter.siteName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (meter.clientName && meter.clientName.toLowerCase().includes(searchTerm.toLowerCase()))
-    );
-  }, [metersWithDetails, searchTerm]);
+    return meters.map(m => ({
+      ...m,
+      site: siteMap.get(m.siteId)?.name ?? m.siteName ?? '',
+      client: siteMap.get(m.siteId)?.clientName ?? m.clientName ?? '',
+      dernierReleve: derniers.get(m.id) ?? null,
+    }));
+  }, [meters, sites, meterReadings]);
 
-  const handleExport = () => {
-    const dataToExport = filteredMeters.map(({ id, ...rest }) => rest);
-    downloadCSV(dataToExport, 'compteurs.csv');
-  };
+  const ancien = (r: Ligne) => r.status !== 'off' && (!r.dernierReleve || Date.parse(r.dernierReleve) < Date.now() - 45 * 86_400_000);
+  const colonnes: Colonne<Ligne>[] = useMemo(() => [
+    { id: 'code', label: 'Code', fixe: true, tri: r => r.code, exporter: r => r.code, cell: r => <span className="font-mono text-xs font-medium">{r.code}</span> },
+    { id: 'nom', label: 'Nom', tri: r => r.name, exporter: r => r.name, cell: r => r.name },
+    { id: 'reference', label: 'PDL / PCE', tri: r => r.reference, exporter: r => r.reference, cell: r => r.reference || '—' },
+    { id: 'site', label: 'Site', tri: r => r.site, exporter: r => r.site, cell: r => r.siteId ? <Link href={`/sites/${r.siteId}?onglet=compteurs`} className="hover:underline">{r.site || '—'}</Link> : '—' },
+    { id: 'client', label: 'Client', tri: r => r.client, exporter: r => r.client, cell: r => r.client || '—' },
+    { id: 'type', label: 'Type', tri: r => r.type, exporter: r => r.type, cell: r => r.type || '—' },
+    { id: 'unite', label: 'Unité', tri: r => r.unit, exporter: r => r.unit, cell: r => r.unit || '—' },
+    {
+      id: 'releve', label: 'Dernier relevé', tri: r => (r.dernierReleve ? new Date(r.dernierReleve) : null), exporter: r => r.dernierReleve?.slice(0, 10),
+      cell: r => <span className={ancien(r) ? 'font-medium text-amber-700' : ''}>{r.dernierReleve ? new Date(r.dernierReleve).toLocaleDateString('fr-FR') : 'Jamais relevé'}</span>,
+    },
+    {
+      id: 'statut', label: 'Statut', tri: r => r.status, exporter: r => (r.status === 'off' ? 'Hors service' : 'En service'),
+      cell: r => <Badge variant={r.status === 'off' ? 'outline' : 'secondary'}>{r.status === 'off' ? 'Hors service' : 'En service'}</Badge>,
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  ], []);
+
+  const filtres: FiltreTable<Ligne>[] = useMemo(() => [
+    { id: 'statut', label: 'Statut', valeur: r => r.status ?? 'on', options: [{ value: 'on', label: 'En service' }, { value: 'off', label: 'Hors service' }] },
+    { id: 'releve', label: 'Relevé', valeur: r => (r.status === 'off' ? 'hs' : ancien(r) ? 'ancien' : 'recent'),
+      options: [{ value: 'recent', label: 'Relevé depuis moins de 45 j' }, { value: 'ancien', label: 'Sans relevé depuis 45 j' }, { value: 'hs', label: 'Hors service' }] },
+    { id: 'type', label: 'Type', valeur: r => r.type },
+    { id: 'client', label: 'Client', valeur: r => r.client },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  ], []);
+
+  const recherche = useMemo(() => ({
+    placeholder: 'Code, nom, PDL/PCE, site, client…', parametreUrl: 'q',
+    valeurs: (r: Ligne) => [r.code, r.name, r.reference, r.site, r.client, r.externalRef],
+  }), []);
 
   return (
-    <Card>
-      <SearchParamSync name="q" onValue={setSearchTerm} />
-      <CardHeader>
-        <div className="flex items-center justify-between gap-4">
-          <div>
-            <CardTitle>Compteurs</CardTitle>
-            <CardDescription>Gérez l'ensemble de vos compteurs et de leurs relevés.</CardDescription>
+    <div className="flex flex-col gap-4">
+      <div>
+        <h1 className="text-2xl font-bold tracking-tight">Compteurs</h1>
+        <p className="text-muted-foreground">Compteurs de tous les sites, leurs relevés et leur paramétrage P1.</p>
+      </div>
+      <DataTable
+        id="compteurs"
+        rows={lignes}
+        rowId={r => r.id}
+        colonnes={colonnes}
+        chargement={isLoading}
+        recherche={recherche}
+        filtres={filtres}
+        triInitial={{ id: 'code', sens: 'asc' }}
+        export={{ fichier: 'compteurs.csv' }}
+        boutons={<Button size="sm" className="h-9 gap-1" onClick={() => handleOpenDialog()}><PlusCircle className="h-4 w-4" />Nouveau compteur</Button>}
+        vide={{ titre: 'Aucun compteur.', description: 'Ajoutez un compteur ou importez vos compteurs (Administration › Imports).' }}
+        actions={meter => (
+          <div className="flex items-center justify-end">
+            <MeterReadingsDialog meter={meter} trigger={<Button variant="ghost" size="icon" className="h-8 w-8" title="Relevés" aria-label="Relevés"><BookOpen className="h-4 w-4" /></Button>} />
+            <P1CompteurDialog meterId={meter.id} trigger={<Button variant="ghost" size="icon" className="h-8 w-8" title="Paramétrage P1 (usage, énergie, QE…)" aria-label="Paramétrage P1"><Gauge className="h-4 w-4" /></Button>} />
+            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleOpenDialog(meter)} title="Modifier" aria-label="Modifier"><Edit className="h-4 w-4" /></Button>
+            <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive" onClick={() => handleDelete(meter)} title="Supprimer" aria-label="Supprimer"><Trash2 className="h-4 w-4" /></Button>
           </div>
-          <div className="flex items-center gap-2">
-            <div className="relative">
-              <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-              <Input
-                type="search"
-                placeholder="Rechercher..."
-                className="pl-8 sm:w-[300px]"
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-              />
-            </div>
-            <Button size="sm" variant="outline" className="gap-1" onClick={handleExport}>
-              <Download className="h-4 w-4" />
-              Exporter
-            </Button>
-            <Button size="sm" className="gap-1" onClick={() => handleOpenDialog()}>
-              <PlusCircle className="h-4 w-4" />
-              Nouveau Compteur
-            </Button>
-          </div>
-        </div>
-      </CardHeader>
-      <CardContent>
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Code</TableHead>
-              <TableHead>Nom</TableHead>
-              <TableHead>Référence</TableHead>
-              <TableHead>Site</TableHead>
-              <TableHead>Client</TableHead>
-              <TableHead>Type</TableHead>
-              <TableHead>Unité</TableHead>
-              <TableHead>Statut</TableHead>
-              <TableHead className="text-right">Actions</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {isLoading ? (
-              <TableRow><TableCell colSpan={9} className="h-24 text-center">
-                <Loader2 className="mx-auto h-8 w-8 animate-spin text-muted-foreground" />
-              </TableCell></TableRow>
-            ) : filteredMeters.length === 0 ? (
-              <TableRow><TableCell colSpan={9} className="h-24 text-center">Aucun compteur trouvé.</TableCell></TableRow>
-            ) : (
-              filteredMeters.map((meter) => (
-                <TableRow key={meter.id}>
-                  <TableCell className="font-medium">{meter.code}</TableCell>
-                  <TableCell>{meter.name}</TableCell>
-                  <TableCell>{meter.reference || '-'}</TableCell>
-                  <TableCell>{meter.siteName}</TableCell>
-                  <TableCell>{meter.clientName}</TableCell>
-                  <TableCell>{meter.type}</TableCell>
-                  <TableCell>{meter.unit}</TableCell>
-                  <TableCell>
-                    <Badge variant={meter.status === 'on' ? 'secondary' : 'destructive'}>
-                      {meter.status === 'on' ? 'Allumé' : 'Éteint'}
-                    </Badge>
-                  </TableCell>
-                  <TableCell className="text-right flex items-center justify-end gap-2">
-                    <MeterReadingsDialog
-                      meter={meter}
-                      trigger={
-                        <Button variant="ghost" size="icon" className="h-8 w-8" title="Gérer les relevés">
-                          <BookOpen className="h-4 w-4" />
-                        </Button>
-                      }
-                    />
-                    <P1CompteurDialog meterId={meter.id} trigger={
-                      <Button variant="ghost" size="icon" className="h-8 w-8" title="Paramétrage P1 (usage, énergie, QE…)">
-                        <Gauge className="h-4 w-4" />
-                      </Button>
-                    } />
-                    <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleOpenDialog(meter)}>
-                      <Edit className="h-4 w-4" />
-                    </Button>
-                    <Dialog open={!!meterToDelete && meterToDelete.id === meter.id} onOpenChange={(isOpen) => !isOpen && setMeterToDelete(null)}>
-                      <DialogTrigger asChild>
-                        <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive" onClick={() => setMeterToDelete(meter)}>
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </DialogTrigger>
-                      <DialogContent>
-                        <DialogHeader>
-                          <DialogTitle>Supprimer {meterToDelete?.name}?</DialogTitle>
-                          <DialogDescription>Cette action est irréversible et supprimera également tous les relevés associés.</DialogDescription>
-                        </DialogHeader>
-                        <DialogFooter>
-                          <Button variant="outline" onClick={() => setMeterToDelete(null)}>Annuler</Button>
-                          <Button variant="destructive" onClick={handleDelete}>Confirmer</Button>
-                        </DialogFooter>
-                      </DialogContent>
-                    </Dialog>
-                  </TableCell>
-                </TableRow>
-              ))
-            )}
-          </TableBody>
-        </Table>
+        )}
+      />
 
         <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
           <DialogContent className="sm:max-w-xl">
@@ -310,7 +253,6 @@ export default function MetersPage() {
             </form>
           </DialogContent>
         </Dialog>
-      </CardContent>
-    </Card>
+    </div>
   );
 }

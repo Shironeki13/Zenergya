@@ -1,113 +1,97 @@
-
 'use client';
 
-import { useConfirm } from '@/components/confirm-provider';
+import { useMemo, useState } from 'react';
 import Link from 'next/link';
-import { MoreHorizontal, Loader2, MinusCircle, Search, Download } from 'lucide-react';
-import { Badge } from '@/components/ui/badge';
+import { Loader2, MinusCircle, MoreHorizontal } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuTrigger,
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
-import { Checkbox } from '@/components/ui/checkbox';
-import type { InvoiceStatus, Invoice } from '@/lib/types';
+import { DataTable, type Colonne } from '@/components/data-table/data-table';
+import type { FiltreTable } from '@/components/data-table/logique';
+import { STATUTS_FACTURE, StatutFacture, eur0 } from '@/components/fiches/fiche';
+import { useConfirm, usePrompt } from '@/components/confirm-provider';
+import type { Invoice } from '@/lib/types';
 import { useData } from '@/context/data-context';
 import { useToast } from '@/hooks/use-toast';
-import { useState, useMemo } from 'react';
 import { generateCreditNote } from '@/ai/flows/generate-credit-note-flow';
-import { Input } from '@/components/ui/input';
-import { downloadCSV } from '@/lib/utils';
-
-
-import { deleteProformaInvoice } from '@/services/firestore';
+import { deleteProformaInvoice, updateInvoiceStatus } from '@/services/firestore';
 import { convertProforma } from '@/lib/billing/actions';
+
+/**
+ * Liste des factures et proformas : recherche, filtres (statut, client, mois), tri, export ; sélection des factures
+ * émises pour les annuler par un avoir (motif demandé) ; actions par facture (PDF, payée, proforma).
+ */
+
+type Ligne = Invoice & { contrat: string; retard: boolean; mois: string };
+
+/** Jour AAAA-MM-JJ d'une date, vide si absente ou invalide (jamais d'exception). */
+const jourIso = (d: unknown) => { const t = new Date(d as string); return Number.isNaN(t.getTime()) ? '' : t.toISOString().slice(0, 10); };
+const moisFr = (m: string) => new Date(`${m}-01T12:00:00`).toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' });
 
 export default function InvoicesPage() {
   const confirmer = useConfirm();
-  const { invoices, isLoading, reloadData } = useData();
+  const demander = usePrompt();
+  const { invoices, contracts, isLoading, reloadData } = useData();
   const { toast } = useToast();
-  const [selectedInvoiceIds, setSelectedInvoiceIds] = useState<string[]>([]);
   const [isGenerating, setIsGenerating] = useState(false);
-  const [searchTerm, setSearchTerm] = useState('');
 
-  const sortedInvoices = useMemo(() =>
-    [...invoices].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()),
-    [invoices]
-  );
-
-  const filteredInvoices = useMemo(() => {
-    if (!searchTerm) {
-      return sortedInvoices;
-    }
-    return sortedInvoices.filter(invoice =>
-      (invoice.invoiceNumber && invoice.invoiceNumber.toLowerCase().includes(searchTerm.toLowerCase())) ||
-      invoice.clientName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      invoice.id.toLowerCase().includes(searchTerm.toLowerCase())
-    );
-  }, [sortedInvoices, searchTerm]);
-
-  const cancellableInvoices = useMemo(() =>
-    filteredInvoices.filter(inv => inv.status !== 'proforma' && inv.status !== 'cancelled'),
-    [filteredInvoices]
-  );
-
-  const handleExport = () => {
-    const dataToExport = filteredInvoices.map(({ lineItems, ...rest }) => ({
-      ...rest,
-      lineItems: lineItems.map(li => `[${li.description}:${li.total}]`).join('; ')
+  const lignes: Ligne[] = useMemo(() => {
+    const contrat = new Map(contracts.map(c => [c.id, c.contractNumber ?? '']));
+    const maintenant = Date.now();
+    return invoices.map(i => ({
+      ...i,
+      contrat: contrat.get(i.contractId) ?? '',
+      // Échue et non payée : en retard (statut « overdue » ou échéance passée).
+      retard: i.status === 'overdue' || (i.status === 'due' && !!i.dueDate && new Date(i.dueDate).getTime() < maintenant),
+      mois: jourIso(i.date).slice(0, 7),
     }));
-    downloadCSV(dataToExport, 'factures.csv');
-  };
+  }, [invoices, contracts]);
 
+  const colonnes: Colonne<Ligne>[] = useMemo(() => [
+    {
+      id: 'numero', label: 'N° de facture', fixe: true, tri: r => r.invoiceNumber ?? '', exporter: r => r.invoiceNumber ?? 'Proforma',
+      cell: r => <span className="font-mono text-xs font-medium">{r.invoiceNumber || `Proforma ${r.id.substring(0, 6)}`}</span>,
+    },
+    { id: 'client', label: 'Client', tri: r => r.clientName, exporter: r => r.clientName, cell: r => <span className="block max-w-[240px] truncate" title={r.clientName}>{r.clientName}</span> },
+    { id: 'contrat', label: 'Contrat', tri: r => r.contrat, exporter: r => r.contrat, cell: r => r.contrat ? <Link href={`/contracts/${r.contractId}`} className="font-mono text-xs hover:underline">{r.contrat}</Link> : '—' },
+    {
+      id: 'statut', label: 'Statut', tri: r => r.status, exporter: r => STATUTS_FACTURE[r.status] ?? r.status,
+      cell: r => <span className="inline-flex items-center gap-1.5"><StatutFacture statut={r.status} />{r.retard && r.status === 'due' && <span className="text-xs font-medium text-destructive">échue</span>}</span>,
+    },
+    { id: 'date', label: 'Date', tri: r => new Date(r.date), exporter: r => jourIso(r.date), cell: r => (jourIso(r.date) ? new Date(r.date).toLocaleDateString('fr-FR') : '—') },
+    {
+      id: 'echeance', label: 'Échéance', tri: r => (r.dueDate ? new Date(r.dueDate) : null), exporter: r => jourIso(r.dueDate),
+      cell: r => r.dueDate ? <span className={r.retard ? 'font-medium text-destructive' : ''}>{new Date(r.dueDate).toLocaleDateString('fr-FR')}</span> : '—',
+    },
+    { id: 'ht', label: 'HT', align: 'right', masquee: true, tri: r => Number(r.subtotal) || 0, exporter: r => r.subtotal, cell: r => eur0(Number(r.subtotal) || 0) },
+    { id: 'ttc', label: 'TTC', align: 'right', tri: r => Number(r.total) || 0, exporter: r => r.total, cell: r => <span className="font-medium">{eur0(Number(r.total) || 0)}</span> },
+  ], []);
 
-  const handleSelectionChange = (invoiceId: string, checked: boolean) => {
-    setSelectedInvoiceIds(prev =>
-      checked ? [...prev, invoiceId] : prev.filter(id => id !== invoiceId)
-    );
-  };
+  const filtres: FiltreTable<Ligne>[] = useMemo(() => [
+    { id: 'statut', label: 'Statut', valeur: r => (r.retard && r.status === 'due' ? 'overdue' : r.status), libelle: v => STATUTS_FACTURE[v] ?? v },
+    { id: 'client', label: 'Client', valeur: r => r.clientName },
+    { id: 'mois', label: 'Mois', valeur: r => r.mois, libelle: moisFr },
+  ], []);
 
-  const handleSelectAll = (checked: boolean) => {
-    if (checked) {
-      setSelectedInvoiceIds(cancellableInvoices.map(inv => inv.id));
-    } else {
-      setSelectedInvoiceIds([]);
-    }
-  };
+  const recherche = useMemo(() => ({
+    placeholder: 'N° de facture, client, contrat…',
+    valeurs: (r: Ligne) => [r.invoiceNumber, r.clientName, r.contrat, r.id],
+  }), []);
 
-  const handleGenerateCreditNote = async () => {
-    if (selectedInvoiceIds.length === 0) {
-      toast({ title: "Aucune facture sélectionnée", description: "Veuillez sélectionner au moins une facture à annuler.", variant: 'destructive' });
-      return;
-    }
+  const annulerParAvoir = async (selection: Ligne[], vider: () => void) => {
+    const motif = await demander({
+      title: `Annuler ${selection.length} facture(s) par un avoir`,
+      description: `${selection.map(f => f.invoiceNumber).join(', ')}. Le motif figure sur l'avoir (document légal, numéroté et archivé).`,
+      label: "Motif de l'avoir", required: true, multiline: true, placeholder: 'Erreur de période, double facturation…', confirmLabel: "Générer l'avoir",
+    });
+    if (motif === null) return;
     setIsGenerating(true);
     try {
-      const result = await generateCreditNote({
-        invoiceIds: selectedInvoiceIds,
-        reason: 'Annulation demandée par l\'utilisateur.', // Placeholder reason
-        creditNoteDate: new Date().toISOString(),
-      });
+      const result = await generateCreditNote({ invoiceIds: selection.map(f => f.id), reason: motif, creditNoteDate: new Date().toISOString() });
       if (result.success && result.creditNoteId) {
         toast({ title: "Avoir généré", description: `L'avoir ${result.creditNoteNumber || result.creditNoteId} a été créé.` });
-        setSelectedInvoiceIds([]);
+        vider();
         await reloadData();
       } else {
         throw new Error(result.error || "Une erreur inconnue est survenue lors de la création de l'avoir.");
@@ -119,6 +103,16 @@ export default function InvoicesPage() {
     }
   };
 
+  const marquerPayee = async (invoice: Ligne) => {
+    if (!(await confirmer({ title: `Marquer ${invoice.invoiceNumber} comme payée ?`, description: `${eur0(Number(invoice.total) || 0)} TTC, ${invoice.clientName}.`, confirmLabel: 'Marquer payée' }))) return;
+    try {
+      await updateInvoiceStatus(invoice.id, 'paid');
+      toast({ title: 'Facture payée', description: `${invoice.invoiceNumber} est marquée payée.` });
+      await reloadData();
+    } catch {
+      toast({ title: 'Erreur', description: 'Impossible de mettre à jour le statut.', variant: 'destructive' });
+    }
+  };
 
   const handleConvertProforma = async (invoiceId: string) => {
     if (!(await confirmer({ title: 'Convertir ce proforma en facture définitive ?', description: 'Un numéro lui sera attribué et elle ne pourra plus être supprimée.', confirmLabel: 'Convertir' }))) return;
@@ -142,176 +136,54 @@ export default function InvoicesPage() {
     }
   };
 
-  const getBadgeVariant = (status: InvoiceStatus) => {
-    switch (status) {
-      case 'paid':
-        return 'secondary';
-      case 'due':
-        return 'outline';
-      case 'overdue':
-        return 'destructive';
-      case 'cancelled':
-        return 'warning';
-      case 'proforma':
-        return 'default';
-      default:
-        return 'default';
-    }
-  };
-
-  const translateStatus = (status: InvoiceStatus) => {
-    switch (status) {
-      case 'paid':
-        return 'Payée';
-      case 'due':
-        return 'Due';
-      case 'overdue':
-        return 'En retard';
-      case 'proforma':
-        return 'Proforma';
-      case 'cancelled':
-        return 'Annulée';
-      default:
-        return status;
-    }
-  };
-
-
   return (
-    <Card>
-      <CardHeader>
-        <div className="flex items-center justify-between gap-4">
-          <div>
-            <CardTitle>Factures</CardTitle>
-            <CardDescription>
-              Liste de toutes les factures.
-            </CardDescription>
-          </div>
-          <div className="flex items-center gap-2">
-            <div className="relative">
-              <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-              <Input
-                type="search"
-                placeholder="Rechercher..."
-                className="pl-8 sm:w-[300px]"
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-              />
-            </div>
-            {selectedInvoiceIds.length > 0 ? (
-              <Button size="sm" className="gap-1" onClick={handleGenerateCreditNote} disabled={isGenerating}>
-                {isGenerating ? <Loader2 className="h-4 w-4 animate-spin" /> : <MinusCircle className="h-4 w-4" />}
-                Générer un Avoir ({selectedInvoiceIds.length})
-              </Button>
-            ) : (
-              <Button size="sm" variant="outline" className="gap-1" onClick={handleExport}>
-                <Download className="h-4 w-4" />
-                Exporter
-              </Button>
-            )}
-          </div>
-        </div>
-      </CardHeader>
-      <CardContent>
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead className="w-[50px]">
-                <Checkbox
-                  onCheckedChange={(checked) => handleSelectAll(!!checked)}
-                  checked={selectedInvoiceIds.length > 0 && cancellableInvoices.length > 0 && selectedInvoiceIds.length === cancellableInvoices.length}
-                  aria-label="Tout sélectionner"
-                  disabled={cancellableInvoices.length === 0}
-                />
-              </TableHead>
-              <TableHead>N° Facture</TableHead>
-              <TableHead>Client</TableHead>
-              <TableHead>Statut</TableHead>
-              <TableHead className="hidden md:table-cell">Date</TableHead>
-              <TableHead className="text-right">Montant</TableHead>
-              <TableHead>
-                <span className="sr-only">Actions</span>
-              </TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {isLoading ? (
-              <TableRow>
-                <TableCell colSpan={7} className="text-center h-24">
-                  <Loader2 className="mx-auto h-8 w-8 animate-spin text-muted-foreground" />
-                </TableCell>
-              </TableRow>
-            ) : filteredInvoices.length > 0 ? (
-              filteredInvoices.map((invoice) => (
-                <TableRow key={invoice.id}>
-                  <TableCell>
-                    {invoice.status !== 'proforma' && invoice.status !== 'cancelled' && (
-                      <Checkbox
-                        checked={selectedInvoiceIds.includes(invoice.id)}
-                        onCheckedChange={(checked) => handleSelectionChange(invoice.id, !!checked)}
-                      />
-                    )}
-                  </TableCell>
-                  <TableCell className="font-medium">
-                    {invoice.invoiceNumber || `Proforma ${invoice.id.substring(0, 6)}`}
-                  </TableCell>
-                  <TableCell>{invoice.clientName}</TableCell>
-                  <TableCell>
-                    <Badge variant={getBadgeVariant(invoice.status)}>
-                      {translateStatus(invoice.status)}
-                    </Badge>
-                  </TableCell>
-                  <TableCell className="hidden md:table-cell">
-                    {new Date(invoice.date).toLocaleDateString()}
-                  </TableCell>
-                  <TableCell className="text-right">
-                    {invoice.total.toFixed(2)} €
-                  </TableCell>
-                  <TableCell>
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button aria-haspopup="true" size="icon" variant="ghost">
-                          <MoreHorizontal className="h-4 w-4" />
-                          <span className="sr-only">Ouvrir le menu</span>
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuLabel>Actions</DropdownMenuLabel>
-                        <DropdownMenuItem asChild>
-                          <Link href={`/invoices/${invoice.id}`}>Voir les détails</Link>
-                        </DropdownMenuItem>
-                        <DropdownMenuItem asChild>
-                          <a href={`/api/documents/invoices/${invoice.id}`} target="_blank" rel="noopener noreferrer">Ouvrir le PDF</a>
-                        </DropdownMenuItem>
-                        {invoice.status === 'due' && <DropdownMenuItem>Marquer comme payée</DropdownMenuItem>}
-                        {invoice.status === 'due' && <DropdownMenuItem>Envoyer un rappel</DropdownMenuItem>}
-                        {invoice.status === 'proforma' && (
-                          <DropdownMenuItem onClick={() => handleConvertProforma(invoice.id)}>
-                            Convertir en facture
-                          </DropdownMenuItem>
-                        )}
-                        {/* Une facture émise ne se supprime pas : elle s'annule par un avoir (sélection + « Générer un avoir »). */}
-                        {invoice.status === 'proforma' && (
-                          <DropdownMenuItem
-                            className="text-destructive focus:text-destructive"
-                            onClick={() => handleDeleteProforma(invoice)}
-                          >
-                            Supprimer le proforma
-                          </DropdownMenuItem>
-                        )}
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </TableCell>
-                </TableRow>
-              ))
-            ) : (
-              <TableRow>
-                <TableCell colSpan={7} className="text-center h-24">Aucune facture trouvée.</TableCell>
-              </TableRow>
-            )}
-          </TableBody>
-        </Table>
-      </CardContent>
-    </Card>
+    <div className="flex flex-col gap-4">
+      <div>
+        <h1 className="text-2xl font-bold tracking-tight">Factures</h1>
+        <p className="text-muted-foreground">
+          Factures et proformas. Une facture émise ne se supprime pas : sélectionnez-la pour l&apos;annuler par un avoir.
+        </p>
+      </div>
+      <DataTable
+        id="factures"
+        rows={lignes}
+        rowId={r => r.id}
+        colonnes={colonnes}
+        chargement={isLoading}
+        recherche={recherche}
+        filtres={filtres}
+        triInitial={{ id: 'date', sens: 'desc' }}
+        lien={r => `/invoices/${r.id}`}
+        export={{ fichier: 'factures.csv' }}
+        vide={{ titre: 'Aucune facture.', description: 'Les factures se génèrent depuis Facturation manuelle ou Facturation groupée.' }}
+        selection={{
+          possible: r => r.status !== 'proforma' && r.status !== 'cancelled',
+          actions: (selection, vider) => (
+            <Button size="sm" className="h-8 gap-1" onClick={() => annulerParAvoir(selection as Ligne[], vider)} disabled={isGenerating}>
+              {isGenerating ? <Loader2 className="h-4 w-4 animate-spin" /> : <MinusCircle className="h-4 w-4" />}
+              Annuler par un avoir
+            </Button>
+          ),
+        }}
+        actions={invoice => (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button size="icon" variant="ghost" className="h-8 w-8" aria-label={`Actions pour ${invoice.invoiceNumber ?? 'le proforma'}`}><MoreHorizontal className="h-4 w-4" /></Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuLabel>Actions</DropdownMenuLabel>
+              <DropdownMenuItem asChild><Link href={`/invoices/${invoice.id}`}>Voir les détails</Link></DropdownMenuItem>
+              <DropdownMenuItem asChild><a href={`/api/documents/invoices/${invoice.id}`} target="_blank" rel="noopener noreferrer">Ouvrir le PDF</a></DropdownMenuItem>
+              {(invoice.status === 'due' || invoice.status === 'overdue') && <DropdownMenuItem onClick={() => marquerPayee(invoice)}>Marquer comme payée</DropdownMenuItem>}
+              {invoice.status === 'proforma' && (<>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={() => handleConvertProforma(invoice.id)}>Convertir en facture</DropdownMenuItem>
+                <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => handleDeleteProforma(invoice)}>Supprimer le proforma</DropdownMenuItem>
+              </>)}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
+      />
+    </div>
   );
 }

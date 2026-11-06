@@ -40,6 +40,30 @@ Règles et composants à réutiliser sur tout nouvel écran (lots 1 et 2 de la r
 - **Modifications non enregistrées** : `useAlerteModifications(form.formState.isDirty && !form.formState.isSubmitSuccessful)`
   sur les formulaires pleine page : alerte à la fermeture de l'onglet et au clic sur un lien de l'application.
 
+## Listes : le tableau commun
+
+`src/components/data-table/data-table.tsx` (logique pure testée : `logique.ts`, `tests/data-table.test.ts`), utilisé
+par les listes Clients, Contrats, Sites, Compteurs, Factures et Avoirs :
+
+- **Recherche** sur plusieurs champs (mots, accents et casse ignorés) ; `parametreUrl: 'q'` reprend la recherche
+  passée dans l'adresse (recherche globale → compteurs, sites).
+- **Filtres** à choix multiples avec **effectifs** (« Actif (12) », calculés avec les autres filtres), puces des
+  filtres actifs, « Tout effacer ». Options fixes ou déduites des lignes ; « Non renseigné » pour les valeurs vides.
+- **Tri** par clic sur l'en-tête (croissant, décroissant, aucun) : texte à la française avec les nombres dans l'ordre
+  (« Pins 2 » avant « Pins 10 »), nombres, dates ; valeurs vides toujours en dernier.
+- **Pagination** 25 / 50 / 100 ; **choix des colonnes** (colonnes `masquee` ajoutables, `fixe` toujours visibles) ;
+  colonnes, tri et taille de page **mémorisés** par liste dans le navigateur.
+- **Export CSV** des lignes filtrées (colonnes avec `exporter`, toutes, affichées ou non).
+- **Lignes cliquables** (`lien`, Ctrl/⌘ + clic : nouvel onglet ; les liens, boutons et cases de la ligne gardent leur
+  action) ; **actions** par ligne ; **sélection** et **actions groupées** (`selection.possible`, `selection.actions`).
+- Chargement en blocs gris ; liste vide : message et action utiles, ou « aucun résultat pour ces critères » avec
+  « Effacer la recherche et les filtres ».
+
+Changements de fond : la liste des **contrats** n'impose plus de choisir société › agence › secteur (filtres, dans le
+périmètre de l'utilisateur) ; **factures** : « Marquer comme payée » fonctionne, « Envoyer un rappel » (sans effet) est
+retiré, l'annulation par avoir **demande le motif** (il figure sur l'avoir) ; **compteurs** : dernier relevé et
+filtre « sans relevé depuis 45 jours » ; **sites** : montant annuel et état des prestations.
+
 ## Fiches : le modèle de la fiche site
 
 `src/app/(app)/sites/[id]/page.tsx`, briques dans `src/components/sites/fiche-site.tsx` :
@@ -80,4 +104,5 @@ contrats, contacts). Échéances non facturées : `src/lib/billing/echeances-fic
 Parcours vérifiés dans un navigateur (émulateurs, build de production) : connexion, menu et fil d'Ariane, Ctrl+K,
 liste avec recherche dans une fenêtre, confirmation, astérisques, récapitulatif d'erreurs, alerte en quittant ; fiche
 site (synthèse, à faire, onglets, lien direct `?onglet=`, compléter une prestation, factures, modification du site) ;
-fiches contrat et client (synthèse, à faire, onglets, ajout d'un site).
+fiches contrat et client (synthèse, à faire, onglets, ajout d'un site) ; listes (pagination, recherche, filtres,
+tri, colonnes et préférences mémorisées, ouverture d'une fiche, avoir avec motif, facture marquée payée).

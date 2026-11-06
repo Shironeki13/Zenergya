@@ -1,225 +1,140 @@
-
 'use client';
 
+import { useMemo, useState } from 'react';
 import Link from 'next/link';
-import { PlusCircle, MoreHorizontal, Loader2, Download, Search } from 'lucide-react';
+import { MoreHorizontal, PlusCircle } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuTrigger,
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
-import { Input } from '@/components/ui/input';
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import { DataTable, type Colonne } from '@/components/data-table/data-table';
+import type { FiltreTable } from '@/components/data-table/logique';
 import { useData } from '@/context/data-context';
-import { useState, useMemo } from 'react';
-import { downloadCSV } from '@/lib/utils';
+import { deleteClient } from '@/services/firestore';
+import { useToast } from '@/hooks/use-toast';
+import type { Client } from '@/lib/types';
 
+/** Liste des clients et prospects : recherche, filtres, tri, colonnes, export (tableau commun). */
 
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
-import { deleteClient } from "@/services/firestore";
-import { useToast } from "@/hooks/use-toast";
+type Ligne = Client & { typologie: string; agence: string; societe: string; contratsActifs: number };
 
 export default function ClientsPage() {
-  const { clients, typologies, isLoading, reloadData } = useData();
-  const [searchTerm, setSearchTerm] = useState('');
-  const [clientToDelete, setClientToDelete] = useState<string | null>(null);
+  const { clients, contracts, typologies, agencies, companies, isLoading, reloadData } = useData();
+  const [clientToDelete, setClientToDelete] = useState<Ligne | null>(null);
   const { toast } = useToast();
 
-  const filteredClients = useMemo(() => {
-    const typologyMap = new Map(typologies.map(t => [t.id, t.name]));
-
-    let clientsWithTypology = clients.map(client => ({
-      ...client,
-      typologyName: typologyMap.get(client.typologyId) || 'N/A',
+  const lignes: Ligne[] = useMemo(() => {
+    const typo = new Map(typologies.map(t => [t.id, t.name]));
+    const agence = new Map(agencies.map(a => [a.id, a.name]));
+    const societe = new Map(companies.map(c => [c.id, c.name]));
+    const actifs = new Map<string, number>();
+    for (const c of contracts) if (c.status === 'Actif') actifs.set(c.clientId, (actifs.get(c.clientId) ?? 0) + 1);
+    return clients.map(c => ({
+      ...c,
+      typologie: typo.get(c.typologyId) ?? '',
+      agence: agence.get(c.agencyId) ?? '',
+      societe: societe.get(c.companyId) ?? '',
+      contratsActifs: actifs.get(c.id) ?? 0,
     }));
+  }, [clients, contracts, typologies, agencies, companies]);
 
-    if (!searchTerm) {
-      return clientsWithTypology;
-    }
+  const colonnes: Colonne<Ligne>[] = useMemo(() => [
+    {
+      id: 'nom', label: 'Raison sociale', fixe: true, tri: r => r.name, exporter: r => r.name,
+      cell: r => <span className="font-medium">{r.name}{r.relation === 'prospect' && <Badge variant="outline" className="ml-2">Prospect</Badge>}</span>,
+    },
+    { id: 'code', label: 'Code client', tri: r => r.externalCode, exporter: r => r.externalCode, cell: r => <span className="font-mono text-xs">{r.externalCode || '—'}</span> },
+    {
+      id: 'type', label: 'Type', tri: r => r.clientType, exporter: r => (r.clientType === 'public' ? 'Public' : 'Privé'),
+      cell: r => <Badge variant={r.clientType === 'public' ? 'secondary' : 'outline'}>{r.clientType === 'public' ? 'Public' : 'Privé'}</Badge>,
+    },
+    { id: 'typologie', label: 'Typologie', tri: r => r.typologie, exporter: r => r.typologie, cell: r => r.typologie || '—' },
+    { id: 'ville', label: 'Ville', tri: r => r.city, exporter: r => r.city, cell: r => r.city || '—' },
+    { id: 'agence', label: 'Agence', tri: r => r.agence, exporter: r => r.agence, cell: r => r.agence || '—' },
+    { id: 'societe', label: 'Société', masquee: true, tri: r => r.societe, exporter: r => r.societe, cell: r => r.societe || '—' },
+    { id: 'contrats', label: 'Contrats actifs', align: 'right', tri: r => r.contratsActifs, exporter: r => r.contratsActifs, cell: r => r.contratsActifs },
+    { id: 'siret', label: 'SIRET', masquee: true, tri: r => r.siret, exporter: r => r.siret, cell: r => <span className="font-mono text-xs">{r.siret || '—'}</span> },
+    { id: 'ref', label: 'Réf. externe', masquee: true, tri: r => r.externalRef, exporter: r => r.externalRef, cell: r => r.externalRef || '—' },
+  ], []);
 
-    return clientsWithTypology.filter(client =>
-      client.name.toLowerCase().includes(searchTerm.toLowerCase())
-    );
-  }, [clients, typologies, searchTerm]);
+  const filtres: FiltreTable<Ligne>[] = useMemo(() => [
+    { id: 'type', label: 'Type', valeur: r => r.clientType, options: [{ value: 'private', label: 'Privé' }, { value: 'public', label: 'Public' }] },
+    { id: 'relation', label: 'Relation', valeur: r => r.relation ?? 'client', options: [{ value: 'client', label: 'Client' }, { value: 'prospect', label: 'Prospect' }] },
+    { id: 'typologie', label: 'Typologie', valeur: r => r.typologie },
+    { id: 'agence', label: 'Agence', valeur: r => r.agence },
+    { id: 'ville', label: 'Ville', valeur: r => r.city },
+  ], []);
 
-  const handleExport = () => {
-    const dataToExport = filteredClients.map(({ id, ...rest }) => rest);
-    downloadCSV(dataToExport, 'clients.csv');
-  };
+  const recherche = useMemo(() => ({
+    placeholder: 'Nom, code, SIRET, ville…',
+    valeurs: (r: Ligne) => [r.name, r.externalCode, r.siret, r.city, r.postalCode, r.externalRef],
+  }), []);
 
   const handleDeleteClient = async () => {
     if (!clientToDelete) return;
     try {
-      await deleteClient(clientToDelete);
-      toast({
-        title: "Client supprimé",
-        description: "Le client et toutes ses données associées ont été supprimés.",
-      });
+      await deleteClient(clientToDelete.id);
+      toast({ title: "Client supprimé", description: "Le client et toutes ses données associées ont été supprimés." });
       await reloadData();
     } catch (error) {
       console.error("Failed to delete client:", error);
-      toast({
-        title: "Erreur",
-        description: "Impossible de supprimer le client.",
-        variant: "destructive",
-      });
+      toast({ title: "Erreur", description: "Impossible de supprimer le client.", variant: "destructive" });
     } finally {
       setClientToDelete(null);
     }
   };
 
   return (
-    <div className="flex flex-col gap-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">Clients</h1>
-          <p className="text-muted-foreground mt-1">Gérez les entités clientes et leurs sites.</p>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button size="sm" variant="outline" className="gap-1 bg-background" onClick={handleExport}>
-            <Download className="h-4 w-4" />
-            <span className="hidden sm:inline">Exporter</span>
-          </Button>
-          <Button asChild size="sm" className="gap-1 shadow-md">
-            <Link href="/clients/new">
-              <PlusCircle className="h-4 w-4" />
-              <span className="hidden sm:inline">Nouveau Client</span>
-            </Link>
-          </Button>
-        </div>
+    <div className="flex flex-col gap-4">
+      <div>
+        <h1 className="text-2xl font-bold tracking-tight">Clients</h1>
+        <p className="text-muted-foreground">Clients et prospects. Cliquez sur une ligne pour ouvrir la fiche.</p>
       </div>
 
-      <Card className="border-none shadow-md">
-        <CardHeader className="pb-4">
-          <div className="relative w-full sm:w-96">
-            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-            <Input
-              type="search"
-              placeholder="Rechercher par nom..."
-              className="pl-9 bg-muted/50 border-none focus-visible:ring-1 focus-visible:ring-primary"
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-            />
-          </div>
-        </CardHeader>
-        <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow className="hover:bg-transparent border-b border-border/50">
-                <TableHead className="w-[300px]">Raison Sociale</TableHead>
-                <TableHead>Type</TableHead>
-                <TableHead>Typologie</TableHead>
-                <TableHead className="text-right">
-                  Actions
-                </TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {isLoading ? (
-                <TableRow>
-                  <TableCell colSpan={4} className="h-32 text-center">
-                    <Loader2 className="mx-auto h-8 w-8 animate-spin text-primary" />
-                  </TableCell>
-                </TableRow>
-              ) : filteredClients.length > 0 ? (
-                filteredClients.map((client) => (
-                  <TableRow key={client.id} className="hover:bg-muted/30 border-b border-border/50 last:border-0 transition-colors">
-                    <TableCell className="font-medium text-base">
-                      <Link href={`/clients/${client.id}`} className="hover:underline">
-                        {client.name}
-                      </Link>
-                      {client.relation === 'prospect' && <Badge variant="outline" className="ml-2">Prospect</Badge>}
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant={client.clientType === 'public' ? 'secondary' : 'outline'} className="capitalize">
-                        {client.clientType === 'public' ? 'Public' : 'Privé'}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex items-center gap-2">
-                        <span className="inline-block w-2 h-2 rounded-full bg-primary/50" />
-                        {client.typologyName}
-                      </div>
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button aria-haspopup="true" size="icon" variant="ghost" className="hover:bg-muted">
-                            <MoreHorizontal className="h-4 w-4" />
-                            <span className="sr-only">Ouvrir le menu</span>
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end" className="w-[160px]">
-                          <DropdownMenuLabel>Actions</DropdownMenuLabel>
-                          <DropdownMenuItem asChild className="cursor-pointer">
-                            <Link href={`/clients/${client.id}`}>Voir le client</Link>
-                          </DropdownMenuItem>
-                          <DropdownMenuItem asChild className="cursor-pointer">
-                            <Link href={`/clients/${client.id}/edit`}>Modifier</Link>
-                          </DropdownMenuItem>
-                          <DropdownMenuItem
-                            className="text-destructive cursor-pointer focus:bg-destructive/10 focus:text-destructive"
-                            onClick={() => setClientToDelete(client.id)}
-                          >
-                            Supprimer
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </TableCell>
-                  </TableRow>
-                ))
-              ) : (
-                <TableRow>
-                  <TableCell colSpan={4} className="text-center h-32 text-muted-foreground">
-                    Aucun client trouvé pour "{searchTerm}".
-                  </TableCell>
-                </TableRow>
-              )}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
+      <DataTable
+        id="clients"
+        rows={lignes}
+        rowId={r => r.id}
+        colonnes={colonnes}
+        chargement={isLoading}
+        recherche={recherche}
+        filtres={filtres}
+        triInitial={{ id: 'nom', sens: 'asc' }}
+        lien={r => `/clients/${r.id}`}
+        export={{ fichier: 'clients.csv' }}
+        boutons={<Button asChild size="sm" className="h-9 gap-1"><Link href="/clients/new"><PlusCircle className="h-4 w-4" />Nouveau client</Link></Button>}
+        vide={{ titre: 'Aucun client.', description: 'Créez un client ou importez votre fichier clients (Administration › Imports).' }}
+        actions={r => (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button size="icon" variant="ghost" className="h-8 w-8" aria-label={`Actions pour ${r.name}`}><MoreHorizontal className="h-4 w-4" /></Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-44">
+              <DropdownMenuLabel>Actions</DropdownMenuLabel>
+              <DropdownMenuItem asChild><Link href={`/clients/${r.id}`}>Ouvrir la fiche</Link></DropdownMenuItem>
+              <DropdownMenuItem asChild><Link href={`/clients/${r.id}/edit`}>Modifier</Link></DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem className="text-destructive focus:bg-destructive/10 focus:text-destructive" onClick={() => setClientToDelete(r)}>Supprimer</DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
+      />
 
       <AlertDialog open={!!clientToDelete} onOpenChange={() => setClientToDelete(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Êtes-vous absolument sûr ?</AlertDialogTitle>
+            <AlertDialogTitle>Supprimer {clientToDelete?.name} ?</AlertDialogTitle>
             <AlertDialogDescription>
-              Cette action est irréversible. Elle supprimera définitivement ce client ainsi que tous les sites et contrats associés.
+              Action irréversible : le client ainsi que tous les sites et contrats associés seront supprimés définitivement.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Annuler</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDeleteClient} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
-              Supprimer
-            </AlertDialogAction>
+            <AlertDialogAction onClick={handleDeleteClient} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">Supprimer</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
