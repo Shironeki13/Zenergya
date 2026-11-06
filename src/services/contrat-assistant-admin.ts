@@ -95,6 +95,7 @@ export async function creerContratAssistant(brouillon: Brouillon, user: SessionU
         renewal: c.renewal, tacitRenewal: c.tacitRenewal,
         ...(c.renewalDuration.trim() && { renewalDuration: c.renewalDuration.trim() }), ...(c.noticePeriod.trim() && { noticePeriod: c.noticePeriod.trim() }),
         ...(c.billingManagerId && { billingManagerId: c.billingManagerId }),
+        ...(b.document?.url && /^https:\/\//.test(b.document.url) && { documents: [{ name: b.document.name, type: 'Contrat signé', url: b.document.url }] }),
         status: 'Brouillon', validationStatus: 'pending_validation',
         createdAt: maintenant, createdBy: user.email, requesterEmail: user.email, source: b.source === 'saisie' ? 'assistant' : `assistant (${b.source})`,
     });

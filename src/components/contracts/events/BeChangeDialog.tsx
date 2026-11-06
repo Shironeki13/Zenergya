@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { PieceJustificative, deposerPiece, pieceValide } from './piece-justificative';
 import { signalerErreurs } from '@/lib/forms/signaler-erreurs';
 import { SearchableSelect } from '@/components/ui/searchable-select';
 import { optionsClients } from '@/lib/select-options';
@@ -30,7 +31,9 @@ interface BeChangeDialogProps {
 
 export function BeChangeDialog({ contractId, open, onOpenChange, onSuccess }: BeChangeDialogProps) {
     const { toast } = useToast();
-    const { clients, contracts } = useData();
+    const { clients, contracts, currentUser } = useData();
+    const [piece, setPiece] = useState<File | null>(null);
+    const [erreurPiece, setErreurPiece] = useState(false);
     const [isLoading, setIsLoading] = useState(false);
 
     const [selectedClientId, setSelectedClientId] = useState<string>("");
@@ -56,20 +59,24 @@ export function BeChangeDialog({ contractId, open, onOpenChange, onSuccess }: Be
 
     async function onSubmit(values: z.infer<typeof formSchema>) {
         if (!selectedContractId) return;
+        // Pièce justificative obligatoire : c'est elle qui fait foi.
+        if (!pieceValide(piece)) { setErreurPiece(true); return; }
 
         setIsLoading(true);
         try {
+            const document = await deposerPiece(piece, selectedContractId, 'changements-be');
             await createBeChange({
                 contractId: selectedContractId,
                 newBe: values.newBe,
                 contactEmail: values.contactEmail,
                 effectiveDate: values.effectiveDate,
                 createdAt: new Date().toISOString(),
-                createdBy: "System",
+                createdBy: currentUser?.email ?? 'inconnu', ...document, validationStatus: 'pending_validation',
                 currentBe: "Ancien BE", // TODO: Fetch current
             });
-            toast({ title: "Changement de BE enregistré", description: "Le changement a été ajouté avec succès." });
+            toast({ title: "Changement de BE enregistré", description: "Enregistré, en attente de validation par un administrateur." });
             form.reset();
+            setPiece(null);
             onSuccess();
             onOpenChange(false);
         } catch (error) {
@@ -159,6 +166,7 @@ export function BeChangeDialog({ contractId, open, onOpenChange, onSuccess }: Be
                                 )}
                             />
 
+                            <PieceJustificative fichier={piece} onChange={f => { setPiece(f); setErreurPiece(false); }} erreur={erreurPiece} />
                             <DialogFooter>
                                 <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Annuler</Button>
                                 <Button type="submit" disabled={isLoading}>

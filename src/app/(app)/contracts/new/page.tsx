@@ -20,6 +20,7 @@ export default function DocumentHubPage() {
 
   // Dialog States
   const [amendmentDialogOpen, setAmendmentDialogOpen] = useState(false)
+  const [osDialogOpen, setOsDialogOpen] = useState(false)
   const [terminationDialogOpen, setTerminationDialogOpen] = useState(false)
   const [renewalDialogOpen, setRenewalDialogOpen] = useState(false)
   const [trusteeChangeDialogOpen, setTrusteeChangeDialogOpen] = useState(false)
@@ -95,7 +96,7 @@ export default function DocumentHubPage() {
           description="Ajouter un ordre de service lié à un contrat."
           icon={Hammer}
           color="text-cyan-500 bg-cyan-50"
-          onClick={() => setAmendmentDialogOpen(true)} // OS uses Amendment logic for now
+          onClick={() => setOsDialogOpen(true)}
         />
 
         <DocumentCard
@@ -117,6 +118,7 @@ export default function DocumentHubPage() {
 
       {/* Global Event Dialogs */}
       <AmendmentDialog open={amendmentDialogOpen} onOpenChange={setAmendmentDialogOpen} onSuccess={reloadData} />
+      <AmendmentDialog nature="os" open={osDialogOpen} onOpenChange={setOsDialogOpen} onSuccess={reloadData} />
       <TerminationDialog open={terminationDialogOpen} onOpenChange={setTerminationDialogOpen} onSuccess={reloadData} />
       <RenewalDialog open={renewalDialogOpen} onOpenChange={setRenewalDialogOpen} onSuccess={reloadData} />
       <TrusteeChangeDialog open={trusteeChangeDialogOpen} onOpenChange={setTrusteeChangeDialogOpen} onSuccess={reloadData} />

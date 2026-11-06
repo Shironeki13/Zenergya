@@ -125,6 +125,21 @@ contrats, contacts). Échéances non facturées : `src/lib/billing/echeances-fic
   Factures. À faire : client public sans SIRET, SIRET introuvable ou établissement fermé, contact de facturation absent
   ou sans e-mail, impayés, sites sans prestation, contrats sans responsable, contrats à échéance sous 90 jours.
 
+## Documents de contrat et validation
+
+- **Pièce justificative obligatoire** : avenant, ordre de service, reconduction, résiliation, changement de syndic et
+  de BE ne s'enregistrent qu'avec le document signé (PDF, PNG ou JPEG, 20 Mo au plus), déposé dans
+  `contracts/{id}/{type}/` ; c'est lui qui fait foi. Le document est créé « En attente de validation ». Les règles
+  Firestore refusent un tel document sans `documentUrl` ni statut `pending_validation`.
+- **Ordres de service** : bouton dédié à côté de « Nouvel avenant » (même collection, `nature: 'os'`).
+- **Base marché** : l'assistant de création propose (facultatif) le contrat signé ; le PDF analysé est repris.
+- **Historique du contrat** : colonnes Validation (En attente, Refusé : motif, Validé) et Document.
+- **Validation des documents** (`/admin/validations`, administrateurs) : onglets par type (Tout, Base marché, Avenants,
+  Ordres de service, Reconductions, Résiliations, Changements de syndic, Changements de BE) avec compteurs ; pièce à
+  ouvrir ; « Valider » affiche les effets avant de confirmer, appliqués au serveur dans une transaction (contrat Actif
+  et reprise P1, nouvelle fin, statut Résilié, représentant ou BE du client) ; « Refuser » exige un motif, visible
+  dans l'historique. L'ancienne page `/contracts/validation` redirige vers l'onglet Base marché.
+
 ## Vérification
 
 `npm test` (`tests/ux.test.ts`) : entrée de menu active, droits, champs obligatoires déduits des schémas, messages.
@@ -134,4 +149,6 @@ site (synthèse, à faire, onglets, lien direct `?onglet=`, compléter une prest
 fiches contrat et client (synthèse, à faire, onglets, ajout d'un site) ; listes (pagination, recherche, filtres,
 tri, colonnes et préférences mémorisées, ouverture d'une fiche, avoir avec motif, facture marquée payée) ;
 assistant de création (ancienne adresse redirigée, étapes bloquées si incomplètes, doublon signalé, prestations,
-récapitulatif, brouillon repris après rechargement, création et fiche du contrat).
+récapitulatif, brouillon repris après rechargement, création et fiche du contrat) ; documents (avenant refusé sans
+pièce puis enregistré « En attente » avec son lien, onglets de validation et compteurs, effets affichés, reconduction
+validée et nouvelle fin appliquée, résiliation refusée avec motif visible dans l'historique).

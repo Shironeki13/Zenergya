@@ -26,7 +26,7 @@ export const NAV_GROUPS: NavGroup[] = [
             { href: '/sites', label: 'Sites', icon: MapPin },
             { href: '/contracts/library', label: 'Contrathèque', icon: Library, keywords: 'documents avenants résiliations reconductions' },
             { href: '/contracts/commerce', label: 'Demandes commerce', icon: Store },
-            { href: '/admin/validations', label: 'Validation des contrats', icon: ShieldCheck },
+            { href: '/admin/validations', label: 'Validation des documents', icon: ShieldCheck, admin: true, keywords: 'avenant os reconduction résiliation syndic be base marché attente' },
         ],
     },
     {

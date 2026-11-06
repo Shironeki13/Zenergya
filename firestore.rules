@@ -53,6 +53,13 @@ service cloud.firestore {
       return coll in ['p1Parametrage', 'p1Reel', 'meterReadings', 'suiviCommentaires'];
     }
 
+    // Documents de contrat (avenants et OS, reconductions, résiliations, changements de syndic et de BE) : créés
+    // depuis le navigateur « en attente de validation » avec leur pièce justificative (elle fait foi) ; validés ou
+    // refusés par le serveur seulement (services/validations-admin.ts, administrateurs), jamais modifiés ni supprimés.
+    function isContractEvent(coll) {
+      return coll in ['amendments', 'terminations', 'renewals', 'trusteeChanges', 'beChanges'];
+    }
+
     // Devis : modification et suppression traitées à part (voir match /quotes).
     function isQuoteChange(coll) {
       return coll == 'quotes' && request.method in ['update', 'delete'];
@@ -62,8 +69,15 @@ service cloud.firestore {
     // d'où une règle générique qui exclut explicitement les collections traitées à part.
     match /{coll}/{docId} {
       allow read: if isAppUser() && !isServerOnly(coll);
-      allow create, update, delete: if !isAccounting(coll) && !isServerOnly(coll) && !isServerWritten(coll) && codeInchange(coll) && !isQuoteChange(coll)
+      allow create, update, delete: if !isAccounting(coll) && !isServerOnly(coll) && !isServerWritten(coll) && !isContractEvent(coll) && codeInchange(coll) && !isQuoteChange(coll)
         && (isAdmin() || (isAppUser() && !isAdminOnly(coll)));
+    }
+
+    match /{evt}/{docId} {
+      allow create: if isContractEvent(evt) && isAppUser()
+        && request.resource.data.validationStatus == 'pending_validation'
+        && request.resource.data.documentUrl is string && request.resource.data.documentUrl.size() > 0
+        && request.resource.data.contractId is string;
     }
 
     match /quotes/{quoteId} {

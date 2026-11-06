@@ -408,7 +408,19 @@ export type Contract = {
 
 // --- New Contract Event Types ---
 
-export type Amendment = {
+/** Validation d'un document de contrat (avenant, OS, reconduction, résiliation, changement de syndic ou de BE). Absente : document antérieur à la validation (considéré validé). */
+export type ValidationDocument = {
+    validationStatus?: 'pending_validation' | 'validated' | 'refused';
+    refusalReason?: string;
+    validatedAt?: string;
+    validatedBy?: string;
+    /** Nom du fichier de la pièce justificative (documentUrl). */
+    documentName?: string;
+};
+
+export type Amendment = ValidationDocument & {
+    /** Avenant ou ordre de service (même saisie). Absent : avenant. */
+    nature?: 'avenant' | 'os';
     id: string;
     contractId: string;
     contractNumber?: string; // Denormalized
@@ -429,7 +441,7 @@ export type Amendment = {
     dpgfUrl?: string; // DPGF
 };
 
-export type Termination = {
+export type Termination = ValidationDocument & {
     id: string;
     contractId: string;
     contractNumber?: string; // Denormalized
@@ -440,7 +452,7 @@ export type Termination = {
     documentUrl?: string;
 };
 
-export type Renewal = {
+export type Renewal = ValidationDocument & {
     id: string;
     contractId: string;
     contractNumber?: string; // Denormalized
@@ -451,7 +463,7 @@ export type Renewal = {
     documentUrl?: string;
 };
 
-export type TrusteeChange = {
+export type TrusteeChange = ValidationDocument & {
     id: string;
     contractId: string;
     contractNumber?: string; // Denormalized
@@ -464,7 +476,7 @@ export type TrusteeChange = {
     documentUrl?: string;
 };
 
-export type BeChange = {
+export type BeChange = ValidationDocument & {
     id: string;
     contractId: string;
     contractNumber?: string; // Denormalized

@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { PieceJustificative, deposerPiece, pieceValide } from './piece-justificative';
 import { signalerErreurs } from '@/lib/forms/signaler-erreurs';
 import { SearchableSelect } from '@/components/ui/searchable-select';
 import { optionsClients } from '@/lib/select-options';
@@ -29,7 +30,9 @@ interface RenewalDialogProps {
 
 export function RenewalDialog({ contractId, open, onOpenChange, onSuccess }: RenewalDialogProps) {
     const { toast } = useToast();
-    const { clients, contracts } = useData();
+    const { clients, contracts, currentUser } = useData();
+    const [piece, setPiece] = useState<File | null>(null);
+    const [erreurPiece, setErreurPiece] = useState(false);
     const [isLoading, setIsLoading] = useState(false);
 
     const [selectedClientId, setSelectedClientId] = useState<string>("");
@@ -54,18 +57,22 @@ export function RenewalDialog({ contractId, open, onOpenChange, onSuccess }: Ren
 
     async function onSubmit(values: z.infer<typeof formSchema>) {
         if (!selectedContractId) return;
+        // Pièce justificative obligatoire : c'est elle qui fait foi.
+        if (!pieceValide(piece)) { setErreurPiece(true); return; }
 
         setIsLoading(true);
         try {
+            const document = await deposerPiece(piece, selectedContractId, 'reconductions');
             await createRenewal({
                 contractId: selectedContractId,
                 newEndDate: values.newEndDate,
                 duration: values.duration || "12",
                 createdAt: new Date().toISOString(),
-                createdBy: "System",
+                createdBy: currentUser?.email ?? 'inconnu', ...document, validationStatus: 'pending_validation',
             });
-            toast({ title: "Reconduction enregistrée", description: "La reconduction a été ajoutée avec succès." });
+            toast({ title: "Reconduction enregistrée", description: "Enregistré, en attente de validation par un administrateur." });
             form.reset();
+            setPiece(null);
             onSuccess();
             onOpenChange(false);
         } catch (error) {
@@ -142,6 +149,7 @@ export function RenewalDialog({ contractId, open, onOpenChange, onSuccess }: Ren
                                 )}
                             />
 
+                            <PieceJustificative fichier={piece} onChange={f => { setPiece(f); setErreurPiece(false); }} erreur={erreurPiece} />
                             <DialogFooter>
                                 <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Annuler</Button>
                                 <Button type="submit" disabled={isLoading}>

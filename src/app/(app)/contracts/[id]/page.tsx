@@ -1,5 +1,6 @@
 'use client';
 
+import { EtatValidation, LienPiece } from "@/components/contracts/events/etat-document";
 import { AFaire, Indicateur, eur0, CompteurAFaire, useOngletUrl, type PointAFaire } from "@/components/fiches/fiche";
 import { CarteContacts, TableauFactures, TableauSites, etatSite } from "@/components/fiches/tableaux";
 import { enRetard, periodesDuContrat } from "@/lib/billing/echeances-fiche";
@@ -105,6 +106,7 @@ export default function ContractDetailPage() {
 
   // Event Dialogs State
   const [amendmentDialogOpen, setAmendmentDialogOpen] = useState(false);
+  const [osDialogOpen, setOsDialogOpen] = useState(false);
   const [terminationDialogOpen, setTerminationDialogOpen] = useState(false);
   const [renewalDialogOpen, setRenewalDialogOpen] = useState(false);
   const [trusteeChangeDialogOpen, setTrusteeChangeDialogOpen] = useState(false);
@@ -134,8 +136,13 @@ export default function ContractDetailPage() {
   const reloadData = useCallback(async () => {
     if (!id) return;
     try {
-      const sitesData = await getSitesByContract(id);
+      // Sites et documents du contrat (avenants, OS, reconductions, résiliations, changements de syndic et de BE).
+      const [sitesData, am, te, re, tr, be] = await Promise.all([
+        getSitesByContract(id), getAmendmentsByContract(id), getTerminationsByContract(id), getRenewalsByContract(id),
+        getTrusteeChangesByContract(id), getBeChangesByContract(id),
+      ]);
       setSites(sitesData);
+      setAmendments(am); setTerminations(te); setRenewals(re); setTrusteeChanges(tr); setBeChanges(be);
     } catch (error) {
       console.error("Failed to reload data", error);
       toast({ title: "Erreur", description: "Impossible de rafraîchir les données.", variant: "destructive" });
@@ -545,13 +552,13 @@ export default function ContractDetailPage() {
           <Card>
             <CardHeader>
               <div className="flex items-center justify-between">
-                <div><CardTitle>Avenants</CardTitle><CardDescription>Historique des avenants au contrat.</CardDescription></div>
-                <Button size="sm" onClick={() => setAmendmentDialogOpen(true)}><PlusCircle className="mr-2 h-4 w-4" /> Nouvel Avenant</Button>
+                <div><CardTitle>Avenants et ordres de service</CardTitle><CardDescription>Chaque document est validé par un administrateur ; sa pièce fait foi.</CardDescription></div>
+                <div className="flex gap-2"><Button size="sm" variant="outline" onClick={() => setOsDialogOpen(true)}><PlusCircle className="mr-2 h-4 w-4" /> Ordre de service</Button><Button size="sm" onClick={() => setAmendmentDialogOpen(true)}><PlusCircle className="mr-2 h-4 w-4" /> Nouvel avenant</Button></div>
               </div>
             </CardHeader>
             <CardContent>
               <Table>
-                <TableHeader><TableRow><TableHead>Date</TableHead><TableHead>Description</TableHead><TableHead>Montant</TableHead><TableHead>Signé</TableHead></TableRow></TableHeader>
+                <TableHeader><TableRow><TableHead>Date</TableHead><TableHead>Description</TableHead><TableHead>Montant</TableHead><TableHead>Signé</TableHead><TableHead>Validation</TableHead><TableHead>Document</TableHead></TableRow></TableHeader>
                 <TableBody>
                   {amendments.length > 0 ? amendments.map(a => (
                     <TableRow key={a.id}>
@@ -559,8 +566,10 @@ export default function ContractDetailPage() {
                       <TableCell>{a.description}</TableCell>
                       <TableCell>{a.impactP1 ? `${a.impactP1} (P1)` : ''} {a.impactP2 ? `${a.impactP2} (P2)` : ''}</TableCell>
                       <TableCell>{a.signed ? 'Oui' : 'Non'}</TableCell>
+                      <TableCell><EtatValidation doc={a} /></TableCell>
+                      <TableCell><LienPiece doc={a} /></TableCell>
                     </TableRow>
-                  )) : <TableRow><TableCell colSpan={4} className="text-center">Aucun avenant</TableCell></TableRow>}
+                  )) : <TableRow><TableCell colSpan={6} className="text-center">Aucun avenant</TableCell></TableRow>}
                 </TableBody>
               </Table>
             </CardContent>
@@ -576,15 +585,17 @@ export default function ContractDetailPage() {
             </CardHeader>
             <CardContent>
               <Table>
-                <TableHeader><TableRow><TableHead>Date Demande</TableHead><TableHead>Date Effective</TableHead><TableHead>Motif</TableHead></TableRow></TableHeader>
+                <TableHeader><TableRow><TableHead>Date Demande</TableHead><TableHead>Date Effective</TableHead><TableHead>Motif</TableHead><TableHead>Validation</TableHead><TableHead>Document</TableHead></TableRow></TableHeader>
                 <TableBody>
                   {terminations.length > 0 ? terminations.map(t => (
                     <TableRow key={t.id}>
                       <TableCell>{new Date(t.createdAt).toLocaleDateString('fr-FR')}</TableCell>
                       <TableCell>{t.effectiveDate ? new Date(t.effectiveDate).toLocaleDateString('fr-FR') : '-'}</TableCell>
                       <TableCell>{t.reason}</TableCell>
+                      <TableCell><EtatValidation doc={t} /></TableCell>
+                      <TableCell><LienPiece doc={t} /></TableCell>
                     </TableRow>
-                  )) : <TableRow><TableCell colSpan={3} className="text-center">Aucune résiliation</TableCell></TableRow>}
+                  )) : <TableRow><TableCell colSpan={5} className="text-center">Aucune résiliation</TableCell></TableRow>}
                 </TableBody>
               </Table>
             </CardContent>
@@ -600,15 +611,17 @@ export default function ContractDetailPage() {
             </CardHeader>
             <CardContent>
               <Table>
-                <TableHeader><TableRow><TableHead>Date</TableHead><TableHead>Nouvelle Date Fin</TableHead><TableHead>Durée</TableHead></TableRow></TableHeader>
+                <TableHeader><TableRow><TableHead>Date</TableHead><TableHead>Nouvelle Date Fin</TableHead><TableHead>Durée</TableHead><TableHead>Validation</TableHead><TableHead>Document</TableHead></TableRow></TableHeader>
                 <TableBody>
                   {renewals.length > 0 ? renewals.map(r => (
                     <TableRow key={r.id}>
                       <TableCell>{new Date(r.createdAt).toLocaleDateString('fr-FR')}</TableCell>
                       <TableCell>{new Date(r.newEndDate).toLocaleDateString('fr-FR')}</TableCell>
                       <TableCell>{r.duration}</TableCell>
+                      <TableCell><EtatValidation doc={r} /></TableCell>
+                      <TableCell><LienPiece doc={r} /></TableCell>
                     </TableRow>
-                  )) : <TableRow><TableCell colSpan={3} className="text-center">Aucune reconduction</TableCell></TableRow>}
+                  )) : <TableRow><TableCell colSpan={5} className="text-center">Aucune reconduction</TableCell></TableRow>}
                 </TableBody>
               </Table>
             </CardContent>
@@ -624,15 +637,17 @@ export default function ContractDetailPage() {
             </CardHeader>
             <CardContent>
               <Table>
-                <TableHeader><TableRow><TableHead>Date</TableHead><TableHead>Nouveau Syndic</TableHead><TableHead>Contact</TableHead></TableRow></TableHeader>
+                <TableHeader><TableRow><TableHead>Date</TableHead><TableHead>Nouveau Syndic</TableHead><TableHead>Contact</TableHead><TableHead>Validation</TableHead><TableHead>Document</TableHead></TableRow></TableHeader>
                 <TableBody>
                   {trusteeChanges.length > 0 ? trusteeChanges.map(t => (
                     <TableRow key={t.id}>
                       <TableCell>{new Date(t.effectiveDate).toLocaleDateString('fr-FR')}</TableCell>
                       <TableCell>{t.newRepresentative}</TableCell>
                       <TableCell>{t.contactEmail}</TableCell>
+                      <TableCell><EtatValidation doc={t} /></TableCell>
+                      <TableCell><LienPiece doc={t} /></TableCell>
                     </TableRow>
-                  )) : <TableRow><TableCell colSpan={3} className="text-center">Aucun changement</TableCell></TableRow>}
+                  )) : <TableRow><TableCell colSpan={5} className="text-center">Aucun changement</TableCell></TableRow>}
                 </TableBody>
               </Table>
             </CardContent>
@@ -648,15 +663,17 @@ export default function ContractDetailPage() {
             </CardHeader>
             <CardContent>
               <Table>
-                <TableHeader><TableRow><TableHead>Date</TableHead><TableHead>Nouveau BE</TableHead><TableHead>Contact</TableHead></TableRow></TableHeader>
+                <TableHeader><TableRow><TableHead>Date</TableHead><TableHead>Nouveau BE</TableHead><TableHead>Contact</TableHead><TableHead>Validation</TableHead><TableHead>Document</TableHead></TableRow></TableHeader>
                 <TableBody>
                   {beChanges.length > 0 ? beChanges.map(b => (
                     <TableRow key={b.id}>
                       <TableCell>{new Date(b.effectiveDate).toLocaleDateString('fr-FR')}</TableCell>
                       <TableCell>{b.newBe}</TableCell>
                       <TableCell>{b.contactEmail}</TableCell>
+                      <TableCell><EtatValidation doc={b} /></TableCell>
+                      <TableCell><LienPiece doc={b} /></TableCell>
                     </TableRow>
-                  )) : <TableRow><TableCell colSpan={3} className="text-center">Aucun changement</TableCell></TableRow>}
+                  )) : <TableRow><TableCell colSpan={5} className="text-center">Aucun changement</TableCell></TableRow>}
                 </TableBody>
               </Table>
             </CardContent>
@@ -669,6 +686,7 @@ export default function ContractDetailPage() {
 
       {/* Event Dialogs */}
       <AmendmentDialog contractId={id} open={amendmentDialogOpen} onOpenChange={setAmendmentDialogOpen} onSuccess={reloadData} />
+      <AmendmentDialog nature="os" contractId={id} open={osDialogOpen} onOpenChange={setOsDialogOpen} onSuccess={reloadData} />
       <TerminationDialog contractId={id} open={terminationDialogOpen} onOpenChange={setTerminationDialogOpen} onSuccess={reloadData} />
       <RenewalDialog contractId={id} open={renewalDialogOpen} onOpenChange={setRenewalDialogOpen} onSuccess={reloadData} />
       <TrusteeChangeDialog contractId={id} open={trusteeChangeDialogOpen} onOpenChange={setTrusteeChangeDialogOpen} onSuccess={reloadData} />

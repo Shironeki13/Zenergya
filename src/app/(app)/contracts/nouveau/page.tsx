@@ -16,6 +16,7 @@ import {
 import { PROMPT_MARCHE_PRIVE, PROMPT_MARCHE_PUBLIC } from '@/lib/contracts/prompts-extraction';
 import { extractContractInfo } from '@/ai/flows/extract-contract-info-flow';
 import { creerContratAction } from '@/lib/contracts/assistant-actions';
+import { PieceJustificative, deposerPiece } from '@/components/contracts/events/piece-justificative';
 import { EtapeClient, EtapeContrat, EtapePrestations, EtapeSites, EtapeSource, type Refs } from '@/components/contracts/assistant/etapes';
 
 /**
@@ -43,6 +44,8 @@ export default function NouveauContratPage() {
     const [analyse, setAnalyse] = useState(false);
     const [consignes, setConsignes] = useState(PROMPT_MARCHE_PRIVE);
     const [creation, setCreation] = useState(false);
+    // Contrat signé à joindre (PDF analysé, ou fichier choisi au récapitulatif) : déposé à la création.
+    const [documentContrat, setDocumentContrat] = useState<File | null>(null);
     const pret = useRef(false);
 
     // Démarrage : client imposé (?clientId=, depuis une fiche client) ou brouillon précédent à reprendre.
@@ -93,6 +96,7 @@ export default function NouveauContratPage() {
                 terms: terms.map(t => ({ id: t.id, name: t.name })), schedules: schedules.map(s => ({ id: s.id, name: s.name })),
             });
             const suite = depuisExtraction(b, x, { typologies, clients });
+            setDocumentContrat(fichier);
             setB(suite);
             toast({ title: 'PDF analysé', description: `${suite.lusDansPdf.length} information(s) lue(s), à vérifier.${suite.client.mode === 'existant' ? ' Client déjà connu : sélectionné.' : ''}` });
             aller('client');
@@ -108,7 +112,12 @@ export default function NouveauContratPage() {
         const bloquantes = ETAPES.filter(e => erreursEtape(e, final).length);
         if (bloquantes.length) { aller(bloquantes[0]); setMontrerErreurs(true); return; }
         setCreation(true);
-        const r = await creerContratAction(final);
+        let document: Brouillon['document'] = null;
+        if (documentContrat) {
+            try { const d = await deposerPiece(documentContrat, 'a-rattacher', 'base-marche'); document = { name: d.documentName, url: d.documentUrl }; }
+            catch { setCreation(false); toast({ title: 'Dépôt du document impossible', description: 'Réessayez, ou retirez le fichier pour créer le contrat sans document.', variant: 'destructive' }); return; }
+        }
+        const r = await creerContratAction({ ...final, document });
         setCreation(false);
         if (!r.success) { toast({ title: 'Création impossible', description: r.error, variant: 'destructive' }); return; }
         try { localStorage.removeItem(CLE_BROUILLON); } catch { /* stockage indisponible */ }
@@ -176,7 +185,15 @@ export default function NouveauContratPage() {
                     {etape === 'contrat' && <EtapeContrat b={b} maj={maj} refs={refs} />}
                     {etape === 'sites' && <EtapeSites b={b} maj={maj} refs={refs} />}
                     {etape === 'prestations' && <EtapePrestations b={b} maj={maj} refs={refs} />}
-                    {etape === 'recapitulatif' && <Recapitulatif b={b} refs={refs} erreurs={toutes} onModifier={aller} />}
+                    {etape === 'recapitulatif' && (
+                        <>
+                            <Recapitulatif b={b} refs={refs} erreurs={toutes} onModifier={aller} />
+                            <div className="rounded-md border p-3">
+                                <p className="mb-2 text-sm font-medium">Contrat signé <span className="font-normal text-muted-foreground">— il fait foi ; l&apos;administrateur le consulte pour valider le contrat</span></p>
+                                <PieceJustificative fichier={documentContrat} onChange={setDocumentContrat} obligatoire={false} libelle="Document du contrat" />
+                            </div>
+                        </>
+                    )}
                 </CardContent>
             </Card>
 
@@ -235,7 +252,7 @@ function Recapitulatif({ b, refs, erreurs, onModifier }: { b: Brouillon; refs: R
                         : <>{lignes.length} prestation(s), {total.toLocaleString('fr-FR', { style: 'currency', currency: 'EUR' })} HT par an : {lignes.map(l => `${nomSite(l.site)} / ${refs.activities.find(a => a.id === l.activityId)?.code}`).join(', ')}</>}
             </Bloc>
             <p className="text-sm text-muted-foreground">
-                Le contrat est créé « Brouillon », <strong>en attente de validation</strong> (Clients et contrats › Validation des contrats). Le paramétrage P1 se fait ensuite sur
+                Le contrat est créé « Brouillon », <strong>en attente de validation</strong> (Clients et contrats › Validation des documents). Le paramétrage P1 se fait ensuite sur
                 la fiche de chaque site.
             </p>
         </div>

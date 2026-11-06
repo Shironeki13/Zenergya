@@ -39,6 +39,8 @@ export type Brouillon = {
     /** Sites existants du client à rattacher (sans contrat) et nouveaux sites. */
     sites: { existants: string[]; nouveaux: NouveauSite[] };
     prestations: { saisir: boolean; lignes: LignePrestation[] };
+    /** Contrat signé déposé (PDF analysé ou fichier joint au récapitulatif) : documents du contrat. */
+    document?: { name: string; url: string } | null;
 };
 
 export const brouillonVide = (clientId = ''): Brouillon => ({

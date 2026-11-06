@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { PieceJustificative, deposerPiece, pieceValide } from './piece-justificative';
 import { signalerErreurs } from '@/lib/forms/signaler-erreurs';
 import { SearchableSelect } from '@/components/ui/searchable-select';
 import { optionsClients } from '@/lib/select-options';
@@ -33,11 +34,15 @@ interface AmendmentDialogProps {
     open: boolean;
     onOpenChange: (open: boolean) => void;
     onSuccess: () => void;
+    /** Avenant (défaut) ou ordre de service : même saisie, type distinct pour la validation. */
+    nature?: 'avenant' | 'os';
 }
 
-export function AmendmentDialog({ contractId, open, onOpenChange, onSuccess }: AmendmentDialogProps) {
+export function AmendmentDialog({ contractId, open, onOpenChange, onSuccess, nature = 'avenant' }: AmendmentDialogProps) {
     const { toast } = useToast();
-    const { clients, contracts } = useData();
+    const { clients, contracts, currentUser } = useData();
+    const [piece, setPiece] = useState<File | null>(null);
+    const [erreurPiece, setErreurPiece] = useState(false);
     const [isLoading, setIsLoading] = useState(false);
 
     const [selectedClientId, setSelectedClientId] = useState<string>("");
@@ -67,11 +72,15 @@ export function AmendmentDialog({ contractId, open, onOpenChange, onSuccess }: A
 
     async function onSubmit(values: z.infer<typeof formSchema>) {
         if (!selectedContractId) return;
+        // Pièce justificative obligatoire : c'est elle qui fait foi.
+        if (!pieceValide(piece)) { setErreurPiece(true); return; }
 
         setIsLoading(true);
         try {
+            const document = await deposerPiece(piece, selectedContractId, nature === 'os' ? 'ordres-de-service' : 'avenants');
             await createAmendment({
                 contractId: selectedContractId,
+                nature,
                 description: values.description,
                 effectiveDate: values.effectiveDate,
                 signed: values.signed,
@@ -82,11 +91,12 @@ export function AmendmentDialog({ contractId, open, onOpenChange, onSuccess }: A
                 impactsDuration: values.impactsDuration,
                 newEndDate: values.newEndDate,
                 createdAt: new Date().toISOString(),
-                createdBy: "System", // TODO: Replace with actual user
+                createdBy: currentUser?.email ?? 'inconnu', ...document, validationStatus: 'pending_validation',
                 impactsServices: false, // Not implemented yet in UI
             });
-            toast({ title: "Avenant créé", description: "L'avenant a été ajouté avec succès." });
+            toast({ title: "Avenant créé", description: "Enregistré, en attente de validation par un administrateur." });
             form.reset();
+            setPiece(null);
             onSuccess();
             onOpenChange(false);
         } catch (error) {
@@ -103,7 +113,7 @@ export function AmendmentDialog({ contractId, open, onOpenChange, onSuccess }: A
         <Dialog open={open} onOpenChange={onOpenChange}>
             <DialogContent className="sm:max-w-[600px]">
                 <DialogHeader>
-                    <DialogTitle>Nouvel Avenant</DialogTitle>
+                    <DialogTitle>{nature === 'os' ? 'Nouvel ordre de service' : 'Nouvel avenant'}</DialogTitle>
                 </DialogHeader>
 
                 {!contractId && !selectedContractId ? (
@@ -220,6 +230,7 @@ export function AmendmentDialog({ contractId, open, onOpenChange, onSuccess }: A
                                 />
                             )}
 
+                            <PieceJustificative fichier={piece} onChange={f => { setPiece(f); setErreurPiece(false); }} erreur={erreurPiece} />
                             <DialogFooter>
                                 <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Annuler</Button>
                                 <Button type="submit" disabled={isLoading}>

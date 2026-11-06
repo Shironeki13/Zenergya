@@ -23,6 +23,7 @@ await env.withSecurityRulesDisabled(async (ctx) => {
   await setDoc(doc(db, 'p1Parametrage', 'site:s'), { kind: 'site', siteId: 's', params: {}, postes: {} });
   await setDoc(doc(db, 'meterReadings', 'r'), { meterId: 'm', value: 10, type: 'REEL' });
   await setDoc(doc(db, 'suiviCommentaires', 'c'), { contractId: 'k', texte: 'x', motif: 'note' });
+  await setDoc(doc(db, 'renewals', 'r1'), { contractId: 'k', validationStatus: 'pending_validation', documentUrl: 'https://x/d.pdf' });
   await setDoc(doc(db, 'quotes', 'brouillon'), { number: 'VEF-DEV2026-0001', status: 'brouillon', version: 1, title: 'A' });
   await setDoc(doc(db, 'quoteVersions', 'v'), { quoteId: 'envoye', version: 1 });
   await setDoc(doc(db, 'projects', 'p'), { code: 'VEF-AFF2026-0001', status: 'en_cours' });
@@ -98,6 +99,11 @@ await t('user cannot create a meter reading', assertFails(setDoc(doc(user, 'mete
 await t('admin cannot delete a meter reading', assertFails(deleteDoc(doc(admin, 'meterReadings', 'r'))));
 await t('user cannot write P1 actuals', assertFails(setDoc(doc(user, 'p1Reel', 's_2025-10'), { montantHt: 1 })));
 await t('admin cannot write P1 actuals', assertFails(setDoc(doc(admin, 'p1Reel', 's_2025-10'), { montantHt: 1 })));
+await t('user creates a pending amendment with its document', assertSucceeds(setDoc(doc(user, 'amendments', 'av1'), { contractId: 'k', description: 'x', validationStatus: 'pending_validation', documentUrl: 'https://x/doc.pdf' })));
+await t('user cannot create an amendment without document', assertFails(setDoc(doc(user, 'amendments', 'av2'), { contractId: 'k', description: 'x', validationStatus: 'pending_validation' })));
+await t('user cannot create an already validated termination', assertFails(setDoc(doc(user, 'terminations', 't1'), { contractId: 'k', validationStatus: 'validated', documentUrl: 'https://x/d.pdf' })));
+await t('admin cannot validate an amendment from the browser', assertFails(updateDoc(doc(admin, 'amendments', 'av1'), { validationStatus: 'validated' })));
+await t('user cannot delete a renewal', assertFails(deleteDoc(doc(user, 'renewals', 'r1'))));
 await t('user reads billing follow-up comments', assertSucceeds(getDoc(doc(user, 'suiviCommentaires', 'c'))));
 await t('user cannot write a billing follow-up comment', assertFails(setDoc(doc(user, 'suiviCommentaires', 'n'), { contractId: 'k', texte: 'x' })));
 await t('admin cannot change a billing follow-up comment', assertFails(updateDoc(doc(admin, 'suiviCommentaires', 'c'), { texte: 'y' })));
