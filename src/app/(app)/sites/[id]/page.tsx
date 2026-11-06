@@ -21,6 +21,8 @@ import { billingItems, echeancesOf, lineItemKeys } from '@/lib/billing/contract-
 import { toDay } from '@/lib/services/site-amounts';
 import { P1ParametragePanel } from '@/components/p1/p1-parametrage-panel';
 import { getP1SiteAction } from '@/lib/p1/actions';
+import { CompteurAFaire, useOngletUrl } from '@/components/fiches/fiche';
+import { periodesDuContrat, type PeriodeFiche } from '@/lib/billing/echeances-fiche';
 import {
     AFaire, CompteursDuSite, FacturesDuSite, Indicateur, JOURS_SANS_RELEVE, ListePrestations, ModifierSiteDialog, ONGLETS_SITE, TableauPrestations,
     enVigueur, libellePrestation, manquesPrestation, montantSite, type OngletSite, type PointAFaire, type SiteModifiable,
@@ -500,17 +502,7 @@ export default function SiteDetailsPage() {
     }, [revisionRuleId, revisionRules]);
 
     // Onglet courant, conservé dans l'adresse (?onglet=) : lien direct et retour arrière.
-    const [onglet, setOnglet] = useState<OngletSite>('synthese');
-    useEffect(() => {
-        const o = new URLSearchParams(window.location.search).get('onglet');
-        if (o && (ONGLETS_SITE as readonly string[]).includes(o)) setOnglet(o as OngletSite);
-    }, []);
-    const changerOnglet = (o: OngletSite) => {
-        setOnglet(o);
-        const u = new URL(window.location.href);
-        u.searchParams.set('onglet', o);
-        window.history.replaceState(window.history.state, '', u);
-    };
+    const [onglet, changerOnglet] = useOngletUrl<OngletSite>(ONGLETS_SITE, 'synthese');
     // Prestation affichée par défaut : la première du site.
     useEffect(() => {
         if (!selectedServiceId && siteServices.length) { setSelectedServiceId(siteServices[0].id); setSelectedType(siteServices[0].type); }
@@ -668,36 +660,13 @@ export default function SiteDetailsPage() {
     })();
 
     // Calendrier de facturation de la prestation : même échéancier que la facturation (lib/billing/contract-billing).
-    type Periode = { periodStart: Date; periodEnd: Date; dueDate: Date; invoice: (typeof invoices)[number] | null; amount: number | null };
     // Échéances de chaque prestation du site (même échéancier que la facture) et la facture qui couvre chacune.
-    const periodesParService = (() => {
-        const map = new Map<string, Periode[]>();
-        if (!contract || !site) return map;
-        const input = {
-            contract: {
-                id: contract.id, siteIds: contract.siteIds ?? [], activityIds: contract.activityIds ?? [], invoicingType: contract.invoicingType,
-                startDate: contract.startDate, endDate: contract.endDate, billingSchedule: contract.billingSchedule,
-            },
-            sites: [site], services, activities, vatRates, schedules, terms,
-        };
-        const contractStart = toDay(contract.startDate);
-        if (!contractStart) return map;
-        const contractInvoices = invoices.filter(inv => inv.contractId === contract.id && inv.status !== 'cancelled' && !inv.cancelledByCreditNoteId);
-        for (const item of billingItems(input).items) {
-            if (!item.serviceId) continue;
-            map.set(item.serviceId, echeancesOf(item, contractStart, null, item.to, 120).map(e => {
-                // Facture qui couvre l'échéance : ligne de cette prestation sur cette période (ou facture antérieure par site et activité).
-                const invoice = contractInvoices.find(inv => (inv.lineItems ?? []).some(l => {
-                    const keys = lineItemKeys(l);
-                    if (keys.length) return keys.includes(item.key) && !!l.periodStartDate && l.periodStartDate <= e.start && (toDay(l.periodEndDate) ?? '') >= e.end;
-                    return l.activityCode === item.activity.code && (!l.siteId || l.siteId === site.id)
-                        && (toDay(inv.periodStartDate) ?? '') <= e.start && (toDay(inv.periodEndDate) ?? '') >= e.end;
-                })) ?? null;
-                return { periodStart: new Date(e.start), periodEnd: new Date(e.end), dueDate: new Date(e.billableOn), invoice, amount: item.p1Acompte || item.p1Releve ? null : e.amount };
-            }));
+    const periodesParService = new Map<string, PeriodeFiche[]>();
+    if (contract && site) {
+        for (const periodes of periodesDuContrat(contract, [site], { services, activities, vatRates, schedules, terms, invoices }).values()) {
+            if (periodes[0]?.serviceId) periodesParService.set(periodes[0].serviceId, periodes);
         }
-        return map;
-    })();
+    }
     const billingPeriods = activeService ? periodesParService.get(activeService.id) ?? [] : [];
 
     // Consommation = écart entre les deux derniers relevés réels du compteur
@@ -794,7 +763,7 @@ export default function SiteDetailsPage() {
                 <TabsList className="h-auto flex-wrap justify-start">
                     <TabsTrigger value="synthese" className="gap-1.5">
                         Synthèse
-                        {pointsAFaire.length > 0 && <Badge variant={pointsAFaire.some(p => p.gravite === 'bloquant') ? 'destructive' : 'secondary'} className="h-5 px-1.5 text-[10px]">{pointsAFaire.length}</Badge>}
+                        <CompteurAFaire points={pointsAFaire} />
                     </TabsTrigger>
                     <TabsTrigger value="prestations">Prestations ({siteServices.length})</TabsTrigger>
                     <TabsTrigger value="compteurs">Compteurs et relevés ({siteMeters.length})</TabsTrigger>
@@ -821,7 +790,7 @@ export default function SiteDetailsPage() {
                                 </dl>
                             </CardContent>
                         </Card>
-                        <div className="lg:col-span-2"><AFaire points={pointsAFaire} chargement={p1Reste === undefined} /></div>
+                        <div className="lg:col-span-2"><AFaire points={pointsAFaire} chargement={p1Reste === undefined} description="Ce qui empêche ou fragilise la facturation de ce site." /></div>
                     </div>
                     <TableauPrestations services={siteServices} activities={activities} schedules={schedules} onOuvrir={ouvrirPrestation} onAjouter={() => changerOnglet('prestations')} />
                 </TabsContent>

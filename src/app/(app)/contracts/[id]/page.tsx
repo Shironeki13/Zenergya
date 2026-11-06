@@ -1,5 +1,8 @@
 'use client';
 
+import { AFaire, Indicateur, eur0, CompteurAFaire, useOngletUrl, type PointAFaire } from "@/components/fiches/fiche";
+import { CarteContacts, TableauFactures, TableauSites, etatSite } from "@/components/fiches/tableaux";
+import { enRetard, periodesDuContrat } from "@/lib/billing/echeances-fiche";
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { notFound, useRouter, useParams } from "next/navigation";
@@ -75,12 +78,15 @@ import { BeChangeDialog } from "@/components/contracts/events/BeChangeDialog";
 import { SiteImportDialog } from "@/components/contracts/SiteImportDialog";
 import { ContractEInvoicingCard } from "@/components/contracts/EInvoicingCard";
 
+const ONGLETS_CONTRAT = ['synthese', 'sites', 'factures', 'rfe', 'p1', 'historique'] as const;
+type OngletContrat = typeof ONGLETS_CONTRAT[number];
+
 export default function ContractDetailPage() {
   const params = useParams();
   const id = params.id as string;
   const router = useRouter();
   const { toast } = useToast();
-  const { revisionRules } = useData();
+  const { revisionRules, services, vatRates, schedules, terms } = useData();
 
   const [isLoading, setIsLoading] = useState(true);
   const [contract, setContract] = useState<Contract | null>(null);
@@ -316,6 +322,8 @@ export default function ContractDetailPage() {
     }
   };
 
+  const [onglet, changerOnglet] = useOngletUrl<OngletContrat>(ONGLETS_CONTRAT, 'synthese');
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-full">
@@ -328,36 +336,42 @@ export default function ContractDetailPage() {
     return notFound();
   }
 
-  // KPI calculations
-  const totalContractualise = sites.reduce(
-    (sum, site) => sum + (site.amounts?.reduce((s, a) => s + a.amount, 0) ?? 0),
-    0
-  );
-  const totalFacture = invoices.reduce((sum, i) => sum + i.total, 0);
-  const totalPaye = invoices.filter(i => i.status === 'paid').reduce((sum, i) => sum + i.total, 0);
-  const soldeDu = invoices.filter(i => i.status === 'due' || i.status === 'overdue').reduce((sum, i) => sum + i.total, 0);
-
-  // Reconduction alert
-  const daysUntilEnd = contract.endDate
-    ? Math.ceil((new Date(contract.endDate).getTime() - Date.now()) / 86400000)
-    : null;
-  const showRenewAlert = daysUntilEnd !== null && daysUntilEnd <= 90 && contract.status === 'Actif';
-
-  const fmt = (n: number) => n.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  // ── Synthèse du contrat : indicateurs et points à traiter ──
+  const daysUntilEnd = contract.endDate ? Math.ceil((new Date(contract.endDate).getTime() - Date.now()) / 86400000) : null;
+  const showRenewAlert = daysUntilEnd !== null && daysUntilEnd <= 90 && daysUntilEnd >= 0 && contract.status === 'Actif';
+  const etats = sites.map(site => ({ site, ...etatSite(site, services) }));
+  const montantAnnuel = etats.reduce((t, e) => t + e.montant, 0);
+  const sansPrestation = etats.filter(e => e.prestations.length === 0);
+  const incompletes = etats.flatMap(e => e.incompletes);
+  const facturesEmises = invoices.filter(i => i.status !== 'proforma' && i.status !== 'cancelled');
+  const totalFacture = facturesEmises.reduce((t, i) => t + (Number(i.total) || 0), 0);
+  const aPayer = invoices.filter(i => i.status === 'due' || i.status === 'overdue');
+  const soldeDu = aPayer.reduce((t, i) => t + (Number(i.total) || 0), 0);
+  const enRetardPaiement = invoices.filter(i => i.status === 'overdue' || (i.status === 'due' && i.dueDate && new Date(i.dueDate) < new Date()));
+  const echeances = enRetard(periodesDuContrat(contract, sites, { services, activities, vatRates, schedules, terms, invoices }).values());
+  const contactFacturation = contacts.find(c => c.type === 'facturation');
+  const aDuP1 = activities.some(a => contract.activityIds?.includes(a.id) && a.type === 'P1');
+  const pointsAFaire: PointAFaire[] = [
+    ...(contract.validationStatus === 'refused' ? [{ id: 'refus', gravite: 'bloquant' as const, texte: `Contrat refusé à la validation${contract.refusalReason ? ` : ${contract.refusalReason}` : ''}.`, action: { label: 'Corriger', onClick: () => router.push(`/contracts/${id}/edit`) } }] : []),
+    ...(contract.validationStatus === 'pending_validation' ? [{ id: 'validation', gravite: 'attention' as const, texte: 'Contrat en attente de validation : il n\'est pas encore facturé.' }] : []),
+    ...(sites.length === 0 ? [{ id: 'sites', gravite: 'bloquant' as const, texte: 'Aucun site rattaché : rien n\'est facturé.', action: { label: 'Ajouter un site', onClick: () => handleOpenSiteDialog() } }] : []),
+    ...(sansPrestation.length ? [{ id: 'sans', gravite: 'bloquant' as const, texte: `${sansPrestation.length} site(s) sans prestation : ${sansPrestation.slice(0, 3).map(e => e.site.name).join(', ')}${sansPrestation.length > 3 ? '…' : ''}.`, action: { label: 'Sites', onClick: () => changerOnglet('sites') } }] : []),
+    ...(incompletes.length ? [{ id: 'inc', gravite: 'bloquant' as const, texte: `${incompletes.length} prestation(s) incomplète(s) (TVA, périodicité, terme ou montant manquant).`, action: { label: 'Sites', onClick: () => changerOnglet('sites') } }] : []),
+    ...(echeances.length ? [{ id: 'echeances', gravite: 'attention' as const, texte: `${echeances.length} échéance(s) facturable(s) non facturée(s), la plus ancienne le ${echeances[0].dueDate.toLocaleDateString('fr-FR')}.`, action: { label: 'Suivi facturation', onClick: () => router.push('/billing/suivi') } }] : []),
+    ...(enRetardPaiement.length ? [{ id: 'impayes', gravite: 'attention' as const, texte: `${enRetardPaiement.length} facture(s) en retard de paiement (${eur0(enRetardPaiement.reduce((t, i) => t + (Number(i.total) || 0), 0))} TTC).`, action: { label: 'Factures', onClick: () => changerOnglet('factures') } }] : []),
+    ...(!contract.billingManagerId ? [{ id: 'responsable', gravite: 'attention' as const, texte: 'Aucun responsable facturation : le contrat n\'apparaît dans le portefeuille d\'aucun ADV (à choisir dans les informations ci-dessous).' }] : []),
+    ...(!contactFacturation ? [{ id: 'contact', gravite: 'attention' as const, texte: 'Aucun contact de facturation chez le client.', action: { label: 'Fiche client', onClick: () => router.push(`/clients/${contract.clientId}`) } }] : []),
+    ...(showRenewAlert ? [{ id: 'echeance', gravite: 'attention' as const, texte: `Le contrat arrive à échéance dans ${daysUntilEnd} jour(s), le ${new Date(contract.endDate).toLocaleDateString('fr-FR')}${contract.tacitRenewal ? ' (reconduction tacite)' : ''}.`, action: { label: 'Reconductions', onClick: () => changerOnglet('historique') } }] : []),
+  ];
+  const nbEvenements = amendments.length + terminations.length + renewals.length + trusteeChanges.length + beChanges.length;
 
   return (
-    <div className="grid gap-4 md:gap-8">
-      {/* Header */}
-      <div className="flex items-center gap-4">
-        <Link href="/contracts">
-          <Button variant="outline" size="icon" className="h-7 w-7">
-            <ChevronLeft className="h-4 w-4" />
-            <span className="sr-only">Retour</span>
-          </Button>
-        </Link>
-        <h1 className="flex-1 shrink-0 whitespace-nowrap text-xl font-semibold tracking-tight sm:grow-0">
-          Contrat pour {contract.clientName}
-        </h1>
+    <div className="space-y-6">
+      {/* Bandeau : identité du contrat, client, période, actions */}
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <h1 className="text-2xl font-bold tracking-tight">{contract.contractNumber ?? 'Contrat'}{contract.label ? ` — ${contract.label}` : ''}</h1>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Badge variant={getBadgeVariant(contract.status)} className="ml-auto sm:ml-0 cursor-pointer gap-1 hover:opacity-80">
@@ -377,82 +391,49 @@ export default function ContractDetailPage() {
             ))}
           </DropdownMenuContent>
         </DropdownMenu>
-        <Button size="sm" asChild>
-          <Link href={`/contracts/${id}/edit`}>Modifier</Link>
-        </Button>
+          </div>
+          <p className="mt-1 flex flex-wrap items-center gap-x-1.5 text-sm text-muted-foreground">
+            <Link href={`/clients/${contract.clientId}`} className="hover:text-foreground hover:underline">{client?.name || contract.clientName}</Link>
+            <span aria-hidden>·</span>
+            <span>{new Date(contract.startDate).toLocaleDateString('fr-FR')} → {new Date(contract.endDate).toLocaleDateString('fr-FR')}</span>
+            <span aria-hidden>·</span>
+            <span>{sites.length} site{sites.length > 1 ? 's' : ''}</span>
+            <span aria-hidden>·</span>
+            <span>{contract.invoicingType === 'global' ? 'Facturation globale' : 'Facturation par site'}</span>
+          </p>
+        </div>
+        <div className="flex shrink-0 flex-wrap gap-2">
+          <Button variant="outline" asChild><Link href={`/contracts/${id}/edit`}>Modifier</Link></Button>
+          <Button onClick={() => router.push('/billing')}><PlusCircle className="mr-2 h-4 w-4" />Générer une facture</Button>
+        </div>
       </div>
 
-      {/* Reconduction alert */}
-      {showRenewAlert && (
-        <Alert className="border-amber-500/50 bg-amber-50 text-amber-800 dark:bg-amber-950/20 dark:text-amber-400 [&>svg]:text-amber-600">
-          <AlertTriangle className="h-4 w-4" />
-          <AlertTitle>Reconduction imminente</AlertTitle>
-          <AlertDescription>
-            Ce contrat arrive à échéance dans <strong>{daysUntilEnd} jour{daysUntilEnd > 1 ? 's' : ''}</strong> (le {new Date(contract.endDate).toLocaleDateString('fr-FR')}).
-            {contract.tacitRenewal && " La reconduction tacite est activée."}
-          </AlertDescription>
-        </Alert>
-      )}
-
-      {/* KPI strip */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <Card>
-          <CardHeader className="pb-2">
-            <CardDescription className="flex items-center gap-1">
-              <TrendingUp className="h-3.5 w-3.5" /> Montant contractualisé
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <p className="text-2xl font-bold">{fmt(totalContractualise)} €</p>
-            <p className="text-xs text-muted-foreground mt-1">Somme des montants sites</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardDescription className="flex items-center gap-1">
-              <FileText className="h-3.5 w-3.5" /> Total facturé
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <p className="text-2xl font-bold">{fmt(totalFacture)} €</p>
-            <p className="text-xs text-muted-foreground mt-1">{invoices.length} facture{invoices.length !== 1 ? 's' : ''}</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardDescription className="flex items-center gap-1">
-              <CreditCard className="h-3.5 w-3.5" /> Payé
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <p className="text-2xl font-bold text-green-600">{fmt(totalPaye)} €</p>
-            <p className="text-xs text-muted-foreground mt-1">Factures réglées</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardDescription className="flex items-center gap-1">
-              <AlertTriangle className="h-3.5 w-3.5" /> Solde dû
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <p className={`text-2xl font-bold ${soldeDu > 0 ? 'text-destructive' : 'text-muted-foreground'}`}>
-              {fmt(soldeDu)} €
-            </p>
-            <p className="text-xs text-muted-foreground mt-1">Due + en retard</p>
-          </CardContent>
-        </Card>
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <Indicateur titre="Montant annuel HT" valeur={eur0(montantAnnuel)} detail={`prestations en vigueur de ${sites.length} site(s)`} onClick={() => changerOnglet('sites')} />
+        <Indicateur titre="Facturé TTC" valeur={eur0(totalFacture)} detail={`${facturesEmises.length} facture(s) émise(s)`} onClick={() => changerOnglet('factures')} />
+        <Indicateur titre="Solde dû TTC" valeur={eur0(soldeDu)} detail={enRetardPaiement.length ? `${enRetardPaiement.length} en retard de paiement` : `${aPayer.length} facture(s) à payer`} alerte={enRetardPaiement.length > 0} onClick={() => changerOnglet('factures')} />
+        <Indicateur titre="Échéances à facturer" valeur={`${echeances.length}`} detail={echeances.length ? `depuis le ${echeances[0].dueDate.toLocaleDateString('fr-FR')}` : 'facturation à jour'} alerte={echeances.length > 0} onClick={() => router.push('/billing/suivi')} />
       </div>
 
-      {/* Main 3-col grid */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-        {/* Contract Details */}
-        <Card>
-          <CardHeader className="pb-4">
-            <CardTitle>Détails du Contrat</CardTitle>
-            <CardDescription>{contract.contractNumber ?? contract.id}</CardDescription>
-          </CardHeader>
-          <CardContent>
+      <Tabs value={onglet} onValueChange={v => changerOnglet(v as OngletContrat)}>
+        <TabsList className="h-auto flex-wrap justify-start">
+          <TabsTrigger value="synthese" className="gap-1.5">
+            Synthèse
+            <CompteurAFaire points={pointsAFaire} />
+          </TabsTrigger>
+          <TabsTrigger value="sites">Sites ({sites.length})</TabsTrigger>
+          <TabsTrigger value="factures">Factures ({invoices.length})</TabsTrigger>
+          <TabsTrigger value="rfe">Facturation électronique</TabsTrigger>
+          {aDuP1 && <TabsTrigger value="p1">Paramétrage P1</TabsTrigger>}
+          <TabsTrigger value="historique">Historique ({nbEvenements})</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="synthese" className="mt-4 space-y-6">
+          <AFaire points={pointsAFaire} description="Ce qui empêche ou fragilise la facturation de ce contrat." />
+          <div className="grid gap-6 lg:grid-cols-2">
+            <Card>
+              <CardHeader className="pb-2"><CardTitle className="text-base">Informations</CardTitle></CardHeader>
+              <CardContent>
             <div className="space-y-2 text-sm">
               <div className="flex items-center">
                 <Calendar className="mr-2 h-4 w-4 text-muted-foreground" />
@@ -526,178 +507,32 @@ export default function ContractDetailPage() {
                 <div><span className="font-medium">Signé Client:</span> {contract.signedByClient ? 'Oui' : 'Non'}</div>
               </div>
             </div>
-          </CardContent>
-        </Card>
+              </CardContent>
+            </Card>
+            <CarteContacts contacts={contacts} lienClient={`/clients/${contract.clientId}`} />
+          </div>
+        </TabsContent>
 
-        {/* Sites Management Card */}
-        <Card>
-          <CardHeader className="pb-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <CardTitle className="flex items-center gap-2"><MapPin className="h-5 w-5" /> Sites</CardTitle>
-                <CardDescription>Sites rattachés à ce contrat.</CardDescription>
-              </div>
-              <div className="flex gap-1">
-                <Button size="sm" variant="ghost" className="h-8 w-8 p-0" onClick={() => setImportDialogOpen(true)} title="Importer des sites">
-                  <Upload className="h-5 w-5" />
-                </Button>
-                <Button size="sm" variant="ghost" className="h-8 w-8 p-0" onClick={() => handleOpenSiteDialog()} title="Ajouter un site">
-                  <PlusCircle className="h-5 w-5" />
-                </Button>
-              </div>
-            </div>
-          </CardHeader>
-          <CardContent>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Nom</TableHead>
-                  <TableHead>Ville</TableHead>
-                  <TableHead className="text-right"></TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {sites.length > 0 ? (
-                  sites.map(site => (
-                    <TableRow key={site.id}>
-                      <TableCell className="font-medium">
-                        <Link href={`/sites/${site.id}`} className="hover:underline">{site.name}</Link>
-                      </TableCell>
-                      <TableCell>{site.city}</TableCell>
-                      <TableCell className="text-right">
-                        <div className="flex justify-end gap-1">
-                          <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => handleOpenSiteDialog(site)}>
-                            <Edit className="h-3 w-3" />
-                          </Button>
-                          <Button variant="ghost" size="icon" className="h-6 w-6 text-destructive" onClick={() => setSiteToDelete(site)}>
-                            <Trash2 className="h-3 w-3" />
-                          </Button>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ))
-                ) : (
-                  <TableRow>
-                    <TableCell colSpan={3} className="text-center text-muted-foreground">Aucun site</TableCell>
-                  </TableRow>
-                )}
-              </TableBody>
-            </Table>
-          </CardContent>
-        </Card>
+        <TabsContent value="sites" className="mt-4">
+          <TableauSites sites={sites} services={services} onAjouter={() => handleOpenSiteDialog()} onImporter={() => setImportDialogOpen(true)}
+            onModifier={site => handleOpenSiteDialog(site)} onSupprimer={site => setSiteToDelete(site)} />
+        </TabsContent>
 
-        {/* Client & Contacts Card */}
-        <Card>
-          <CardHeader className="pb-4">
-            <CardTitle className="flex items-center gap-2">
-              <Building2 className="h-5 w-5" /> Client
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div>
-              <Link href={`/clients/${contract.clientId}`} className="font-semibold hover:underline text-sm">
-                {client?.name || contract.clientName}
-              </Link>
-              <p className="text-xs text-muted-foreground mt-0.5">
-                {[client?.address, client?.postalCode, client?.city].filter(Boolean).join(', ') || 'Adresse non renseignée'}
-              </p>
-            </div>
-            <Separator />
-            <div className="space-y-3">
-              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Contacts</p>
-              {contacts.length === 0 ? (
-                <p className="text-sm text-muted-foreground">Aucun contact renseigné.</p>
-              ) : (
-                contacts.map(contact => (
-                  <div key={contact.id} className="text-sm space-y-1">
-                    <div className="font-medium flex items-center gap-1.5">
-                      <User className="h-3.5 w-3.5 text-muted-foreground" />
-                      {contact.name}
-                      <Badge variant="outline" className="ml-1 text-xs py-0">{contact.type}</Badge>
-                    </div>
-                    {contact.role && (
-                      <p className="text-xs text-muted-foreground pl-5">{contact.role}</p>
-                    )}
-                    {contact.phone && (
-                      <p className="flex items-center gap-1.5 text-xs text-muted-foreground pl-5">
-                        <Phone className="h-3 w-3" /> {contact.phone}
-                      </p>
-                    )}
-                    {contact.email && (
-                      <p className="flex items-center gap-1.5 text-xs text-muted-foreground pl-5">
-                        <Mail className="h-3 w-3" />
-                        <a href={`mailto:${contact.email}`} className="hover:underline">{contact.email}</a>
-                      </p>
-                    )}
-                  </div>
-                ))
-              )}
-            </div>
-          </CardContent>
-        </Card>
-      </div>
+        <TabsContent value="factures" className="mt-4">
+          <TableauFactures factures={invoices} onGenerer={() => router.push('/billing')} description="Factures et proformas du contrat, du plus récent au plus ancien." />
+        </TabsContent>
 
-      {/* Invoices — full width */}
-      <Card>
-        <CardHeader className="pb-4">
-          <CardTitle className="flex items-center gap-2">
-            <FileText className="h-5 w-5" /> Factures
-          </CardTitle>
-          <CardDescription>
-            Générez et suivez les factures pour ce contrat.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Facture</TableHead>
-                <TableHead>Statut</TableHead>
-                <TableHead>Période</TableHead>
-                <TableHead className="text-right">Total</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {invoices.length > 0 ? invoices.map((invoice) => (
-                <TableRow key={invoice.id}>
-                  <TableCell className="font-medium">
-                    <Link href={`/invoices/${invoice.id}`} className="hover:underline">
-                      {invoice.invoiceNumber || invoice.id}
-                    </Link>
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant="outline">{invoice.status}</Badge>
-                  </TableCell>
-                  <TableCell className="text-muted-foreground text-xs">
-                    {invoice.periodStartDate && invoice.periodEndDate
-                      ? `${new Date(invoice.periodStartDate).toLocaleDateString('fr-FR')} – ${new Date(invoice.periodEndDate).toLocaleDateString('fr-FR')}`
-                      : invoice.date ? new Date(invoice.date).toLocaleDateString('fr-FR') : '—'}
-                  </TableCell>
-                  <TableCell className="text-right font-medium">
-                    {invoice.total.toFixed(2)} €
-                  </TableCell>
-                </TableRow>
-              )) : (
-                <TableRow>
-                  <TableCell colSpan={4} className="text-center text-muted-foreground h-16">Aucune facture</TableCell>
-                </TableRow>
-              )}
-            </TableBody>
-          </Table>
-        </CardContent>
-        <CardFooter>
-          <Button size="sm" variant="outline" className="w-full gap-1" onClick={() => router.push('/billing')}>
-            <PlusCircle className="h-4 w-4" />
-            Générer une Facture
-          </Button>
-        </CardFooter>
-      </Card>
+        <TabsContent value="rfe" className="mt-4">
+          <ContractEInvoicingCard contract={contract} client={client} onSaved={reloadData} />
+        </TabsContent>
 
-      <ContractEInvoicingCard contract={contract} client={client} onSaved={reloadData} />
+        {aDuP1 && (
+          <TabsContent value="p1" className="mt-4">
+            <P1ContratPanel contractId={contract.id} />
+          </TabsContent>
+        )}
 
-      {/* Tabs */}
-      {activities.some(a => contract.activityIds?.includes(a.id) && a.type === "P1") && <P1ContratPanel contractId={contract.id} />}
-
+        <TabsContent value="historique" className="mt-4">
       <Tabs defaultValue="amendments" className="w-full">
         <TabsList>
           <TabsTrigger value="amendments">Avenants ({amendments.length})</TabsTrigger>
@@ -826,6 +661,9 @@ export default function ContractDetailPage() {
               </Table>
             </CardContent>
           </Card>
+        </TabsContent>
+      </Tabs>
+
         </TabsContent>
       </Tabs>
 

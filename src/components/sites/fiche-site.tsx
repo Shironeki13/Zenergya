@@ -11,6 +11,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { MeterReadingsDialog } from '@/components/meter-readings-dialog';
+import { StatutFacture } from '@/components/fiches/fiche';
 import { P1CompteurDialog } from '@/components/p1/p1-parametrage-panel';
 import { cn } from '@/lib/utils';
 import type { Activity, Invoice, Meter, Schedule, Service, Site } from '@/lib/types';
@@ -27,56 +28,7 @@ const eur = (n: number) => n.toLocaleString('fr-FR', { style: 'currency', curren
 const jour = (d?: string | Date | null) => (d ? new Date(d).toLocaleDateString('fr-FR') : '—');
 export const JOURS_SANS_RELEVE = 45;
 
-// ── Bandeau ─────────────────────────────────────────────────────────────────────────────────────────────────────
-
-export function Indicateur({ titre, valeur, detail, alerte, onClick }: { titre: string; valeur: string; detail?: string; alerte?: boolean; onClick?: () => void }) {
-    return (
-        <Card className={cn(alerte && 'border-amber-300', onClick && 'cursor-pointer transition-colors hover:bg-muted/40')} onClick={onClick}>
-            <CardContent className="px-4 py-3">
-                <p className="text-xs font-medium text-muted-foreground">{titre}</p>
-                <p className={cn('text-xl font-bold', alerte && 'text-amber-700')}>{valeur}</p>
-                {detail && <p className="text-xs text-muted-foreground">{detail}</p>}
-            </CardContent>
-        </Card>
-    );
-}
-
-// ── À faire ─────────────────────────────────────────────────────────────────────────────────────────────────────
-
-export type PointAFaire = { id: string; gravite: 'bloquant' | 'attention'; texte: string; action?: { label: string; onClick: () => void } };
-
-export function AFaire({ points, chargement }: { points: PointAFaire[]; chargement?: boolean }) {
-    return (
-        <Card>
-            <CardHeader className="pb-2">
-                <CardTitle className="flex items-center gap-2 text-base">
-                    À faire {points.length > 0 && <Badge variant={points.some(p => p.gravite === 'bloquant') ? 'destructive' : 'secondary'}>{points.length}</Badge>}
-                    {chargement && <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />}
-                </CardTitle>
-                <CardDescription>Ce qui empêche ou fragilise la facturation de ce site.</CardDescription>
-            </CardHeader>
-            <CardContent>
-                {points.length === 0 ? (
-                    <p className="flex items-center gap-2 text-sm text-green-700"><CheckCircle2 className="h-4 w-4" />Rien à signaler.</p>
-                ) : (
-                    <ul className="space-y-2">
-                        {points.map(p => (
-                            <li key={p.id} className="flex items-start gap-2 text-sm">
-                                <AlertTriangle className={cn('mt-0.5 h-4 w-4 shrink-0', p.gravite === 'bloquant' ? 'text-destructive' : 'text-amber-600')} />
-                                <span className="flex-1">{p.texte}</span>
-                                {p.action && (
-                                    <Button variant="link" size="sm" className="h-auto shrink-0 p-0 text-xs" onClick={p.action.onClick}>
-                                        {p.action.label}<ChevronRight className="h-3 w-3" />
-                                    </Button>
-                                )}
-                            </li>
-                        ))}
-                    </ul>
-                )}
-            </CardContent>
-        </Card>
-    );
-}
+export { AFaire, Indicateur, type PointAFaire } from '@/components/fiches/fiche';
 
 // ── Prestations ─────────────────────────────────────────────────────────────────────────────────────────────────
 
@@ -253,7 +205,6 @@ export function montantSite(inv: Invoice, siteId: string, serviceIds: Set<string
     return lignes.length ? Math.round(lignes.reduce((t, l) => t + (Number(l.total) || 0), 0) * 100) / 100 : null;
 }
 
-const STATUTS: Record<string, string> = { paid: 'Payée', due: 'À payer', overdue: 'En retard', proforma: 'Proforma', cancelled: 'Annulée' };
 
 export function FacturesDuSite({ factures }: { factures: { invoice: Invoice; montant: number | null }[] }) {
     return (
@@ -277,7 +228,7 @@ export function FacturesDuSite({ factures }: { factures: { invoice: Invoice; mon
                                     <TableCell className="whitespace-nowrap text-sm">{f.periodStartDate ? `${jour(f.periodStartDate)} → ${jour(f.periodEndDate)}` : '—'}</TableCell>
                                     <TableCell className="text-right font-medium">{montant === null ? '—' : eur(montant)}</TableCell>
                                     <TableCell className="text-right text-sm text-muted-foreground">{eur(Number(f.total) || 0)}</TableCell>
-                                    <TableCell><Badge variant={f.status === 'overdue' ? 'destructive' : f.status === 'paid' ? 'secondary' : 'outline'}>{STATUTS[f.status] ?? f.status}</Badge></TableCell>
+                                    <TableCell><StatutFacture statut={f.status} /></TableCell>
                                 </TableRow>
                             ))}
                         </TableBody>

@@ -57,11 +57,27 @@ Règles et composants à réutiliser sur tout nouvel écran (lots 1 et 2 de la r
   - *Compteurs et relevés* : dernier relevé, relevés, paramétrage P1 du compteur, modification ;
   - *Paramétrage P1* ; *Factures* : factures du contrat qui portent des lignes du site (montant HT du site).
 
-Les autres fiches (contrat, client) suivront ce modèle : bandeau, indicateurs, « à faire », onglets.
+Briques communes : `src/components/fiches/fiche.tsx` (`Indicateur`, `AFaire` et `CompteurAFaire` — rouge s'il y a un
+point bloquant, orange sinon —, `useOngletUrl`, `StatutFacture`) et `src/components/fiches/tableaux.tsx` (sites, factures,
+contrats, contacts). Échéances non facturées : `src/lib/billing/echeances-fiche.ts` (même échéancier que la facture).
+
+- **Fiche contrat** (`/contracts/[id]`) : bandeau (n°, libellé, statut modifiable, client, période, sites, mode de
+  facturation ; Modifier, Générer une facture) ; indicateurs (montant annuel HT, facturé TTC hors proformas et
+  annulées, solde dû, échéances à facturer) ; onglets Synthèse (à faire, informations, responsable facturation,
+  contacts), Sites, Factures, Facturation électronique, Paramétrage P1 (contrat P1), Historique (avenants,
+  résiliations, reconductions, changements de syndic et de BE). À faire : refus ou attente de validation, aucun site,
+  sites sans prestation, prestations incomplètes, échéances en retard, impayés, aucun responsable facturation, aucun
+  contact de facturation, échéance du contrat sous 90 jours.
+- **Fiche client** (`/clients/[id]`) : bandeau (nom, code, prospect, public / privé, adresse, société › agence ;
+  Modifier, devis, Nouveau contrat) ; indicateurs (contrats actifs, sites, montant annuel HT, solde dû) ; onglets
+  Synthèse (à faire, informations, contrôle du SIRET, contacts), Contrats (montant, responsable facturation), Sites,
+  Factures. À faire : client public sans SIRET, SIRET introuvable ou établissement fermé, contact de facturation absent
+  ou sans e-mail, impayés, sites sans prestation, contrats sans responsable, contrats à échéance sous 90 jours.
 
 ## Vérification
 
 `npm test` (`tests/ux.test.ts`) : entrée de menu active, droits, champs obligatoires déduits des schémas, messages.
 Parcours vérifiés dans un navigateur (émulateurs, build de production) : connexion, menu et fil d'Ariane, Ctrl+K,
 liste avec recherche dans une fenêtre, confirmation, astérisques, récapitulatif d'erreurs, alerte en quittant ; fiche
-site (synthèse, à faire, onglets, lien direct `?onglet=`, compléter une prestation, factures, modification du site).
+site (synthèse, à faire, onglets, lien direct `?onglet=`, compléter une prestation, factures, modification du site) ;
+fiches contrat et client (synthèse, à faire, onglets, ajout d'un site).
