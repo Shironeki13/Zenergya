@@ -1,5 +1,7 @@
 "use client";
 
+import { useAlerteModifications } from '@/hooks/use-alerte-modifications';
+import { signalerErreurs } from '@/lib/forms/signaler-erreurs';
 import { useState, useMemo, useRef } from "react";
 import { useForm, useFieldArray } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -218,6 +220,7 @@ export default function PublicMarketAIPage() {
             }],
         },
     });
+    useAlerteModifications(form.formState.isDirty && !form.formState.isSubmitSuccessful);
 
     const { fields: siteFields, append: appendSite, remove: removeSite } = useFieldArray({
         control: form.control,
@@ -567,8 +570,8 @@ export default function PublicMarketAIPage() {
                     </SheetHeader>
                     <div className="py-4 pr-6">
                         {analysisResult !== null && (
-                            <Form {...form}>
-                                <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+                            <Form {...form} schema={MarketPublicFormSchema}>
+                                <form onSubmit={form.handleSubmit(onSubmit, signalerErreurs)} className="space-y-6">
                                     {/* Hierarchy (always visible) */}
                                     <div className="space-y-4">
                                         <div className="flex items-center gap-2 pb-2 border-b">

@@ -1,5 +1,6 @@
 'use client';
 
+import { useConfirm } from '@/components/confirm-provider';
 import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
@@ -48,6 +49,7 @@ const ADDABLE: QuoteLineKind[] = ['TITRE', 'FOURNITURE', 'MAIN_OEUVRE', 'SOUS_TR
 const SOURCE = { client: 'fiche client', company: 'société' } as const;
 
 export default function QuoteEditorPage() {
+    const confirmer = useConfirm();
     const { id } = useParams<{ id: string }>();
     const router = useRouter();
     const { toast } = useToast();
@@ -130,7 +132,7 @@ export default function QuoteEditorPage() {
     };
 
     const remove = async () => {
-        if (!window.confirm(`Supprimer le brouillon ${quote.number} ?`)) return;
+        if (!(await confirmer({ title: `Supprimer le brouillon ${quote.number} ?`, confirmLabel: 'Supprimer', destructive: true }))) return;
         try {
             await deleteQuoteDraft(quote.id);
             router.push('/quotes');

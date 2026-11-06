@@ -145,7 +145,7 @@ export default function Dashboard() {
     <div className="flex flex-col gap-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight bg-gradient-to-r from-primary to-secondary bg-clip-text text-transparent">Tableau de bord</h1>
+          <h1 className="text-2xl font-bold tracking-tight">Tableau de bord</h1>
           <p className="text-muted-foreground mt-1">Vue d'ensemble de votre activité énergétique.</p>
         </div>
         <div className="flex items-center gap-2">

@@ -117,7 +117,7 @@ export default function SuiviFacturationPage() {
         <div className="space-y-6">
             {/* En-tête */}
             <div>
-                <h1 className="text-lg font-medium">Suivi de facturation</h1>
+                <h1 className="text-2xl font-bold tracking-tight">Suivi de facturation</h1>
                 <p className="text-sm text-muted-foreground">
                     Échéances à facturer (en retard, du jour, à venir), impayés et paiements attendus.
                 </p>

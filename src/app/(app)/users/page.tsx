@@ -569,7 +569,7 @@ export default function UsersPage() {
     return (
         <div className="space-y-6">
             <div>
-                <h1 className="text-lg font-medium">Gestion des Utilisateurs</h1>
+                <h1 className="text-2xl font-bold tracking-tight">Gestion des Utilisateurs</h1>
                 <p className="text-sm text-muted-foreground">
                     Gérez les utilisateurs et les rôles de votre organisation.
                 </p>

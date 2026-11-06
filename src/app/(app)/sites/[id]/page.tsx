@@ -1,5 +1,6 @@
 'use client';
 
+import { useConfirm } from '@/components/confirm-provider';
 import Link from 'next/link';
 import { useState, useEffect, useMemo } from 'react';
 import { useParams, useRouter } from 'next/navigation';
@@ -34,6 +35,7 @@ import { InterestManager } from '@/components/interest-manager';
 import { SettlementManager } from '@/components/settlement-manager';
 
 export default function SiteDetailsPage() {
+    const confirmer = useConfirm();
     const params = useParams();
     const router = useRouter();
     const { sites, contracts, meters, services, activities, revisionRules, pricingRules, terms, schedules, reloadData, isLoading, indices, indexValues, settlementRules, meterReadings, vatRates, invoices, weatherStations } = useData();
@@ -186,7 +188,7 @@ export default function SiteDetailsPage() {
     };
 
     const handleDeleteMeter = async (id: string) => {
-        if (!confirm("Supprimer ce compteur ?")) return;
+        if (!(await confirmer({ title: "Supprimer ce compteur ?", description: 'Ses relevés et son paramétrage ne seront plus rattachés à un compteur existant.', confirmLabel: 'Supprimer', destructive: true }))) return;
         try {
             await deleteMeter(id);
             toast({ title: "Succès", description: "Compteur supprimé." });
@@ -435,7 +437,7 @@ export default function SiteDetailsPage() {
     };
 
     const handleDeleteService = async (id: string) => {
-        if (!confirm("Supprimer cette prestation ?")) return;
+        if (!(await confirmer({ title: "Supprimer cette prestation ?", description: 'Elle ne sera plus facturée ; les montants du site seront recalculés.', confirmLabel: 'Supprimer', destructive: true }))) return;
         try {
             await deleteService(id);
             toast({ title: "Succès", description: "Prestation supprimée." });

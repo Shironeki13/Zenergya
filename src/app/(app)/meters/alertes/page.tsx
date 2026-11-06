@@ -55,7 +55,7 @@ export default function AlertesCompteursPage() {
         <div className="space-y-6">
             <div className="flex items-start justify-between gap-4">
                 <div>
-                    <h1 className="text-lg font-medium">Alertes compteurs</h1>
+                    <h1 className="text-2xl font-bold tracking-tight">Alertes compteurs</h1>
                     <p className="text-sm text-muted-foreground">
                         Calculées sur les relevés de {compteurs} compteur(s). Dérive : consommation journalière du dernier intervalle hors de ×{String(SEUILS.facteurBas).replace('.', ',')} à ×{SEUILS.facteurHaut}
                         {' '}par rapport à la même période l&apos;an passé (sinon à la médiane des intervalles précédents) ; sans relevé : plus de {SEUILS.sansReleveJours} jours.

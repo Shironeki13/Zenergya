@@ -1,5 +1,7 @@
 "use client"
 
+import { useAlerteModifications } from '@/hooks/use-alerte-modifications';
+import { signalerErreurs } from '@/lib/forms/signaler-erreurs';
 import Link from "next/link"
 import { useRouter, useParams } from "next/navigation"
 import { zodResolver } from "@hookform/resolvers/zod"
@@ -79,6 +81,7 @@ export default function EditClientPage() {
       sectorId: "",
     },
   })
+    useAlerteModifications(form.formState.isDirty && !form.formState.isSubmitSuccessful);
 
   // Remplit la fiche depuis le répertoire des entreprises (API de l'État).
   const applyEntreprise = (r: EntrepriseResult) => {
@@ -198,8 +201,8 @@ export default function EditClientPage() {
         </div>
       </CardHeader>
       <CardContent>
-        <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-8">
+        <Form {...form} schema={ClientSchema}>
+          <form onSubmit={form.handleSubmit(onSubmit, signalerErreurs)} className="space-y-8">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <h2 className="text-xl font-semibold">Informations Client</h2>
               <CompanyLookupDialog defaultQuery={form.getValues('siret') || form.getValues('name') || ''} onSelect={applyEntreprise} />

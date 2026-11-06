@@ -1,6 +1,7 @@
 
 'use client';
 
+import { useConfirm } from '@/components/confirm-provider';
 import Link from 'next/link';
 import { MoreHorizontal, Loader2, MinusCircle, Search, Download } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
@@ -41,6 +42,7 @@ import { deleteProformaInvoice } from '@/services/firestore';
 import { convertProforma } from '@/lib/billing/actions';
 
 export default function InvoicesPage() {
+  const confirmer = useConfirm();
   const { invoices, isLoading, reloadData } = useData();
   const { toast } = useToast();
   const [selectedInvoiceIds, setSelectedInvoiceIds] = useState<string[]>([]);
@@ -119,7 +121,7 @@ export default function InvoicesPage() {
 
 
   const handleConvertProforma = async (invoiceId: string) => {
-    if (!confirm('Convertir ce proforma en facture définitive ? Un numéro lui sera attribué et elle ne pourra plus être supprimée.')) return;
+    if (!(await confirmer({ title: 'Convertir ce proforma en facture définitive ?', description: 'Un numéro lui sera attribué et elle ne pourra plus être supprimée.', confirmLabel: 'Convertir' }))) return;
     const result = await convertProforma(invoiceId);
     if (result.success) {
       toast({ title: "Facture émise", description: `Numéro attribué : ${result.invoiceNumber}.` });
@@ -130,7 +132,7 @@ export default function InvoicesPage() {
   };
 
   const handleDeleteProforma = async (invoice: Invoice) => {
-    if (!confirm('Supprimer ce proforma ?')) return;
+    if (!(await confirmer({ title: 'Supprimer ce proforma ?', confirmLabel: 'Supprimer', destructive: true }))) return;
     try {
       await deleteProformaInvoice(invoice);
       toast({ title: "Proforma supprimé" });

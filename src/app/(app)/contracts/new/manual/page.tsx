@@ -1,5 +1,7 @@
 "use client"
 
+import { signalerErreurs } from '@/lib/forms/signaler-erreurs';
+import { useAlerteModifications } from '@/hooks/use-alerte-modifications';
 import React, { useState, useMemo } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import Link from "next/link"
@@ -83,6 +85,7 @@ export default function ManualContractPage() {
             p1SubTypes: [],
         },
     })
+    useAlerteModifications(form.formState.isDirty && !form.formState.isSubmitSuccessful);
 
     const watchClientId = form.watch("clientId")
     const selectedClient = useMemo(() => clients.find(c => c.id === watchClientId), [clients, watchClientId])
@@ -148,14 +151,7 @@ export default function ManualContractPage() {
         }
     }
 
-    function onInvalid(errors: Record<string, unknown>) {
-        const errorFields = Object.keys(errors)
-        toast({
-            title: "Formulaire incomplet",
-            description: `Champs invalides : ${errorFields.join(", ")}`,
-            variant: "destructive",
-        })
-    }
+    const onInvalid = signalerErreurs;
 
     return (
         <Card>
@@ -173,7 +169,7 @@ export default function ManualContractPage() {
                 </div>
             </CardHeader>
             <CardContent>
-                <Form {...form}>
+                <Form {...form} schema={ManualContractSchema}>
                     <form onSubmit={form.handleSubmit(onSubmit, onInvalid)} className="space-y-8">
 
                         {/* Client Selection with Smart Search */}

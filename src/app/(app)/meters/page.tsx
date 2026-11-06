@@ -1,5 +1,7 @@
 'use client';
 
+import { optionsSites } from '@/lib/select-options';
+import { SearchableSelect } from '@/components/ui/searchable-select';
 import { useState, useMemo } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -18,6 +20,7 @@ import { P1CompteurDialog } from '@/components/p1/p1-parametrage-panel';
 import { Badge } from '@/components/ui/badge';
 import { useData } from '@/context/data-context';
 import { downloadCSV } from '@/lib/utils';
+import { SearchParamSync } from '@/components/navigation/search-param-sync';
 
 export default function MetersPage() {
   const { sites, meters, meterTypes, reloadData, isLoading } = useData();
@@ -146,6 +149,7 @@ export default function MetersPage() {
 
   return (
     <Card>
+      <SearchParamSync name="q" onValue={setSearchTerm} />
       <CardHeader>
         <div className="flex items-center justify-between gap-4">
           <div>
@@ -274,12 +278,7 @@ export default function MetersPage() {
               </div>
               <div className="space-y-2">
                 <Label htmlFor="siteId">Site</Label>
-                <Select onValueChange={setSiteId} value={siteId} required>
-                  <SelectTrigger><SelectValue placeholder="Sélectionner un site..." /></SelectTrigger>
-                  <SelectContent>
-                    {sites.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
-                  </SelectContent>
-                </Select>
+                <SearchableSelect id="siteId" value={siteId} onValueChange={setSiteId} options={optionsSites(sites)} placeholder="Sélectionner un site..." searchPlaceholder="Nom, code SIT, client, ville…" />
               </div>
 
               <div className="space-y-2">

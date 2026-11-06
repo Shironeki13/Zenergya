@@ -1,5 +1,6 @@
 'use client';
 
+import { usePrompt } from '@/components/confirm-provider';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { AlertTriangle, CheckCircle2, ChevronDown, ChevronUp, ExternalLink, History, Loader2, Plus } from 'lucide-react';
@@ -67,6 +68,7 @@ function useEdition(reload: () => Promise<void>) {
     const { weatherStations } = useData();
     const [editing, setEditing] = useState<Editing>(null);
     const [busy, setBusy] = useState(false);
+    const demander = usePrompt();
     const run: Run = async (fn, ok) => {
         setBusy(true);
         const r = await fn();
@@ -76,8 +78,11 @@ function useEdition(reload: () => Promise<void>) {
         await reload();
         return true;
     };
-    const retire = (target: P1Target, key: string, v: P1Version<unknown>) => {
-        const motif = window.prompt(`Retirer la version ${frDay(v.dateEffet)} (${v.motif}) : motif du retrait ?`);
+    const retire = async (target: P1Target, key: string, v: P1Version<unknown>) => {
+        const motif = await demander({
+            title: 'Retirer cette version', description: `Version du ${frDay(v.dateEffet)} (${v.motif}). Elle reste dans l'historique, barrée, avec le motif du retrait.`,
+            label: 'Motif du retrait', required: true, multiline: true, confirmLabel: 'Retirer',
+        });
         if (motif) run(() => retireP1VersionAction(target, key, v.id, motif), 'Version retirée');
     };
     const rows = (scope: P1Scope, target: P1Target, params: P1Params | undefined, date: string, keys = Object.keys(P1_PARAMS[scope]), opts: { meterCodes?: string[]; readOnly?: boolean } = {}) => (
@@ -121,6 +126,7 @@ export function P1ParametragePanel({ siteId }: { siteId: string }) {
     }, [siteId, date, toast]);
     useEffect(() => { load(); }, [load]);
     const { busy, run, rows, dialog } = useEdition(load);
+    const demander = usePrompt();
 
     if (!view) return <Card><CardContent className="py-6"><Loader2 className="mx-auto h-5 w-5 animate-spin" /></CardContent></Card>;
     const { reste } = view;
@@ -167,8 +173,11 @@ export function P1ParametragePanel({ siteId }: { siteId: string }) {
                     <section className="space-y-2">
                         <div className="flex items-center justify-between">
                             <h3 className="text-sm font-semibold">Postes de consommation</h3>
-                            <Button size="sm" variant="outline" disabled={busy} onClick={() => {
-                                const name = window.prompt('Désignation du poste (ex. « Chaufferie gaz ») ?');
+                            <Button size="sm" variant="outline" disabled={busy} onClick={async () => {
+                                const name = await demander({
+                                    title: 'Nouveau poste de consommation', description: 'Un poste porte la formule de NC (compteurs signés) et l\'engagement (cible NB, DJU).',
+                                    label: 'Désignation', placeholder: 'Chaufferie gaz', required: true, confirmLabel: 'Créer',
+                                });
                                 if (name) run(() => addP1PosteAction(siteId, name), 'Poste créé');
                             }}><Plus className="mr-1 h-3 w-3" />Poste</Button>
                         </div>
@@ -177,8 +186,11 @@ export function P1ParametragePanel({ siteId }: { siteId: string }) {
                             <div key={p.id} className="space-y-1">
                                 <div className="flex items-center justify-between text-sm">
                                     <span className="font-medium">{p.designation}</span>
-                                    <Button size="sm" variant="ghost" disabled={busy} onClick={() => {
-                                        const motif = window.prompt(`Retirer le poste « ${p.designation} » : motif ?`);
+                                    <Button size="sm" variant="ghost" disabled={busy} onClick={async () => {
+                                        const motif = await demander({
+                                            title: `Retirer le poste « ${p.designation} »`, description: 'Le poste et ses paramètres restent dans l\'historique.',
+                                            label: 'Motif du retrait', required: true, multiline: true, confirmLabel: 'Retirer',
+                                        });
                                         if (motif) run(() => retireP1PosteAction(siteId, p.id, motif), 'Poste retiré');
                                     }}>Retirer</Button>
                                 </div>
@@ -467,6 +479,7 @@ type SiteRef = { id: string; code: string; name: string };
 function FormulesSection({ contractId, sites, formules, date, busy, run }: { contractId: string; sites: SiteRef[]; formules: P1Formule[]; date: string; busy: boolean; run: Run }) {
     const [creating, setCreating] = useState(false);
     const [editing, setEditing] = useState<P1Formule | null>(null);
+    const demander = usePrompt();
     const actives = formules.filter(f => !f.retireLe);
     return (
         <div className="space-y-2 pt-2">
@@ -486,8 +499,11 @@ function FormulesSection({ contractId, sites, formules, date, busy, run }: { con
                             <span className="text-xs text-muted-foreground">{perimetreText(f)}</span>
                             <span className="flex-1" />
                             <Button size="sm" variant="outline" className="h-7 px-2" onClick={() => setEditing(f)}><Plus className="h-3 w-3" /></Button>
-                            <Button size="sm" variant="ghost" className="h-7 px-2" disabled={busy} onClick={() => {
-                                const motif = window.prompt(`Retirer la formule « ${f.nom} » : motif ?`);
+                            <Button size="sm" variant="ghost" className="h-7 px-2" disabled={busy} onClick={async () => {
+                                const motif = await demander({
+                                    title: `Retirer la formule « ${f.nom} »`, description: 'Elle ne s\'applique plus ; ses versions restent dans l\'historique.',
+                                    label: 'Motif du retrait', required: true, multiline: true, confirmLabel: 'Retirer',
+                                });
                                 if (motif) run(() => retireP1FormuleAction(contractId, f.id, motif), 'Formule retirée');
                             }}>Retirer</Button>
                         </div>
@@ -497,8 +513,8 @@ function FormulesSection({ contractId, sites, formules, date, busy, run }: { con
                                 {f.versions.map(v => (
                                     <li key={v.id} className={v.retireLe ? 'text-muted-foreground line-through' : ''}>
                                         <span className="font-medium">{frDay(v.dateEffet)}</span> — {v.motif} <span className="text-muted-foreground">({v.saisiPar})</span>
-                                        {!v.retireLe && <Button size="sm" variant="link" className="h-auto p-0 pl-2 text-xs" onClick={() => {
-                                            const motif = window.prompt('Motif du retrait de cette version ?');
+                                        {!v.retireLe && <Button size="sm" variant="link" className="h-auto p-0 pl-2 text-xs" onClick={async () => {
+                                            const motif = await demander({ title: 'Retirer cette version de la formule', label: 'Motif du retrait', required: true, multiline: true, confirmLabel: 'Retirer' });
                                             if (motif) run(() => retireP1FormuleVersionAction(contractId, f.id, v.id, motif), 'Version retirée');
                                         }}>retirer</Button>}
                                     </li>

@@ -1,5 +1,7 @@
 'use client';
 
+import { useAlerteModifications } from '@/hooks/use-alerte-modifications';
+import { signalerErreurs } from '@/lib/forms/signaler-erreurs';
 import { useState, useMemo, useRef } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -171,6 +173,7 @@ export default function NewContractFromPublicPdfPage() {
             sectorId: "",
         },
     });
+    useAlerteModifications(form.formState.isDirty && !form.formState.isSubmitSuccessful);
 
     const watchCompanyId = form.watch("companyId");
     const watchAgencyId = form.watch("agencyId");
@@ -459,8 +462,8 @@ export default function NewContractFromPublicPdfPage() {
                     </SheetHeader>
                     <div className="py-4 pr-6">
                         {analysisResult !== null && (
-                            <Form {...form}>
-                                <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-8">
+                            <Form {...form} schema={NewPublicContractFormSchema}>
+                                <form onSubmit={form.handleSubmit(onSubmit, signalerErreurs)} className="space-y-8">
                                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                                         <FormField control={form.control} name="companyId" render={({ field }) => (
                                             <FormItem>

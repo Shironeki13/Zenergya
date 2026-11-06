@@ -1,5 +1,6 @@
 'use client';
 
+import { useConfirm } from '@/components/confirm-provider';
 import { useEffect, useMemo, useState } from 'react';
 import { collection, getDocs, limit, orderBy, query } from 'firebase/firestore';
 import { CheckCircle2, ChevronDown, ChevronUp, Download, FileSpreadsheet, KeyRound, Loader2, Upload } from 'lucide-react';
@@ -32,6 +33,7 @@ function download(content: BlobPart, name: string, type: string) {
 }
 
 export default function ImportsPage() {
+    const confirmer = useConfirm();
     const { toast } = useToast();
     const { isAdmin, companies, agencies, sectors, typologies, meterTypes, activities, markets, schedules, terms, vatRates, paymentTerms, revisionRules, reloadData } = useData();
     const [entityKey, setEntityKey] = useState<ImportEntityKey>('clients');
@@ -84,7 +86,11 @@ export default function ImportsPage() {
     const apply = async () => {
         if (!file || !preview) return;
         const n = preview.counts.create + preview.counts.update;
-        if (!window.confirm(`Importer ${n} ligne(s) (${preview.counts.create} création(s), ${preview.counts.update} mise(s) à jour) ? ${preview.counts.error} ligne(s) en erreur seront ignorées.`)) return;
+        if (!(await confirmer({
+            title: `Importer ${n} ligne(s) ?`,
+            description: `${preview.counts.create} création(s), ${preview.counts.update} mise(s) à jour.${preview.counts.error ? ` ${preview.counts.error} ligne(s) en erreur seront ignorées.` : ''}`,
+            confirmLabel: 'Importer',
+        }))) return;
         setBusy(true);
         const result = await applyImportAction(entityKey, file.table, file.name);
         setBusy(false);

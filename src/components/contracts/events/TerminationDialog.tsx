@@ -1,4 +1,7 @@
 import { useState, useEffect } from "react";
+import { signalerErreurs } from '@/lib/forms/signaler-erreurs';
+import { SearchableSelect } from '@/components/ui/searchable-select';
+import { optionsClients } from '@/lib/select-options';
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
@@ -86,16 +89,7 @@ export function TerminationDialog({ contractId, open, onOpenChange, onSuccess }:
                     <div className="space-y-4 py-4">
                         <div className="space-y-2">
                             <label className="text-sm font-medium">Client</label>
-                            <Select value={selectedClientId} onValueChange={setSelectedClientId}>
-                                <SelectTrigger>
-                                    <SelectValue placeholder="Sélectionner un client" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    {clients.map(client => (
-                                        <SelectItem key={client.id} value={client.id}>{client.name}</SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
+                            <SearchableSelect value={selectedClientId} onValueChange={setSelectedClientId} options={optionsClients(clients)} placeholder="Sélectionner un client" searchPlaceholder="Nom, code client, SIRET, ville…" />
                         </div>
 
                         {selectedClientId && (
@@ -119,14 +113,14 @@ export function TerminationDialog({ contractId, open, onOpenChange, onSuccess }:
                         )}
                         <DialogFooter>
                             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Annuler</Button>
-                            <Button type="button" variant="destructive" disabled={!selectedContractId} onClick={form.handleSubmit(onSubmit)}>
+                            <Button type="button" variant="destructive" disabled={!selectedContractId} onClick={form.handleSubmit(onSubmit, signalerErreurs)}>
                                 Résilier
                             </Button>
                         </DialogFooter>
                     </div>
                 ) : (
-                    <Form {...form}>
-                        <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+                    <Form {...form} schema={formSchema}>
+                        <form onSubmit={form.handleSubmit(onSubmit, signalerErreurs)} className="space-y-4">
                             <FormField
                                 control={form.control}
                                 name="reason"

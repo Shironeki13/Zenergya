@@ -1,5 +1,6 @@
 'use client';
 
+import { SearchableSelect } from '@/components/ui/searchable-select';
 import { useState, useRef } from 'react';
 import { useData } from '@/context/data-context';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -492,7 +493,7 @@ export default function IndicesPage() {
         <div className="space-y-6">
             <div className="flex items-center justify-between">
                 <div>
-                    <h1 className="text-3xl font-bold tracking-tight">Gestion des Indices</h1>
+                    <h1 className="text-2xl font-bold tracking-tight">Gestion des Indices</h1>
                     <p className="text-muted-foreground">
                         Configurez les indices de référence et saisissez leurs valeurs mensuelles.
                     </p>
@@ -847,16 +848,8 @@ export default function IndicesPage() {
                                         <div className="grid gap-4 py-4">
                                             <div className="grid grid-cols-4 items-center gap-4">
                                                 <Label htmlFor="idx" className="text-right">Indice</Label>
-                                                <Select value={valueIndexId} onValueChange={setValueIndexId} disabled={!!selectedIndexId}>
-                                                    <SelectTrigger className="col-span-3">
-                                                        <SelectValue placeholder="Choisir un indice" />
-                                                    </SelectTrigger>
-                                                    <SelectContent>
-                                                        {indices.map(i => (
-                                                            <SelectItem key={i.id} value={i.id}>{i.code} - {i.label}</SelectItem>
-                                                        ))}
-                                                    </SelectContent>
-                                                </Select>
+                                                <SearchableSelect className="col-span-3" value={valueIndexId} onValueChange={setValueIndexId} disabled={!!selectedIndexId} placeholder="Choisir un indice" searchPlaceholder="Code ou libellé de l'indice…"
+                                                    options={indices.map(i => ({ value: i.id, label: `${i.code} - ${i.label}` }))} />
                                             </div>
                                             <div className="grid grid-cols-4 items-center gap-4">
                                                 <Label htmlFor="period" className="text-right">Période</Label>

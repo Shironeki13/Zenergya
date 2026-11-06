@@ -1,5 +1,7 @@
 'use client';
 
+import { SearchableSelect } from '@/components/ui/searchable-select';
+import { optionsClients } from '@/lib/select-options';
 import { useState, useMemo, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -235,18 +237,7 @@ export default function SitesPage() {
                 </DialogHeader>
                 <div className="space-y-4 py-4">
                   <Label htmlFor="client-select">Sélectionnez un client</Label>
-                  <Select onValueChange={(value) => setSelectedClientId(value)}>
-                    <SelectTrigger id="client-select">
-                      <SelectValue placeholder="Choisir un client..." />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {clients.map((client) => (
-                        <SelectItem key={client.id} value={client.id}>
-                          {client.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <SearchableSelect id="client-select" value={selectedClientId} onValueChange={setSelectedClientId} options={optionsClients(clients)} placeholder="Choisir un client..." searchPlaceholder="Nom, code client, SIRET, ville…" />
                 </div>
                 <DialogFooter>
                   <Button variant="outline" onClick={() => setAddSiteDialogOpen(false)}>Annuler</Button>

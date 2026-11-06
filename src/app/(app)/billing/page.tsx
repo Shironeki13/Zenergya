@@ -1,6 +1,8 @@
 
 'use client';
 
+import { SearchableSelect } from '@/components/ui/searchable-select';
+import { optionsClients } from '@/lib/select-options';
 import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -77,7 +79,7 @@ export default function BillingPage() {
   return (
     <div className="space-y-6">
        <div>
-        <h1 className="text-lg font-medium">Facturation Manuelle</h1>
+        <h1 className="text-2xl font-bold tracking-tight">Facturation Manuelle</h1>
         <p className="text-sm text-muted-foreground">
           Générez une facture ou un proforma pour un contrat spécifique.
         </p>
@@ -98,18 +100,7 @@ export default function BillingPage() {
             <>
               <div className="space-y-2">
                 <Label htmlFor="client-select">Client</Label>
-                <Select onValueChange={(value) => setSelectedClientId(value)}>
-                  <SelectTrigger id="client-select">
-                    <SelectValue placeholder="Sélectionner un client..." />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {clients.map((client) => (
-                      <SelectItem key={client.id} value={client.id}>
-                        {client.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <SearchableSelect id="client-select" value={selectedClientId} onValueChange={setSelectedClientId} options={optionsClients(clients)} placeholder="Sélectionner un client..." searchPlaceholder="Nom, code client, SIRET, ville…" />
               </div>
 
               {selectedClientId && (

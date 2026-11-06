@@ -1,5 +1,6 @@
 'use client';
 
+import { useConfirm } from '@/components/confirm-provider';
 import { useState, useMemo } from 'react';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -26,6 +27,7 @@ interface MeterReadingsDialogProps {
 }
 
 export function MeterReadingsDialog({ meter, trigger }: MeterReadingsDialogProps) {
+    const confirmer = useConfirm();
     const { toast } = useToast();
     const { meterReadings, reloadData } = useData();
     const [isSubmitting, setIsSubmitting] = useState(false);
@@ -71,7 +73,7 @@ export function MeterReadingsDialog({ meter, trigger }: MeterReadingsDialogProps
     };
 
     const handleDelete = async (id: string) => {
-        if (!confirm("Êtes-vous sûr de vouloir supprimer ce relevé ?")) return;
+        if (!(await confirmer({ title: "Supprimer ce relevé ?", confirmLabel: 'Supprimer', destructive: true }))) return;
         const r = await deleteReadingAction(id);
         if (!r.success) { toast({ title: "Suppression refusée", description: r.error, variant: "destructive" }); return; }
         toast({ title: "Succès", description: "Relevé supprimé." });

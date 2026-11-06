@@ -1,5 +1,6 @@
 'use client';
 
+import { SearchableSelect } from '@/components/ui/searchable-select';
 import { Suspense, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
@@ -255,13 +256,8 @@ function NewQuoteForm() {
                 </CardHeader>
                 <CardContent className="space-y-4">
                     {who === 'client' && clientSites.length > 0 && (
-                        <Select value={siteId} onValueChange={setSiteId}>
-                            <SelectTrigger><SelectValue /></SelectTrigger>
-                            <SelectContent>
-                                <SelectItem value={NO_SITE}>Aucun site : adresse d'intervention</SelectItem>
-                                {clientSites.map(s => <SelectItem key={s.id} value={s.id}>{s.code ? `${s.code} — ` : ''}{s.name}</SelectItem>)}
-                            </SelectContent>
-                        </Select>
+                        <SearchableSelect value={siteId} onValueChange={v => setSiteId(v || NO_SITE)} searchPlaceholder="Nom, code SIT, adresse…"
+                            options={[{ value: NO_SITE, label: "Aucun site : adresse d'intervention" }, ...clientSites.map(s => ({ value: s.id, label: s.code ? `${s.code} — ${s.name}` : s.name, keywords: [s.address, s.city].filter(Boolean).join(' ') }))]} />
                     )}
                     {!site && (
                         <div className="grid gap-4 md:grid-cols-[1fr_7rem_1fr]">

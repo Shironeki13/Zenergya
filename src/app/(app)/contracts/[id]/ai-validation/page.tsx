@@ -1,5 +1,7 @@
 'use client';
 
+import { useAlerteModifications } from '@/hooks/use-alerte-modifications';
+import { signalerErreurs } from '@/lib/forms/signaler-erreurs';
 import { useState, useEffect } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { useForm, useFieldArray } from 'react-hook-form';
@@ -40,6 +42,7 @@ export default function AIValidationPage() {
             activitiesDetails: [],
         },
     });
+    useAlerteModifications(form.formState.isDirty && !form.formState.isSubmitSuccessful);
 
     const { fields } = useFieldArray({
         control: form.control,
@@ -89,11 +92,11 @@ export default function AIValidationPage() {
                 <Button variant="ghost" onClick={() => router.back()}>
                     <ArrowLeft className="mr-2 h-4 w-4" /> Retour
                 </Button>
-                <h1 className="text-2xl font-bold">Validation IA - {contract.clientName}</h1>
+                <h1 className="text-2xl font-bold tracking-tight">Validation IA - {contract.clientName}</h1>
             </div>
 
-            <Form {...form}>
-                <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+            <Form {...form} schema={formSchema}>
+                <form onSubmit={form.handleSubmit(onSubmit, signalerErreurs)} className="space-y-6">
                     {fields.map((field, index) => {
                         const activity = activities.find(a => a.id === field.activityId);
                         const activityCode = activity?.code || 'Unknown';

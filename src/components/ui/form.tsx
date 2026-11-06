@@ -10,12 +10,27 @@ import {
   type ControllerProps,
   type FieldPath,
   type FieldValues,
+  type FormProviderProps,
 } from "react-hook-form"
+import type { ZodTypeAny } from "zod"
 
 import { cn } from "@/lib/utils"
 import { Label } from "@/components/ui/label"
+import { champObligatoire } from "@/lib/forms/champs-obligatoires"
+import "@/lib/forms/zod-fr"
 
-const Form = FormProvider
+/** Schéma de validation du formulaire : sert à marquer les champs obligatoires (astérisque sur le libellé). */
+const FormSchemaContext = React.createContext<ZodTypeAny | null>(null)
+
+function Form<TFieldValues extends FieldValues, TContext = any, TTransformedValues extends FieldValues | undefined = undefined>(
+  { schema, ...props }: FormProviderProps<TFieldValues, TContext, TTransformedValues> & { schema?: ZodTypeAny }
+) {
+  return (
+    <FormSchemaContext.Provider value={schema ?? null}>
+      <FormProvider {...props} />
+    </FormSchemaContext.Provider>
+  )
+}
 
 type FormFieldContextValue<
   TFieldValues extends FieldValues = FieldValues,
@@ -88,9 +103,15 @@ FormItem.displayName = "FormItem"
 
 const FormLabel = React.forwardRef<
   React.ElementRef<typeof LabelPrimitive.Root>,
-  React.ComponentPropsWithoutRef<typeof LabelPrimitive.Root>
->(({ className, ...props }, ref) => {
-  const { error, formItemId } = useFormField()
+  React.ComponentPropsWithoutRef<typeof LabelPrimitive.Root> & { required?: boolean }
+>(({ className, children, required, ...props }, ref) => {
+  const { error, formItemId, name } = useFormField()
+  const schema = React.useContext(FormSchemaContext)
+  // Obligatoire : indiqué (prop) ou déduit du schéma ; pas de second astérisque si le libellé en porte déjà un.
+  // Libellé d'une option (bouton radio, case à cocher : convention « font-normal ») : l'astérisque est sur le champ.
+  const option = typeof className === "string" && className.includes("font-normal")
+  const obligatoire = required ?? (schema && !option ? champObligatoire(schema, name) : false)
+  const dejaMarque = typeof children === "string" && children.trim().endsWith("*")
 
   return (
     <Label
@@ -98,7 +119,11 @@ const FormLabel = React.forwardRef<
       className={cn(error && "text-destructive", className)}
       htmlFor={formItemId}
       {...props}
-    />
+    >
+      {children}
+      {obligatoire && !dejaMarque && <span className="ml-0.5 text-destructive" aria-hidden="true">*</span>}
+      {obligatoire && <span className="sr-only"> (obligatoire)</span>}
+    </Label>
   )
 })
 FormLabel.displayName = "FormLabel"

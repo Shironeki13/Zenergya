@@ -1,5 +1,6 @@
 'use client';
 
+import { useConfirm } from '@/components/confirm-provider';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
@@ -28,6 +29,7 @@ const frDate = (d?: string) => (d ? new Date(d).toLocaleDateString('fr-FR') : '�
 const frPeriod = (p: string) => `${p.slice(5, 7)}/${p.slice(0, 4)}`;
 
 export default function ProjectPage() {
+    const confirmer = useConfirm();
     const { id } = useParams<{ id: string }>();
     const { toast } = useToast();
     const [project, setProject] = useState<Project | null>(null);
@@ -209,8 +211,8 @@ export default function ProjectPage() {
                             </Button>
                             <Button disabled={busy || dirty || !draft || issues.length > 0}
                                 title={dirty ? 'Enregistrez la situation avant de la facturer.' : undefined}
-                                onClick={() => {
-                                    if (draft && window.confirm(`Facturer la situation n° ${draft.number} : ${formatEur(computed.total)} TTC, net à payer ${formatEur(computed.netToPay)} ? La facture reçoit un numéro définitif.`)) {
+                                onClick={async () => {
+                                    if (draft && await confirmer({ title: `Facturer la situation n° ${draft.number} ?`, description: `${formatEur(computed.total)} TTC, net à payer ${formatEur(computed.netToPay)}. La facture reçoit un numéro définitif.`, confirmLabel: 'Facturer' })) {
                                         act('Situation facturée', () => invoiceSituationAction(draft.id));
                                     }
                                 }}>
@@ -237,8 +239,8 @@ export default function ProjectPage() {
                         {project.completedAt && !project.retentionReleasedAt && !project.retentionBond && (
                             <Button variant="outline" disabled={busy} onClick={() => act('Retenue libérée', () => projectMilestoneAction(project.id, 'retentionReleased', milestoneDate))}>Libérer la retenue</Button>
                         )}
-                        <Button variant="ghost" disabled={busy} onClick={() => {
-                            if (window.confirm(`Clôturer l'affaire ${project.code} ? Plus aucune situation ne pourra être facturée.`)) {
+                        <Button variant="ghost" disabled={busy} onClick={async () => {
+                            if (await confirmer({ title: `Clôturer l'affaire ${project.code} ?`, description: 'Plus aucune situation ne pourra être facturée.', confirmLabel: 'Clôturer', destructive: true })) {
                                 act('Affaire clôturée', () => projectMilestoneAction(project.id, 'closed', milestoneDate));
                             }
                         }}>Clôturer l'affaire</Button>

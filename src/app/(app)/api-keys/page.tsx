@@ -1,5 +1,6 @@
 'use client';
 
+import { useConfirm } from '@/components/confirm-provider';
 import { useCallback, useEffect, useState } from 'react';
 import { Copy, KeyRound, Loader2, Plus } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
@@ -21,6 +22,7 @@ type Logs = Extract<Awaited<ReturnType<typeof recentApiLogsAction>>, { success: 
 const frDateTime = (d?: string) => (d ? new Date(d).toLocaleString('fr-FR') : '—');
 
 export default function ApiKeysPage() {
+    const confirmer = useConfirm();
     const { toast } = useToast();
     const { isAdmin } = useData();
     const [keys, setKeys] = useState<Keys>([]);
@@ -94,7 +96,7 @@ export default function ApiKeysPage() {
                                             <TableCell className="text-right">
                                                 {k.active && (
                                                     <Button size="sm" variant="ghost" onClick={async () => {
-                                                        if (!window.confirm(`Révoquer la clé « ${k.name} » ? Le système qui l'utilise perdra l'accès immédiatement.`)) return;
+                                                        if (!(await confirmer({ title: `Révoquer la clé « ${k.name} » ?`, description: "Le système qui l'utilise perdra l'accès immédiatement.", confirmLabel: 'Révoquer', destructive: true }))) return;
                                                         const r = await revokeApiKeyAction(k.id);
                                                         if (!r.success) toast({ title: 'Révocation impossible', description: r.error, variant: 'destructive' });
                                                         load();

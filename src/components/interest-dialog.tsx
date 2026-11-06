@@ -1,5 +1,6 @@
 'use client';
 
+import { SearchableSelect } from '@/components/ui/searchable-select';
 import { useState, useEffect } from 'react';
 import { Interest, Service, MeterReading, Dju } from '@/lib/types';
 import { createInterest, updateInterest, getMeterReadingsByMeter, getDjuTotal, getWeatherStations } from '@/services/firestore';
@@ -359,15 +360,8 @@ export function InterestDialog({ open, onOpenChange, service, existingInterest, 
                             <div className="grid grid-cols-3 gap-2 items-end">
                                 <div className="col-span-2 space-y-1">
                                     <Label className="text-xs">Relevé Début</Label>
-                                    <Select value={startReadingId} onValueChange={setStartReadingId}>
-                                        <SelectTrigger><SelectValue placeholder="Choisir..." /></SelectTrigger>
-                                        <SelectContent>
-                                            {readings.map(r => (
-                                                <SelectItem key={r.id} value={r.id}>{new Date(r.date).toLocaleDateString()} - {r.value}</SelectItem>
-                                            ))}
-                                            <SelectItem value="MANUAL">Manuel</SelectItem>
-                                        </SelectContent>
-                                    </Select>
+                                    <SearchableSelect value={startReadingId} onValueChange={setStartReadingId} placeholder="Choisir..." searchPlaceholder="Date (jj/mm/aaaa) ou index…"
+                                        options={[...readings.map(r => ({ value: r.id, label: `${new Date(r.date).toLocaleDateString('fr-FR')} - ${r.value}` })), { value: 'MANUAL', label: 'Manuel' }]} />
                                 </div>
                                 <Input
                                     type="number"
@@ -381,15 +375,8 @@ export function InterestDialog({ open, onOpenChange, service, existingInterest, 
                             <div className="grid grid-cols-3 gap-2 items-end">
                                 <div className="col-span-2 space-y-1">
                                     <Label className="text-xs">Relevé Fin</Label>
-                                    <Select value={endReadingId} onValueChange={setEndReadingId}>
-                                        <SelectTrigger><SelectValue placeholder="Choisir..." /></SelectTrigger>
-                                        <SelectContent>
-                                            {readings.map(r => (
-                                                <SelectItem key={r.id} value={r.id}>{new Date(r.date).toLocaleDateString()} - {r.value}</SelectItem>
-                                            ))}
-                                            <SelectItem value="MANUAL">Manuel</SelectItem>
-                                        </SelectContent>
-                                    </Select>
+                                    <SearchableSelect value={endReadingId} onValueChange={setEndReadingId} placeholder="Choisir..." searchPlaceholder="Date (jj/mm/aaaa) ou index…"
+                                        options={[...readings.map(r => ({ value: r.id, label: `${new Date(r.date).toLocaleDateString('fr-FR')} - ${r.value}` })), { value: 'MANUAL', label: 'Manuel' }]} />
                                 </div>
                                 <Input
                                     type="number"
@@ -437,15 +424,8 @@ export function InterestDialog({ open, onOpenChange, service, existingInterest, 
 
                         <div className="space-y-2">
                             <Label>Station Météo (pour DJU)</Label>
-                            <Select value={selectedStation} onValueChange={setSelectedStation}>
-                                <SelectTrigger><SelectValue placeholder="Choisir une station..." /></SelectTrigger>
-                                <SelectContent>
-                                    {stations.map(s => (
-                                        <SelectItem key={s.code} value={s.code}>{s.name} ({s.code})</SelectItem>
-                                    ))}
-                                    <SelectItem value="MANUAL">Saisie Manuelle</SelectItem>
-                                </SelectContent>
-                            </Select>
+                            <SearchableSelect value={selectedStation} onValueChange={setSelectedStation} placeholder="Choisir une station..." searchPlaceholder="Ville ou code de la station…"
+                                options={[...stations.map(s => ({ value: s.code, label: `${s.name} (${s.code})` })), { value: 'MANUAL', label: 'Saisie manuelle' }]} />
                         </div>
 
                         <div className="space-y-2">

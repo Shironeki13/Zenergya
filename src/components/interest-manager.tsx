@@ -1,5 +1,6 @@
 'use client';
 
+import { useConfirm } from '@/components/confirm-provider';
 import { useState, useEffect } from 'react';
 import { Interest, Service } from '@/lib/types';
 import { getInterestsByService, deleteInterest } from '@/services/firestore';
@@ -15,6 +16,7 @@ interface InterestManagerProps {
 }
 
 export function InterestManager({ service }: InterestManagerProps) {
+    const confirmer = useConfirm();
     const [interests, setInterests] = useState<Interest[]>([]);
     const [isDialogOpen, setIsDialogOpen] = useState(false);
     const [editingInterest, setEditingInterest] = useState<Interest | null>(null);
@@ -50,7 +52,7 @@ export function InterestManager({ service }: InterestManagerProps) {
     };
 
     const handleDeleteClick = async (id: string) => {
-        if (!confirm("Supprimer cette campagne d'intéressement ?")) return;
+        if (!(await confirmer({ title: "Supprimer cette campagne d'intéressement ?", confirmLabel: 'Supprimer', destructive: true }))) return;
         try {
             await deleteInterest(id);
             toast({ title: "Succès", description: "Campagne supprimée." });

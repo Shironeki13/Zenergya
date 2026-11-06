@@ -1,5 +1,7 @@
 'use client';
 
+import { SearchableSelect } from '@/components/ui/searchable-select';
+import { useConfirm } from '@/components/confirm-provider';
 import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { Loader2 } from 'lucide-react';
@@ -22,6 +24,7 @@ const eur = (n: number) => n.toLocaleString('fr-FR', { style: 'currency', curren
 const thisMonth = () => new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/Paris' }).slice(0, 7);
 
 export default function P1RegularisationPage() {
+    const confirmer = useConfirm();
     const { contracts, services, isLoading } = useData();
     const { toast } = useToast();
     const [contractId, setContractId] = useState('');
@@ -41,7 +44,7 @@ export default function P1RegularisationPage() {
         else { setPreview(null); toast({ title: 'Aperçu impossible', description: r.error, variant: 'destructive' }); }
     };
     const emit = async () => {
-        if (!window.confirm('Émettre la régularisation ? Les documents sont numérotés et archivés.')) return;
+        if (!(await confirmer({ title: 'Émettre la régularisation ?', description: 'Les factures et avoirs de régularisation seront numérotés et archivés : ils ne pourront plus être supprimés.', confirmLabel: 'Émettre' }))) return;
         setBusy(true);
         const r = await emitP1RegularisationAction(contractId, debut, fin, new Date().toISOString());
         setBusy(false);
@@ -63,10 +66,9 @@ export default function P1RegularisationPage() {
                 <div className="flex flex-wrap items-end gap-3">
                     <div className="space-y-1">
                         <Label>Contrat</Label>
-                        <Select value={contractId} onValueChange={v => { setContractId(v); setPreview(null); }} disabled={isLoading}>
-                            <SelectTrigger className="w-80"><SelectValue placeholder={candidats.length ? 'Choisir un contrat' : 'Aucun contrat en acomptes P1'} /></SelectTrigger>
-                            <SelectContent>{candidats.map(c => <SelectItem key={c.id} value={c.id}>{c.contractNumber} — {c.clientName}</SelectItem>)}</SelectContent>
-                        </Select>
+                        <SearchableSelect className="w-80" value={contractId} onValueChange={v => { setContractId(v); setPreview(null); }} disabled={isLoading}
+                            placeholder={candidats.length ? 'Choisir un contrat' : 'Aucun contrat en acomptes P1'} searchPlaceholder="N° de contrat ou client…"
+                            options={candidats.map(c => ({ value: c.id, label: `${c.contractNumber} — ${c.clientName}` }))} />
                     </div>
                     <div className="space-y-1"><Label>Du mois</Label><Input type="month" value={debut} onChange={e => { setDebut(e.target.value); setPreview(null); }} className="w-40" /></div>
                     <div className="space-y-1"><Label>Au mois</Label><Input type="month" value={fin} onChange={e => { setFin(e.target.value); setPreview(null); }} className="w-40" /></div>

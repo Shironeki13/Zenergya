@@ -1,4 +1,5 @@
 'use client';
+import { SearchableSelect } from '@/components/ui/searchable-select';
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import Image from 'next/image';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -2270,12 +2271,8 @@ const WeatherStationsSection = () => {
                             <div className="space-y-4">
                                 <div className="space-y-2">
                                     <Label>Station météo</Label>
-                                    <Select value={importStationCode} onValueChange={setImportStationCode}>
-                                        <SelectTrigger><SelectValue placeholder="Sélectionner une station" /></SelectTrigger>
-                                        <SelectContent>
-                                            {weatherStations.map(s => <SelectItem key={s.code} value={s.code}>{s.code} — {s.name}</SelectItem>)}
-                                        </SelectContent>
-                                    </Select>
+                                    <SearchableSelect value={importStationCode} onValueChange={setImportStationCode} placeholder="Sélectionner une station" searchPlaceholder="Ville ou code de la station…"
+                                        options={weatherStations.map(s => ({ value: s.code, label: `${s.code} — ${s.name}` }))} />
                                 </div>
                                 <div className="space-y-2">
                                     <Label>Type de données</Label>
@@ -2392,7 +2389,7 @@ export default function SettingsPage() {
     return (
         <div className="space-y-6">
             <div>
-                <h1 className="text-lg font-medium">Paramétrage</h1>
+                <h1 className="text-2xl font-bold tracking-tight">Paramétrage</h1>
                 <p className="text-sm text-muted-foreground">
                     Configurez les entités de votre organisation.
                 </p>

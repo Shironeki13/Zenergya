@@ -1,5 +1,6 @@
 'use client';
 
+import { useConfirm } from '@/components/confirm-provider';
 import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -16,6 +17,7 @@ interface SettlementManagerProps {
 }
 
 export function SettlementManager({ service }: SettlementManagerProps) {
+    const confirmer = useConfirm();
     const [settlements, setSettlements] = useState<ServiceSettlement[]>([]);
     const [isDialogOpen, setIsDialogOpen] = useState(false);
     const [editingSettlement, setEditingSettlement] = useState<ServiceSettlement | null>(null);
@@ -49,7 +51,7 @@ export function SettlementManager({ service }: SettlementManagerProps) {
     };
 
     const handleDelete = async (id: string) => {
-        if (!confirm("Supprimer ce décompte ?")) return;
+        if (!(await confirmer({ title: "Supprimer ce décompte ?", confirmLabel: 'Supprimer', destructive: true }))) return;
         try {
             await deleteSettlement(id);
             toast({ title: "Succès", description: "Décompte supprimé." });

@@ -1,5 +1,7 @@
 "use client";
 
+import { useAlerteModifications } from '@/hooks/use-alerte-modifications';
+import { signalerErreurs } from '@/lib/forms/signaler-erreurs';
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useForm, useFieldArray } from "react-hook-form";
@@ -257,6 +259,7 @@ export default function MarketPrivatePage() {
             }],
         },
     });
+    useAlerteModifications(form.formState.isDirty && !form.formState.isSubmitSuccessful);
 
     const { fields: siteFields, append: appendSite, remove: removeSite } = useFieldArray({
         control: form.control,
@@ -626,18 +629,8 @@ export default function MarketPrivatePage() {
                         </SheetDescription>
                     </SheetHeader>
                     <div className="py-6">
-                        <Form {...form}>
-                            <form onSubmit={form.handleSubmit(onSubmit, (errors) => {
-                                console.error("Form Validation Errors:", errors);
-                                const errorMessages = Object.entries(errors)
-                                    .map(([key, error]) => `${key}: ${(error as any).message}`)
-                                    .join(', ');
-                                toast({
-                                    title: "Erreur de validation",
-                                    description: `Champs invalides: ${errorMessages}`,
-                                    variant: "destructive",
-                                });
-                            })} className="space-y-6">
+                        <Form {...form} schema={ExtendedClientSchema}>
+                            <form onSubmit={form.handleSubmit(onSubmit, signalerErreurs)} className="space-y-6">
 
                                 {/* Section Hiérarchie (always visible above tabs) */}
                                 <div className="space-y-4">

@@ -201,7 +201,7 @@ export default function EInvoicingDashboardPage() {
     return (
         <div className="space-y-6">
             <div>
-                <h1 className="text-lg font-semibold md:text-2xl">Facturation électronique</h1>
+                <h1 className="text-2xl font-bold tracking-tight">Facturation électronique</h1>
                 <p className="text-sm text-muted-foreground">
                     Factures et avoirs à transmettre via la plateforme agréée ou Chorus Pro, selon la typologie et le paramétrage de chaque client.
                     Les particuliers et clients non assujettis relèvent de l'e-reporting.

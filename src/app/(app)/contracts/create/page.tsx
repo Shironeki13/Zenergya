@@ -1,5 +1,9 @@
 "use client"
 
+import { useAlerteModifications } from '@/hooks/use-alerte-modifications';
+import { signalerErreurs } from '@/lib/forms/signaler-erreurs';
+import { SearchableSelect } from '@/components/ui/searchable-select';
+import { optionsClients } from '@/lib/select-options';
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { zodResolver } from "@hookform/resolvers/zod"
@@ -187,6 +191,7 @@ export default function NewContractPage() {
         resolver: zodResolver(contractFormSchema),
         defaultValues,
     })
+    useAlerteModifications(form.formState.isDirty && !form.formState.isSubmitSuccessful);
 
     const { fields } = useFieldArray({
         control: form.control,
@@ -407,8 +412,8 @@ export default function NewContractPage() {
                 </div>
             </CardHeader>
             <CardContent>
-                <Form {...form}>
-                    <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-8">
+                <Form {...form} schema={contractFormSchema}>
+                    <form onSubmit={form.handleSubmit(onSubmit, signalerErreurs)} className="space-y-8">
 
                         <FormField
                             control={form.control}
@@ -416,20 +421,7 @@ export default function NewContractPage() {
                             render={({ field }) => (
                                 <FormItem>
                                     <FormLabel>Client</FormLabel>
-                                    <Select onValueChange={field.onChange} defaultValue={field.value}>
-                                        <FormControl>
-                                            <SelectTrigger>
-                                                <SelectValue placeholder="Sélectionnez un client" />
-                                            </SelectTrigger>
-                                        </FormControl>
-                                        <SelectContent>
-                                            {clients.map((client) => (
-                                                <SelectItem key={client.id} value={client.id}>
-                                                    {client.name}
-                                                </SelectItem>
-                                            ))}
-                                        </SelectContent>
-                                    </Select>
+                                    <FormControl><SearchableSelect onValueChange={field.onChange} value={field.value} options={optionsClients(clients)} placeholder="Sélectionnez un client" searchPlaceholder="Nom, code client, SIRET, ville…" /></FormControl>
                                     <FormMessage />
                                 </FormItem>
                             )}

@@ -1,6 +1,7 @@
 
 'use client';
 
+import { useAlerteModifications } from '@/hooks/use-alerte-modifications';
 import { useState, useMemo } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -162,6 +163,7 @@ export default function NewContractFromPdfPage() {
             sectorId: "",
         },
     });
+    useAlerteModifications(form.formState.isDirty && !form.formState.isSubmitSuccessful);
 
     const watchCompanyId = form.watch("companyId");
     const watchAgencyId = form.watch("agencyId");
@@ -403,7 +405,7 @@ export default function NewContractFromPdfPage() {
                     </SheetHeader>
                     <div className="py-4 pr-6">
                         {analysisResult && (
-                            <Form {...form}>
+                            <Form {...form} schema={NewContractFormSchema}>
                                 <form onSubmit={form.handleSubmit(onSubmit, (errors) => {
                                     console.error("Form validation errors:", errors);
                                     const fieldLabels: Record<string, string> = {

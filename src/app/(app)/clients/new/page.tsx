@@ -1,6 +1,8 @@
 
 "use client"
 
+import { signalerErreurs } from '@/lib/forms/signaler-erreurs';
+import { useAlerteModifications } from '@/hooks/use-alerte-modifications';
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { zodResolver } from "@hookform/resolvers/zod"
@@ -91,6 +93,7 @@ export default function NewClientPage() {
       sectorId: currentUser?.scope?.sectorIds[0] !== '*' ? currentUser?.scope?.sectorIds[0] : "",
     },
   })
+    useAlerteModifications(form.formState.isDirty && !form.formState.isSubmitSuccessful);
 
   // Remplit la fiche depuis le répertoire des entreprises (API de l'État).
   const applyEntreprise = (r: EntrepriseResult) => {
@@ -146,25 +149,7 @@ export default function NewClientPage() {
     }
   }
 
-  function onInvalid(errors: Record<string, unknown>) {
-    const errorFields = Object.keys(errors);
-    const fieldLabels: Record<string, string> = {
-      name: 'Raison sociale',
-      typologyId: 'Typologie',
-      companyId: 'Société',
-      agencyId: 'Agence',
-      sectorId: 'Secteur',
-      clientType: 'Type de client',
-      siret: 'SIRET',
-    };
-    const labels = errorFields.map(f => fieldLabels[f] || f).join(', ');
-    toast({
-      title: "Formulaire incomplet",
-      description: `Champs invalides : ${labels}`,
-      variant: "destructive",
-    });
-    console.error('Form validation errors:', errors);
-  }
+  const onInvalid = signalerErreurs;
 
   return (
     <Card>
@@ -187,7 +172,7 @@ export default function NewClientPage() {
             <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
           </div>
         ) : (
-          <Form {...form}>
+          <Form {...form} schema={ClientSchema}>
             <form onSubmit={form.handleSubmit(onSubmit, onInvalid)} className="space-y-8">
 
               {/* Hierarchy fields: Company → Agency → Sector */}

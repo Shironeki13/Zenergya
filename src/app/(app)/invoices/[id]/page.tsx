@@ -153,7 +153,7 @@ export default function InvoiceDetailPage() {
             <span className="sr-only">Retour</span>
           </Link>
         </Button>
-        <h1 className="text-lg font-semibold md:text-2xl">{documentIdentifier}</h1>
+        <h1 className="text-2xl font-bold tracking-tight">{documentIdentifier}</h1>
         {invoice.situation && (
           <Link href={`/projects/${invoice.situation.projectId}`} className="text-sm text-muted-foreground underline">
             Situation n° {invoice.situation.number} de l'affaire {invoice.situation.projectCode}
@@ -186,7 +186,7 @@ export default function InvoiceDetailPage() {
             </p>
           </div>
           <div className="text-right">
-            <h1 className="text-3xl font-bold text-primary">{documentTitle}</h1>
+            <h1 className="text-2xl font-bold tracking-tight">{documentTitle}</h1>
             <p className="text-muted-foreground">{invoice.invoiceNumber || invoice.id}</p>
             <Badge variant={getBadgeVariant(invoice.status)} className="mt-2 text-xs">
               {translateStatus(invoice.status).toUpperCase()}

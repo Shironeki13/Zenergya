@@ -1,5 +1,8 @@
 "use client";
 
+import { useAlerteModifications } from '@/hooks/use-alerte-modifications';
+import { signalerErreurs } from '@/lib/forms/signaler-erreurs';
+import { SearchableSelect } from '@/components/ui/searchable-select';
 import { useState, useEffect } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { useForm, useFieldArray } from "react-hook-form";
@@ -107,6 +110,7 @@ export default function EditContractPage() {
             sites: [{ name: "", address: "", postalCode: "", city: "", billingSchedule: "Mensuel", term: "" }],
         },
     });
+    useAlerteModifications(form.formState.isDirty && !form.formState.isSubmitSuccessful);
 
     const { fields: siteFields, append: appendSite, remove: removeSite } = useFieldArray({
         control: form.control,
@@ -260,8 +264,8 @@ export default function EditContractPage() {
             )}
 
             {/* Formulaire */}
-            <Form {...form}>
-                <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+            <Form {...form} schema={CorrectionSchema}>
+                <form onSubmit={form.handleSubmit(onSubmit, signalerErreurs)} className="space-y-6">
                     <Tabs defaultValue="client">
                         <TabsList className="grid w-full grid-cols-4">
                             <TabsTrigger value="client" className="gap-1.5">
@@ -595,14 +599,8 @@ export default function EditContractPage() {
                                         <FormField control={form.control} name={`sites.${index}.heatingWeatherStation`} render={({ field }) => (
                                             <FormItem>
                                                 <FormLabel>Station Météo</FormLabel>
-                                                <Select value={field.value ?? ''} onValueChange={field.onChange}>
-                                                    <FormControl><SelectTrigger><SelectValue placeholder="Sélectionner une station" /></SelectTrigger></FormControl>
-                                                    <SelectContent>
-                                                        {weatherStations.filter(s => s.isActive).map(s => (
-                                                            <SelectItem key={s.code} value={s.code}>{s.name} ({s.code})</SelectItem>
-                                                        ))}
-                                                    </SelectContent>
-                                                </Select>
+                                                <FormControl><SearchableSelect value={field.value ?? ''} onValueChange={field.onChange} placeholder="Sélectionner une station" searchPlaceholder="Ville ou code de la station…" clearable
+                                                    options={weatherStations.filter(s => s.isActive).map(s => ({ value: s.code, label: `${s.name} (${s.code})` }))} /></FormControl>
                                             </FormItem>
                                         )} />
                                     </div>
