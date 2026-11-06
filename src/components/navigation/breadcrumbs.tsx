@@ -14,7 +14,7 @@ import { activeNavItem } from '@/components/navigation/nav-config';
 const SOUS_PAGES: Record<string, string> = {
     edit: 'Modifier', new: 'Nouveau', manual: 'Saisie manuelle', 'market-private': 'Marché privé', 'market-public': 'Marché public',
     'ai-validation': 'Validation assistée', chiffrage: 'Chiffrage', p5: 'P5', p6: 'P6', create: 'Création', validation: 'Validation',
-    'new-document': 'Nouveau document', 'new-from-pdf': 'Depuis un PDF', 'new-from-public-pdf': 'Depuis un PDF (marché public)',
+    nouveau: 'Nouveau contrat',
 };
 
 type Miette = { label: string; href?: string };

@@ -153,7 +153,7 @@ export default function ContractsPage() {
         triInitial={{ id: 'numero', sens: 'desc' }}
         lien={r => `/contracts/${r.id}`}
         export={{ fichier: 'contrats.csv' }}
-        boutons={<Button asChild size="sm" className="h-9 gap-1"><Link href="/contracts/new"><PlusCircle className="h-4 w-4" />Nouveau contrat</Link></Button>}
+        boutons={<Button asChild size="sm" className="h-9 gap-1"><Link href="/contracts/nouveau"><PlusCircle className="h-4 w-4" />Nouveau contrat</Link></Button>}
         vide={{ titre: 'Aucun contrat dans votre périmètre.', description: 'Créez un contrat ou importez vos contrats (Administration › Imports).' }}
         actions={r => (
           <DropdownMenu>

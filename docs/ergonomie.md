@@ -64,6 +64,33 @@ périmètre de l'utilisateur) ; **factures** : « Marquer comme payée » foncti
 retiré, l'annulation par avoir **demande le motif** (il figure sur l'avoir) ; **compteurs** : dernier relevé et
 filtre « sans relevé depuis 45 jours » ; **sites** : montant annuel et état des prestations.
 
+## Création de contrat : l'assistant
+
+`/contracts/nouveau` (`src/app/(app)/contracts/nouveau`, étapes dans `src/components/contracts/assistant/etapes.tsx`,
+logique pure testée dans `src/lib/contracts/assistant.ts`, écriture dans `src/services/contrat-assistant-admin.ts`) :
+une seule entrée pour créer un contrat (liste des contrats, fiche client avec le client présélectionné, accueil des
+documents de la contrathèque).
+
+1. **Source** : saisie, ou PDF d'un contrat privé ou d'un marché public, lu par l'IA (consignes modifiables, reprises
+   des anciens formulaires : `src/lib/contracts/prompts-extraction.ts`). Chaque valeur lue est marquée « PDF » (à
+   vérifier) ; un client déjà connu (même SIRET, ou même nom au même code postal) est sélectionné plutôt que recréé.
+2. **Client** : existant (recherche) ou nouveau (rattachement, typologie, adresse, SIRET obligatoire s'il est public,
+   contact de facturation) ; doublons probables signalés avec « Utiliser ce client ».
+3. **Contrat** : libellé, dates, type de marché, activités, facturation (par site ou globale), périodicité, terme et
+   TVA par défaut, reconduction, préavis, responsable facturation.
+4. **Sites** : sites existants du client sans contrat, et nouveaux sites (« à l'adresse du client »).
+5. **Prestations** (facultatif) : site × activité, montant annuel HT, périodicité, terme, TVA, début (valeurs du
+   contrat par défaut) ; une ligne sans montant ne crée rien.
+6. **Récapitulatif** : chaque étape, ses manques, « Modifier » ; « Créer le contrat ».
+
+On ne passe à l'étape suivante qu'une fois la courante complète (manques listés). Le brouillon est enregistré dans le
+navigateur à chaque saisie et proposé à la reprise. La création est faite **au serveur, en une écriture** : client
+(code CLI) et son contact de facturation, contrat (n° CTN, « Brouillon », **en attente de validation**), nouveaux
+sites (codes SIT), sites existants rattachés, prestations, puis montants des sites recalculés ; les codes sont
+attribués par le même compteur que les imports. Refus : SIRET déjà porté par un client, site déjà rattaché à un autre
+contrat, brouillon incomplet. Les anciennes adresses (`/contracts/new/manual`, `market-private`, `market-public`)
+redirigent vers l'assistant ; les anciens formulaires inaccessibles ont été supprimés.
+
 ## Fiches : le modèle de la fiche site
 
 `src/app/(app)/sites/[id]/page.tsx`, briques dans `src/components/sites/fiche-site.tsx` :
@@ -105,4 +132,6 @@ Parcours vérifiés dans un navigateur (émulateurs, build de production) : conn
 liste avec recherche dans une fenêtre, confirmation, astérisques, récapitulatif d'erreurs, alerte en quittant ; fiche
 site (synthèse, à faire, onglets, lien direct `?onglet=`, compléter une prestation, factures, modification du site) ;
 fiches contrat et client (synthèse, à faire, onglets, ajout d'un site) ; listes (pagination, recherche, filtres,
-tri, colonnes et préférences mémorisées, ouverture d'une fiche, avoir avec motif, facture marquée payée).
+tri, colonnes et préférences mémorisées, ouverture d'une fiche, avoir avec motif, facture marquée payée) ;
+assistant de création (ancienne adresse redirigée, étapes bloquées si incomplètes, doublon signalé, prestations,
+récapitulatif, brouillon repris après rechargement, création et fiche du contrat).

@@ -122,7 +122,7 @@ export default function ClientDetailPage() {
           <Button variant="outline" asChild><Link href={`/clients/${id}/edit`}><Pencil className="mr-2 h-4 w-4" />Modifier</Link></Button>
           <Button variant="outline" asChild><Link href={`/quotes?clientId=${id}`}>Devis</Link></Button>
           <Button variant="outline" asChild><Link href={`/quotes/new?clientId=${id}`}>Nouveau devis</Link></Button>
-          <Button asChild><Link href={`/contracts/new?clientId=${client.id}`}><PlusCircle className="mr-2 h-4 w-4" />Nouveau contrat</Link></Button>
+          <Button asChild><Link href={`/contracts/nouveau?clientId=${client.id}`}><PlusCircle className="mr-2 h-4 w-4" />Nouveau contrat</Link></Button>
         </div>
       </div>
 
@@ -174,7 +174,7 @@ export default function ClientDetailPage() {
           <TableauContrats contrats={contracts} sites={sites} services={services} users={users}
             actions={<>
               <AttachContractDialog client={client} onContractAttached={fetchContracts} />
-              <Button size="sm" variant="outline" asChild><Link href={`/contracts/new?clientId=${client.id}`}><PlusCircle className="mr-1 h-4 w-4" />Nouveau</Link></Button>
+              <Button size="sm" variant="outline" asChild><Link href={`/contracts/nouveau?clientId=${client.id}`}><PlusCircle className="mr-1 h-4 w-4" />Nouveau</Link></Button>
             </>} />
         </TabsContent>
 

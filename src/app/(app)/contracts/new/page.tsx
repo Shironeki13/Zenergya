@@ -25,9 +25,6 @@ export default function DocumentHubPage() {
   const [trusteeChangeDialogOpen, setTrusteeChangeDialogOpen] = useState(false)
   const [beChangeDialogOpen, setBeChangeDialogOpen] = useState(false)
 
-  const handleCreateContract = () => {
-    router.push("/contracts/create")
-  }
 
   return (
     <div className="space-y-6">
@@ -47,26 +44,26 @@ export default function DocumentHubPage() {
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <DocumentCard
-          title="Saisie Manuelle"
-          description="Créer un contrat manuellement sans analyse IA."
+          title="Nouveau contrat"
+          description="Assistant pas à pas : client, contrat, sites, prestations."
           icon={Edit}
           color="text-green-500 bg-green-50"
-          onClick={() => router.push("/contracts/new/manual")}
+          onClick={() => router.push("/contracts/nouveau")}
         />
         <DocumentCard
-          title="Marché Privé"
-          description="Créer une base marché à partir d'un contrat privé unique."
+          title="Contrat privé (PDF)"
+          description="Le PDF du contrat est lu, puis vérifié et complété dans l'assistant."
           icon={Building2}
           color="text-blue-500 bg-blue-50"
-          onClick={() => router.push("/contracts/new/market-private")}
+          onClick={() => router.push("/contracts/nouveau?source=pdf-prive")}
         />
 
         <DocumentCard
-          title="Marché Public"
-          description="Analyser un Acte d'Engagement, CCAP, CCTP, etc."
+          title="Marché public (PDF)"
+          description="Acte d'engagement, CCAP, CCTP lus, puis vérifiés et complétés dans l'assistant."
           icon={Landmark}
           color="text-indigo-500 bg-indigo-50"
-          onClick={() => router.push("/contracts/new/market-public")}
+          onClick={() => router.push("/contracts/nouveau?source=pdf-public")}
         />
 
         <DocumentCard

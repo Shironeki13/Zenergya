@@ -1202,7 +1202,7 @@ const COLLECTIONS: Record<ImportEntityKey, string> = {
 };
 
 /** Réserve `n` numéros au-delà du compteur et du plus grand code existant (pas de doublon possible). */
-async function reserveCodes(entity: ImportEntityKey, n: number): Promise<string[]> {
+export async function reserveCodes(entity: ImportEntityKey, n: number): Promise<string[]> {
     const spec = CODES[entity];
     if (!spec || n === 0) return [];
     const existing = await adminDb.collection(spec.collection).select(spec.field).get();
