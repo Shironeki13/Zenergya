@@ -113,11 +113,11 @@ function DateVigueur({ date, onChange }: { date: string; onChange: (d: string) =
  * Paramétrage P1 du site : paramètres du site et postes de consommation (saisis ici) ; compteurs et contrat en
  * lecture, chacun se paramétrant sur sa propre fiche ; aperçu des prix révisés et réel P1 du moteur.
  */
-export function P1ParametragePanel({ siteId }: { siteId: string }) {
+export function P1ParametragePanel({ siteId, defaultOpen = false }: { siteId: string; defaultOpen?: boolean }) {
     const { toast } = useToast();
     const [date, setDate] = useState(today());
     const [view, setView] = useState<P1SiteView | null>(null);
-    const [open, setOpen] = useState(false);
+    const [open, setOpen] = useState(defaultOpen);
 
     const load = useCallback(async () => {
         const r = await getP1SiteAction(siteId, date);

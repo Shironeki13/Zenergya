@@ -20,6 +20,11 @@ import { toast } from '@/hooks/use-toast';
 import { billingItems, echeancesOf, lineItemKeys } from '@/lib/billing/contract-billing';
 import { toDay } from '@/lib/services/site-amounts';
 import { P1ParametragePanel } from '@/components/p1/p1-parametrage-panel';
+import { getP1SiteAction } from '@/lib/p1/actions';
+import {
+    AFaire, CompteursDuSite, FacturesDuSite, Indicateur, JOURS_SANS_RELEVE, ListePrestations, ModifierSiteDialog, ONGLETS_SITE, TableauPrestations,
+    enVigueur, libellePrestation, manquesPrestation, montantSite, type OngletSite, type PointAFaire, type SiteModifiable,
+} from '@/components/sites/fiche-site';
 import { updateSite, createService, updateService, deleteService, createMeter, updateMeter, deleteMeter } from '@/services/firestore';
 import type { Site, Contract, Service, Meter, RevisionRule, Activity, Term, Schedule, PricingRule, ServiceType, ServiceInitialIndexValue, Index, IndexValue, ServiceBillingLine, BillingLineType } from '@/lib/types';
 import { MeterReadingsDialog } from '@/components/meter-readings-dialog';
@@ -464,7 +469,7 @@ export default function SiteDetailsPage() {
         const keywords = p1TypeKeywords[p1Type];
         if (keywords) {
             return siteMeters.filter(m =>
-                keywords.some(kw => m.type.toLowerCase().includes(kw))
+                keywords.some(kw => (m.type ?? '').toLowerCase().includes(kw))
             );
         }
         return siteMeters;
@@ -493,6 +498,31 @@ export default function SiteDetailsPage() {
             }
         }
     }, [revisionRuleId, revisionRules]);
+
+    // Onglet courant, conservé dans l'adresse (?onglet=) : lien direct et retour arrière.
+    const [onglet, setOnglet] = useState<OngletSite>('synthese');
+    useEffect(() => {
+        const o = new URLSearchParams(window.location.search).get('onglet');
+        if (o && (ONGLETS_SITE as readonly string[]).includes(o)) setOnglet(o as OngletSite);
+    }, []);
+    const changerOnglet = (o: OngletSite) => {
+        setOnglet(o);
+        const u = new URL(window.location.href);
+        u.searchParams.set('onglet', o);
+        window.history.replaceState(window.history.state, '', u);
+    };
+    // Prestation affichée par défaut : la première du site.
+    useEffect(() => {
+        if (!selectedServiceId && siteServices.length) { setSelectedServiceId(siteServices[0].id); setSelectedType(siteServices[0].type); }
+    }, [siteServices, selectedServiceId]);
+    // Reste à faire du paramétrage P1 (encart « à faire »).
+    const [p1Reste, setP1Reste] = useState<{ suivi: boolean; manque: string[] } | null | undefined>(undefined);
+    useEffect(() => {
+        let annule = false;
+        getP1SiteAction(siteId).then(r => { if (!annule) setP1Reste(r.success ? { suivi: r.data.reste.suivi, manque: r.data.reste.manque } : null); });
+        return () => { annule = true; };
+    }, [siteId, services]);
+    const [modifierSite, setModifierSite] = useState(false);
 
     if (isLoading) return <div>Chargement...</div>;
     if (!site) return <div>Site non trouvé</div>;
@@ -638,8 +668,11 @@ export default function SiteDetailsPage() {
     })();
 
     // Calendrier de facturation de la prestation : même échéancier que la facturation (lib/billing/contract-billing).
-    const billingPeriods = (() => {
-        if (!activeService || !contract || !site) return [];
+    type Periode = { periodStart: Date; periodEnd: Date; dueDate: Date; invoice: (typeof invoices)[number] | null; amount: number | null };
+    // Échéances de chaque prestation du site (même échéancier que la facture) et la facture qui couvre chacune.
+    const periodesParService = (() => {
+        const map = new Map<string, Periode[]>();
+        if (!contract || !site) return map;
         const input = {
             contract: {
                 id: contract.id, siteIds: contract.siteIds ?? [], activityIds: contract.activityIds ?? [], invoicingType: contract.invoicingType,
@@ -647,21 +680,25 @@ export default function SiteDetailsPage() {
             },
             sites: [site], services, activities, vatRates, schedules, terms,
         };
-        const item = billingItems(input).items.find(i => i.serviceId === activeService.id);
         const contractStart = toDay(contract.startDate);
-        if (!item || !contractStart) return [];
+        if (!contractStart) return map;
         const contractInvoices = invoices.filter(inv => inv.contractId === contract.id && inv.status !== 'cancelled' && !inv.cancelledByCreditNoteId);
-        return echeancesOf(item, contractStart, null, item.to, 120).map(e => {
-            // Facture qui couvre l'échéance : ligne de cette prestation sur cette période (ou facture antérieure par site et activité).
-            const invoice = contractInvoices.find(inv => (inv.lineItems ?? []).some(l => {
-                const keys = lineItemKeys(l);
-                if (keys.length) return keys.includes(item.key) && !!l.periodStartDate && l.periodStartDate <= e.start && (toDay(l.periodEndDate) ?? '') >= e.end;
-                return l.activityCode === item.activity.code && (!l.siteId || l.siteId === site.id)
-                    && (toDay(inv.periodStartDate) ?? '') <= e.start && (toDay(inv.periodEndDate) ?? '') >= e.end;
-            })) ?? null;
-            return { periodStart: new Date(e.start), periodEnd: new Date(e.end), dueDate: new Date(e.billableOn), invoice, amount: item.p1Acompte || item.p1Releve ? null : e.amount };
-        });
+        for (const item of billingItems(input).items) {
+            if (!item.serviceId) continue;
+            map.set(item.serviceId, echeancesOf(item, contractStart, null, item.to, 120).map(e => {
+                // Facture qui couvre l'échéance : ligne de cette prestation sur cette période (ou facture antérieure par site et activité).
+                const invoice = contractInvoices.find(inv => (inv.lineItems ?? []).some(l => {
+                    const keys = lineItemKeys(l);
+                    if (keys.length) return keys.includes(item.key) && !!l.periodStartDate && l.periodStartDate <= e.start && (toDay(l.periodEndDate) ?? '') >= e.end;
+                    return l.activityCode === item.activity.code && (!l.siteId || l.siteId === site.id)
+                        && (toDay(inv.periodStartDate) ?? '') <= e.start && (toDay(inv.periodEndDate) ?? '') >= e.end;
+                })) ?? null;
+                return { periodStart: new Date(e.start), periodEnd: new Date(e.end), dueDate: new Date(e.billableOn), invoice, amount: item.p1Acompte || item.p1Releve ? null : e.amount };
+            }));
+        }
+        return map;
     })();
+    const billingPeriods = activeService ? periodesParService.get(activeService.id) ?? [] : [];
 
     // Consommation = écart entre les deux derniers relevés réels du compteur
     const lastReal = lastMeterReadings.find(r => r.type === 'REEL' || r.type === 'CORRIGE');
@@ -673,169 +710,501 @@ export default function SiteDetailsPage() {
         ? consumption * revisedUnitPrice
         : null;
 
+    // ── Synthèse du site : indicateurs et points à traiter ──
+    const eur0 = (n: number) => n.toLocaleString('fr-FR', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 });
+    const prestationsEnVigueur = siteServices.filter(s => enVigueur(s));
+    const montantAnnuel = prestationsEnVigueur.reduce((t, s) => t + (Number(s.price) || 0), 0);
+    const incompletes = siteServices.filter(s => s.isActive !== false && manquesPrestation(s).length > 0);
+    const derniersReleves = new Map<string, string>();
+    for (const r of meterReadings) {
+        if (!siteMeters.some(m => m.id === r.meterId)) continue;
+        const d = derniersReleves.get(r.meterId);
+        if (!d || Date.parse(r.date) > Date.parse(d)) derniersReleves.set(r.meterId, r.date);
+    }
+    const sansReleve = siteMeters.filter(m => m.status !== 'off' && (!derniersReleves.get(m.id) || Date.parse(derniersReleves.get(m.id)!) < Date.now() - JOURS_SANS_RELEVE * 86_400_000));
+    const maintenant = new Date();
+    const echeancesEnRetard = [...periodesParService.values()].flat().filter(p => !p.invoice && p.dueDate <= maintenant)
+        .sort((a, b) => a.dueDate.getTime() - b.dueDate.getTime());
+    const serviceIds = new Set(siteServices.map(s => s.id));
+    const facturesSite = invoices
+        .filter(inv => !contract || inv.contractId === contract.id)
+        .map(inv => ({ invoice: inv, montant: montantSite(inv, site.id, serviceIds) }))
+        .filter(f => f.montant !== null)
+        .sort((a, b) => new Date(b.invoice.date).getTime() - new Date(a.invoice.date).getTime());
+    const ouvrirPrestation = (s: Service) => { setSelectedServiceId(s.id); setSelectedType(s.type); changerOnglet('prestations'); };
+    const pointsAFaire: PointAFaire[] = [
+        ...(!contract ? [{ id: 'contrat', gravite: 'bloquant' as const, texte: 'Site rattaché à aucun contrat : ses prestations ne sont pas facturées (rattachement par l\'import des sites).' }] : []),
+        ...(siteServices.length === 0 ? [{ id: 'aucune', gravite: 'bloquant' as const, texte: 'Aucune prestation : rien n\'est facturé sur ce site.', action: { label: 'Ajouter', onClick: () => changerOnglet('prestations') } }] : []),
+        ...incompletes.map(s => ({ id: `inc-${s.id}`, gravite: 'bloquant' as const, texte: `${libellePrestation(s, activities)} (${s.type}) : ${manquesPrestation(s).join(', ')} à renseigner.`, action: { label: 'Compléter', onClick: () => handleEditService(s) } })),
+        ...(p1Reste?.suivi && p1Reste.manque.length ? [{ id: 'p1', gravite: 'bloquant' as const, texte: `Paramétrage P1 incomplet : ${p1Reste.manque.slice(0, 3).join(', ')}${p1Reste.manque.length > 3 ? ` et ${p1Reste.manque.length - 3} autre(s)` : ''}.`, action: { label: 'Paramétrer', onClick: () => changerOnglet('p1') } }] : []),
+        ...(echeancesEnRetard.length ? [{ id: 'retard', gravite: 'attention' as const, texte: `${echeancesEnRetard.length} échéance(s) facturable(s) non facturée(s), la plus ancienne le ${echeancesEnRetard[0].dueDate.toLocaleDateString('fr-FR')}.`, action: { label: 'Suivi facturation', onClick: () => router.push('/billing/suivi') } }] : []),
+        ...(sansReleve.length ? [{ id: 'releves', gravite: 'attention' as const, texte: `${sansReleve.length} compteur(s) sans relevé depuis ${JOURS_SANS_RELEVE} jours : ${sansReleve.slice(0, 4).map(m => m.code).join(', ')}${sansReleve.length > 4 ? '…' : ''}.`, action: { label: 'Compteurs', onClick: () => changerOnglet('compteurs') } }] : []),
+    ];
+    const enregistrerSite = async (data: SiteModifiable) => {
+        try {
+            await updateSite(site.id, data);
+            await reloadData();
+            toast({ title: 'Site enregistré' });
+            return true;
+        } catch {
+            toast({ title: 'Enregistrement impossible', description: 'Vérifiez vos droits ou réessayez.', variant: 'destructive' });
+            return false;
+        }
+    };
+
     return (
         <div className="space-y-6">
-            {/* Header */}
-            <div className="space-y-2">
-                {/* Breadcrumb */}
-                <div className="flex items-center text-sm text-muted-foreground">
-                    <Button variant="ghost" size="icon" className="h-6 w-6 mr-2" onClick={() => router.back()}>
-                        <ArrowLeft className="h-4 w-4" />
-                    </Button>
-                    {contract ? (
-                        <>
-                            <Link href={`/clients/${contract.clientId}`} className="hover:underline hover:text-foreground">
-                                {contract.clientName || 'Client'}
-                            </Link>
-                            <span className="mx-2">›</span>
-                            <Link href={`/contracts/${contract.id}`} className="hover:underline hover:text-foreground">
-                                {contract.contractNumber || contract.label || contract.name || contract.id}
-                            </Link>
-                            <span className="mx-2">›</span>
-                        </>
-                    ) : (
-                        <>
-                            <Link href="/sites" className="hover:underline hover:text-foreground">Sites</Link>
-                            <span className="mx-2">›</span>
-                        </>
-                    )}
-                    <span className="font-medium text-foreground">{site.name}</span>
+            {/* Bandeau : identité du site, rattachements, actions */}
+            <div className="flex flex-wrap items-start justify-between gap-4">
+                <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                        <h1 className="text-2xl font-bold tracking-tight">{site.name}</h1>
+                        {site.code && <Badge variant="outline" className="font-mono">{site.code}</Badge>}
+                        <Badge variant={contract?.status === 'Actif' ? 'default' : 'secondary'}>{contract ? `Contrat ${String(contract.status ?? '').toLowerCase()}` : 'Sans contrat'}</Badge>
+                    </div>
+                    <p className="mt-1 flex flex-wrap items-center gap-x-1.5 text-sm text-muted-foreground">
+                        {contract ? (
+                            <>
+                                <Link href={`/clients/${contract.clientId}`} className="hover:text-foreground hover:underline">{contract.clientName || 'Client'}</Link>
+                                <span aria-hidden>›</span>
+                                <Link href={`/contracts/${contract.id}`} className="hover:text-foreground hover:underline">{contract.contractNumber || contract.label || contract.name}</Link>
+                            </>
+                        ) : <span>Non rattaché à un contrat</span>}
+                        <span aria-hidden>·</span>
+                        <span>{[site.address, [site.postalCode, site.city].filter(Boolean).join(' ')].filter(Boolean).join(', ')}</span>
+                    </p>
                 </div>
-
-                <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-4">
-                        <div>
-                            <div className="flex items-center gap-2">
-                                <h1 className="text-2xl font-bold tracking-tight">{site.name}</h1>
-                                {site.code && (
-                                    <Badge variant="outline" className="font-mono">{site.code}</Badge>
-                                )}
-                                <Badge variant={contract?.status === 'Actif' ? 'default' : 'secondary'}>
-                                    {contract?.status || 'Aucun contrat'}
-                                </Badge>
-                            </div>
-                            {contract ? (
-                                <div className="text-sm text-muted-foreground flex items-center gap-1.5 mt-0.5">
-                                    <Link href={`/clients/${contract.clientId}`} className="hover:underline">
-                                        {contract.clientName}
-                                    </Link>
-                                    <span>›</span>
-                                    <Link href={`/contracts/${contract.id}`} className="hover:underline">
-                                        {contract.contractNumber || contract.label || contract.name}
-                                    </Link>
-                                </div>
-                            ) : (
-                                <div className="text-sm text-muted-foreground mt-0.5">
-                                    Non rattaché à un contrat
-                                </div>
-                            )}
-                        </div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                        <Button variant="outline" asChild>
-                            <Link href={`/quotes?siteId=${site.id}`}>Devis du site</Link>
-                        </Button>
-                        <Button variant="outline" asChild>
-                            <Link href={`/quotes/new?${new URLSearchParams({ siteId: site.id, ...(site.clientId && { clientId: site.clientId }) })}`}>Nouveau devis</Link>
-                        </Button>
-                        <Button variant="default" onClick={() => console.log('Save')}>
-                            <Save className="mr-2 h-4 w-4" /> Enregistrer
-                        </Button>
-                        <Button variant="outline">Plus</Button>
-                    </div>
+                <div className="flex shrink-0 flex-wrap gap-2">
+                    <Button variant="outline" onClick={() => setModifierSite(true)}><Edit className="mr-2 h-4 w-4" />Modifier le site</Button>
+                    <Button variant="outline" asChild><Link href={`/quotes?siteId=${site.id}`}>Devis du site</Link></Button>
+                    <Button variant="outline" asChild>
+                        <Link href={`/quotes/new?${new URLSearchParams({ siteId: site.id, ...(site.clientId && { clientId: site.clientId }) })}`}>Nouveau devis</Link>
+                    </Button>
                 </div>
             </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                {/* Left Column: Sidebar */}
-                <div className="space-y-6 lg:col-span-1">
-                    {/* General Info Card */}
-                    <Card>
-                        <CardHeader>
-                            <CardTitle>Informations générales</CardTitle>
-                        </CardHeader>
-                        <CardContent className="space-y-4">
-                            <div>
-                                <Label className="text-xs text-muted-foreground">Adresse</Label>
-                                <div className="font-medium">{site.address}</div>
-                                <div>{site.postalCode} {site.city}</div>
+            <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+                <Indicateur titre="Montant annuel HT" valeur={eur0(montantAnnuel)} detail={`${prestationsEnVigueur.length} prestation(s) en vigueur`} onClick={() => changerOnglet('prestations')} />
+                <Indicateur titre="Prestations" valeur={`${siteServices.length}`} detail={incompletes.length ? `${incompletes.length} incomplète(s)` : 'toutes complètes'} alerte={incompletes.length > 0} onClick={() => changerOnglet('prestations')} />
+                <Indicateur titre="Compteurs" valeur={`${siteMeters.length}`} detail={sansReleve.length ? `${sansReleve.length} sans relevé depuis ${JOURS_SANS_RELEVE} j` : 'relevés à jour'} alerte={sansReleve.length > 0} onClick={() => changerOnglet('compteurs')} />
+                <Indicateur titre="Échéances à facturer" valeur={`${echeancesEnRetard.length}`} detail={echeancesEnRetard.length ? `depuis le ${echeancesEnRetard[0].dueDate.toLocaleDateString('fr-FR')}` : 'facturation à jour'} alerte={echeancesEnRetard.length > 0} onClick={() => router.push('/billing/suivi')} />
+            </div>
+
+            <Tabs value={onglet} onValueChange={v => changerOnglet(v as OngletSite)}>
+                <TabsList className="h-auto flex-wrap justify-start">
+                    <TabsTrigger value="synthese" className="gap-1.5">
+                        Synthèse
+                        {pointsAFaire.length > 0 && <Badge variant={pointsAFaire.some(p => p.gravite === 'bloquant') ? 'destructive' : 'secondary'} className="h-5 px-1.5 text-[10px]">{pointsAFaire.length}</Badge>}
+                    </TabsTrigger>
+                    <TabsTrigger value="prestations">Prestations ({siteServices.length})</TabsTrigger>
+                    <TabsTrigger value="compteurs">Compteurs et relevés ({siteMeters.length})</TabsTrigger>
+                    <TabsTrigger value="p1">Paramétrage P1</TabsTrigger>
+                    <TabsTrigger value="factures">Factures ({facturesSite.length})</TabsTrigger>
+                </TabsList>
+
+                <TabsContent value="synthese" className="mt-4 space-y-6">
+                    <div className="grid gap-6 lg:grid-cols-3">
+                        <Card>
+                            <CardHeader className="pb-2"><CardTitle className="text-base">Informations</CardTitle></CardHeader>
+                            <CardContent>
+                                <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-sm">
+                                    <dt className="text-muted-foreground">Code</dt><dd className="font-mono">{site.code || '—'}</dd>
+                                    <dt className="text-muted-foreground">N° de site</dt><dd>{site.siteNumber || '—'}</dd>
+                                    <dt className="text-muted-foreground">Réf. externe</dt><dd>{site.externalRef || '—'}</dd>
+                                    <dt className="text-muted-foreground">Adresse</dt><dd>{site.address}<br />{site.postalCode} {site.city}</dd>
+                                    <dt className="text-muted-foreground">Client</dt>
+                                    <dd>{contract ? <Link href={`/clients/${contract.clientId}`} className="hover:underline">{contract.clientName}</Link> : (site.clientName || '—')}</dd>
+                                    <dt className="text-muted-foreground">Contrat</dt>
+                                    <dd>{contract ? <Link href={`/contracts/${contract.id}`} className="hover:underline">{contract.contractNumber || contract.label}</Link> : '—'}</dd>
+                                    <dt className="text-muted-foreground">Facturation</dt>
+                                    <dd>{contract ? (contract.invoicingType === 'global' ? 'Globale (une ligne pour le contrat)' : 'Détaillée par site') : '—'}</dd>
+                                </dl>
+                            </CardContent>
+                        </Card>
+                        <div className="lg:col-span-2"><AFaire points={pointsAFaire} chargement={p1Reste === undefined} /></div>
+                    </div>
+                    <TableauPrestations services={siteServices} activities={activities} schedules={schedules} onOuvrir={ouvrirPrestation} onAjouter={() => changerOnglet('prestations')} />
+                </TabsContent>
+
+                <TabsContent value="prestations" className="mt-4">
+                    <div className="grid gap-6 lg:grid-cols-[280px_minmax(0,1fr)]">
+                        <ListePrestations services={siteServices} activities={activities} selection={selectedServiceId}
+                            onSelection={s => { setSelectedServiceId(s.id); setSelectedType(s.type); }} onAjouter={handleAddService} />
+                        <div className="min-w-0 space-y-6">
+                            {/* Header for Service View */}
+                            <div className="flex justify-between items-center">
+                                <h2 className="flex items-center gap-2 text-xl font-semibold">
+                                    {activeService ? (
+                                        <>
+                                            <Badge variant="outline">{activeService.type}</Badge>
+                                            {activeService.p1Type === 'ECS' && <Droplets className="h-5 w-5 text-blue-500" />}
+                                            {activeService.p1Type === 'CHAUFFAGE' && <Flame className="h-5 w-5 text-red-500" />}
+                                            {libellePrestation(activeService, activities)}
+                                        </>
+                                    ) : `Prestations ${selectedType}`}
+                                </h2>
+                                {activeService ? (
+                                    <div className="flex gap-2">
+                                        <Button variant="outline" size="sm" onClick={() => handleEditService(activeService)}>
+                                            <Edit className="mr-2 h-4 w-4" /> Modifier
+                                        </Button>
+                                        <Button variant="outline" size="sm" className="text-destructive hover:text-destructive" onClick={() => handleDeleteService(activeService.id)}>
+                                            <Trash2 className="mr-2 h-4 w-4" /> Supprimer
+                                        </Button>
+                                    </div>
+                                ) : (
+                                    <Button onClick={() => handleAddService(selectedType)}>
+                                        <Plus className="mr-2 h-4 w-4" /> Ajouter une prestation
+                                    </Button>
+                                )}
                             </div>
-                            <Button variant="outline" size="sm" className="w-full">Modifier</Button>
-                        </CardContent>
-                    </Card>
 
-                    {/* Meters Card */}
-                    <Card>
-                        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                            <CardTitle className="text-base font-medium">Compteurs du site</CardTitle>
-                            <Button variant="ghost" size="sm" onClick={handleAddMeter}><Plus className="h-4 w-4" /></Button>
-                        </CardHeader>
-                        <CardContent>
-                            <Table>
-                                <TableHeader>
-                                    <TableRow>
-                                        <TableHead className="w-[100px]">Réf</TableHead>
-                                        <TableHead>Energie</TableHead>
-                                        <TableHead className="text-right"></TableHead>
-                                    </TableRow>
-                                </TableHeader>
-                                <TableBody>
-                                    {siteMeters.length === 0 ? (
-                                        <TableRow><TableCell colSpan={3} className="text-center text-muted-foreground">Aucun compteur</TableCell></TableRow>
-                                    ) : (
-                                        siteMeters.map(meter => (
-                                            <TableRow key={meter.id}>
-                                                <TableCell className="font-medium">{meter.reference || meter.name}</TableCell>
-                                                <TableCell>{meter.type}</TableCell>
-                                                <TableCell className="text-right">
-                                                    <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => handleEditMeter(meter)}>
-                                                        <Edit className="h-3 w-3" />
-                                                    </Button>
-                                                </TableCell>
-                                            </TableRow>
-                                        ))
-                                    )}
-                                </TableBody>
-                            </Table>
-                        </CardContent>
-                    </Card>
+                            {activeService ? (
+                                <div className="space-y-6">
+                                    {/* Résumé : ce que la prestation facture, sur quelle période, et ce qui manque. */}
+                                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                                        <Indicateur titre="Montant annuel HT"
+                                            valeur={activeService.type === 'P1' && (activeService.p1Mode === 'acompte' || activeService.p1Mode === 'releve') ? (activeService.p1Mode === 'acompte' ? 'Acomptes P1' : 'Au relevé') : eur0(Number(activeService.price) || 0)}
+                                            detail={activeSchedule ? `facturé ${activeSchedule.name.toLowerCase()}${activeTerm ? `, ${activeTerm.name.toLowerCase()}` : ''}` : 'périodicité à renseigner'} />
+                                        <Indicateur titre="Période" valeur={`${new Date(activeService.startDate).toLocaleDateString('fr-FR')} → ${activeService.endDate ? new Date(activeService.endDate).toLocaleDateString('fr-FR') : '…'}`}
+                                            detail={enVigueur(activeService) ? 'en vigueur' : 'hors période ou inactive'} />
+                                        <Indicateur titre="État" valeur={manquesPrestation(activeService).length ? 'Incomplète' : 'Complète'}
+                                            detail={manquesPrestation(activeService).length ? `manque : ${manquesPrestation(activeService).join(', ')}` : 'facturable'}
+                                            alerte={manquesPrestation(activeService).length > 0} onClick={manquesPrestation(activeService).length ? () => handleEditService(activeService) : undefined} />
+                                    </div>
+                                    {/* Section 1 & 2: Pricing Params & Indices */}
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                        {/* Paramètres de prix */}
+                                        <Card>
+                                            <CardHeader>
+                                                <CardTitle className="text-base">Paramètres de prix</CardTitle>
+                                            </CardHeader>
+                                            <CardContent className="space-y-4">
+                                                {activeService.type === 'P1' && (
+                                                    <div className="grid gap-2">
+                                                        <Label className="text-xs text-muted-foreground">Énergie</Label>
+                                                        <div className="p-2 border rounded-md bg-muted/20 text-sm font-medium">{activeService.energyType || '-'}</div>
+                                                    </div>
+                                                )}
+                                                <div className="grid gap-2">
+                                                    <Label className="text-xs text-muted-foreground">Activité {activeService.type}</Label>
+                                                    <div className="p-2 border rounded-md bg-muted/20 text-sm font-medium">{activeActivity?.label || '-'}</div>
+                                                </div>
+                                                <div className="grid gap-2">
+                                                    <Label className="text-xs text-muted-foreground">Formule de révision</Label>
+                                                    <div className="p-2 border rounded-md bg-muted/20 text-sm font-medium">{activeRevisionRule?.name || '-'}</div>
+                                                </div>
+                                                <div className="grid grid-cols-2 gap-4">
+                                                    <div className="grid gap-2">
+                                                        <Label className="text-xs text-muted-foreground">{activeService.type === 'P1' ? 'Prix unitaire de base' : 'Montant annuel HT'}</Label>
+                                                        <div className="flex items-center gap-2">
+                                                            <div className="p-2 border rounded-md bg-muted/20 text-sm font-medium flex-1 text-right">
+                                                                {activeService.type === 'P1' ? (activeService.unitPrice?.toFixed(4) || '0.0000') : (Number(activeService.price) || 0).toLocaleString('fr-FR', { minimumFractionDigits: 2 })}
+                                                            </div>
+                                                            <span className="text-xs text-muted-foreground">{activeService.type === 'P1' ? (activeService.unit || '€') : '€'}</span>
+                                                        </div>
+                                                    </div>
+                                                    <div className="grid gap-2">
+                                                        <Label className="text-xs text-muted-foreground">TVA</Label>
+                                                        <div className="p-2 border rounded-md bg-muted/20 text-sm font-medium text-center">
+                                                            {activeService.billingLines && activeService.billingLines.length > 0
+                                                                ? activeService.billingLines.map(l => vatRates.find(v => v.id === l.vatRateId)?.rate).filter(Boolean).join(' / ') + ' %'
+                                                                : activeVatRate ? `${activeVatRate.rate} %` : '-'}
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                                <Separator />
+                                                <div className="grid grid-cols-2 gap-4">
+                                                    <div className="grid gap-2">
+                                                        <Label className="text-xs text-muted-foreground">Terme de facturation</Label>
+                                                        <div className="p-2 border rounded-md bg-muted/20 text-sm font-medium">{activeTerm?.name || '-'}</div>
+                                                    </div>
+                                                    <div className="grid gap-2">
+                                                        <Label className="text-xs text-muted-foreground">Périodicité</Label>
+                                                        <div className="p-2 border rounded-md bg-muted/20 text-sm font-medium">{activeSchedule?.name || '-'}</div>
+                                                    </div>
+                                                </div>
+                                            </CardContent>
+                                        </Card>
 
-                    {/* Service Summary */}
-                    <Card>
-                        <CardHeader>
-                            <CardTitle className="text-base font-medium">Résumé des prestations</CardTitle>
-                        </CardHeader>
-                        <CardContent className="space-y-2">
-                            {siteServices.length === 0 ? (
-                                <div className="text-sm text-muted-foreground text-center py-4">Aucune prestation</div>
-                            ) : (
-                                siteServices.map(service => {
-                                    const act = activities.find(a => a.id === service.activityId);
-                                    return (
-                                        <div
-                                            key={service.id}
-                                            className={`flex items-center justify-between p-2 rounded-md cursor-pointer hover:bg-muted/50 ${selectedServiceId === service.id ? 'bg-muted' : 'border'}`}
-                                            onClick={() => {
-                                                setSelectedServiceId(service.id);
-                                                setSelectedType(service.type);
-                                            }}
-                                        >
-                                            <div className="text-sm font-medium">{service.type} {act?.label}</div>
-                                            <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                                                {service.type === 'P1' && service.p1Type === 'ECS' && <Droplets className="h-3.5 w-3.5 text-blue-500" />}
-                                                {service.type === 'P1' && service.p1Type === 'CHAUFFAGE' && <Flame className="h-3.5 w-3.5 text-red-500" />}
-                                                {service.type === 'P1' && service.p1Type === 'EAU_FROIDE' && <Snowflake className="h-3.5 w-3.5 text-sky-300" />}
-                                                {service.type === 'P1' && service.p1Type === 'AUTRE' && <Wrench className="h-3.5 w-3.5 text-gray-400" />}
-                                                {service.type === 'P1' && service.p1Type
-                                                    ? (service.p1Type === 'ECS' ? 'ECS' : service.p1Type === 'CHAUFFAGE' ? 'Chauffage' : service.p1Type === 'EAU_FROIDE' ? 'Eau Froide' : 'Autre')
-                                                    : service.energyType || ''}
+                                        {/* Indices utilisés */}
+                                        <Card>
+                                            <CardHeader>
+                                                <CardTitle className="text-base">Indices utilisés</CardTitle>
+                                            </CardHeader>
+                                            <CardContent>
+                                                {activeRevisionRule ? (
+                                                    <div className="space-y-3">
+                                                        {activeRevisionRule.type !== 'FIXE' && (
+                                                            <div className="grid grid-cols-3 text-xs text-muted-foreground font-medium px-1">
+                                                                <span>Indice</span>
+                                                                <span className="text-center">I0 (base)</span>
+                                                                <span className="text-right">Dernière valeur</span>
+                                                            </div>
+                                                        )}
+                                                        {activeRevisionRule.indices.map((idx, i) => {
+                                                            const foundIndex = indices.find(ind => ind.id === idx.indexId);
+                                                            const i0Entry = activeService.initialIndexValues?.find(iv => iv.indexId === idx.indexId);
+                                                            const latestValue = [...expandedIndexValues]
+                                                                .filter(iv => iv.indexId === idx.indexId)
+                                                                .sort((a, b) => b.period.localeCompare(a.period))[0];
+                                                            return (
+                                                                <div key={i} className="p-2 border rounded-md bg-muted/10 space-y-1">
+                                                                    <div className="flex items-center justify-between">
+                                                                        <span className="font-medium text-sm">{foundIndex ? `${foundIndex.code} - ${foundIndex.label}` : idx.indexId}</span>
+                                                                        {activeRevisionRule.type !== 'FIXE' && idx.coefficient !== undefined && (
+                                                                            <span className="text-xs text-muted-foreground">Poids : {(idx.coefficient * 100).toFixed(0)} %</span>
+                                                                        )}
+                                                                    </div>
+                                                                    {activeRevisionRule.type !== 'FIXE' && (
+                                                                        <div className="grid grid-cols-2 gap-2 pt-1 border-t border-dashed mt-1">
+                                                                            <div>
+                                                                                <span className="text-xs text-muted-foreground block">I0</span>
+                                                                                <span className="text-xs font-medium">
+                                                                                    {i0Entry ? `${i0Entry.value} (${i0Entry.period})` : <span className="text-orange-500">Non défini</span>}
+                                                                                </span>
+                                                                            </div>
+                                                                            <div>
+                                                                                <span className="text-xs text-muted-foreground block">Dernière valeur</span>
+                                                                                <span className="text-xs font-medium">
+                                                                                    {latestValue ? `${latestValue.value} ${foundIndex?.unit || ''} (${latestValue.period})` : '-'}
+                                                                                </span>
+                                                                            </div>
+                                                                        </div>
+                                                                    )}
+                                                                </div>
+                                                            );
+                                                        })}
+                                                        {activeRevisionRule.indices.length === 0 && (
+                                                            <div className="text-sm text-muted-foreground">Aucun indice configuré</div>
+                                                        )}
+                                                        {activeRevisionRule.type === 'PONDERE_A_B' && (
+                                                            <div className="text-xs text-muted-foreground pt-1 px-1">
+                                                                Formule : Pa ({activeRevisionRule.paramA ?? '-'}) + Pb ({activeRevisionRule.paramB ?? '-'}) × Σ indices
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                ) : (
+                                                    <div className="text-sm text-muted-foreground py-4 text-center">Aucune formule de révision associée</div>
+                                                )}
+                                            </CardContent>
+                                        </Card>
+                                    </div>
+
+                                    {/* Section 3: Compteurs associés (P1) */}
+                                    {activeService.type === 'P1' && (<>
+                                    <Card>
+                                        <CardHeader>
+                                            <CardTitle className="text-base">Compteurs associés</CardTitle>
+                                        </CardHeader>
+                                        <CardContent className="space-y-4">
+                                            <Table>
+                                                <TableHeader>
+                                                    <TableRow>
+                                                        <TableHead>Ref compteur</TableHead>
+                                                        <TableHead className="text-right">Coefficient de répartition</TableHead>
+                                                    </TableRow>
+                                                </TableHeader>
+                                                <TableBody>
+                                                    {activeMeter ? (
+                                                        <TableRow>
+                                                            <TableCell className="font-medium">{activeMeter.reference || activeMeter.name}</TableCell>
+                                                            <TableCell className="text-right">1,00</TableCell>
+                                                        </TableRow>
+                                                    ) : (
+                                                        <TableRow>
+                                                            <TableCell colSpan={2} className="text-center text-muted-foreground">Aucun compteur associé</TableCell>
+                                                        </TableRow>
+                                                    )}
+                                                </TableBody>
+                                            </Table>
+                                            <div className="mt-4">
+                                                <Button variant="outline" size="sm" className="gap-2">
+                                                    <Plus className="h-4 w-4" /> Ajouter un compteur
+                                                </Button>
                                             </div>
-                                        </div>
-                                    );
-                                })
+
+                                            {activeMeter && (
+                                                <>
+                                                    <Separator />
+                                                    <div>
+                                                        <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
+                                                            Derniers index relevés
+                                                        </div>
+                                                        {lastMeterReadings.length > 0 ? (
+                                                            <Table>
+                                                                <TableHeader>
+                                                                    <TableRow>
+                                                                        <TableHead>Date</TableHead>
+                                                                        <TableHead className="text-right">Index</TableHead>
+                                                                        <TableHead>Type</TableHead>
+                                                                    </TableRow>
+                                                                </TableHeader>
+                                                                <TableBody>
+                                                                    {lastMeterReadings.map(reading => (
+                                                                        <TableRow key={reading.id}>
+                                                                            <TableCell className="text-sm">
+                                                                                {new Date(reading.date).toLocaleDateString('fr-FR')}
+                                                                            </TableCell>
+                                                                            <TableCell className="text-right font-medium">
+                                                                                {reading.value.toLocaleString('fr-FR')} {reading.unit || activeMeter.unit}
+                                                                            </TableCell>
+                                                                            <TableCell>
+                                                                                <span className={`text-xs px-1.5 py-0.5 rounded-sm font-medium ${
+                                                                                    reading.type === 'REEL' ? 'bg-green-100 text-green-700' :
+                                                                                    reading.type === 'ESTIME' ? 'bg-yellow-100 text-yellow-700' :
+                                                                                    reading.type === 'CORRIGE' ? 'bg-blue-100 text-blue-700' :
+                                                                                    'bg-muted text-muted-foreground'
+                                                                                }`}>
+                                                                                    {reading.type}
+                                                                                </span>
+                                                                            </TableCell>
+                                                                        </TableRow>
+                                                                    ))}
+                                                                </TableBody>
+                                                            </Table>
+                                                        ) : (
+                                                            <p className="text-sm text-muted-foreground text-center py-2">Aucun relevé enregistré</p>
+                                                        )}
+                                                    </div>
+                                                </>
+                                            )}
+                                        </CardContent>
+                                    </Card>
+
+                                    </>)}
+
+                                    {/* Section 4: Aperçu de calcul (P1 : consommation × prix révisé) */}
+                                    {activeService.type === 'P1' && (<>
+                                    <Card className="bg-muted/10 border-dashed">
+                                        <CardHeader>
+                                            <CardTitle className="text-base">Aperçu de calcul</CardTitle>
+                                        </CardHeader>
+                                        <CardContent className="space-y-2">
+                                            {/* Coefficient révisé */}
+                                            <div className="space-y-1">
+                                                <div className="flex justify-between items-center text-sm">
+                                                    <button
+                                                        type="button"
+                                                        className="flex items-center gap-1 text-muted-foreground hover:text-foreground transition-colors"
+                                                        onClick={() => setShowRevisionDetails(v => !v)}
+                                                    >
+                                                        {showRevisionDetails ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+                                                        Coefficient révisé
+                                                        {activeRevisionRule && ` (${activeRevisionRule.type}${activeRevisionRule.nbMonths > 1 ? `, moy. ${activeRevisionRule.nbMonths} mois` : ''})`}
+                                                    </button>
+                                                    <span className="font-bold">
+                                                        {revisionCoefficient != null
+                                                            ? revisionCoefficient.toFixed(4)
+                                                            : <span className="text-orange-500 italic text-xs">{revisionDiagnostic ?? '-'}</span>}
+                                                    </span>
+                                                </div>
+
+                                                {showRevisionDetails && revisionDetails && (
+                                                    <div className="ml-4 border-l-2 border-muted pl-3 space-y-2 text-xs text-muted-foreground">
+                                                        {revisionDetails.map((d, i) => (
+                                                            <div key={i} className="space-y-0.5">
+                                                                <div className="font-medium text-foreground">{d.code} <span className="font-normal text-muted-foreground">(coeff. {d.coefficient})</span></div>
+                                                                <div className="flex justify-between">
+                                                                    <span>I0 ({d.i0Period ?? '?'})</span>
+                                                                    <span className="font-mono">{d.i0 ?? '—'}</span>
+                                                                </div>
+                                                                {d.periods.map(p => (
+                                                                    <div key={p.period} className="flex justify-between text-muted-foreground/70">
+                                                                        <span>Ir {p.period}</span>
+                                                                        <span className="font-mono">{p.value}</span>
+                                                                    </div>
+                                                                ))}
+                                                                <div className="flex justify-between">
+                                                                    <span>Ir moyen</span>
+                                                                    <span className="font-mono">{d.Ir?.toFixed(4) ?? '—'}</span>
+                                                                </div>
+                                                                <div className="flex justify-between">
+                                                                    <span>Ir / I0</span>
+                                                                    <span className="font-mono">{d.ratio?.toFixed(4) ?? '—'}</span>
+                                                                </div>
+                                                                <div className="flex justify-between font-medium text-foreground">
+                                                                    <span>Contribution ({d.coefficient} × {d.ratio?.toFixed(4)})</span>
+                                                                    <span className="font-mono">{d.partial?.toFixed(4) ?? '—'}</span>
+                                                                </div>
+                                                            </div>
+                                                        ))}
+                                                        {activeRevisionRule?.type === 'PONDERE_A_B' && (
+                                                            <div className="pt-1 border-t border-muted text-foreground">
+                                                                Pa={activeRevisionRule.paramA ?? 0} + Pb={activeRevisionRule.paramB ?? 1} × Σ = {revisionCoefficient?.toFixed(4)}
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                )}
+                                            </div>
+
+                                            {/* Prix unitaire révisé */}
+                                            <div className="flex justify-between items-center text-sm">
+                                                <span className="text-muted-foreground">Prix unitaire révisé</span>
+                                                <span className="font-bold">
+                                                    {revisedUnitPrice != null
+                                                        ? `${revisedUnitPrice.toFixed(4)} ${activeService.unit || '€'}`
+                                                        : <span className="text-muted-foreground italic text-xs">-</span>}
+                                                </span>
+                                            </div>
+
+                                            {/* Consommation (uniquement si compteur lié) */}
+                                            {activeMeter && (
+                                                <div className="flex justify-between items-center text-sm">
+                                                    <span className="text-muted-foreground">
+                                                        Consommation relevée
+                                                        {lastReal && prevReal && (
+                                                            <span className="text-xs ml-1 text-muted-foreground/70">
+                                                                ({new Date(prevReal.date).toLocaleDateString('fr-FR')} → {new Date(lastReal.date).toLocaleDateString('fr-FR')})
+                                                            </span>
+                                                        )}
+                                                    </span>
+                                                    <span className="font-bold">
+                                                        {consumption != null
+                                                            ? `${consumption.toLocaleString('fr-FR')} ${activeMeter.unit}`
+                                                            : <span className="text-muted-foreground italic text-xs">Relevés insuffisants</span>}
+                                                    </span>
+                                                </div>
+                                            )}
+
+                                            <Separator className="my-2" />
+
+                                            {/* Montant estimé */}
+                                            <div className="flex justify-between items-center text-base">
+                                                <span className="font-medium">Montant {activeService.type} estimé</span>
+                                                <span className="font-bold text-primary">
+                                                    {estimatedAmount != null
+                                                        ? `${estimatedAmount.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} € HT`
+                                                        : <span className="text-muted-foreground text-sm font-normal italic">Données incomplètes</span>}
+                                                </span>
+                                            </div>
+                                        </CardContent>
+                                    </Card>
+
+                                    </>)}
+
+                                    {/* Action Buttons */}
+                                    <div className="flex justify-end gap-2">
+                                        {activeService.type === 'P1' && (
+                                            <Button variant="secondary" onClick={() => setIsSettlementManagerOpen(true)}>
+                                                <Calculator className="mr-2 h-4 w-4" /> Gérer les décomptes
+                                            </Button>
+                                        )}
+                                        {(activeService.energyType === 'Gaz' || activeService.energyType === 'Réseau de chaleur') && (
+                                            <Button variant="secondary" onClick={() => setIsInterestManagerOpen(true)}>
+                                                <Calculator className="mr-2 h-4 w-4" /> Gérer l'Intéressement
+                                            </Button>
+                                        )}
+                                    </div>
+                                </div>
+                            ) : (
+                                <div className="flex flex-col items-center justify-center py-12 border rounded-lg border-dashed text-muted-foreground bg-muted/5">
+                                    <p className="mb-4">Sélectionnez une prestation à gauche ou créez-en une nouvelle.</p>
+                                    <Button onClick={() => handleAddService(selectedType)}>
+                                        <Plus className="mr-2 h-4 w-4" /> Créer une prestation {selectedType}
+                                    </Button>
+                                </div>
                             )}
-                        </CardContent>
-                    </Card>
                     {/* Paramètres de facturation (P1 inline edit) */}
                     {activeService?.type === 'P1' && (
                         <Card>
@@ -1029,387 +1398,24 @@ export default function SiteDetailsPage() {
                                 </CardContent>
                             )}
                         </Card>
-                    )}
-                </div>
+                    )}                        </div>
+                    </div>
+                </TabsContent>
 
-                {/* Right Column: Main Content */}
-                <div className="lg:col-span-2">
-                    <div className="mb-6"><P1ParametragePanel siteId={siteId} /></div>
-                    <Tabs value={selectedType} onValueChange={(v) => setSelectedType(v as ServiceType)} className="w-full">
-                        <TabsList className="grid w-full grid-cols-3 mb-6">
-                            <TabsTrigger value="P1">P1 — Énergie</TabsTrigger>
-                            <TabsTrigger value="P2">P2 — Maintenance</TabsTrigger>
-                            <TabsTrigger value="P3">P3 — Renouvellement</TabsTrigger>
-                        </TabsList>
+                <TabsContent value="compteurs" className="mt-4">
+                    <CompteursDuSite meters={siteMeters} derniersReleves={derniersReleves} onAjouter={handleAddMeter} onModifier={handleEditMeter} onSupprimer={handleDeleteMeter} />
+                </TabsContent>
 
-                        <TabsContent value={selectedType} className="space-y-6">
-                            {/* Header for Service View */}
-                            <div className="flex justify-between items-center">
-                                <h2 className="text-xl font-semibold flex items-center gap-2">
-                                    {activeService ? (
-                                        <>
-                                            {activeService.type} {activeActivity?.label || ''} —{' '}
-                                            {activeService.type === 'P1' && activeService.p1Type ? (
-                                                <span className="flex items-center gap-1">
-                                                    {activeService.p1Type === 'ECS' && <Droplets className="h-5 w-5 text-blue-500" />}
-                                                    {activeService.p1Type === 'CHAUFFAGE' && <Flame className="h-5 w-5 text-red-500" />}
-                                                    {activeService.p1Type === 'EAU_FROIDE' && <Snowflake className="h-5 w-5 text-sky-300" />}
-                                                    {activeService.p1Type === 'AUTRE' && <Wrench className="h-5 w-5 text-gray-400" />}
-                                                    {activeService.p1Type === 'ECS' ? 'ECS' :
-                                                     activeService.p1Type === 'CHAUFFAGE' ? 'Chauffage' :
-                                                     activeService.p1Type === 'EAU_FROIDE' ? 'Eau Froide' : 'Autre'}
-                                                </span>
-                                            ) : (
-                                                activeService.energyType || ''
-                                            )}
-                                        </>
-                                    ) : (
-                                        `Prestations ${selectedType}`
-                                    )}
-                                </h2>
-                                {activeService ? (
-                                    <div className="flex gap-2">
-                                        <Button variant="outline" size="sm" onClick={() => handleEditService(activeService)}>
-                                            <Edit className="mr-2 h-4 w-4" /> Modifier
-                                        </Button>
-                                        <Button variant="outline" size="sm" className="text-destructive hover:text-destructive" onClick={() => handleDeleteService(activeService.id)}>
-                                            <Trash2 className="mr-2 h-4 w-4" /> Supprimer
-                                        </Button>
-                                    </div>
-                                ) : (
-                                    <Button onClick={() => handleAddService(selectedType)}>
-                                        <Plus className="mr-2 h-4 w-4" /> Ajouter une prestation
-                                    </Button>
-                                )}
-                            </div>
+                <TabsContent value="p1" className="mt-4">
+                    <P1ParametragePanel siteId={siteId} defaultOpen />
+                </TabsContent>
 
-                            {activeService ? (
-                                <div className="space-y-6">
-                                    {/* Section 1 & 2: Pricing Params & Indices */}
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                        {/* Paramètres de prix */}
-                                        <Card>
-                                            <CardHeader>
-                                                <CardTitle className="text-base">Paramètres de prix</CardTitle>
-                                            </CardHeader>
-                                            <CardContent className="space-y-4">
-                                                <div className="grid gap-2">
-                                                    <Label className="text-xs text-muted-foreground">Energie</Label>
-                                                    <div className="p-2 border rounded-md bg-muted/20 text-sm font-medium">{activeService.energyType || '-'}</div>
-                                                </div>
-                                                <div className="grid gap-2">
-                                                    <Label className="text-xs text-muted-foreground">Activité {activeService.type}</Label>
-                                                    <div className="p-2 border rounded-md bg-muted/20 text-sm font-medium">{activeActivity?.label || '-'}</div>
-                                                </div>
-                                                <div className="grid gap-2">
-                                                    <Label className="text-xs text-muted-foreground">Formule de révision</Label>
-                                                    <div className="p-2 border rounded-md bg-muted/20 text-sm font-medium">{activeRevisionRule?.name || '-'}</div>
-                                                </div>
-                                                <div className="grid grid-cols-2 gap-4">
-                                                    <div className="grid gap-2">
-                                                        <Label className="text-xs text-muted-foreground">Prix unitaire de base</Label>
-                                                        <div className="flex items-center gap-2">
-                                                            <div className="p-2 border rounded-md bg-muted/20 text-sm font-medium flex-1 text-right">{activeService.unitPrice?.toFixed(4) || '0.0000'}</div>
-                                                            <span className="text-xs text-muted-foreground">{activeService.unit || '€'}</span>
-                                                        </div>
-                                                    </div>
-                                                    <div className="grid gap-2">
-                                                        <Label className="text-xs text-muted-foreground">TVA</Label>
-                                                        <div className="p-2 border rounded-md bg-muted/20 text-sm font-medium text-center">
-                                                            {activeService.billingLines && activeService.billingLines.length > 0
-                                                                ? activeService.billingLines.map(l => vatRates.find(v => v.id === l.vatRateId)?.rate).filter(Boolean).join(' / ') + ' %'
-                                                                : activeVatRate ? `${activeVatRate.rate} %` : '-'}
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                                <Separator />
-                                                <div className="grid grid-cols-2 gap-4">
-                                                    <div className="grid gap-2">
-                                                        <Label className="text-xs text-muted-foreground">Terme de facturation</Label>
-                                                        <div className="p-2 border rounded-md bg-muted/20 text-sm font-medium">{activeTerm?.name || '-'}</div>
-                                                    </div>
-                                                    <div className="grid gap-2">
-                                                        <Label className="text-xs text-muted-foreground">Périodicité</Label>
-                                                        <div className="p-2 border rounded-md bg-muted/20 text-sm font-medium">{activeSchedule?.name || '-'}</div>
-                                                    </div>
-                                                </div>
-                                            </CardContent>
-                                        </Card>
+                <TabsContent value="factures" className="mt-4">
+                    <FacturesDuSite factures={facturesSite} />
+                </TabsContent>
+            </Tabs>
 
-                                        {/* Indices utilisés */}
-                                        <Card>
-                                            <CardHeader>
-                                                <CardTitle className="text-base">Indices utilisés</CardTitle>
-                                            </CardHeader>
-                                            <CardContent>
-                                                {activeRevisionRule ? (
-                                                    <div className="space-y-3">
-                                                        {activeRevisionRule.type !== 'FIXE' && (
-                                                            <div className="grid grid-cols-3 text-xs text-muted-foreground font-medium px-1">
-                                                                <span>Indice</span>
-                                                                <span className="text-center">I0 (base)</span>
-                                                                <span className="text-right">Dernière valeur</span>
-                                                            </div>
-                                                        )}
-                                                        {activeRevisionRule.indices.map((idx, i) => {
-                                                            const foundIndex = indices.find(ind => ind.id === idx.indexId);
-                                                            const i0Entry = activeService.initialIndexValues?.find(iv => iv.indexId === idx.indexId);
-                                                            const latestValue = [...expandedIndexValues]
-                                                                .filter(iv => iv.indexId === idx.indexId)
-                                                                .sort((a, b) => b.period.localeCompare(a.period))[0];
-                                                            return (
-                                                                <div key={i} className="p-2 border rounded-md bg-muted/10 space-y-1">
-                                                                    <div className="flex items-center justify-between">
-                                                                        <span className="font-medium text-sm">{foundIndex ? `${foundIndex.code} - ${foundIndex.label}` : idx.indexId}</span>
-                                                                        {activeRevisionRule.type !== 'FIXE' && idx.coefficient !== undefined && (
-                                                                            <span className="text-xs text-muted-foreground">Poids : {(idx.coefficient * 100).toFixed(0)} %</span>
-                                                                        )}
-                                                                    </div>
-                                                                    {activeRevisionRule.type !== 'FIXE' && (
-                                                                        <div className="grid grid-cols-2 gap-2 pt-1 border-t border-dashed mt-1">
-                                                                            <div>
-                                                                                <span className="text-xs text-muted-foreground block">I0</span>
-                                                                                <span className="text-xs font-medium">
-                                                                                    {i0Entry ? `${i0Entry.value} (${i0Entry.period})` : <span className="text-orange-500">Non défini</span>}
-                                                                                </span>
-                                                                            </div>
-                                                                            <div>
-                                                                                <span className="text-xs text-muted-foreground block">Dernière valeur</span>
-                                                                                <span className="text-xs font-medium">
-                                                                                    {latestValue ? `${latestValue.value} ${foundIndex?.unit || ''} (${latestValue.period})` : '-'}
-                                                                                </span>
-                                                                            </div>
-                                                                        </div>
-                                                                    )}
-                                                                </div>
-                                                            );
-                                                        })}
-                                                        {activeRevisionRule.indices.length === 0 && (
-                                                            <div className="text-sm text-muted-foreground">Aucun indice configuré</div>
-                                                        )}
-                                                        {activeRevisionRule.type === 'PONDERE_A_B' && (
-                                                            <div className="text-xs text-muted-foreground pt-1 px-1">
-                                                                Formule : Pa ({activeRevisionRule.paramA ?? '-'}) + Pb ({activeRevisionRule.paramB ?? '-'}) × Σ indices
-                                                            </div>
-                                                        )}
-                                                    </div>
-                                                ) : (
-                                                    <div className="text-sm text-muted-foreground py-4 text-center">Aucune formule de révision associée</div>
-                                                )}
-                                            </CardContent>
-                                        </Card>
-                                    </div>
-
-                                    {/* Section 3: Compteurs associés */}
-                                    <Card>
-                                        <CardHeader>
-                                            <CardTitle className="text-base">Compteurs associés</CardTitle>
-                                        </CardHeader>
-                                        <CardContent className="space-y-4">
-                                            <Table>
-                                                <TableHeader>
-                                                    <TableRow>
-                                                        <TableHead>Ref compteur</TableHead>
-                                                        <TableHead className="text-right">Coefficient de répartition</TableHead>
-                                                    </TableRow>
-                                                </TableHeader>
-                                                <TableBody>
-                                                    {activeMeter ? (
-                                                        <TableRow>
-                                                            <TableCell className="font-medium">{activeMeter.reference || activeMeter.name}</TableCell>
-                                                            <TableCell className="text-right">1,00</TableCell>
-                                                        </TableRow>
-                                                    ) : (
-                                                        <TableRow>
-                                                            <TableCell colSpan={2} className="text-center text-muted-foreground">Aucun compteur associé</TableCell>
-                                                        </TableRow>
-                                                    )}
-                                                </TableBody>
-                                            </Table>
-                                            <div className="mt-4">
-                                                <Button variant="outline" size="sm" className="gap-2">
-                                                    <Plus className="h-4 w-4" /> Ajouter un compteur
-                                                </Button>
-                                            </div>
-
-                                            {activeMeter && (
-                                                <>
-                                                    <Separator />
-                                                    <div>
-                                                        <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
-                                                            Derniers index relevés
-                                                        </div>
-                                                        {lastMeterReadings.length > 0 ? (
-                                                            <Table>
-                                                                <TableHeader>
-                                                                    <TableRow>
-                                                                        <TableHead>Date</TableHead>
-                                                                        <TableHead className="text-right">Index</TableHead>
-                                                                        <TableHead>Type</TableHead>
-                                                                    </TableRow>
-                                                                </TableHeader>
-                                                                <TableBody>
-                                                                    {lastMeterReadings.map(reading => (
-                                                                        <TableRow key={reading.id}>
-                                                                            <TableCell className="text-sm">
-                                                                                {new Date(reading.date).toLocaleDateString('fr-FR')}
-                                                                            </TableCell>
-                                                                            <TableCell className="text-right font-medium">
-                                                                                {reading.value.toLocaleString('fr-FR')} {reading.unit || activeMeter.unit}
-                                                                            </TableCell>
-                                                                            <TableCell>
-                                                                                <span className={`text-xs px-1.5 py-0.5 rounded-sm font-medium ${
-                                                                                    reading.type === 'REEL' ? 'bg-green-100 text-green-700' :
-                                                                                    reading.type === 'ESTIME' ? 'bg-yellow-100 text-yellow-700' :
-                                                                                    reading.type === 'CORRIGE' ? 'bg-blue-100 text-blue-700' :
-                                                                                    'bg-muted text-muted-foreground'
-                                                                                }`}>
-                                                                                    {reading.type}
-                                                                                </span>
-                                                                            </TableCell>
-                                                                        </TableRow>
-                                                                    ))}
-                                                                </TableBody>
-                                                            </Table>
-                                                        ) : (
-                                                            <p className="text-sm text-muted-foreground text-center py-2">Aucun relevé enregistré</p>
-                                                        )}
-                                                    </div>
-                                                </>
-                                            )}
-                                        </CardContent>
-                                    </Card>
-
-                                    {/* Section 4: Aperçu de calcul */}
-                                    <Card className="bg-muted/10 border-dashed">
-                                        <CardHeader>
-                                            <CardTitle className="text-base">Aperçu de calcul</CardTitle>
-                                        </CardHeader>
-                                        <CardContent className="space-y-2">
-                                            {/* Coefficient révisé */}
-                                            <div className="space-y-1">
-                                                <div className="flex justify-between items-center text-sm">
-                                                    <button
-                                                        type="button"
-                                                        className="flex items-center gap-1 text-muted-foreground hover:text-foreground transition-colors"
-                                                        onClick={() => setShowRevisionDetails(v => !v)}
-                                                    >
-                                                        {showRevisionDetails ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
-                                                        Coefficient révisé
-                                                        {activeRevisionRule && ` (${activeRevisionRule.type}${activeRevisionRule.nbMonths > 1 ? `, moy. ${activeRevisionRule.nbMonths} mois` : ''})`}
-                                                    </button>
-                                                    <span className="font-bold">
-                                                        {revisionCoefficient != null
-                                                            ? revisionCoefficient.toFixed(4)
-                                                            : <span className="text-orange-500 italic text-xs">{revisionDiagnostic ?? '-'}</span>}
-                                                    </span>
-                                                </div>
-
-                                                {showRevisionDetails && revisionDetails && (
-                                                    <div className="ml-4 border-l-2 border-muted pl-3 space-y-2 text-xs text-muted-foreground">
-                                                        {revisionDetails.map((d, i) => (
-                                                            <div key={i} className="space-y-0.5">
-                                                                <div className="font-medium text-foreground">{d.code} <span className="font-normal text-muted-foreground">(coeff. {d.coefficient})</span></div>
-                                                                <div className="flex justify-between">
-                                                                    <span>I0 ({d.i0Period ?? '?'})</span>
-                                                                    <span className="font-mono">{d.i0 ?? '—'}</span>
-                                                                </div>
-                                                                {d.periods.map(p => (
-                                                                    <div key={p.period} className="flex justify-between text-muted-foreground/70">
-                                                                        <span>Ir {p.period}</span>
-                                                                        <span className="font-mono">{p.value}</span>
-                                                                    </div>
-                                                                ))}
-                                                                <div className="flex justify-between">
-                                                                    <span>Ir moyen</span>
-                                                                    <span className="font-mono">{d.Ir?.toFixed(4) ?? '—'}</span>
-                                                                </div>
-                                                                <div className="flex justify-between">
-                                                                    <span>Ir / I0</span>
-                                                                    <span className="font-mono">{d.ratio?.toFixed(4) ?? '—'}</span>
-                                                                </div>
-                                                                <div className="flex justify-between font-medium text-foreground">
-                                                                    <span>Contribution ({d.coefficient} × {d.ratio?.toFixed(4)})</span>
-                                                                    <span className="font-mono">{d.partial?.toFixed(4) ?? '—'}</span>
-                                                                </div>
-                                                            </div>
-                                                        ))}
-                                                        {activeRevisionRule?.type === 'PONDERE_A_B' && (
-                                                            <div className="pt-1 border-t border-muted text-foreground">
-                                                                Pa={activeRevisionRule.paramA ?? 0} + Pb={activeRevisionRule.paramB ?? 1} × Σ = {revisionCoefficient?.toFixed(4)}
-                                                            </div>
-                                                        )}
-                                                    </div>
-                                                )}
-                                            </div>
-
-                                            {/* Prix unitaire révisé */}
-                                            <div className="flex justify-between items-center text-sm">
-                                                <span className="text-muted-foreground">Prix unitaire révisé</span>
-                                                <span className="font-bold">
-                                                    {revisedUnitPrice != null
-                                                        ? `${revisedUnitPrice.toFixed(4)} ${activeService.unit || '€'}`
-                                                        : <span className="text-muted-foreground italic text-xs">-</span>}
-                                                </span>
-                                            </div>
-
-                                            {/* Consommation (uniquement si compteur lié) */}
-                                            {activeMeter && (
-                                                <div className="flex justify-between items-center text-sm">
-                                                    <span className="text-muted-foreground">
-                                                        Consommation relevée
-                                                        {lastReal && prevReal && (
-                                                            <span className="text-xs ml-1 text-muted-foreground/70">
-                                                                ({new Date(prevReal.date).toLocaleDateString('fr-FR')} → {new Date(lastReal.date).toLocaleDateString('fr-FR')})
-                                                            </span>
-                                                        )}
-                                                    </span>
-                                                    <span className="font-bold">
-                                                        {consumption != null
-                                                            ? `${consumption.toLocaleString('fr-FR')} ${activeMeter.unit}`
-                                                            : <span className="text-muted-foreground italic text-xs">Relevés insuffisants</span>}
-                                                    </span>
-                                                </div>
-                                            )}
-
-                                            <Separator className="my-2" />
-
-                                            {/* Montant estimé */}
-                                            <div className="flex justify-between items-center text-base">
-                                                <span className="font-medium">Montant {activeService.type} estimé</span>
-                                                <span className="font-bold text-primary">
-                                                    {estimatedAmount != null
-                                                        ? `${estimatedAmount.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} € HT`
-                                                        : <span className="text-muted-foreground text-sm font-normal italic">Données incomplètes</span>}
-                                                </span>
-                                            </div>
-                                        </CardContent>
-                                    </Card>
-
-                                    {/* Action Buttons */}
-                                    <div className="flex justify-end gap-2">
-                                        <Button variant="secondary" onClick={() => setIsSettlementManagerOpen(true)}>
-                                            <Calculator className="mr-2 h-4 w-4" /> Gérer les Décomptes
-                                        </Button>
-                                        {(activeService.energyType === 'Gaz' || activeService.energyType === 'Réseau de chaleur') && (
-                                            <Button variant="secondary" onClick={() => setIsInterestManagerOpen(true)}>
-                                                <Calculator className="mr-2 h-4 w-4" /> Gérer l'Intéressement
-                                            </Button>
-                                        )}
-                                    </div>
-                                </div>
-                            ) : (
-                                <div className="flex flex-col items-center justify-center py-12 border rounded-lg border-dashed text-muted-foreground bg-muted/5">
-                                    <p className="mb-4">Sélectionnez une prestation à gauche ou créez-en une nouvelle.</p>
-                                    <Button onClick={() => handleAddService(selectedType)}>
-                                        <Plus className="mr-2 h-4 w-4" /> Créer une prestation {selectedType}
-                                    </Button>
-                                </div>
-                            )}
-                        </TabsContent>
-                    </Tabs>
-                </div>
-            </div>
+            <ModifierSiteDialog site={site} open={modifierSite} onOpenChange={setModifierSite} onEnregistrer={enregistrerSite} />
 
             {/* Meter Dialog */}
             <Dialog open={isMeterDialogOpen} onOpenChange={setIsMeterDialogOpen}>

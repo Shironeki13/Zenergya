@@ -40,8 +40,28 @@ Règles et composants à réutiliser sur tout nouvel écran (lots 1 et 2 de la r
 - **Modifications non enregistrées** : `useAlerteModifications(form.formState.isDirty && !form.formState.isSubmitSuccessful)`
   sur les formulaires pleine page : alerte à la fermeture de l'onglet et au clic sur un lien de l'application.
 
+## Fiches : le modèle de la fiche site
+
+`src/app/(app)/sites/[id]/page.tsx`, briques dans `src/components/sites/fiche-site.tsx` :
+
+- **Bandeau** : nom, code, état du contrat, client › contrat, adresse ; actions (modifier le site, devis).
+- **Indicateurs** cliquables : montant annuel HT (prestations en vigueur), prestations (incomplètes), compteurs (sans
+  relevé depuis 45 jours), échéances facturables non facturées (même échéancier que la facture).
+- **Onglets**, conservés dans l'adresse (`?onglet=synthese|prestations|compteurs|p1|factures`) :
+  - *Synthèse* : informations, encart **À faire** (sans contrat, aucune prestation, prestation incomplète — TVA,
+    périodicité, terme, montant —, paramétrage P1 incomplet, échéances en retard, compteurs sans relevé), chacun avec
+    son action ; tableau des prestations ;
+  - *Prestations* : liste par P1 / P2 / P3 (ajout par type) et détail (montant, période, état ; blocs propres au P1 —
+    énergie, compteurs associés, aperçu de calcul, décomptes — seulement pour le P1), paramètres de facturation et
+    calendrier ;
+  - *Compteurs et relevés* : dernier relevé, relevés, paramétrage P1 du compteur, modification ;
+  - *Paramétrage P1* ; *Factures* : factures du contrat qui portent des lignes du site (montant HT du site).
+
+Les autres fiches (contrat, client) suivront ce modèle : bandeau, indicateurs, « à faire », onglets.
+
 ## Vérification
 
 `npm test` (`tests/ux.test.ts`) : entrée de menu active, droits, champs obligatoires déduits des schémas, messages.
 Parcours vérifiés dans un navigateur (émulateurs, build de production) : connexion, menu et fil d'Ariane, Ctrl+K,
-liste avec recherche dans une fenêtre, confirmation, astérisques, récapitulatif d'erreurs, alerte en quittant.
+liste avec recherche dans une fenêtre, confirmation, astérisques, récapitulatif d'erreurs, alerte en quittant ; fiche
+site (synthèse, à faire, onglets, lien direct `?onglet=`, compléter une prestation, factures, modification du site).
