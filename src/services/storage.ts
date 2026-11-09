@@ -7,7 +7,8 @@ import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage
  * @param path The path in storage where the file should be saved.
  * @returns The download URL of the uploaded file.
  */
-export async function uploadFile(file: File, path: string): Promise<string> {
+/** `inline` : le fichier s'affiche dans la page (aperçu) au lieu d'être téléchargé. */
+export async function uploadFile(file: File, path: string, options: { inline?: boolean } = {}): Promise<string> {
     if (!storage) {
         throw new Error("Firebase Storage is not initialized.");
     }
@@ -15,7 +16,9 @@ export async function uploadFile(file: File, path: string): Promise<string> {
     const storageRef = ref(storage, path);
 
     try {
-        const snapshot = await uploadBytes(storageRef, file);
+        const snapshot = await uploadBytes(storageRef, file, options.inline
+            ? { contentType: file.type || undefined, contentDisposition: `inline; filename*=utf-8''${encodeURIComponent(file.name)}` }
+            : undefined);
         const downloadUrl = await getDownloadURL(snapshot.ref);
         return downloadUrl;
     } catch (error: any) {

@@ -379,6 +379,10 @@ export default function ContractDetailPage() {
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
             <h1 className="text-2xl font-bold tracking-tight">{contract.contractNumber ?? 'Contrat'}{contract.label ? ` — ${contract.label}` : ''}</h1>
+        {/* Statut modifiable une fois le contrat validé par la contrathèque (sinon : « Actif » à la validation). */}
+        {(contract.validationStatus ?? 'validated') !== 'validated' ? (
+          <Badge variant={getBadgeVariant(contract.status)} className="ml-auto sm:ml-0" title="Le statut changera à la validation par la contrathèque.">{contract.status}</Badge>
+        ) : (
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Badge variant={getBadgeVariant(contract.status)} className="ml-auto sm:ml-0 cursor-pointer gap-1 hover:opacity-80">
@@ -398,6 +402,7 @@ export default function ContractDetailPage() {
             ))}
           </DropdownMenuContent>
         </DropdownMenu>
+        )}
           </div>
           <p className="mt-1 flex flex-wrap items-center gap-x-1.5 text-sm text-muted-foreground">
             <Link href={`/clients/${contract.clientId}`} className="hover:text-foreground hover:underline">{client?.name || contract.clientName}</Link>

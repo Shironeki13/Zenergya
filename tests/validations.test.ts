@@ -1,7 +1,7 @@
 // Validation des documents de contrat (logique pure) : types, effets annoncés, résumés : npm test
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { aucunUnitaire, ceUnitaire, detailsElement, effetsValidation, typeAvenant } from '../src/lib/validations';
+import { afficherValeur, aucunUnitaire, ceUnitaire, champsAControler, controleComplet, detailsElement, effetsValidation, normaliserCorrection, typeAvenant, valeursDocument } from '../src/lib/validations';
 
 test('effets annoncés avant validation, selon le type', () => {
     assert.match(effetsValidation({ type: 'resiliation', effet: '2026-12-31', donnees: {} })[0], /Résilié » au 31\/12\/2026/);
@@ -23,4 +23,23 @@ test('libellés accordés', () => {
     assert.deepEqual(['contrat', 'avenant', 'reconduction', 'resiliation'].map(t => ceUnitaire(t as never)), ['le contrat', 'ce avenant', 'cette reconduction', 'cette résiliation']);
     assert.equal(aucunUnitaire('resiliation'), 'Aucune résiliation');
     assert.equal(aucunUnitaire('os'), 'Aucun ordre de service');
+});
+
+test('contrôle : valeurs normalisées, champs à contrôler, corrections', () => {
+    const v = valeursDocument('contrat', { clientName: 'C', label: 'L', startDate: { toDate: () => new Date('2025-12-31T23:00:00Z') }, endDate: '2030-12-31', tacitRenewal: false, baseAmountP1: '1200', baseAmountP2: 0 });
+    assert.deepEqual([v.startDate, v.endDate, v.baseAmountP1, v.baseAmountP2, v.tacitRenewal, v.noticePeriod], ['2026-01-01', '2030-12-31', 1200, 0, false, null]);
+    // Requis toujours ; facultatifs seulement s'ils sont renseignés.
+    assert.deepEqual(champsAControler('contrat', v).map(c => c.cle), ['clientName', 'label', 'startDate', 'endDate', 'baseAmountP1', 'baseAmountP2', 'tacitRenewal']);
+    assert.deepEqual(controleComplet('reconduction', { duration: '1 an', newEndDate: '2027-01-01' }, ['duration']).manquants.map(m => m.cle), ['newEndDate']);
+    assert.equal(controleComplet('reconduction', { duration: '1 an', newEndDate: '2027-01-01' }, ['duration', 'newEndDate']).complet, true);
+    assert.equal(normaliserCorrection('avenant', 'impactP1', '-1 250,5'), -1250.5);
+    assert.equal(normaliserCorrection('avenant', 'newEndDate', ''), null);
+    assert.equal(normaliserCorrection('syndic', 'contactEmail', ' a@b.fr '), 'a@b.fr');
+    assert.throws(() => normaliserCorrection('syndic', 'contactEmail', 'pas-un-mail'), /e-mail invalide/);
+    assert.throws(() => normaliserCorrection('resiliation', 'effectiveDate', '2027-13-45'), /date invalide/);
+    assert.throws(() => normaliserCorrection('resiliation', 'reason', ' '), /obligatoire/);
+    assert.throws(() => normaliserCorrection('contrat', 'clientName', 'X'), /ne se corrige pas/);
+    assert.throws(() => normaliserCorrection('contrat', 'inconnu', 'X'), /Champ inconnu/);
+    assert.deepEqual([afficherValeur({ type: 'booleen' }, false), afficherValeur({ type: 'date' }, '2027-06-30'), afficherValeur({ type: 'texte' }, null)], ['Non', '30/06/2027', '—']);
+    assert.deepEqual(effetsValidation({ type: 'resiliation', effet: '2027-01-01', donnees: { effectiveDate: '2027-06-30' } }), ['Le contrat passe « Résilié » au 30/06/2027.']);
 });

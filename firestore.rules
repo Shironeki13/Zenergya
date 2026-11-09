@@ -55,9 +55,27 @@ service cloud.firestore {
 
     // Documents de contrat (avenants et OS, reconductions, résiliations, changements de syndic et de BE) : créés
     // depuis le navigateur « en attente de validation » avec leur pièce justificative (elle fait foi) ; validés ou
-    // refusés par le serveur seulement (services/validations-admin.ts, administrateurs), jamais modifiés ni supprimés.
+    // refusés par le serveur seulement (services/validations-admin.ts, contrathèque), jamais modifiés ni supprimés.
     function isContractEvent(coll) {
       return coll in ['amendments', 'terminations', 'renewals', 'trusteeChanges', 'beChanges'];
+    }
+
+    // Contrats : la validation (base marché) appartient à la contrathèque, au serveur. Depuis le navigateur, un contrat
+    // se crée « en attente de validation » ; il peut y être remis (correction après refus), jamais marqué validé ; la
+    // trace de validation est intouchable ; son statut ne change pas tant qu'il n'est pas validé (« Actif » à la
+    // validation). Contrats antérieurs à la validation (sans statut de validation) : considérés validés.
+    function contratValidationIntacte(coll) {
+      return coll != 'contracts' || request.method == 'delete'
+        || (request.method == 'create' && request.resource.data.get('validationStatus', '') == 'pending_validation'
+            && !('validatedBy' in request.resource.data) && !('validatedAt' in request.resource.data))
+        || (request.method == 'update'
+            && (request.resource.data.get('validationStatus', null) == resource.data.get('validationStatus', null)
+                || request.resource.data.get('validationStatus', null) == 'pending_validation')
+            && request.resource.data.get('validatedBy', null) == resource.data.get('validatedBy', null)
+            && request.resource.data.get('validatedAt', null) == resource.data.get('validatedAt', null)
+            && (request.resource.data.get('status', null) == resource.data.get('status', null)
+                || (resource.data.get('validationStatus', 'validated') == 'validated'
+                    && request.resource.data.get('validationStatus', 'validated') == 'validated')));
     }
 
     // Devis : modification et suppression traitées à part (voir match /quotes).
@@ -69,7 +87,7 @@ service cloud.firestore {
     // d'où une règle générique qui exclut explicitement les collections traitées à part.
     match /{coll}/{docId} {
       allow read: if isAppUser() && !isServerOnly(coll);
-      allow create, update, delete: if !isAccounting(coll) && !isServerOnly(coll) && !isServerWritten(coll) && !isContractEvent(coll) && codeInchange(coll) && !isQuoteChange(coll)
+      allow create, update, delete: if !isAccounting(coll) && !isServerOnly(coll) && !isServerWritten(coll) && !isContractEvent(coll) && codeInchange(coll) && contratValidationIntacte(coll) && !isQuoteChange(coll)
         && (isAdmin() || (isAppUser() && !isAdminOnly(coll)));
     }
 

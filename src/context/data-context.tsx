@@ -77,7 +77,7 @@ const createEmptyData = () => ({
   advOuvrageComposants: [] as AdvOuvrageComposant[],
 });
 
-type SessionInfo = { user: User; isAdmin: boolean };
+type SessionInfo = { user: User; isAdmin: boolean; isContratheque: boolean };
 
 /** Erreur d'authentification applicative (compte non autorisé, session impossible à ouvrir). */
 class AppAuthError extends Error {
@@ -94,6 +94,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   // Utilisateur affiché : identique à authUser, sauf en mode « Preview As » (admin).
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
+  const [isContratheque, setIsContratheque] = useState(false);
   const sessionRef = useRef<{ uid: string; promise: Promise<SessionInfo> } | null>(null);
 
   const [isLoading, setIsLoading] = useState(true);
@@ -266,7 +267,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       const body = await res.json();
       // Les droits viennent d'être (re)positionnés : on force un nouveau jeton pour que Firestore les voie.
       if (body.claimsUpdated) await firebaseUser.getIdToken(true);
-      return { user: body.user as User, isAdmin: body.isAdmin === true };
+      return { user: body.user as User, isAdmin: body.isAdmin === true, isContratheque: body.isContratheque === true };
     })();
 
     sessionRef.current = { uid: firebaseUser.uid, promise };
@@ -307,6 +308,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           setAuthUser(null);
           setCurrentUser(null);
           setIsAdmin(false);
+          setIsContratheque(false);
           setData(createEmptyData());
           setIsLoading(false);
           return;
@@ -317,6 +319,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           setAuthUser(session.user);
           setCurrentUser(session.user);
           setIsAdmin(session.isAdmin);
+          setIsContratheque(session.isContratheque);
           await loadAllData();
         } catch (error) {
           console.error('Session error:', error);
@@ -337,7 +340,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   }, [loadAllData, establishSession]);
 
   return (
-    <DataContext.Provider value={{ ...data, isLoading, reloadData: loadAllData, authUser, currentUser, setCurrentUser, isAdmin, login, loginWithGoogle, logout }}>
+    <DataContext.Provider value={{ ...data, isLoading, reloadData: loadAllData, authUser, currentUser, setCurrentUser, isAdmin, isContratheque, login, loginWithGoogle, logout }}>
       {children}
     </DataContext.Provider>
   );

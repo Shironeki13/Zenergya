@@ -9,6 +9,8 @@ export type SessionUser = {
     uid: string;
     email: string;
     isAdmin: boolean;
+    /** Contrathèque : valide les documents de contrat (garante des documents saisis). */
+    isContratheque: boolean;
     /** Fiche de la collection `users` (ou profil synthétique pour un admin d'amorçage). */
     profile: User;
 };
@@ -61,6 +63,7 @@ export async function resolveAppUser(uid: string, email: string | undefined, dis
             uid,
             email,
             isAdmin: true,
+            isContratheque: true,
             profile: {
                 id: uid,
                 name: displayName || email,
@@ -80,12 +83,15 @@ export async function resolveAppUser(uid: string, email: string | undefined, dis
     if (data.authUid && data.authUid !== uid) return null;
 
     let isAdmin = isBootstrapAdmin;
+    // Admin d'amorçage : contrathèque de secours.
+    let isContratheque = isBootstrapAdmin;
     let roleName: string | undefined;
     if (data.roleId) {
         const roleSnap = await adminDb.collection('roles').doc(data.roleId).get();
         if (roleSnap.exists) {
             roleName = roleSnap.get('name');
             isAdmin = isAdmin || roleSnap.get('isAdmin') === true;
+            isContratheque = isContratheque || roleSnap.get('isContratheque') === true;
         }
     }
 
@@ -93,6 +99,7 @@ export async function resolveAppUser(uid: string, email: string | undefined, dis
         uid,
         email,
         isAdmin,
+        isContratheque,
         profile: {
             id: userDoc.id,
             name: data.name || displayName || email,
@@ -161,5 +168,12 @@ export async function requireUser(): Promise<SessionUser> {
 export async function requireAdmin(): Promise<SessionUser> {
     const user = await requireUser();
     if (!user.isAdmin) throw new AuthError(403, 'Droits administrateur requis.');
+    return user;
+}
+
+/** Contrathèque : seule à valider ou refuser les documents de contrat. */
+export async function requireContratheque(): Promise<SessionUser> {
+    const user = await requireUser();
+    if (!user.isContratheque) throw new AuthError(403, 'Réservé à la contrathèque.');
     return user;
 }

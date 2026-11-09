@@ -416,6 +416,10 @@ export type ValidationDocument = {
     validatedBy?: string;
     /** Nom du fichier de la pièce justificative (documentUrl). */
     documentName?: string;
+    /** Valeurs corrigées par la contrathèque à la validation (ancienne et nouvelle valeur affichées). */
+    corrections?: { champ: string; libelle: string; avant: string; apres: string; par: string; le: string }[];
+    /** Champs contrôlés contre le document à la validation. */
+    controledFields?: string[];
 };
 
 export type Amendment = ValidationDocument & {
@@ -857,6 +861,8 @@ export type Role = {
     name: string;
     /** Accès administrateur : gestion des utilisateurs et des rôles, suppressions sensibles. */
     isAdmin?: boolean;
+    /** Contrathèque : valide les documents de contrat (base marché, avenants, OS, reconductions, résiliations…). */
+    isContratheque?: boolean;
 }
 
 export type UserScope = {
@@ -1211,6 +1217,8 @@ export type DataContextType = {
     setCurrentUser: (user: User | null) => void;
     /** Droits administrateur de l'utilisateur réellement connecté. */
     isAdmin: boolean;
+    /** Droit contrathèque (validation des documents) de l'utilisateur réellement connecté. */
+    isContratheque: boolean;
     isLoading: boolean;
     reloadData: () => Promise<void>;
     login: (email: string, password: string) => Promise<void>;

@@ -51,6 +51,6 @@ export const pieceValide = (f: File | null): f is File => !!f && f.size <= TAILL
 /** Dépose la pièce dans le dossier du contrat ; renvoie son adresse et son nom. */
 export async function deposerPiece(fichier: File, contractId: string, dossier: string): Promise<{ documentUrl: string; documentName: string }> {
     const nom = fichier.name.normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^A-Za-z0-9._-]+/g, '_').slice(-120);
-    const documentUrl = await uploadFile(fichier, `contracts/${contractId}/${dossier}/${Date.now()}-${nom}`);
+    const documentUrl = await uploadFile(fichier, `contracts/${contractId}/${dossier}/${Date.now()}-${nom}`, { inline: true });
     return { documentUrl, documentName: fichier.name };
 }

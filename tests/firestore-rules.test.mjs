@@ -23,6 +23,9 @@ await env.withSecurityRulesDisabled(async (ctx) => {
   await setDoc(doc(db, 'p1Parametrage', 'site:s'), { kind: 'site', siteId: 's', params: {}, postes: {} });
   await setDoc(doc(db, 'meterReadings', 'r'), { meterId: 'm', value: 10, type: 'REEL' });
   await setDoc(doc(db, 'suiviCommentaires', 'c'), { contractId: 'k', texte: 'x', motif: 'note' });
+  await setDoc(doc(db, 'contracts', 'kpend'), { contractNumber: 'CTN-00002', status: 'Brouillon', validationStatus: 'pending_validation' });
+  await setDoc(doc(db, 'contracts', 'kval'), { contractNumber: 'CTN-00003', status: 'Actif', validationStatus: 'validated', validatedBy: 'ctq@v.fr', validatedAt: '2026-11-01' });
+  await setDoc(doc(db, 'contracts', 'kref'), { contractNumber: 'CTN-00004', status: 'Brouillon', validationStatus: 'refused', refusalReason: 'Dates' });
   await setDoc(doc(db, 'renewals', 'r1'), { contractId: 'k', validationStatus: 'pending_validation', documentUrl: 'https://x/d.pdf' });
   await setDoc(doc(db, 'quotes', 'brouillon'), { number: 'VEF-DEV2026-0001', status: 'brouillon', version: 1, title: 'A' });
   await setDoc(doc(db, 'quoteVersions', 'v'), { quoteId: 'envoye', version: 1 });
@@ -49,7 +52,7 @@ await t('signed-in stranger cannot read', assertFails(getDoc(doc(stranger, 'clie
 await t('signed-in stranger cannot write', assertFails(setDoc(doc(stranger, 'clients', 'n'), { a: 1 })));
 await t('user reads clients', assertSucceeds(getDoc(doc(user, 'clients', 'x'))));
 await t('user lists invoices', assertSucceeds(getDocs(collection(user, 'invoices'))));
-await t('user creates contract', assertSucceeds(setDoc(doc(user, 'contracts', 'n'), { a: 1 })));
+await t('user creates contract', assertSucceeds(setDoc(doc(user, 'contracts', 'n'), { a: 1, validationStatus: 'pending_validation' })));
 await t('user deletes contract', assertSucceeds(deleteDoc(doc(user, 'contracts', 'n'))));
 await t('user cannot update counter', assertFails(setDoc(doc(user, 'counters', 'x'), { current: 2 })));
 await t('admin cannot update counter', assertFails(setDoc(doc(admin, 'counters', 'x'), { current: 2 })));
@@ -89,6 +92,18 @@ await t('admin cannot change client code', assertFails(updateDoc(doc(admin, 'cli
 await t('user updates client keeping its code', assertSucceeds(updateDoc(doc(user, 'clients', 'cli'), { name: 'Client 2', externalRef: 'TW-1' })));
 await t('user cannot change contract number', assertFails(updateDoc(doc(user, 'contracts', 'ctn'), { contractNumber: 'CTN-09999' })));
 await t('user updates contract keeping its number', assertSucceeds(updateDoc(doc(user, 'contracts', 'ctn'), { clientName: 'Client 2' })));
+// Validation des contrats (base marché) : réservée à la contrathèque, au serveur.
+await t('user cannot create a validated contract', assertFails(setDoc(doc(user, 'contracts', 'v1'), { validationStatus: 'validated', status: 'Actif' })));
+await t('user cannot create a contract without validation status', assertFails(setDoc(doc(user, 'contracts', 'v2'), { label: 'x' })));
+await t('admin cannot create a validated contract', assertFails(setDoc(doc(admin, 'contracts', 'v3'), { validationStatus: 'validated' })));
+await t('user cannot validate a pending contract', assertFails(updateDoc(doc(user, 'contracts', 'kpend'), { validationStatus: 'validated' })));
+await t('admin cannot validate a pending contract', assertFails(updateDoc(doc(admin, 'contracts', 'kpend'), { validationStatus: 'validated', status: 'Actif' })));
+await t('user cannot activate a pending contract', assertFails(updateDoc(doc(user, 'contracts', 'kpend'), { status: 'Actif' })));
+await t('user edits a pending contract', assertSucceeds(updateDoc(doc(user, 'contracts', 'kpend'), { label: 'Corrigé' })));
+await t('user resubmits a refused contract', assertSucceeds(updateDoc(doc(user, 'contracts', 'kref'), { validationStatus: 'pending_validation', refusalReason: '' })));
+await t('user cannot forge validation trace', assertFails(updateDoc(doc(user, 'contracts', 'kval'), { validatedBy: 'moi@v.fr' })));
+await t('user changes status of a validated contract', assertSucceeds(updateDoc(doc(user, 'contracts', 'kval'), { status: 'Terminé' })));
+await t('user changes status of a legacy contract', assertSucceeds(updateDoc(doc(user, 'contracts', 'ctn'), { status: 'Terminé' })));
 await t('user reads P1 parametrage', assertSucceeds(getDoc(doc(user, 'p1Parametrage', 'site:s'))));
 await t('user cannot write P1 parametrage', assertFails(updateDoc(doc(user, 'p1Parametrage', 'site:s'), { params: { typeMarche: [] } })));
 await t('admin cannot write P1 parametrage', assertFails(setDoc(doc(admin, 'p1Parametrage', 'site:x'), { kind: 'site' })));

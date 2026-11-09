@@ -36,7 +36,7 @@ function chercher(items: Resultat[], q: string): Resultat[] {
 
 export function GlobalSearch() {
     const router = useRouter();
-    const { clients, contracts, sites, meters, invoices, isAdmin } = useData();
+    const { clients, contracts, sites, meters, invoices, isAdmin, isContratheque } = useData();
     const [open, setOpen] = useState(false);
     const [q, setQ] = useState('');
 
@@ -54,14 +54,14 @@ export function GlobalSearch() {
         const r = (id: string, href: string, titre: string, detail: string | undefined, ...champs: unknown[]): Resultat =>
             ({ id, href, titre, detail, texte: norm([titre, detail, ...champs].join(' ')) });
         return {
-            pages: navGroupsFor(isAdmin).flatMap(g => g.items.map(i => r(i.href, i.href, i.label, g.label, i.keywords))),
+            pages: navGroupsFor(isAdmin, isContratheque).flatMap(g => g.items.map(i => r(i.href, i.href, i.label, g.label, i.keywords))),
             clients: clients.map(c => r(c.id, `/clients/${c.id}`, c.name, [c.externalCode, c.city].filter(Boolean).join(' · '), c.siret, c.externalRef, c.postalCode)),
             contrats: contracts.map(c => r(c.id, `/contracts/${c.id}`, `${c.contractNumber ?? 'Contrat'} — ${c.clientName ?? ''}`, [c.label, c.status].filter(Boolean).join(' · '), c.name, c.externalRef)),
             sites: sites.map(s => r(s.id, `/sites/${s.id}`, s.name, [s.code, s.clientName, s.city].filter(Boolean).join(' · '), s.externalRef, s.siteNumber, s.address, s.postalCode)),
             compteurs: meters.map(m => r(m.id, `/meters?q=${encodeURIComponent(m.code ?? m.name)}`, `${m.code ?? ''} — ${m.name}`, [m.siteName, m.clientName].filter(Boolean).join(' · '), m.reference, m.externalRef)),
             factures: invoices.filter(i => i.invoiceNumber).map(i => r(i.id, `/invoices/${i.id}`, i.invoiceNumber!, i.clientName, i.status)),
         };
-    }, [clients, contracts, sites, meters, invoices, isAdmin]);
+    }, [clients, contracts, sites, meters, invoices, isAdmin, isContratheque]);
 
     const rubriques: Rubrique[] = useMemo(() => [
         { label: 'Pages', icon: Search, items: chercher(index.pages, q) },

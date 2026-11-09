@@ -134,11 +134,23 @@ contrats, contacts). Échéances non facturées : `src/lib/billing/echeances-fic
 - **Ordres de service** : bouton dédié à côté de « Nouvel avenant » (même collection, `nature: 'os'`).
 - **Base marché** : l'assistant de création propose (facultatif) le contrat signé ; le PDF analysé est repris.
 - **Historique du contrat** : colonnes Validation (En attente, Refusé : motif, Validé) et Document.
-- **Validation des documents** (`/admin/validations`, administrateurs) : onglets par type (Tout, Base marché, Avenants,
-  Ordres de service, Reconductions, Résiliations, Changements de syndic, Changements de BE) avec compteurs ; pièce à
-  ouvrir ; « Valider » affiche les effets avant de confirmer, appliqués au serveur dans une transaction (contrat Actif
-  et reprise P1, nouvelle fin, statut Résilié, représentant ou BE du client) ; « Refuser » exige un motif, visible
-  dans l'historique. L'ancienne page `/contracts/validation` redirige vers l'onglet Base marché.
+- **Contrathèque** : droit porté par le rôle (Utilisateurs › Rôles, case « Contrathèque »), distinct du droit
+  administrateur. Seule la contrathèque valide ou refuse les documents (vérifié au serveur ; l'admin d'amorçage
+  `ADMIN_EMAILS` l'a en secours). Elle est garante des documents saisis : rien n'a d'effet avant sa validation.
+- **Validation des documents** (`/admin/validations`, contrathèque) : onglets par type (Tout, Base marché, Avenants,
+  Ordres de service, Reconductions, Résiliations, Changements de syndic, Changements de BE) avec compteurs.
+  « Contrôler » ouvre l'écran de contrôle : la pièce à gauche, à droite chaque valeur saisie (dates, montants, durée,
+  syndic, BE…) à cocher « conforme au document » ou à corriger. « Valider » reste grisé tant que toutes les valeurs ne
+  sont pas cochées et que la pièce manque ; le serveur refait ces contrôles. Les corrections sont enregistrées sur le
+  document (ancienne et nouvelle valeur, auteur, date ; badge « n correction(s) » dans l'historique du contrat) et
+  les effets sont calculés sur les valeurs corrigées (contrat Actif et reprise P1, nouvelle fin, statut Résilié,
+  représentant ou BE du client). « Refuser » exige un motif, visible dans l'historique. Base marché : le contrat signé
+  est obligatoire pour valider ; la contrathèque peut le joindre elle-même. L'ancienne page `/contracts/validation`
+  redirige vers l'onglet Base marché.
+- **Règles Firestore** : depuis le navigateur, un contrat se crée « en attente », peut y être remis (correction après
+  refus) mais jamais marqué validé ; la trace de validation est intouchable et le statut ne change pas tant que le
+  contrat n'est pas validé (le menu de statut de la fiche est alors figé).
+- **Pièces** déposées « en ligne » (`Content-Disposition: inline`) pour s'afficher dans l'écran de contrôle.
 
 ## Vérification
 
@@ -151,4 +163,7 @@ tri, colonnes et préférences mémorisées, ouverture d'une fiche, avoir avec m
 assistant de création (ancienne adresse redirigée, étapes bloquées si incomplètes, doublon signalé, prestations,
 récapitulatif, brouillon repris après rechargement, création et fiche du contrat) ; documents (avenant refusé sans
 pièce puis enregistré « En attente » avec son lien, onglets de validation et compteurs, effets affichés, reconduction
-validée et nouvelle fin appliquée, résiliation refusée avec motif visible dans l'historique).
+validée et nouvelle fin appliquée, résiliation refusée avec motif visible dans l'historique) ; contrathèque (Valider
+grisé tant que tout n'est pas coché, correction de la nouvelle fin appliquée au contrat et tracée, base marché bloquée
+sans contrat signé puis validée après l'avoir joint, case Contrathèque des rôles, administrateur sans ce droit : ni
+menu ni accès).

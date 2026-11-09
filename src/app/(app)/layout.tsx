@@ -18,7 +18,7 @@ import { ConfirmProvider } from '@/components/confirm-provider';
 
 
 function MainAppLayout({ children }: { children: React.ReactNode }) {
-  const { isLoading, currentUser, isAdmin } = useData();
+  const { isLoading, currentUser, isAdmin, isContratheque } = useData();
   const router = useRouter();
   const [menuMobile, setMenuMobile] = useState(false);
 
@@ -50,7 +50,7 @@ function MainAppLayout({ children }: { children: React.ReactNode }) {
               </Link>
             </div>
             <div className="flex-1 overflow-y-auto py-3">
-              <AppSidebar isAdmin={isAdmin} />
+              <AppSidebar isAdmin={isAdmin} isContratheque={isContratheque} />
             </div>
           </div>
         </aside>
@@ -68,7 +68,7 @@ function MainAppLayout({ children }: { children: React.ReactNode }) {
                   <SheetTitle className="sr-only">Menu de navigation</SheetTitle>
                   <Logo />
                 </SheetHeader>
-                <AppSidebar isAdmin={isAdmin} onNavigate={() => setMenuMobile(false)} />
+                <AppSidebar isAdmin={isAdmin} isContratheque={isContratheque} onNavigate={() => setMenuMobile(false)} />
               </SheetContent>
             </Sheet>
             <div className="min-w-0 flex-1"><Breadcrumbs /></div>

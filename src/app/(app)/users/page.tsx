@@ -43,13 +43,15 @@ const RolesSection = () => {
     const [roleToDelete, setRoleToDelete] = useState<Role | null>(null);
     const [name, setName] = useState('');
     const [isAdminRole, setIsAdminRole] = useState(false);
+    const [contrathequeRole, setContrathequeRole] = useState(false);
 
-    const resetForm = () => { setName(''); setIsAdminRole(false); setEditingRole(null); };
+    const resetForm = () => { setName(''); setIsAdminRole(false); setContrathequeRole(false); setEditingRole(null); };
 
     const handleOpenDialog = (role: Role | null = null) => {
         setEditingRole(role);
         setName(role ? role.name : '');
         setIsAdminRole(role?.isAdmin === true);
+        setContrathequeRole(role?.isContratheque === true);
         setDialogOpen(true);
     };
 
@@ -59,10 +61,10 @@ const RolesSection = () => {
         setIsSubmitting(true);
         try {
             if (editingRole) {
-                await updateRole(editingRole.id, { name, isAdmin: isAdminRole });
+                await updateRole(editingRole.id, { name, isAdmin: isAdminRole, isContratheque: contrathequeRole });
                 toast({ title: "Succès", description: "Rôle mis à jour." });
             } else {
-                await createRole({ name, isAdmin: isAdminRole });
+                await createRole({ name, isAdmin: isAdminRole, isContratheque: contrathequeRole });
                 toast({ title: "Succès", description: "Rôle créé." });
             }
             await reloadData();
@@ -110,7 +112,7 @@ const RolesSection = () => {
                             ) : (
                                 roles.map(role => (
                                     <TableRow key={role.id}>
-                                        <TableCell className="font-medium">{role.name}{role.isAdmin && <span className="ml-2 text-xs text-muted-foreground">(administrateur)</span>}</TableCell>
+                                        <TableCell className="font-medium">{role.name}{role.isAdmin && <span className="ml-2 text-xs text-muted-foreground">(administrateur)</span>}{role.isContratheque && <span className="ml-2 text-xs text-muted-foreground">(contrathèque)</span>}</TableCell>
                                         <TableCell className="text-right">
                                             <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleOpenDialog(role)}><Edit className="h-4 w-4" /></Button>
                                             <Dialog open={!!roleToDelete && roleToDelete.id === role.id} onOpenChange={(isOpen) => !isOpen && setRoleToDelete(null)}>
@@ -143,6 +145,13 @@ const RolesSection = () => {
                                     <p className="text-xs text-muted-foreground">Gestion des utilisateurs et des rôles, suppressions sensibles.</p>
                                 </div>
                                 <Switch id="roleIsAdmin" checked={isAdminRole} onCheckedChange={setIsAdminRole} />
+                            </div>
+                            <div className="flex items-center justify-between gap-4 rounded-md border p-3">
+                                <div className="space-y-0.5">
+                                    <Label htmlFor="roleContratheque">Contrathèque</Label>
+                                    <p className="text-xs text-muted-foreground">Contrôle et valide les documents de contrat (base marché, avenants, OS, reconductions, résiliations, syndic, BE). Seule à pouvoir le faire.</p>
+                                </div>
+                                <Switch id="roleContratheque" checked={contrathequeRole} onCheckedChange={setContrathequeRole} />
                             </div>
                             <DialogFooter>
                                 <DialogClose asChild><Button variant="outline">Annuler</Button></DialogClose>

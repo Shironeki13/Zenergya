@@ -9,7 +9,7 @@ import {
  * globale (pages).
  */
 
-export type NavItem = { href: string; label: string; icon: LucideIcon; admin?: boolean; keywords?: string };
+export type NavItem = { href: string; label: string; icon: LucideIcon; admin?: boolean; /** Réservée à la contrathèque. */ contratheque?: boolean; keywords?: string };
 export type NavGroup = { id: string; label: string; icon: LucideIcon; items: NavItem[] };
 
 export const NAV_GROUPS: NavGroup[] = [
@@ -26,7 +26,7 @@ export const NAV_GROUPS: NavGroup[] = [
             { href: '/sites', label: 'Sites', icon: MapPin },
             { href: '/contracts/library', label: 'Contrathèque', icon: Library, keywords: 'documents avenants résiliations reconductions' },
             { href: '/contracts/commerce', label: 'Demandes commerce', icon: Store },
-            { href: '/admin/validations', label: 'Validation des documents', icon: ShieldCheck, admin: true, keywords: 'avenant os reconduction résiliation syndic be base marché attente' },
+            { href: '/admin/validations', label: 'Validation des documents', icon: ShieldCheck, contratheque: true, keywords: 'avenant os reconduction résiliation syndic be base marché attente' },
         ],
     },
     {
@@ -64,8 +64,8 @@ export const NAV_GROUPS: NavGroup[] = [
     },
 ];
 
-export const navGroupsFor = (isAdmin: boolean): NavGroup[] =>
-    NAV_GROUPS.map(g => ({ ...g, items: g.items.filter(i => !i.admin || isAdmin) })).filter(g => g.items.length > 0);
+export const navGroupsFor = (isAdmin: boolean, isContratheque = false): NavGroup[] =>
+    NAV_GROUPS.map(g => ({ ...g, items: g.items.filter(i => (!i.admin || isAdmin) && (!i.contratheque || isContratheque)) })).filter(g => g.items.length > 0);
 
 /** Entrée du menu qui correspond à une page : la plus précise dont l'adresse est un préfixe (fiches et sous-pages comprises). */
 export function activeNavItem(pathname: string, groups: NavGroup[] = NAV_GROUPS): { group: NavGroup; item: NavItem } | null {
