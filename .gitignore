@@ -48,3 +48,7 @@ firestore-debug.log
 *.log
 typecheck_*.txt
 !.env.example
+
+# démo (données simulées)
+/demo-extraction.json
+/demo-extraction.xlsx

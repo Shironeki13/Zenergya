@@ -1,6 +1,6 @@
 // Import the functions you need from the SDKs you need
 import { initializeApp, getApps, getApp } from "firebase/app";
-import { getFirestore, connectFirestoreEmulator } from "firebase/firestore";
+import { getFirestore, initializeFirestore, connectFirestoreEmulator } from "firebase/firestore";
 import { getStorage, connectStorageEmulator } from "firebase/storage";
 import { getAuth, connectAuthEmulator } from "firebase/auth";
 
@@ -54,8 +54,14 @@ function failMissingConfig() {
 function initFirebase({ emulatorHost, ...config }: FirebaseWebConfig) {
   initialized = true;
   const app = !getApps().length ? initializeApp(config) : getApp();
+  // Démo (FIREBASE_WEB_EMULATOR_HOST=same-origin) : émulateurs joints par l'adresse de l'application, derrière le relais
+  // de scripts/demo/relais.mjs (aperçu Cloud Shell : une seule adresse https par port).
+  const memeOrigine = emulatorHost === 'same-origin' && typeof window !== 'undefined';
+  const https = typeof window !== 'undefined' && window.location.protocol === 'https:';
   try {
-    db = getFirestore(app);
+    db = memeOrigine
+      ? initializeFirestore(app, { host: window.location.host, ssl: https, experimentalForceLongPolling: true })
+      : getFirestore(app);
   } catch (e) {
     console.warn("Firebase Firestore not initialized (likely on server):", e);
   }
@@ -69,7 +75,12 @@ function initFirebase({ emulatorHost, ...config }: FirebaseWebConfig) {
   } catch (e) {
     console.warn("Firebase Auth not initialized (likely on server):", e);
   }
-  if (emulatorHost && typeof window !== 'undefined') {
+  if (memeOrigine) {
+    connectAuthEmulator(auth, window.location.origin, { disableWarnings: true });
+    connectStorageEmulator(storage, window.location.hostname, Number(window.location.port || (https ? 443 : 80)));
+    // Le SDK ne passe en https que pour Firebase Studio : même protocole que la page.
+    if (https) (storage as { _protocol: string })._protocol = 'https';
+  } else if (emulatorHost && typeof window !== 'undefined') {
     // Développement / tests uniquement (FIREBASE_WEB_EMULATOR_HOST).
     connectAuthEmulator(auth, `http://${emulatorHost}:9099`, { disableWarnings: true });
     connectFirestoreEmulator(db, emulatorHost, 8080);

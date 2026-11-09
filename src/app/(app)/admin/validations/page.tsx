@@ -25,7 +25,7 @@ import { fileValidationAction } from '@/lib/validations-actions';
 
 const ONGLETS = ['tout', ...TYPES_VALIDATION] as const;
 type Onglet = typeof ONGLETS[number];
-const jour = (d: string | null) => (d ? new Date(d).toLocaleDateString('fr-FR') : '—');
+const jour = (d: string | null) => (d ? new Date(d).toLocaleDateString('fr-FR', { timeZone: 'Europe/Paris' }) : '—');
 
 export default function ValidationsPage() {
     const { isContratheque, reloadData } = useData();

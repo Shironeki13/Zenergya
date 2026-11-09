@@ -7,7 +7,11 @@ const nextConfig: NextConfig = {
   serverExternalPackages: ['@react-pdf/renderer'],
   // Imports en masse : un fichier de plusieurs milliers de lignes est envoyé à une action serveur.
   experimental: {
-    serverActions: { bodySizeLimit: '8mb' },
+    serverActions: {
+      bodySizeLimit: '8mb',
+      // Démo derrière un relais (aperçu Cloud Shell) : origines autorisées en plus de l'adresse du serveur.
+      ...(process.env.DEMO_ALLOWED_ORIGINS && { allowedOrigins: process.env.DEMO_ALLOWED_ORIGINS.split(',').map(o => o.trim()) }),
+    },
   },
   /* config options here */
   typescript: {
