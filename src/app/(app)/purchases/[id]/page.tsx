@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { CheckCircle2, ChevronLeft, Circle, Loader2, Plus, Send, Trash2, XCircle } from 'lucide-react';
@@ -10,7 +10,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { SearchableSelect, type SearchableOption } from '@/components/ui/searchable-select';
+import { SearchableSelect } from '@/components/ui/searchable-select';
 import { Textarea } from '@/components/ui/textarea';
 import { useConfirm, usePrompt } from '@/components/confirm-provider';
 import { FournisseursDialog } from '@/components/commandes/dialogues';
@@ -24,8 +24,7 @@ import {
     annulerCommandeAction, avancerCommandeAction, deciderCommandeAction, factureFournisseurAction, getCommandeAction, listFournisseursAction, saveCommandeAction,
     seuilsAction, soumettreCommandeAction,
 } from '@/lib/commandes-actions';
-import type { Project } from '@/lib/projects/types';
-import { getProjects } from '@/services/projects';
+import { cibleDeCle, cleDeCible, useCiblesAnalytiques } from '@/components/commandes/cibles';
 import type { Fournisseur } from '@/services/commandes-admin';
 
 /**
@@ -39,11 +38,6 @@ const eur = (n: number) => n.toLocaleString('fr-FR', { style: 'currency', curren
 const num = (v: string) => Number(String(v).replace(/\s/g, '').replace(',', '.'));
 const jour = (d?: string) => (d ? new Date(d).toLocaleDateString('fr-FR') : '');
 const aujourdhui = () => new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/Paris' });
-const cleCible = (c: CibleCommande) => (c.type === 'affaire' ? `a|${c.projectId}` : `c|${c.contractId}|${c.activityCode ?? ''}`);
-const cibleDe = (cle: string): CibleCommande | null => {
-    const [t, a, b] = cle.split('|');
-    return t === 'a' && a ? { type: 'affaire', projectId: a } : t === 'c' && a ? { type: 'contrat', contractId: a, ...(b && { activityCode: b }) } : null;
-};
 
 export default function CommandePage() {
     const { id } = useParams<{ id: string }>();
@@ -52,14 +46,13 @@ export default function CommandePage() {
     const { toast } = useToast();
     const confirmer = useConfirm();
     const demander = usePrompt();
-    const { companies, contracts, activities, currentUser, authUser, isAdmin, isAcheteur } = useData();
+    const { companies, currentUser, authUser, isAdmin, isAcheteur } = useData();
     const moi = (authUser ?? currentUser)?.id ?? '';
 
     const [commande, setCommande] = useState<Commande | null>(null);
     const [chargement, setChargement] = useState(!nouvelle);
     const [busy, setBusy] = useState(false);
     const [fournisseurs, setFournisseurs] = useState<Fournisseur[]>([]);
-    const [affaires, setAffaires] = useState<Project[]>([]);
     const [dialogueFrn, setDialogueFrn] = useState(false);
     const [seuils, setSeuils] = useState<SeuilsValidation>(SEUILS_DEFAUT);
     // Saisie
@@ -74,7 +67,7 @@ export default function CommandePage() {
 
     const remplir = useCallback((c: Commande) => {
         setCommande(c); setCompanyId(c.companyId); setSupplierId(c.supplierId); setTitle(c.title); setDate(c.date); setDeliveryDate(c.deliveryDate ?? ''); setNotes(c.notes ?? '');
-        setLignes(c.lines.map(l => ({ id: l.id, label: l.label, quantity: String(l.quantity), unitPrice: String(l.unitPrice), nature: l.nature, cible: cleCible(l.cible) })));
+        setLignes(c.lines.map(l => ({ id: l.id, label: l.label, quantity: String(l.quantity), unitPrice: String(l.unitPrice), nature: l.nature, cible: cleDeCible(l.cible) })));
     }, []);
     const charger = useCallback(async () => {
         if (nouvelle) return;
@@ -85,21 +78,11 @@ export default function CommandePage() {
     useEffect(() => { charger(); }, [charger]);
     useEffect(() => {
         listFournisseursAction().then(r => { if (r.success) setFournisseurs(r.data); });
-        getProjects().then(l => setAffaires(l.filter(p => p.status !== 'cloture'))).catch(() => undefined);
     }, []);
     useEffect(() => { if (!companyId && companies[0]) setCompanyId(companies[0].id); }, [companyId, companies]);
     useEffect(() => { if (companyId) seuilsAction(companyId).then(r => { if (r.success) setSeuils(r.data); }); }, [companyId]);
 
-    // Affectations possibles : affaires de travaux ouvertes ; contrats actifs, par activité.
-    const cibles: SearchableOption[] = useMemo(() => {
-        const act = new Map(activities.map(a => [a.id, a]));
-        return [
-            ...affaires.filter(p => !companyId || p.companyId === companyId).map(p => ({ value: `a|${p.id}`, label: `Affaire ${p.code}`, description: `${p.clientName} — ${p.title}`, keywords: `${p.clientName} ${p.title} travaux` })),
-            ...contracts.filter(k => k.status === 'Actif').flatMap(k => (k.activityIds ?? []).map(aid => act.get(aid)).filter(Boolean).map(a => ({
-                value: `c|${k.id}|${a!.code}`, label: `Contrat ${k.contractNumber ?? ''} — ${a!.code}`, description: `${k.clientName}${k.label ? ` — ${k.label}` : ''} — ${a!.label}`, keywords: `${k.clientName} ${k.label ?? ''} ${a!.label}`,
-            }))),
-        ];
-    }, [affaires, contracts, activities, companyId]);
+    const cibles = useCiblesAnalytiques(companyId);
 
     const total = totalCommande(lignes.map(l => ({ quantity: num(l.quantity) || 0, unitPrice: num(l.unitPrice) || 0 })));
     const etapesPrevues = rolesRequis(total, seuils);
@@ -117,7 +100,7 @@ export default function CommandePage() {
     };
     const saisie = () => ({
         ...(commande && { id: commande.id }), companyId, supplierId, title, date, ...(deliveryDate && { deliveryDate }), notes,
-        lines: lignes.map(l => ({ ...(l.id && { id: l.id }), label: l.label, quantity: num(l.quantity), unitPrice: num(l.unitPrice), nature: l.nature, cible: cibleDe(l.cible) as CibleCommande })),
+        lines: lignes.map(l => ({ ...(l.id && { id: l.id }), label: l.label, quantity: num(l.quantity), unitPrice: num(l.unitPrice), nature: l.nature, cible: cibleDeCle(l.cible) as CibleCommande })),
     });
     const enregistrer = async () => {
         const c = await exec('Brouillon enregistré', () => saveCommandeAction(saisie()));

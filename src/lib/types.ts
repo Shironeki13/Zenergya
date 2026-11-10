@@ -913,6 +913,8 @@ export type User = {
     authUid?: string | null;
     /** Responsable hiérarchique (N+1) : valide les commandes de cet utilisateur au-delà du seuil d'autovalidation. */
     managerId?: string | null;
+    /** Coût horaire interne (€ / h) pour valoriser ses heures ; à défaut, celui de la société (paramètres des devis). */
+    hourlyCost?: number | null;
 }
 
 // Genkit Flow Schemas

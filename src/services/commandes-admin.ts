@@ -20,7 +20,7 @@ const commandes = () => adminDb.collection('commandes');
 const fournisseurs = () => adminDb.collection('fournisseurs');
 const now = () => new Date().toISOString();
 /** Prénom et nom, sans doublon quand le nom saisi contient déjà le prénom. */
-const nomDe = (u: { firstName?: string; name?: string; email?: string }) =>
+export const nomDe = (u: { firstName?: string; name?: string; email?: string }) =>
     (u.firstName && u.name?.toLowerCase().startsWith(u.firstName.toLowerCase()) ? u.name : [u.firstName, u.name].filter(Boolean).join(' ')) || u.email || '';
 
 // --- Fournisseurs ---
@@ -125,8 +125,8 @@ export async function saveCommande(input: CommandeInput & { id?: string }, user:
     return lire(ref.id);
 }
 
-/** Analytique d'une ligne, figée à la soumission : celle de l'affaire, ou de la prestation du contrat. */
-async function analytiqueCible(cible: CibleCommande): Promise<{ analytique: AnalytiqueLigne; libelle: string }> {
+/** Analytique d'une ligne (commande, heures), figée à la soumission : celle de l'affaire, ou de la prestation du contrat. */
+export async function analytiqueCible(cible: CibleCommande): Promise<{ analytique: AnalytiqueLigne; libelle: string }> {
     if (cible.type === 'affaire') {
         const d = await adminDb.collection('projects').doc(cible.projectId).get();
         if (!d.exists) throw new Error('Affaire introuvable.');

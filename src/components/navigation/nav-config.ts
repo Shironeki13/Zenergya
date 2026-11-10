@@ -1,7 +1,7 @@
 import {
     AlertTriangle, Building, Calculator, CircleDollarSign, Copy, FileSignature, FileText, Gauge, Home, KeyRound, LayoutDashboard,
     Library, ListChecks, MapPin, MessageSquareQuote, MinusCircle, Scale, Send, Settings, ShieldCheck, Store, TrendingUp, Upload, Users,
-    Network, ShoppingCart, type LucideIcon,
+    Network, ShoppingCart, Clock, type LucideIcon,
 } from 'lucide-react';
 
 /**
@@ -52,6 +52,7 @@ export const NAV_GROUPS: NavGroup[] = [
             { href: '/works', label: 'Accueil travaux', icon: Home },
             { href: '/quotes', label: 'Devis', icon: MessageSquareQuote },
             { href: '/projects', label: 'Affaires', icon: Calculator, keywords: 'travaux p5 p6 chantier budget marge rentabilité' },
+            { href: '/timesheets', label: 'Heures', icon: Clock, keywords: 'main-d\'œuvre technicien pointage temps saisie import' },
             { href: '/library', label: 'Bibliothèque de prix', icon: Library, keywords: 'articles ouvrages' },
         ],
     },

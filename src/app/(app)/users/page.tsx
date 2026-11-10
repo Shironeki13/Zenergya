@@ -189,6 +189,7 @@ const UsersSection = () => {
     const [email, setEmail] = useState('');
     const [roleId, setRoleId] = useState('');
     const [managerId, setManagerId] = useState('');
+    const [hourlyCost, setHourlyCost] = useState('');
 
     // Permissions
     const [selectedModules, setSelectedModules] = useState<string[]>([]);
@@ -208,6 +209,7 @@ const UsersSection = () => {
         setEmail('');
         setRoleId('');
         setManagerId('');
+        setHourlyCost('');
         setSelectedModules([]);
         setSelectedCompanyIds([]);
         setSelectedAgencyIds([]);
@@ -223,6 +225,7 @@ const UsersSection = () => {
             setEmail(user.email);
             setRoleId(user.roleId);
             setManagerId(user.managerId ?? '');
+            setHourlyCost(user.hourlyCost ? String(user.hourlyCost).replace('.', ',') : '');
             setSelectedModules(user.modules || []);
             setSelectedCompanyIds(user.scope?.companyIds || []);
             setSelectedAgencyIds(user.scope?.agencyIds || []);
@@ -248,6 +251,7 @@ const UsersSection = () => {
                 ...(emailChanged && { authUid: null }),
                 roleId,
                 managerId: managerId || null,
+                hourlyCost: Number(hourlyCost.replace(',', '.')) > 0 ? Number(hourlyCost.replace(',', '.')) : null,
                 modules: selectedModules,
                 scope: {
                     companyIds: selectedCompanyIds,
@@ -407,6 +411,11 @@ const UsersSection = () => {
                                     </SelectContent>
                                 </Select>
                                 <p className="text-xs text-muted-foreground">Valide les commandes d&apos;achat de cet utilisateur au-delà du seuil d&apos;autovalidation ; son propre responsable est le N+2.</p>
+                            </div>
+                            <div className="space-y-2">
+                                <Label htmlFor="hourly-cost">Coût horaire interne (€ / h)</Label>
+                                <Input id="hourly-cost" inputMode="decimal" value={hourlyCost} onChange={e => setHourlyCost(e.target.value)} placeholder="Celui de la société" />
+                                <p className="text-xs text-muted-foreground">Valorise les heures saisies par cet utilisateur sur les affaires et les contrats. Vide : coût horaire de main-d&apos;œuvre de la société.</p>
                             </div>
 
                             <div className="space-y-4 border-t pt-4">

@@ -21,6 +21,7 @@ import { computeQuoteTotals } from '../../src/lib/quotes/pricing';
 import type { Quote, QuoteLine, QuotePricing } from '../../src/lib/quotes/types';
 import { ajouterFactureFournisseur, avancerCommande, deciderCommande, saveCommande, saveFournisseur, soumettreCommande, type CommandeInput } from '../../src/services/commandes-admin';
 import type { SessionUser } from '../../src/lib/auth/server';
+import { saveHeures } from '../../src/services/heures-admin';
 
 const env = process.env;
 const PROJET = env.FIREBASE_PROJECT_ID ?? env.GCLOUD_PROJECT ?? '';
@@ -110,7 +111,7 @@ async function remiseAZero() {
 async function referentiels() {
     await set('companies', 'demo-zen', {
         code: 'ZEN', name: 'Zenergya Services (démo)', address: '12 rue de l\'Exemple', postalCode: '69003', city: 'Lyon',
-        siret: '90000000000013', siren: '900000000', vatNumber: 'FR00900000000', quoteCoefficient: 1.35, quoteLaborRate: 68, quoteValidityDays: 90, quoteDefaultVatRate: 20,
+        siret: '90000000000013', siren: '900000000', vatNumber: 'FR00900000000', quoteCoefficient: 1.35, quoteLaborRate: 68, quoteLaborCost: 42, quoteValidityDays: 90, quoteDefaultVatRate: 20,
     });
     for (const [id, name, code] of [['demo-ag-lyon', 'Lyon', 'LYO'], ['demo-ag-paris', 'Paris Est', 'PAE']]) await set('agencies', id, { name, code, companyId: 'demo-zen', companyName: 'Zenergya Services (démo)' });
     for (const [id, name, agencyId, code] of [['demo-se-ln', 'Lyon Nord', 'demo-ag-lyon', 'LN'], ['demo-se-ls', 'Lyon Sud', 'demo-ag-lyon', 'LS'], ['demo-se-p', 'Paris 11e-12e', 'demo-ag-paris', 'P11'], ]) {
@@ -146,8 +147,9 @@ const COMPTES = [
     { id: 'demo-u-dir', email: 'directeur@example.com', name: 'Paul Garnier (directeur d\'agence)', firstName: 'Paul', roleId: 'demo-r-expl' },
     { id: 'demo-u-resp', email: 'responsable@example.com', name: 'Nadia Roche (responsable d\'exploitation)', firstName: 'Nadia', roleId: 'demo-r-expl', managerId: 'demo-u-dir' },
     { id: 'demo-u-tech', email: 'technicien@example.com', name: 'Lucas Morel (technicien)', firstName: 'Lucas', roleId: 'demo-r-expl', managerId: 'demo-u-resp' },
+    { id: 'demo-u-tech2', email: 'technicienne@example.com', name: 'Inès Colin (technicienne)', firstName: 'Inès', roleId: 'demo-r-expl', managerId: 'demo-u-resp', hourlyCost: 46 },
     { id: 'demo-u-achats', email: 'achats@example.com', name: 'Élise Faure (achats)', firstName: 'Élise', roleId: 'demo-r-achats' },
-] as { id: string; email: string; name: string; firstName: string; roleId: string; managerId?: string }[];
+] as { id: string; email: string; name: string; firstName: string; roleId: string; managerId?: string; hourlyCost?: number }[];
 
 async function comptes() {
     await set('roles', 'demo-r-adv', { name: 'ADV', isAdmin: false });
@@ -158,7 +160,7 @@ async function comptes() {
     for (const c of COMPTES) {
         const u = await adminAuth.createUser({ email: c.email, password: MOT_DE_PASSE, displayName: c.name });
         await set('users', c.id, {
-            name: c.name, firstName: c.firstName, email: c.email, roleId: c.roleId, authUid: u.uid, ...(c.managerId && { managerId: c.managerId }),
+            name: c.name, firstName: c.firstName, email: c.email, roleId: c.roleId, authUid: u.uid, ...(c.managerId && { managerId: c.managerId }), ...(c.hourlyCost && { hourlyCost: c.hourlyCost }),
             modules: ['contracts', 'billing', 'settings'], scope: { companyIds: ['*'], agencyIds: ['*'], sectorIds: ['*'] },
         });
     }
@@ -641,6 +643,33 @@ async function achats(affaires: { circulateur: string; chaufferie: string }, con
     console.log('Achats : 5 fournisseurs, 9 commandes (brouillon, à valider N+1 / achats, refusée, validée, reçue, soldées), dont une sur contrat.');
 }
 
+// --- Heures : deux techniciens sur les affaires et un contrat (coût horaire de la société, 42 €/h ; 46 €/h pour la technicienne) ---
+
+async function heuresDemo(affaires: { circulateur: string; chaufferie: string }, contrats: { id: string }[]) {
+    const session = async (id: string): Promise<SessionUser> => {
+        const d = await adminDb.collection('users').doc(id).get();
+        return { uid: String(d.get('authUid')), email: String(d.get('email')), isAdmin: false, isContratheque: false, isAcheteur: false, profile: { id: d.id, ...d.data() } as SessionUser['profile'] };
+    };
+    const [tech, tech2] = await Promise.all(['demo-u-tech', 'demo-u-tech2'].map(session));
+    const circ = { type: 'affaire' as const, projectId: affaires.circulateur }, chauf = { type: 'affaire' as const, projectId: affaires.chaufferie };
+    const p2 = { type: 'contrat' as const, contractId: contrats[0].id, activityCode: 'P2' };
+    let n = 0;
+    const h = async (par: SessionUser, date: string, hours: number, cible: typeof circ | typeof chauf | typeof p2, comment = '') => { await saveHeures({ date, hours, cible, comment }, par); n++; };
+    // Affaire « circulateur » : 12 h prévues au devis, 3 h au complément.
+    await h(tech, '2026-10-06', 7.5, circ, 'Dépose de l\'ancien circulateur, pose'); await h(tech, '2026-10-07', 5, circ, 'Raccordements, mise en service');
+    await h(tech, '2026-11-06', 2, circ, 'Préparation du calorifugeage');
+    // Affaire « chaufferie » : 320 h prévues ; du 14/09 au 16/10, le technicien tous les jours ouvrés, la technicienne du mardi au jeudi.
+    for (let d = new Date('2026-09-14T00:00:00Z'); d <= new Date('2026-10-16T00:00:00Z'); d.setUTCDate(d.getUTCDate() + 1)) {
+        const [jour, js] = [d.toISOString().slice(0, 10), d.getUTCDay()];
+        if (js === 0 || js === 6) continue;
+        if (jour !== '2026-10-06' && jour !== '2026-10-07') await h(tech, jour, 7, chauf, jour < '2026-09-25' ? 'Dépose des chaudières' : 'Hydraulique');
+        if (js >= 2 && js <= 4) await h(tech2, jour, 7.5, chauf, jour < '2026-09-25' ? 'Dépose, consignation' : 'Hydraulique, raccordements');
+    }
+    // Sur contrat (P2) : interventions d'exploitation.
+    await h(tech, '2026-10-14', 2, p2, 'Remplacement des électrodes du brûleur'); await h(tech2, '2026-11-03', 1.5, p2, 'Contrôle de combustion');
+    console.log(`Heures : ${n} saisies de 2 techniciens (affaires circulateur et chaufferie, contrat P2).`);
+}
+
 (async () => {
     console.log(`Données simulées — projet ${PROJET}, au ${AUJOURDHUI}.`);
     await remiseAZero();
@@ -655,6 +684,7 @@ async function achats(affaires: { circulateur: string; chaufferie: string }, con
     await factures(contrats);
     const affaires = await travaux(codesClients, contrats);
     await achats(affaires, contrats);
+    await heuresDemo(affaires, contrats);
     console.log('Jeu de données prêt.');
     process.exit(0);
 })().catch(e => { console.error(e); process.exit(1); });

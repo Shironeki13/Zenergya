@@ -72,7 +72,8 @@ Comptes (mot de passe Demo-Zenergya-2026) :
   adv2@example.com           ADV (Julien Petit)
   contratheque@example.com   Contrathèque : validation des documents
   admin@example.com          Administrateur (sans le droit contrathèque)
-  technicien@example.com     Commandes d'achat (demandeur)
+  technicien@example.com     Commandes d'achat (demandeur), saisie de ses heures
+  technicienne@example.com   Saisie de ses heures
   responsable@example.com    Validation N+1      directeur@example.com   Validation N+2
   achats@example.com         Validation achats, factures fournisseurs
 Remise à zéro des données sans redémarrer : npm run demo:donnees (dans un autre terminal).
