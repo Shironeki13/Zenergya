@@ -75,7 +75,7 @@ export async function analytiqueContrat(contractId: string): Promise<AnalytiqueC
         prestations: services.docs.filter(d => d.get('isActive') !== false).map(d => {
             const a = activite.get(String(d.get('activityId'))) ?? { code: '', label: '' };
             return { serviceId: d.id, siteId: String(d.get('siteId') ?? ''), activityCode: a.code, activityLabel: a.label, analytique: analytiqueEffective('prestation', niveau(d), { ...sContrat, activite: a.code }, eContrat) };
-        }),
+        }).sort((x, y) => x.siteId.localeCompare(y.siteId) || x.activityCode.localeCompare(y.activityCode)),
         historique: (contract.get('analyticHistory') as AnalytiqueContrat['historique'] | undefined) ?? [],
     };
 }

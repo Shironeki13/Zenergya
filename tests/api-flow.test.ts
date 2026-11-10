@@ -33,7 +33,8 @@ before(async () => {
 test('clés : format, empreinte seule stockée, refus sans clé, clé fausse, droit manquant', async () => {
     assert.match(full, /^zen_[A-Za-z0-9]{10}_[A-Za-z0-9_-]{43}$/);
     const stored = (await adminDb.collection('apiKeys').where('name', '==', 'ERP test').get()).docs[0].data();
-    assert.ok(stored.hash && !JSON.stringify(stored).includes(full.split('_')[2]), 'le secret n\'est jamais stocké');
+    // Secret entier, après le préfixe « zen_xxxxxxxxxx_ » (il peut lui-même contenir « _ »).
+    assert.ok(stored.hash && !JSON.stringify(stored).includes(full.slice(full.indexOf('_', 4) + 1)), 'le secret n\'est jamais stocké');
     assert.ok((await listApiKeys()).every(k => !('hash' in k)));
 
     assert.equal((await list(req('/clients'), params({ resource: 'clients' }))).status, 401);
