@@ -1,4 +1,5 @@
 import 'server-only';
+import { controleSaison, idSaison, type SaisonChauffe } from '@/lib/p1/saisons';
 import { randomUUID } from 'crypto';
 import { adminDb } from '@/lib/firebase-admin';
 import {
@@ -344,4 +345,25 @@ export async function retireP1Poste(siteId: string, posteId: string, motif: stri
         Object.assign(poste, { retireLe: new Date().toISOString(), retirePar: by, motifRetrait: motif.trim() });
         tx.set(ref, doc);
     });
+}
+
+// --- Saisons de chauffe (allumage, arrêt) ---
+
+/** Saisons de chauffe d'un site, de la plus récente à la plus ancienne. */
+export async function listSaisonsChauffe(siteId: string): Promise<SaisonChauffe[]> {
+    const snap = await adminDb.collection('saisonsChauffe').where('siteId', '==', siteId).get();
+    return snap.docs.map(d => ({ id: d.id, ...d.data() }) as SaisonChauffe).sort((a, b) => b.saison.localeCompare(a.saison));
+}
+
+/** Enregistre (ou corrige) les dates d'une saison ; une saison déjà facturée au-delà de ses dates n'est pas contrôlée ici. */
+export async function setSaisonChauffe(siteId: string, s: { saison: string; allumage: string; arret: string | null }, by: string): Promise<void> {
+    const erreur = controleSaison(s);
+    if (erreur) throw new Error(erreur);
+    const site = await adminDb.collection('sites').doc(siteId).get();
+    if (!site.exists) throw new Error('Site introuvable.');
+    await adminDb.collection('saisonsChauffe').doc(idSaison(siteId, s.saison)).set({ siteId, saison: s.saison, allumage: s.allumage, arret: s.arret, saisiPar: by, saisiLe: new Date().toISOString() });
+}
+
+export async function deleteSaisonChauffe(siteId: string, saison: string): Promise<void> {
+    await adminDb.collection('saisonsChauffe').doc(idSaison(siteId, saison)).delete();
 }

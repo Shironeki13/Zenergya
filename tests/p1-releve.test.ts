@@ -19,7 +19,7 @@ const input = (patch: Partial<BillingInput> = {}, svc: Record<string, unknown> =
     activities: [{ id: 'p1', code: 'P1', label: 'Eau chaude' }], vatRates: [{ id: 'v', code: 'TVA20', rate: 20 }],
     schedules: [{ id: 'trim', name: 'Trimestriel' }], terms: [{ id: 'echu', name: 'Échu' }, { id: 'echoir', name: 'À échoir' }],
     p1: { quantite: () => 0, repartition: () => [], prix: () => 6.5 },
-    releves: { meters: () => [{ id: 'm', code: 'CPT-ECS', unit: 'm3', readings, ...meter }] },
+    releves: { meters: () => [{ id: 'm', code: 'CPT-ECS', unit: 'm3', signe: 1 as const, qe: null, readings, ...meter }] },
     ...patch,
 });
 
@@ -28,7 +28,7 @@ test('chaque mois : index du mois − index précédent, × prix au m³ × coeff
     assert.deepEqual(oct.errors, []);
     // Octobre : 1 040 − 1 000 = 40 m³ × 6,5 × 1,1 = 7,15 €/m³ → 286 €.
     assert.deepEqual(oct.lines.map(l => [l.periodStartDate, l.p1Releve!.volume, l.p1Releve!.prix, l.total, l.vatRate]), [['2025-10-01', 40, 7.15, 286, 20]]);
-    assert.match(oct.lines[0].description, /^ECS au relevé — .* CPT-ECS : 1\s040 \(31\/10\/2025\) − 1\s000 \(30\/09\/2025\) = 40 m³ — 40 m³ × 7,15 €\/m³/);
+    assert.match(oct.lines[0].description, /^P1 au compteur \(ECS\) — .* 10\/2025 : CPT-ECS : 1\s040 \(31\/10\/2025\) − 1\s000 \(30\/09\/2025\) → 40 m³ × 7,15 €\/m³ = 286,00 €/);
     // Octobre et novembre ensemble : novembre part du relevé d'octobre (60 m³, relevé estimé signalé).
     const both = dueInvoiceLines(input(), [], '2025-12-01');
     assert.deepEqual(both.lines.map(l => [l.p1Releve!.compteurs[0].debut.readingId, l.p1Releve!.compteurs[0].fin.readingId, l.total]), [['r0', 'r1', 286], ['r1', 'r2', 429]]);
@@ -46,9 +46,10 @@ test('prix de la prestation × révision ; contrôles : relevé manquant, index 
     assert.match(dueInvoiceLines(input({}, {}, { readings: [readings[0], { id: 'x', date: '2025-10-31', value: 900 }] }), [], '2025-11-01').errors[0], /index du compteur CPT-ECS en baisse \(1000 → 900\)/);
     assert.match(dueInvoiceLines(input({}, {}, { unit: 'kWh' }), [], '2025-11-01').errors[0], /compteur ECS au m³ est attendu/);
     assert.match(dueInvoiceLines(input({}, {}, { readings: readings.slice(1) }), [], '2025-11-01').errors[0], /avant 10\/2025 \(index de départ\)/);
-    assert.match(dueInvoiceLines(input({}, { billingTermId: 'echoir' }), [], '2025-11-01').errors[0], /facturée à terme échu/);
-    assert.match(dueInvoiceLines(input({}, { scheduleId: 'trim' }), [], '2025-11-01').errors[0], /périodicité mensuelle attendue/);
-    assert.match(dueInvoiceLines(input({}, { p1Type: 'CHAUFFAGE' }), [], '2025-11-01').errors[0], /P1 ECS seulement/);
+    assert.match(dueInvoiceLines(input({}, { billingTermId: 'echoir' }), [], '2025-11-01').errors[0], /facturation au compteur à terme échu/);
+    assert.match(dueInvoiceLines(input({}, { p1Type: 'EAU_FROIDE' }), [], '2025-11-01').errors[0], /type chauffage ou ECS \(type EAU_FROIDE\)/);
+    // Chauffage : un compteur en m³ sans QE ne se convertit pas en MWh.
+    assert.match(dueInvoiceLines(input({}, { p1Type: 'CHAUFFAGE' }), [], '2025-11-01').errors[0], /coefficient de conversion \(QE\) du compteur CPT-ECS \(m3\) non renseigné/);
     assert.match(dueInvoiceLines(input({ releves: undefined }), [], '2025-11-01').errors[0], /relevés indisponibles/);
 });
 

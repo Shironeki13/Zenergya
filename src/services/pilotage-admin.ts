@@ -225,9 +225,12 @@ export async function alertesCompteurs(): Promise<{ today: string; alertes: Aler
     ]);
     const siteById = new Map(sites.docs.map(d => [d.id, d.data()]));
     const usageOf = new Map(p1.docs.map(d => [d.id, valeurAu<string>((d.data() as P1MeterDoc).params, 'usage', today)]));
-    // Compteurs des ECS au relevé : celui de la prestation, sinon ceux d'usage ECS du site.
-    const releveMeters = new Set(services.docs.filter(d => d.get('isActive') !== false && d.get('meterId')).map(d => String(d.get('meterId'))));
-    const releveSites = new Set(services.docs.filter(d => d.get('isActive') !== false && !d.get('meterId')).map(d => String(d.get('siteId'))));
+    // Compteurs facturés au compteur (ECS, chauffage) : celui de la prestation, sinon ceux du site (ECS : d'usage ECS ;
+    // chauffage : les autres).
+    const actives = services.docs.filter(d => d.get('isActive') !== false);
+    const releveMeters = new Set(actives.filter(d => d.get('meterId')).map(d => String(d.get('meterId'))));
+    const releveSites = new Set(actives.filter(d => !d.get('meterId') && d.get('p1Type') !== 'CHAUFFAGE').map(d => String(d.get('siteId'))));
+    const chauffageSites = new Set(actives.filter(d => !d.get('meterId') && d.get('p1Type') === 'CHAUFFAGE').map(d => String(d.get('siteId'))));
     const byMeter = new Map<string, RelevePilotage[]>();
     for (const r of readings.docs) {
         const id = String(r.get('meterId'));
@@ -242,7 +245,8 @@ export async function alertesCompteurs(): Promise<{ today: string; alertes: Aler
             id: m.id, code: String(m.get('code') ?? m.id), name: String(m.get('name') ?? ''), siteId: String(m.get('siteId') ?? ''),
             site: String(site?.name ?? m.get('siteName') ?? '—'), client: String(site?.clientName ?? m.get('clientName') ?? '—'),
             unit: m.get('unit') ?? undefined, status: m.get('status') ?? undefined, usage,
-            ecsAuReleve: releveMeters.has(m.id) || (releveSites.has(String(m.get('siteId'))) && usage === 'ecs'),
+            ecsAuReleve: releveMeters.has(m.id) || (releveSites.has(String(m.get('siteId'))) && usage === 'ecs')
+                || (chauffageSites.has(String(m.get('siteId'))) && usage !== 'ecs'),
         };
         alertes.push(...alertesCompteur(compteur, byMeter.get(m.id) ?? [], today));
     }

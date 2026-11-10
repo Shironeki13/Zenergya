@@ -24,10 +24,11 @@ import {
 import { formatBareme } from '@/lib/p1/bareme';
 import { formatTermes, parseTermes, type FormuleVersion } from '@/lib/p1/formules';
 import {
-    addP1FormuleAction, addP1FormuleVersionAction, addP1PosteAction, addP1VersionAction, getP1ContractAction, getP1MeterAction, getP1ReelAction, getP1SiteAction, previewPrixP1Action,
+    addP1FormuleAction, addP1FormuleVersionAction, addP1PosteAction, addP1VersionAction, getP1ContractAction, getP1MeterAction, getP1ReelAction, getP1SiteAction, listSaisonsChauffeAction, previewPrixP1Action, setSaisonChauffeAction,
     retireP1FormuleAction, retireP1FormuleVersionAction, retireP1PosteAction, retireP1VersionAction,
 } from '@/lib/p1/actions';
 import type { PrixP1Preview } from '@/services/p1-admin';
+import { controleSaison, saisonDe, type SaisonChauffe } from '@/lib/p1/saisons';
 import type { P1ContractView, P1MeterView, P1ReelLigne, P1SiteView, P1Target } from '@/services/p1-admin';
 
 /**
@@ -228,6 +229,7 @@ export function P1ParametragePanel({ siteId, defaultOpen = false }: { siteId: st
                     )}
 
                     <PrixPreview sites={[{ id: siteId, code: view.site.code, name: view.site.name }]} />
+                    <SaisonsChauffeSection siteId={siteId} />
                     <ReelP1 siteId={siteId} />
                 </CardContent>
             )}
@@ -321,6 +323,67 @@ export function P1ContratPanel({ contractId }: { contractId: string }) {
 }
 
 /** Réel P1 du moteur du site (import « Réel P1 du moteur ») : montants mensuels, base de la régularisation. */
+/**
+ * Saisons de chauffe : dates d'allumage et d'arrêt du site, par saison (juillet → juin). Elles bornent les DJU facturés
+ * en MTI (première facture à l'allumage, dernière à l'arrêt), le décompte et l'intéressement.
+ */
+function SaisonsChauffeSection({ siteId }: { siteId: string }) {
+    const { toast } = useToast();
+    const [saisons, setSaisons] = useState<SaisonChauffe[] | null>(null);
+    const [form, setForm] = useState<{ saison: string; allumage: string; arret: string } | null>(null);
+    const [busy, setBusy] = useState(false);
+    const load = useCallback(async () => {
+        const r = await listSaisonsChauffeAction(siteId);
+        setSaisons(r.success ? r.data : []);
+    }, [siteId]);
+    useEffect(() => { load(); }, [load]);
+    const fr = (d: string | null) => (d ? d.split('-').reverse().join('/') : '—');
+    const erreur = form ? controleSaison({ saison: form.saison, allumage: form.allumage, arret: form.arret || null }) : null;
+    const enregistrer = async () => {
+        if (!form || erreur) return;
+        setBusy(true);
+        const r = await setSaisonChauffeAction(siteId, { saison: form.saison, allumage: form.allumage, arret: form.arret || null });
+        setBusy(false);
+        if (!r.success) { toast({ title: 'Saison refusée', description: r.error, variant: 'destructive' }); return; }
+        toast({ title: 'Saison de chauffe enregistrée' });
+        setForm(null);
+        await load();
+    };
+    return (
+        <section className="space-y-2">
+            <div className="flex items-center justify-between">
+                <h3 className="text-sm font-semibold">Saisons de chauffe</h3>
+                <Button size="sm" variant="outline" disabled={!!form} onClick={() => setForm({ saison: saisonDe(today()), allumage: '', arret: '' })}><Plus className="mr-1 h-3 w-3" />Saison</Button>
+            </div>
+            <p className="text-xs text-muted-foreground">Dates d&apos;allumage et d&apos;arrêt réelles du site : elles bornent les DJU facturés (MTI au DJU), le décompte et l&apos;intéressement.</p>
+            {saisons === null ? <Loader2 className="h-4 w-4 animate-spin" /> : saisons.length === 0 && !form ? <p className="text-sm text-muted-foreground">Aucune saison saisie.</p> : (
+                <table className="w-full text-sm">
+                    <thead><tr className="text-xs text-muted-foreground"><th className="text-left font-normal">Saison</th><th className="text-left font-normal">Allumage</th><th className="text-left font-normal">Arrêt</th><th className="text-left font-normal">Saisi par</th><th /></tr></thead>
+                    <tbody>{saisons.map(s => (
+                        <tr key={s.id} className="border-t">
+                            <td className="py-1 font-medium">{s.saison}</td><td>{fr(s.allumage)}</td><td>{s.arret ? fr(s.arret) : <span className="text-muted-foreground">en cours</span>}</td>
+                            <td className="text-xs text-muted-foreground">{s.saisiPar ?? ''}</td>
+                            <td className="text-right"><Button size="sm" variant="ghost" className="h-7" onClick={() => setForm({ saison: s.saison, allumage: s.allumage, arret: s.arret ?? '' })}>Modifier</Button></td>
+                        </tr>
+                    ))}</tbody>
+                </table>
+            )}
+            {form && (
+                <div className="grid grid-cols-2 gap-3 rounded-md border p-3 sm:grid-cols-4">
+                    <div className="space-y-1"><Label htmlFor="saison-libelle">Saison</Label><Input id="saison-libelle" value={form.saison} onChange={e => setForm({ ...form, saison: e.target.value })} placeholder="2025-2026" /></div>
+                    <div className="space-y-1"><Label htmlFor="saison-allumage">Allumage</Label><Input id="saison-allumage" type="date" value={form.allumage} onChange={e => setForm({ ...form, allumage: e.target.value })} /></div>
+                    <div className="space-y-1"><Label htmlFor="saison-arret">Arrêt (vide : en cours)</Label><Input id="saison-arret" type="date" value={form.arret} onChange={e => setForm({ ...form, arret: e.target.value })} /></div>
+                    <div className="flex items-end gap-2">
+                        <Button size="sm" disabled={busy || !!erreur} onClick={enregistrer}>{busy ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Enregistrer'}</Button>
+                        <Button size="sm" variant="ghost" onClick={() => setForm(null)}>Annuler</Button>
+                    </div>
+                    {erreur && form.allumage && <p className="col-span-full text-xs text-destructive">{erreur}</p>}
+                </div>
+            )}
+        </section>
+    );
+}
+
 function ReelP1({ siteId }: { siteId: string }) {
     const [lignes, setLignes] = useState<P1ReelLigne[] | null>(null);
     const [tout, setTout] = useState(false);
@@ -472,7 +535,8 @@ const DEFAULT_VERSION: FormuleVersion = {
 const perimetreText = (f: P1Formule) => f.perimetre.type === 'contrat' ? 'tout le contrat'
     : f.perimetre.type === 'energies' ? `énergies : ${f.perimetre.energies.join(', ')}` : `${f.perimetre.siteIds.length} site(s)`;
 const versionText = (v: FormuleVersion) => v.prixFixe ? 'prix fixe (non révisé)'
-    : `forme ${v.forme}, ${v.periodicite.replace(/_/g, ' ')}, M0 ${v.dateM0 ?? `inconnu (${v.m0Manquante})`} : ${formatTermes(v.termes) || 'aucun terme'}`;
+    : `forme ${v.forme}, ${v.periodicite.replace(/_/g, ' ')}, M0 ${v.dateM0 ?? `inconnu (${v.m0Manquante})`} : ${formatTermes(v.termes) || 'aucun terme'}`
+        + `${v.facteur ? ` × facteur ${v.facteur.toLocaleString('fr-FR', { maximumFractionDigits: 6 })}` : ''}${v.arrondiCoefficient !== undefined && v.arrondiCoefficient !== null ? ` (C/C0 arrondi à ${v.arrondiCoefficient} déc.)` : ''}`;
 
 type SiteRef = { id: string; code: string; name: string };
 
@@ -610,6 +674,11 @@ function FormuleVersionDialog({ formule, date, onClose, onSubmit, busy }: {
                         {v.regimeKmol === 'fixe' && <div className="space-y-1"><Label>Prix molécule négocié</Label><Input inputMode="decimal" value={v.prixMoleculeNegocie ?? ''} onChange={e => set('prixMoleculeNegocie', e.target.value ? Number(e.target.value.replace(',', '.')) : null)} /></div>}
                     </div>
                     <label className="flex items-center gap-2 text-sm"><Checkbox checked={v.prixFixe} onCheckedChange={x => set('prixFixe', !!x)} />Prix fixe (non révisable)</label>
+                    <div className="grid grid-cols-3 gap-3">
+                        <div className="space-y-1"><Label>Facteur fixe (avenant)</Label><Input inputMode="decimal" value={v.facteur ?? ''} placeholder="1" onChange={e => set('facteur', e.target.value ? Number(e.target.value.replace(',', '.')) : null)} /></div>
+                        <div className="space-y-1"><Label>Arrondi du coefficient (décimales)</Label><Input inputMode="numeric" value={v.arrondiCoefficient ?? ''} placeholder="non arrondi" onChange={e => set('arrondiCoefficient', e.target.value === '' ? null : Math.max(0, Math.min(8, Math.round(Number(e.target.value)))))} /></div>
+                        <p className="self-end text-xs text-muted-foreground">Facteur : multiplie C/C0 (ex. remplacement d&apos;un indice non publié). Arrondi : ex. 5 décimales.</p>
+                    </div>
                     <div className="space-y-1">
                         <Label>Termes</Label>
                         <Input value={termes} onChange={e => setTermes(e.target.value)} className="font-mono text-xs" placeholder="p0=0,15 ; Kmol=0,60*PEGMA@25,30 ; TVD=0,25*ATRD_T2@3,10" />

@@ -39,13 +39,29 @@ liens et montants sont donc ceux que l'application produirait) :
   conditions de paiement, types de compteurs, un marché ;
 - 12 clients (copropriétés avec syndic, bailleur, collectivités avec SIRET fictif, tertiaire, un prospect) et 22 contacts
   (deux clients sans contact de facturation) ;
-- 13 contrats (actifs, un terminé), 18 sites, 31 prestations, 19 compteurs, 225 relevés mensuels (un mois manquant sur
-  quelques compteurs, des relevés estimés) ;
-- 27 factures émises par le moteur (avril, juillet, octobre 2026), payées, dues ou en retard ;
+- 13 contrats (actifs, un terminé), 18 sites, 33 prestations, 19 compteurs, 721 relevés de fin de mois (des relevés
+  estimés, un mois manquant) ; paramétrage P1 de 4 sites (voir ci-dessous) ;
+- 27 factures émises par le moteur (avril, juillet, octobre 2026), dont les lignes P1 au compteur et les acomptes, payées, dues ou en retard ;
 - à valider par la contrathèque : 3 contrats de base marché (avec PDF, sans PDF, refusé), 2 avenants dont un **mal
   saisi** (nouvelle fin 30/06/2029 au lieu du 30/06/2030 du PDF : à corriger au contrôle), un OS, une reconduction, une
   résiliation, un changement de syndic, un changement de BE ; plus un historique déjà validé ou refusé ;
 - des pièces PDF fictives pour chacun de ces documents.
+
+### P1 : facturation au compteur, acomptes, intéressement
+
+| Site (contrat) | Marché | P1 | À tester |
+|---|---|---|---|
+| Tilleuls - Bâtiment A (`CTN-00001`) | MTI | chauffage au compteur **trimestriel** (formule de NC gaz − ECS, coefficient de gestion du contrat 1,03) ; ECS au compteur mensuelle (coefficient propre 1,05) | annexe de 3 mois, même compteur ECS dans deux prestations |
+| Tilleuls - Bâtiment B (`CTN-00001`) | MTI | chauffage au compteur mensuel, sans coefficient ; relevé d'octobre 2026 **absent** | facture de novembre bloquée (« aucun relevé… en 10/2026 ») ; intéressement (économie) |
+| Belvédère (`CTN-00003`) | MCI | chauffage en **acomptes** (1 100 MWh, répartition saisonnière), réel P1 2025-2026 importé ; ECS au compteur | régularisation (réel − acomptes) ; intéressement (dépassement) |
+| École Jules-Exemple (`CTN-00006`) | MT | chauffage au compteur mensuel, début le **15/09/2025** (prorata « relevé sinon DJU »), coefficient propre 1,04 | septembre au prorata des DJU |
+| Mairie, Gymnase (`CTN-00005`) | MTI | **MTI au DJU** mensuel, sans décompte (modèle d'un contrat de ville), saisons de chauffe saisies | factures limitées à la saison ; octobre depuis l'allumage |
+| Square Voltaire (`CTN-00007`) | MTI | **acomptes 1/7** d'octobre à avril, régularisation « décompte MTI », intéressement avec franchise ±4 % ; ECS au compteur trimestrielle | Facturation › Régularisation P1, période 07/2025 → 06/2026 : décompte (avoir) |
+
+Données : 2 stations météo fictives (DJU journaliers depuis 07/2023), indices PEGFM et ATRDFM (formules de révision P1,
+base M0 = janvier 2024), relevés de fin de mois liés aux DJU. L'intéressement se calcule sur la fiche du site
+(prestation P1 › « Gérer l'intéressement »), saison du 01/10/2025 au 31/05/2026, relevés du 30/09/2025 et du
+31/05/2026 ; l'onglet **Intéressement (calcul)** de l'extraction refait le calcul par des formules Excel.
 
 Remettre les données à zéro sans arrêter la démo : `npm run demo:donnees` dans un second terminal.
 

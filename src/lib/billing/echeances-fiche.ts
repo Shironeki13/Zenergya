@@ -17,7 +17,7 @@ export type PeriodeFiche = {
     /** Date à partir de laquelle l'échéance est facturable. */
     dueDate: Date;
     invoice: Invoice | null;
-    /** Montant avant révision ; null pour un acompte P1 ou une ECS au relevé (calculés à la facture). */
+    /** Montant avant révision ; null pour un acompte P1 ou une prestation P1 au compteur (calculés à la facture). */
     amount: number | null;
 };
 
@@ -50,7 +50,7 @@ export function periodesDuContrat(contract: Contract, sites: Site[], d: DonneesF
             return {
                 itemKey: item.key, serviceId: item.serviceId ?? null, siteId: item.site.id,
                 periodStart: new Date(e.start), periodEnd: new Date(e.end), dueDate: new Date(e.billableOn), invoice,
-                amount: item.p1Acompte || item.p1Releve ? null : e.amount,
+                amount: item.p1Acompte || item.p1Releve || item.p1Dju ? null : e.amount,
             };
         }));
     }

@@ -11,6 +11,9 @@ import { applyImport, type ImportReport } from '../../src/services/imports-admin
 import { prepareContractInvoice } from '../../src/services/contract-billing-admin';
 import { createInvoice } from '../../src/services/firestore-admin';
 import type { ImportEntityKey } from '../../src/lib/imports/definitions';
+import { INDICES, STATIONS, djuJournaliers, djuMensuels, valeursIndice, type CodeStation } from './meteo-indices';
+import { setSaisonChauffe } from '../../src/services/p1-admin';
+import { saisonDe } from '../../src/lib/p1/saisons';
 
 const env = process.env;
 const PROJET = env.FIREBASE_PROJECT_ID ?? env.GCLOUD_PROJECT ?? '';
@@ -109,16 +112,16 @@ async function referentiels() {
     for (const [id, name, regime] of [['demo-ty-copro', 'Copropriété', 'b2b'], ['demo-ty-bailleur', 'Bailleur social', 'b2b'], ['demo-ty-public', 'Collectivité', 'b2g'], ['demo-ty-tertiaire', 'Tertiaire', 'b2b']]) {
         await set('typologies', id, { name, einvoicingRegime: regime });
     }
-    for (const [id, code, rate] of [['demo-tva20', 'TVA20', 0.2], ['demo-tva10', 'TVA10', 0.1], ['demo-tva55', 'TVA5,5', 0.055]] as const) await set('vatRates', id, { code, rate });
+    for (const [id, code, rate] of [['demo-tva20', 'TVA20', 20], ['demo-tva10', 'TVA10', 10], ['demo-tva55', 'TVA5,5', 5.5]] as const) await set('vatRates', id, { code, rate });
     for (const [id, code, label, type, vat] of [
-        ['demo-p1', 'P1', 'Fourniture de chaleur', 'P1', 'demo-tva55'], ['demo-p2', 'P2', 'Conduite et petit entretien', 'P2', 'demo-tva20'],
+        ['demo-p1', 'P1', 'Fourniture de chaleur', 'P1', 'demo-tva55'], ['demo-p1e', 'P1E', 'Fourniture d\'eau chaude sanitaire', 'P1', 'demo-tva10'], ['demo-p2', 'P2', 'Conduite et petit entretien', 'P2', 'demo-tva20'],
         ['demo-p3', 'P3', 'Garantie totale (gros entretien)', 'P3', 'demo-tva20'],
     ]) await set('activities', id, { code, label, type, vatRateId: vat });
     for (const [id, name] of [['demo-mens', 'Mensuel'], ['demo-trim', 'Trimestriel'], ['demo-ann', 'Annuel']]) await set('schedules', id, { name });
     for (const [id, name] of [['demo-echoir', 'À échoir'], ['demo-echu', 'Terme échu']]) await set('terms', id, { name });
     await set('paymentTerms', 'demo-30j', { code: '30J', deadline: '30 jours', days: 30, endOfMonth: false });
     await set('paymentTerms', 'demo-45fdm', { code: '45FDM', deadline: '45 jours fin de mois', days: 45, endOfMonth: true });
-    for (const [id, code, label, unit] of [['demo-mt-gaz', 'GAZ', 'Gaz naturel', 'kWh'], ['demo-mt-calo', 'CALO', 'Compteur de calories', 'MWh'], ['demo-mt-eau', 'EAU', 'Eau chaude sanitaire', 'm³'], ['demo-mt-elec', 'ELEC', 'Électricité', 'kWh']]) {
+    for (const [id, code, label, unit] of [['demo-mt-gaz', 'GAZ', 'Gaz naturel', 'm³'], ['demo-mt-calo', 'CALO', 'Compteur de calories', 'MWh'], ['demo-mt-eau', 'EAU', 'Eau chaude sanitaire', 'm³'], ['demo-mt-elec', 'ELEC', 'Électricité', 'kWh']]) {
         await set('meterTypes', id, { code, label, unit });
     }
     await set('markets', 'demo-mkt-1', { code: 'MP-2024-017', label: 'Marché public exploitation chauffage 2024', description: 'Marché fictif de la démo' });
@@ -184,50 +187,147 @@ async function clientsEtContacts(): Promise<string[]> {
     return codes;
 }
 
-// --- Contrats, sites, compteurs, relevés, prestations ---
+// --- Contrats, sites, compteurs, relevés, prestations, paramétrage P1 ---
 
+type Prestation = {
+    act: 'P1' | 'P1E' | 'P2' | 'P3'; montant: number; periodicite?: string; terme?: string;
+    /** P1 : chauffage ou ECS, au compteur, en acomptes ou au forfait. */
+    p1?: { type: 'CHAUFFAGE' | 'ECS'; mode: 'releve' | 'acompte' | 'dju'; compteur?: 'gaz' | 'ecs'; coef?: 'aucun' | 'prestation' | 'contrat'; coefValeur?: number; prorata?: 'releve_jours' | 'releve_dju' | 'jours' | 'dju'; puInteressement?: number };
+};
+type DefSite = {
+    nom: string; adresse: string; compteur?: 'GAZ' | 'CALO'; ecs?: boolean; prestations: Prestation[];
+    /** Profil de consommation : besoin de chauffage (MWh pour DJU de référence) et performance (< 1 : économie). */
+    besoin?: number; performance?: number;
+    /** Paramétrage P1 du site (marché, prix, station, poste de consommation). */
+    p1?: { marche: 'MC' | 'MCI' | 'MT' | 'MTI'; prixBase: number; prixBaseEcs?: number; station: CodeStation; quantiteAcompte?: number; nc: 'gaz' | 'gaz-ecs'; nb: number; djuRef: number };
+};
 type DefContrat = {
     client: number; libelle: string; debut: string; fin: string; statut?: 'Actif' | 'Résilié' | 'Terminé'; marche: 'Privé' | 'Public';
     activites: string[]; base: { P1?: number; P2?: number; P3?: number }; echeancier: string; tacite: boolean; facturation?: 'Multi-site' | 'Globale';
-    sites: { nom: string; adresse: string; compteur?: 'GAZ' | 'CALO'; ecs?: boolean; prestations: { act: string; montant: number; periodicite?: string; terme?: string }[] }[];
+    station: CodeStation; sites: DefSite[];
+    /** Paramétrage P1 du contrat. */
+    p1?: { coefGestion?: number; repartition?: string; bareme?: [string, string]; ecs?: boolean; regularisation?: 'reel_moteur' | 'decompte_dju' };
+    /** Saisons de chauffe des sites P1 au DJU ou en décompte : allumage, arrêt. */
+    saisons?: [string, string | null][];
 };
+const SAISON = '12,5;12,5;12,5;12,5;10;5;0;0;0;10;12,5;12,5';   // répartition des acomptes : janvier → décembre
+const SEPTIEME = [1, 1, 1, 1, 0, 0, 0, 0, 0, 1, 1, 1].map(x => (x ? '14,2857142857' : '0')).join(';');   // 1/7 d'octobre à avril
+const SAISONS: [string, string | null][] = [['2023-10-16', '2024-05-12'], ['2024-10-14', '2025-05-09'], ['2025-10-13', '2026-05-27'], ['2026-10-15', null]];
 const CONTRATS: DefContrat[] = [
-    { client: 0, libelle: 'Chaufferie collective', debut: '2024-07-01', fin: '2029-06-30', marche: 'Privé', activites: ['P1', 'P2', 'P3'], base: { P1: 38000, P2: 6200, P3: 2400 }, echeancier: 'Trimestriel', tacite: true,
-        sites: [{ nom: 'Tilleuls - Bâtiment A', adresse: '4 allée des Tilleuls', compteur: 'GAZ', ecs: true, prestations: [{ act: 'P1', montant: 22000, periodicite: 'Mensuel', terme: 'Terme échu' }, { act: 'P2', montant: 3600 }, { act: 'P3', montant: 1400 }] },
-            { nom: 'Tilleuls - Bâtiment B', adresse: '6 allée des Tilleuls', compteur: 'GAZ', prestations: [{ act: 'P1', montant: 16000, periodicite: 'Mensuel', terme: 'Terme échu' }, { act: 'P2', montant: 2600 }, { act: 'P3', montant: 1000 }] }] },
-    { client: 1, libelle: 'Sous-station réseau de chaleur', debut: '2025-01-01', fin: '2030-12-31', marche: 'Privé', activites: ['P2', 'P3'], base: { P2: 8400, P3: 3100 }, echeancier: 'Trimestriel', tacite: false,
+    { client: 0, libelle: 'Chaufferie collective', debut: '2024-07-01', fin: '2029-06-30', marche: 'Privé', activites: ['P1', 'P1E', 'P2', 'P3'], base: { P1: 70000, P2: 6200, P3: 2400 }, echeancier: 'Trimestriel', tacite: true, station: 'DEMO-LYON',
+        p1: { coefGestion: 1.03, bareme: ['MTI', 'économie 0-10 % 50 % ; économie 10-100 % 70 % ; dépassement 0-100 % 40 %'], ecs: true },
+        sites: [
+            // Chauffage au compteur TRIMESTRIEL : formule de NC gaz − ECS, coefficient de gestion du contrat. ECS au compteur MENSUELLE, coefficient propre.
+            { nom: 'Tilleuls - Bâtiment A', adresse: '4 allée des Tilleuls', compteur: 'GAZ', ecs: true, besoin: 900, performance: 1.0,
+                p1: { marche: 'MTI', prixBase: 72, prixBaseEcs: 6.4, station: 'DEMO-LYON', nc: 'gaz-ecs', nb: 900, djuRef: 2350 },
+                prestations: [{ act: 'P1', montant: 0, periodicite: 'Trimestriel', terme: 'Terme échu', p1: { type: 'CHAUFFAGE', mode: 'releve', coef: 'contrat' } },
+                    { act: 'P1E', montant: 0, periodicite: 'Mensuel', terme: 'Terme échu', p1: { type: 'ECS', mode: 'releve', compteur: 'ecs', coef: 'prestation', coefValeur: 1.05 } },
+                    { act: 'P2', montant: 3600 }, { act: 'P3', montant: 1400 }] },
+            // Chauffage au compteur MENSUEL sur son compteur gaz, sans coefficient ; intéressement MTI (économie).
+            { nom: 'Tilleuls - Bâtiment B', adresse: '6 allée des Tilleuls', compteur: 'GAZ', besoin: 700, performance: 0.93,
+                p1: { marche: 'MTI', prixBase: 72, station: 'DEMO-LYON', nc: 'gaz', nb: 700, djuRef: 2350 },
+                prestations: [{ act: 'P1', montant: 0, periodicite: 'Mensuel', terme: 'Terme échu', p1: { type: 'CHAUFFAGE', mode: 'releve', compteur: 'gaz', coef: 'aucun', puInteressement: 72 } },
+                    { act: 'P2', montant: 2600 }, { act: 'P3', montant: 1000 }] }] },
+    { client: 1, libelle: 'Sous-station réseau de chaleur', debut: '2025-01-01', fin: '2030-12-31', marche: 'Privé', activites: ['P2', 'P3'], base: { P2: 8400, P3: 3100 }, echeancier: 'Trimestriel', tacite: false, station: 'DEMO-LYON',
         sites: [{ nom: 'Parc des Cèdres - Sous-station', adresse: '18 avenue des Cèdres', compteur: 'CALO', prestations: [{ act: 'P2', montant: 8400 }, { act: 'P3', montant: 3100 }] }] },
-    { client: 2, libelle: 'Exploitation chauffage et ECS', debut: '2023-10-01', fin: '2027-09-30', marche: 'Privé', activites: ['P1', 'P2'], base: { P1: 27500, P2: 4800 }, echeancier: 'Trimestriel', tacite: true,
-        sites: [{ nom: 'Belvédère - Chaufferie', adresse: '2 montée du Belvédère', compteur: 'GAZ', ecs: true, prestations: [{ act: 'P1', montant: 27500, periodicite: 'Mensuel', terme: 'Terme échu' }, { act: 'P2', montant: 4800 }] }] },
-    { client: 3, libelle: 'Patrimoine Lyon 7e - lot 1', debut: '2025-07-01', fin: '2031-06-30', marche: 'Privé', activites: ['P2', 'P3'], base: { P2: 15600, P3: 7200 }, echeancier: 'Trimestriel', tacite: false, facturation: 'Globale',
+    // Acomptes chauffage (régularisés sur le réel P1 du moteur) + intéressement MCI (dépassement) ; ECS au compteur.
+    { client: 2, libelle: 'Exploitation chauffage et ECS', debut: '2023-10-01', fin: '2027-09-30', marche: 'Privé', activites: ['P1', 'P1E', 'P2'], base: { P1: 80000, P2: 4800 }, echeancier: 'Trimestriel', tacite: true, station: 'DEMO-LYON',
+        p1: { repartition: SAISON, bareme: ['MCI', 'économie 0-100 % 50 % ; dépassement 0-5 % 0 % ; dépassement 5-100 % 30 %'], ecs: true },
+        sites: [{ nom: 'Belvédère - Chaufferie', adresse: '2 montée du Belvédère', compteur: 'GAZ', ecs: true, besoin: 1050, performance: 1.08,
+            p1: { marche: 'MCI', prixBase: 74, prixBaseEcs: 6.2, station: 'DEMO-LYON', quantiteAcompte: 1100, nc: 'gaz', nb: 1050, djuRef: 2350 },
+            prestations: [{ act: 'P1', montant: 0, periodicite: 'Mensuel', terme: 'À échoir', p1: { type: 'CHAUFFAGE', mode: 'acompte', compteur: 'gaz', puInteressement: 74 } },
+                { act: 'P1E', montant: 0, periodicite: 'Mensuel', terme: 'Terme échu', p1: { type: 'ECS', mode: 'releve', compteur: 'ecs', coef: 'aucun' } },
+                { act: 'P2', montant: 4800 }] }] },
+    { client: 3, libelle: 'Patrimoine Lyon 7e - lot 1', debut: '2025-07-01', fin: '2031-06-30', marche: 'Privé', activites: ['P2', 'P3'], base: { P2: 15600, P3: 7200 }, echeancier: 'Trimestriel', tacite: false, facturation: 'Globale', station: 'DEMO-LYON',
         sites: [{ nom: 'Résidence Gerland', adresse: '55 rue du Logement', compteur: 'GAZ', prestations: [{ act: 'P2', montant: 5200 }, { act: 'P3', montant: 2400 }] },
             { nom: 'Résidence Jean-Macé', adresse: '61 rue du Logement', compteur: 'GAZ', prestations: [{ act: 'P2', montant: 5200 }, { act: 'P3', montant: 2400 }] },
             { nom: 'Résidence Guillotière', adresse: '70 rue du Logement', compteur: 'GAZ', prestations: [{ act: 'P2', montant: 5200 }, { act: 'P3', montant: 2400 }] }] },
-    { client: 4, libelle: 'Bâtiments communaux', debut: '2024-01-01', fin: '2027-12-31', marche: 'Public', activites: ['P2'], base: { P2: 12800 }, echeancier: 'Trimestriel', tacite: false,
-        sites: [{ nom: 'Mairie de Saint-Exemple', adresse: '1 place de la Mairie', compteur: 'GAZ', prestations: [{ act: 'P2', montant: 4800 }] },
-            { nom: 'Gymnase municipal', adresse: '5 rue du Stade', compteur: 'GAZ', prestations: [{ act: 'P2', montant: 5000 }] },
+    // MTI au DJU, mensuel, sans décompte (modèle d'un contrat de ville) : P1 annuel de base × C/C0 × DJU chauffés / DJU contractuels.
+    { client: 4, libelle: 'Bâtiments communaux', debut: '2024-01-01', fin: '2027-12-31', marche: 'Public', activites: ['P1', 'P2'], base: { P1: 24000, P2: 12800 }, echeancier: 'Trimestriel', tacite: false, station: 'DEMO-LYON',
+        p1: {}, saisons: SAISONS,
+        sites: [{ nom: 'Mairie de Saint-Exemple', adresse: '1 place de la Mairie', compteur: 'GAZ', besoin: 260, performance: 1.0,
+                p1: { marche: 'MTI', prixBase: 38.6, station: 'DEMO-LYON', nc: 'gaz', nb: 260, djuRef: 2308 },
+                prestations: [{ act: 'P1', montant: 10036.4, periodicite: 'Mensuel', terme: 'Terme échu', p1: { type: 'CHAUFFAGE', mode: 'dju' } }, { act: 'P2', montant: 4800 }] },
+            { nom: 'Gymnase municipal', adresse: '5 rue du Stade', compteur: 'GAZ', besoin: 360, performance: 1.0,
+                p1: { marche: 'MTI', prixBase: 38.6, station: 'DEMO-LYON', nc: 'gaz', nb: 360, djuRef: 2308 },
+                prestations: [{ act: 'P1', montant: 13896, periodicite: 'Mensuel', terme: 'Terme échu', p1: { type: 'CHAUFFAGE', mode: 'dju' } }, { act: 'P2', montant: 5000 }] },
             { nom: 'Médiathèque', adresse: '8 rue des Arts', prestations: [{ act: 'P2', montant: 3000 }] }] },
-    { client: 5, libelle: 'Groupe scolaire - chauffage', debut: '2025-09-01', fin: '2029-08-31', marche: 'Public', activites: ['P1', 'P2'], base: { P1: 19000, P2: 5400 }, echeancier: 'Mensuel', tacite: false,
-        sites: [{ nom: 'École élémentaire Jules-Exemple', adresse: '9 rue des Écoles', compteur: 'GAZ', prestations: [{ act: 'P1', montant: 19000, periodicite: 'Mensuel', terme: 'Terme échu' }, { act: 'P2', montant: 5400 }] }] },
-    { client: 6, libelle: 'Chaufferie Voltaire', debut: '2024-10-01', fin: '2028-09-30', marche: 'Privé', activites: ['P2', 'P3'], base: { P2: 7300, P3: 2900 }, echeancier: 'Trimestriel', tacite: true,
-        sites: [{ nom: 'Square Voltaire - Chaufferie', adresse: '140 boulevard Voltaire', compteur: 'GAZ', ecs: true, prestations: [{ act: 'P2', montant: 7300 }, { act: 'P3', montant: 2900 }] }] },
-    { client: 7, libelle: 'Maintenance CVC bureaux', debut: '2025-04-01', fin: '2028-03-31', marche: 'Privé', activites: ['P2'], base: { P2: 21600 }, echeancier: 'Mensuel', tacite: true,
+    // Début en cours de mois (15/09/2025) : septembre au prorata des DJU (pas de relevé à la date) ; coefficient de gestion propre.
+    { client: 5, libelle: 'Groupe scolaire - chauffage', debut: '2025-09-15', fin: '2029-08-31', marche: 'Public', activites: ['P1', 'P2'], base: { P1: 30000, P2: 5400 }, echeancier: 'Mensuel', tacite: false, station: 'DEMO-PARIS',
+        p1: {},
+        sites: [{ nom: 'École élémentaire Jules-Exemple', adresse: '9 rue des Écoles', compteur: 'GAZ', besoin: 420, performance: 1.0,
+            p1: { marche: 'MT', prixBase: 80, station: 'DEMO-PARIS', nc: 'gaz', nb: 420, djuRef: 2250 },
+            prestations: [{ act: 'P1', montant: 0, periodicite: 'Mensuel', terme: 'Terme échu', p1: { type: 'CHAUFFAGE', mode: 'releve', compteur: 'gaz', coef: 'prestation', coefValeur: 1.04, prorata: 'releve_dju' } },
+                { act: 'P2', montant: 5400 }] }] },
+    // MTI avec décompte (modèle d'une copropriété) : acomptes 1/7 d'octobre à avril, décompte en fin de saison, intéressement
+    // avec franchise de ±4 % ; ECS au compteur, trimestrielle.
+    { client: 6, libelle: 'Chaufferie Voltaire', debut: '2024-10-01', fin: '2028-09-30', marche: 'Privé', activites: ['P1', 'P1E', 'P2', 'P3'], base: { P1: 52000, P2: 7300, P3: 2900 }, echeancier: 'Trimestriel', tacite: true, station: 'DEMO-PARIS',
+        p1: { repartition: SEPTIEME, regularisation: 'decompte_dju', bareme: ['MTI', 'économie 0-4 % 0 % ; économie 4-100 % 50 % ; dépassement 0-4 % 0 % ; dépassement 4-100 % 100 %'], ecs: true },
+        saisons: SAISONS,
+        sites: [{ nom: 'Square Voltaire - Chaufferie', adresse: '140 boulevard Voltaire', compteur: 'GAZ', ecs: true, besoin: 640, performance: 0.97,
+            p1: { marche: 'MTI', prixBase: 81.6, prixBaseEcs: 10.5, station: 'DEMO-PARIS', quantiteAcompte: 640, nc: 'gaz-ecs', nb: 640, djuRef: 2250 },
+            prestations: [{ act: 'P1', montant: 0, periodicite: 'Mensuel', terme: 'À échoir', p1: { type: 'CHAUFFAGE', mode: 'acompte', compteur: 'gaz', puInteressement: 81.6 } },
+                { act: 'P1E', montant: 0, periodicite: 'Trimestriel', terme: 'Terme échu', p1: { type: 'ECS', mode: 'releve', compteur: 'ecs', coef: 'aucun' } },
+                { act: 'P2', montant: 7300 }, { act: 'P3', montant: 2900 }] }] },
+    { client: 7, libelle: 'Maintenance CVC bureaux', debut: '2025-04-01', fin: '2028-03-31', marche: 'Privé', activites: ['P2'], base: { P2: 21600 }, echeancier: 'Mensuel', tacite: true, station: 'DEMO-PARIS',
         sites: [{ nom: 'Quai Est - Bâtiment principal', adresse: '30 quai de l\'Exemple', compteur: 'CALO', prestations: [{ act: 'P2', montant: 21600, periodicite: 'Mensuel' }] }] },
-    { client: 8, libelle: 'Chaufferie gaz', debut: '2021-10-01', fin: '2026-09-30', statut: 'Terminé', marche: 'Privé', activites: ['P2'], base: { P2: 5100 }, echeancier: 'Trimestriel', tacite: false,
+    { client: 8, libelle: 'Chaufferie gaz', debut: '2021-10-01', fin: '2026-09-30', statut: 'Terminé', marche: 'Privé', activites: ['P2'], base: { P2: 5100 }, echeancier: 'Trimestriel', tacite: false, station: 'DEMO-PARIS',
         sites: [{ nom: 'Hauts de Bercy - Chaufferie', adresse: '7 rue de Bercy-Démo', compteur: 'GAZ', prestations: [{ act: 'P2', montant: 5100 }] }] },
-    { client: 9, libelle: 'Production eau chaude', debut: '2025-01-01', fin: '2029-12-31', marche: 'Privé', activites: ['P2', 'P3'], base: { P2: 9800, P3: 4100 }, echeancier: 'Trimestriel', tacite: true,
+    { client: 9, libelle: 'Production eau chaude', debut: '2025-01-01', fin: '2029-12-31', marche: 'Privé', activites: ['P2', 'P3'], base: { P2: 9800, P3: 4100 }, echeancier: 'Trimestriel', tacite: true, station: 'DEMO-LYON',
         sites: [{ nom: 'Clinique du Parc - Local technique', adresse: '3 rue de la Santé-Démo', compteur: 'GAZ', ecs: true, prestations: [{ act: 'P2', montant: 9800 }, { act: 'P3', montant: 4100 }] }] },
     // Contrats de la base marché à valider (rendus « en attente » après l'import).
-    { client: 10, libelle: 'Chaufferie Clos Fleuri', debut: '2026-10-01', fin: '2031-09-30', marche: 'Privé', activites: ['P2', 'P3'], base: { P2: 6900, P3: 2600 }, echeancier: 'Trimestriel', tacite: true,
+    { client: 10, libelle: 'Chaufferie Clos Fleuri', debut: '2026-10-01', fin: '2031-09-30', marche: 'Privé', activites: ['P2', 'P3'], base: { P2: 6900, P3: 2600 }, echeancier: 'Trimestriel', tacite: true, station: 'DEMO-LYON',
         sites: [{ nom: 'Clos Fleuri - Chaufferie', adresse: '21 chemin Fleuri', compteur: 'GAZ', prestations: [{ act: 'P2', montant: 6900 }, { act: 'P3', montant: 2600 }] }] },
-    { client: 1, libelle: 'Extension parking chauffé', debut: '2026-11-01', fin: '2030-12-31', marche: 'Privé', activites: ['P2'], base: { P2: 2400 }, echeancier: 'Annuel', tacite: false,
+    { client: 1, libelle: 'Extension parking chauffé', debut: '2026-11-01', fin: '2030-12-31', marche: 'Privé', activites: ['P2'], base: { P2: 2400 }, echeancier: 'Annuel', tacite: false, station: 'DEMO-LYON',
         sites: [{ nom: 'Parc des Cèdres - Parking', adresse: '20 avenue des Cèdres', prestations: [{ act: 'P2', montant: 2400 }] }] },
-    { client: 6, libelle: 'Avenant de périmètre ECS', debut: '2026-09-01', fin: '2028-09-30', marche: 'Privé', activites: ['P2'], base: { P2: 1800 }, echeancier: 'Trimestriel', tacite: false,
+    { client: 6, libelle: 'Avenant de périmètre ECS', debut: '2026-09-01', fin: '2028-09-30', marche: 'Privé', activites: ['P2'], base: { P2: 1800 }, echeancier: 'Trimestriel', tacite: false, station: 'DEMO-PARIS',
         sites: [{ nom: 'Square Voltaire - ECS', adresse: '142 boulevard Voltaire', prestations: [{ act: 'P2', montant: 1800 }] }] },
 ];
 const A_VALIDER = { avecPdf: 10, sansPdf: 11, refuse: 12 };
 
-async function contratsEtPatrimoine(codesClients: string[]) {
+const QE_GAZ = 0.0105;        // MWh PCS par m³ de gaz
+const QE_ECS = 0.058;         // MWh par m³ d'eau chaude (énergie de l'ECS, déduite du gaz dans la formule de NC)
+const DEBUT_RELEVES = '2023-09-30';
+const FIN_RELEVES = '2026-10-31';
+
+/** Météo et indices : stations, DJU journaliers, indices mensuels de révision. */
+async function meteoEtIndices(): Promise<Record<CodeStation, Map<string, number>>> {
+    const mensuels = {} as Record<CodeStation, Map<string, number>>;
+    for (const s of STATIONS) {
+        await set('weatherStations', `demo-${s.code}`, { code: s.code, name: s.name, isActive: true });
+        const jours = djuJournaliers(s.code, '2023-07-01', FIN_RELEVES);
+        for (let i = 0; i < jours.length; i += 400) {
+            const b = adminDb.batch();
+            for (const d of jours.slice(i, i + 400)) b.set(adminDb.collection('djus').doc(`${s.code}_${d.date}`), { stationCode: s.code, stationName: s.name, date: d.date, value: d.value });
+            await b.commit();
+        }
+        mensuels[s.code] = djuMensuels(jours);
+    }
+    for (const ix of INDICES) {
+        await set('indices', `demo-ix-${ix.code}`, { code: ix.code, label: ix.label, unit: ix.unit, active: true });
+        const b = adminDb.batch();
+        for (const v of valeursIndice(ix.code, '2023-01', '2026-10')) b.set(adminDb.collection('indexValues').doc(`demo-ix-${ix.code}_${v.period}`), { indexId: `demo-ix-${ix.code}`, period: v.period, value: v.value, source: 'démo' });
+        await b.commit();
+    }
+    const saison = [...mensuels['DEMO-LYON'].entries()].filter(([m]) => m >= '2025-10' && m <= '2026-05').reduce((s, [, v]) => s + v, 0);
+    console.log(`Météo et indices : 2 stations (DJU journaliers, saison 2025-2026 Lyon : ${Math.round(saison)} DJU), indices PEGFM et ATRDFM.`);
+    return mensuels;
+}
+
+/** Fins de mois de `debut` à `fin`. */
+function finsDeMois(debut: string, fin: string): string[] {
+    const out: string[] = [];
+    let [y, m] = debut.split('-').map(Number);
+    for (;;) {
+        const d = new Date(Date.UTC(y, m, 0)).toISOString().slice(0, 10);
+        if (d > fin) break;
+        out.push(d);
+        m++; if (m > 12) { m = 1; y++; }
+    }
+    return out;
+}
+
+async function contratsEtPatrimoine(codesClients: string[], djuMois: Record<CodeStation, Map<string, number>>) {
     const rc = await importer('contracts', [
         ['Client', 'Libellé', 'Société émettrice', 'Date de début', 'Date de fin', 'Statut', 'Type de marché', 'Activités', 'Montant base P1', 'Montant base P2', 'Montant base P3',
             'Échéancier de facturation', 'Facturation', 'Reconduction', 'Tacite reconduction', 'Durée de reconduction', 'Préavis', 'Signé par la société', 'Signé par le client'],
@@ -242,35 +342,109 @@ async function contratsEtPatrimoine(codesClients: string[]) {
         ...sites.map(s => [codesClients[s.k.client], s.contrat.code, s.nom, s.adresse, CLIENTS[s.k.client].cp, CLIENTS[s.k.client].ville]),
     ]);
     const codesSites = sites.map((_, i) => parLigne(rs).get(i + 2)!.code!);
+    const r_ids = (i: number) => parLigne(rs).get(i + 2)!.id;
 
-    const compteurs = sites.flatMap((s, i) => [
-        ...(s.compteur ? [{ site: codesSites[i], nom: s.compteur === 'GAZ' ? 'Gaz chaufferie' : 'Calories sous-station', type: s.compteur, base: 100000 + i * 37000, pas: s.compteur === 'GAZ' ? 18000 + i * 900 : 40 + i * 3 }] : []),
-        ...(s.ecs ? [{ site: codesSites[i], nom: 'Eau chaude sanitaire', type: 'EAU', base: 1200 + i * 150, pas: 60 + i * 4 }] : []),
+    // Compteurs : gaz (m³, QE) ou calories (MWh), ECS (m³).
+    type Cpt = { site: number; cle: 'gaz' | 'ecs'; nom: string; type: 'GAZ' | 'CALO' | 'EAU' };
+    const compteurs: Cpt[] = sites.flatMap((s, i) => [
+        ...(s.compteur ? [{ site: i, cle: 'gaz' as const, nom: s.compteur === 'GAZ' ? 'Gaz chaufferie' : 'Calories sous-station', type: s.compteur }] : []),
+        ...(s.ecs ? [{ site: i, cle: 'ecs' as const, nom: 'Eau chaude sanitaire', type: 'EAU' as const }] : []),
     ]);
     const rm = await importer('meters', [
         ['Site', 'Nom', 'Type de compteur', 'PDL / PCE', 'Emplacement', 'Statut'],
-        ...compteurs.map((m, i) => [m.site, m.nom, m.type, m.type === 'GAZ' ? `GI${String(990000000 + i * 7919).padStart(12, '0')}` : '', m.type === 'EAU' ? 'Local ECS' : 'Chaufferie', 'En service']),
+        ...compteurs.map((m, i) => [codesSites[m.site], m.nom, m.type, m.type === 'GAZ' ? `GI${String(990000000 + i * 7919).padStart(12, '0')}` : '', m.type === 'EAU' ? 'Local ECS' : 'Chaufferie', 'En service']),
     ]);
     const codesCompteurs = compteurs.map((_, i) => parLigne(rm).get(i + 2)!.code!);
+    const codeCompteur = (site: number, cle: 'gaz' | 'ecs') => codesCompteurs[compteurs.findIndex(c => c.site === site && c.cle === cle)];
 
-    // Relevés mensuels sur 12 mois (consommation plus forte l'hiver) ; le dernier mois manque sur deux compteurs (alertes).
-    const mois = Array.from({ length: 12 }, (_, i) => { const d = new Date(Date.UTC(2025, 10 + i, 1)); return d.toISOString().slice(0, 10); });
-    const hiver = [1.6, 1.8, 1.7, 1.4, 1.0, 0.6, 0.4, 0.3, 0.3, 0.5, 0.9, 1.3];
-    await importer('readings', [
-        ['Compteur', 'Date du relevé', 'Index', 'Type de relevé', 'Commentaire'],
-        ...compteurs.flatMap((m, i) => {
-            let index = m.base;
-            return mois.filter((_, j) => !(j === 11 && i % 6 === 2)).map((jour, j) => {
-                index += Math.round(m.pas * hiver[j]);
-                return [codesCompteurs[i], jour, index, j === 7 && i % 4 === 0 ? 'Estimé' : 'Réel', j === 7 && i % 4 === 0 ? 'Accès chaufferie impossible (congés)' : ''];
-            });
-        }),
+    // Relevés de fin de mois : consommation liée aux DJU de la station du contrat (chauffage) et à un besoin d'ECS.
+    // Octobre 2026 manque sur le compteur gaz du Bâtiment B : sa facture P1 au compteur de novembre est bloquée.
+    const fins = finsDeMois(DEBUT_RELEVES, FIN_RELEVES);
+    const indexInitial = (i: number) => (compteurs[i].type === 'EAU' ? 1200 + i * 150 : compteurs[i].type === 'CALO' ? 4000 + i * 90 : 150000 + i * 37000);
+    const lignesReleves: unknown[][] = [];
+    const bloque = codeCompteur(sites.findIndex(s => s.nom === 'Tilleuls - Bâtiment B'), 'gaz');
+    compteurs.forEach((m, i) => {
+        const s = sites[m.site];
+        let index = indexInitial(i);
+        fins.forEach((jour, j) => {
+            if (j > 0) {
+                const mois = jour.slice(0, 7);
+                const dju = djuMois[s.k.station].get(mois) ?? 0;
+                const ecsM3 = Math.round((s.ecs ? 110 + 45 * Math.cos((2 * Math.PI * (Number(mois.slice(5)) - 1)) / 12) : 0) * (1 + 0.04 * Math.sin(j * 1.7)));
+                const besoin = s.besoin ?? 600;
+                const chauffageMwh = (besoin / 2350) * dju * (s.performance ?? 1) * (1 + 0.03 * Math.sin(j * 2.3));
+                const mwhEntrants = chauffageMwh + (ecsM3 * QE_ECS) / 0.9;
+                index += m.type === 'EAU' ? ecsM3 : m.type === 'CALO' ? Math.round(mwhEntrants * 10) / 10 : Math.round(mwhEntrants / QE_GAZ);
+            }
+            if (codesCompteurs[i] === bloque && jour === FIN_RELEVES) return;
+            const estime = j % 9 === 4 && i % 4 === 0;
+            lignesReleves.push([codesCompteurs[i], jour, Math.round(index * 10) / 10, estime ? 'Estimé' : 'Réel', estime ? 'Accès chaufferie impossible : index estimé' : '']);
+        });
+    });
+    await importer('readings', [['Compteur', 'Date du relevé', 'Index', 'Type de relevé', 'Commentaire'], ...lignesReleves]);
+
+    // Paramétrage P1 (valeurs d'origine) : compteurs, sites et postes, contrats, formules de révision.
+    const ORIGINE = 'contrat d\'origine (démo)';
+    await importer('meters', [
+        ['Code compteur', 'P1 · Usage', 'P1 · Énergie', 'P1 · Coefficient de conversion (QE)', 'P1 · Motif'],
+        ...compteurs.flatMap((m, i) => !sites[m.site].p1 ? [] : [[codesCompteurs[i], m.cle === 'ecs' ? 'ecs' : 'entrant', m.cle === 'ecs' ? '' : 'gaz', String(m.cle === 'ecs' ? QE_ECS : QE_GAZ).replace('.', ','), ORIGINE]]),
+    ]);
+    await importer('sites', [
+        ['Code site', 'P1 · Type de marché', 'P1 · Période de référence', 'P1 · Prix de base chauffage', 'P1 · Prix de base ECS', 'P1 · Station météo', 'P1 · Quantité annuelle des acomptes',
+            'P1 · Poste · Formule de NC', 'P1 · Poste · Cible NB', 'P1 · Poste · Unité de la cible', 'P1 · Poste · DJU de référence', 'P1 · Motif'],
+        ...sites.flatMap((s, i) => !s.p1 ? [] : [[codesSites[i], s.p1.marche, 'saison_de_chauffe', s.p1.prixBase, s.p1.prixBaseEcs ?? '', s.p1.station, s.p1.quantiteAcompte ?? '',
+            s.p1.nc === 'gaz-ecs' ? `${codeCompteur(i, 'gaz')} - ${codeCompteur(i, 'ecs')}` : codeCompteur(i, 'gaz'), s.p1.nb, 'MWh', s.p1.djuRef, ORIGINE]]),
+    ]);
+    const kP1 = CONTRATS.map((k, i) => ({ k, code: contrats[i].code! })).filter(x => x.k.p1);
+    const colonnesBareme = [...new Set(kP1.flatMap(x => (x.k.p1!.bareme ? [x.k.p1!.bareme[0]] : [])))];
+    await importer('contracts', [
+        ['N° de contrat', 'P1 · Coefficient de gestion', 'P1 · Répartition des acomptes P1', 'P1 · Régularisation des acomptes', ...colonnesBareme.map(m => `P1 · Barème de partage ${m}`), 'P1 · Motif'],
+        ...kP1.map(x => [x.code, x.k.p1!.coefGestion ? String(x.k.p1!.coefGestion).replace('.', ',') : '', x.k.p1!.repartition ?? '', x.k.p1!.regularisation ?? '',
+            ...colonnesBareme.map(m => (x.k.p1!.bareme?.[0] === m ? x.k.p1!.bareme[1] : '')), ORIGINE]),
+    ]);
+    // Formules de révision P1 : p0 fixe, molécule (PEG) et acheminement (ATRD), base M0 = janvier 2024.
+    const m0 = (code: typeof INDICES[number]['code']) => String(valeursIndice(code, '2024-01', '2024-01')[0].value).replace('.', ',');
+    const termes = `p0=0,15 ; Kmol=0,6*PEGFM@${m0('PEGFM')} ; TVD=0,25*ATRDFM@${m0('ATRDFM')}`;
+    await importer('p1formules', [
+        ['Contrat', 'Formule', 'Usage', 'Périmètre', 'Motif', 'Forme', 'Périodicité de révision', 'Termes', 'Mois M0', 'Unité du prix', 'Arrondi du coefficient'],
+        ...kP1.flatMap(x => [
+            [x.code, 'Chauffage gaz', 'Chauffage', 'contrat', ORIGINE, 'A', 'mensuel', termes, '01/2024', 'EUR/MWh', 5],
+            ...(x.k.p1!.ecs ? [[x.code, 'ECS gaz', 'ECS', 'contrat', ORIGINE, 'A', 'mensuel', termes, '01/2024', 'EUR/m3', 5]] : []),
+        ]),
     ]);
 
-    // Prestations : une par site et activité, depuis le début du contrat.
-    const lignes = sites.flatMap((s, i) => s.prestations.map(p => [codesSites[i], p.act, s.k.debut, '', p.montant, p.periodicite ?? s.k.echeancier, p.terme ?? 'À échoir',
-        p.act === 'P1' ? (s.compteur === 'GAZ' ? codesCompteurs[compteurs.findIndex(m => m.site === codesSites[i] && m.type === 'GAZ')] ?? '' : '') : '']));
-    await importer('services', [['Site', 'Activité', 'Date de début', 'Date de fin', 'Montant annuel HT', 'Périodicité', 'Terme', 'Compteur'], ...lignes.map(l => [l[0], l[1], l[2], l[3], l[4], l[5], l[6], l[7]])]);
+    // Prestations : une par site et activité, depuis le début du contrat (P1 : chauffage ou ECS, au compteur ou en acomptes).
+    const lignes = sites.flatMap((s, i) => s.prestations.map(p => [
+        codesSites[i], p.act, s.k.debut, '', p.montant, p.periodicite ?? s.k.echeancier, p.terme ?? 'À échoir',
+        p.p1?.compteur ? codeCompteur(i, p.p1.compteur) : '', p.p1?.type ?? '', p.p1?.mode === 'releve' ? 'Au compteur' : p.p1?.mode === 'acompte' ? 'Acomptes' : p.p1?.mode === 'dju' ? 'MTI au DJU' : '',
+        p.p1?.mode === 'releve' ? 'Paramétrage P1' : '', p.p1?.coefValeur ? String(p.p1.coefValeur).replace('.', ',') : '',
+        p.p1?.coef ? { aucun: 'Aucun', prestation: 'Prestation', contrat: 'Contrat' }[p.p1.coef] : '',
+        p.p1?.mode === 'releve' ? { releve_jours: 'Relevé sinon jours', releve_dju: 'Relevé sinon DJU', jours: 'Jours', dju: 'DJU' }[p.p1.prorata ?? 'releve_jours'] : '',
+    ]));
+    const rp = await importer('services', [['Site', 'Activité', 'Date de début', 'Date de fin', 'Montant annuel HT', 'Périodicité', 'Terme', 'Compteur', 'Type P1', 'Facturation P1',
+        'Prix au m³', 'Coefficient de prix', 'Coefficient de gestion', 'Prorata (mois partiel)'], ...lignes]);
+    // Prix unitaire de l'intéressement (écran « Gérer l'intéressement » de la prestation).
+    let n = 2;
+    for (const s of sites) for (const p of s.prestations) {
+        const r = parLigne(rp).get(n++)!;
+        if (p.p1?.puInteressement) await adminDb.collection('services').doc(r.id).update({ interestUnitPrice: p.p1.puInteressement });
+    }
+
+    // Saisons de chauffe (allumage, arrêt) des sites au DJU ou en décompte.
+    for (const [i, s] of sites.entries()) for (const [allumage, arret] of s.k.saisons && s.p1 ? s.k.saisons : []) {
+        await setSaisonChauffe(r_ids(i), { saison: saisonDe(allumage), allumage, arret }, 'demo@example.com');
+    }
+
+    // Réel P1 du moteur (base de la régularisation des acomptes) : saison 2025-2026 du Belvédère, chauffage.
+    const iBelv = sites.findIndex(s => s.nom === 'Belvédère - Chaufferie');
+    const belv = sites[iBelv];
+    const reel = finsDeMois('2025-10-01', '2026-09-30').map(j => {
+        const mois = j.slice(0, 7);
+        const mwh = (belv.besoin! / 2350) * (djuMois['DEMO-LYON'].get(mois) ?? 0) * belv.performance!;
+        return [codesSites[iBelv], `${mois.slice(5)}/${mois.slice(0, 4)}`, Math.round(mwh * belv.p1!.prixBase * 1.04 * 100) / 100, 'Chauffage'];
+    });
+    await importer('p1reel', [['Site', 'Mois', 'Montant P1 HT', 'Usage'], ...reel]);
+    console.log('Paramétrage P1 : 7 sites (MTI au DJU, MTI acomptes + décompte, MTI et MCI au compteur, MT), formules de révision (C/C0 arrondi à 5 décimales), barèmes, coefficients de gestion, saisons de chauffe ; réel P1 du Belvédère importé.');
     return { contrats, codesSites };
 }
 
@@ -359,7 +533,8 @@ async function factures(contrats: { id: string }[]) {
     await referentiels();
     await comptes();
     const codesClients = await clientsEtContacts();
-    const { contrats } = await contratsEtPatrimoine(codesClients);
+    const djuMois = await meteoEtIndices();
+    const { contrats } = await contratsEtPatrimoine(codesClients, djuMois);
     await documents(contrats);
     await factures(contrats);
     console.log('Jeu de données prêt.');

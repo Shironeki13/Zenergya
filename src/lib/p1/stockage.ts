@@ -75,8 +75,9 @@ export const P1_PARAMS: Record<P1Scope, Record<string, ParamDef>> = {
     },
     contract: {
         regimeCp: { label: 'Régime du compte de prestation', kind: 'enum', options: REGIMES_CP, help: 'CP / CPI : refacturation, frais de gestion, coefficient, révisé.' },
-        coefficientGestion: { label: 'Coefficient de gestion', kind: 'positive', help: 'Régime « coefficient » : HT × coefficient.' },
+        coefficientGestion: { label: 'Coefficient de gestion', kind: 'positive', help: 'Régime « coefficient » : HT × coefficient. P1 au compteur : prix × coefficient, pour les prestations « coefficient du contrat ».' },
         fraisGestionAnnuels: { label: 'Frais de gestion annuels', kind: 'nonNegative', unit: '€ HT / an' },
+        regularisation: { label: 'Régularisation des acomptes', kind: 'enum', options: ['reel_moteur', 'decompte_dju'], help: 'reel_moteur : réel P1 du moteur importé − acomptes ; decompte_dju : décompte MTI (P1₀ × C/C0 annuel × DJU de la saison / DJU contractuels) − acomptes.' },
         correspondanceTwimm: { label: 'Code contrat TWIMM', kind: 'text' },
         repartitionAcomptes: { label: 'Répartition des acomptes P1', kind: 'repartition', help: 'Chauffage : 12 parts mensuelles en %, de janvier à décembre, sommant à 100 (ex. saison de chauffe).' },
         repartitionAcomptesEcs: { label: 'Répartition des acomptes ECS', kind: 'repartition', help: 'ECS : 12 parts mensuelles en %, sommant à 100 (en général linéaire).' },

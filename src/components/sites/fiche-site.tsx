@@ -46,7 +46,7 @@ export function manquesPrestation(s: Service): string[] {
     if (!s.vatRateId) m.push('TVA');
     if (!s.scheduleId) m.push('périodicité');
     if (!s.billingTermId) m.push('terme');
-    if (!(Number(s.price) > 0) && !(s.type === 'P1' && (s.p1Mode === 'acompte' || s.p1Mode === 'releve'))) m.push('montant');
+    if (!(Number(s.price) > 0) && !(s.type === 'P1' && (s.p1Mode === 'acompte' || s.p1Mode === 'releve' || s.p1Mode === 'dju'))) m.push('montant');
     return m;
 }
 
@@ -84,8 +84,8 @@ export function TableauPrestations({ services, activities, schedules, onOuvrir, 
                                         <TableCell><Badge variant="outline">{s.type}</Badge></TableCell>
                                         <TableCell className="font-medium">{libellePrestation(s, activities)}</TableCell>
                                         <TableCell className="text-right">
-                                            {s.type === 'P1' && (s.p1Mode === 'acompte' || s.p1Mode === 'releve')
-                                                ? <span className="text-xs text-muted-foreground">{s.p1Mode === 'acompte' ? 'acomptes P1' : 'au relevé'}</span>
+                                            {s.type === 'P1' && (s.p1Mode === 'acompte' || s.p1Mode === 'releve' || s.p1Mode === 'dju')
+                                                ? <span className="text-xs text-muted-foreground">{s.p1Mode === 'acompte' ? 'acomptes P1' : s.p1Mode === 'dju' ? 'au DJU' : 'au compteur'}</span>
                                                 : eur(Number(s.price) || 0)}
                                         </TableCell>
                                         <TableCell className="text-sm">{schedules.find(x => x.id === s.scheduleId)?.name ?? '—'}</TableCell>

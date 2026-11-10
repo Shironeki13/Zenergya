@@ -106,6 +106,9 @@ await t('user changes status of a validated contract', assertSucceeds(updateDoc(
 await t('user changes status of a legacy contract', assertSucceeds(updateDoc(doc(user, 'contracts', 'ctn'), { status: 'Terminé' })));
 await t('user reads P1 parametrage', assertSucceeds(getDoc(doc(user, 'p1Parametrage', 'site:s'))));
 await t('user cannot write P1 parametrage', assertFails(updateDoc(doc(user, 'p1Parametrage', 'site:s'), { params: { typeMarche: [] } })));
+await t('user reads heating seasons', assertSucceeds(getDocs(collection(user, 'saisonsChauffe'))));
+await t('user cannot write heating season', assertFails(setDoc(doc(user, 'saisonsChauffe', 's_2025-2026'), { siteId: 's', saison: '2025-2026', allumage: '2025-10-01' })));
+await t('admin cannot write heating season', assertFails(setDoc(doc(admin, 'saisonsChauffe', 's_2025-2026'), { siteId: 's', saison: '2025-2026', allumage: '2025-10-01' })));
 await t('admin cannot write P1 parametrage', assertFails(setDoc(doc(admin, 'p1Parametrage', 'site:x'), { kind: 'site' })));
 await t('admin cannot delete P1 parametrage', assertFails(deleteDoc(doc(admin, 'p1Parametrage', 'site:s'))));
 await t('user reads meter readings', assertSucceeds(getDoc(doc(user, 'meterReadings', 'r'))));

@@ -278,3 +278,80 @@ l'élément qui le porte :
   saisi sur la prestation : c'est le QE du compteur. `npm run p1:reprise` reprend une fois l'existant (même logique,
   `src/services/p1-reprise-admin.ts`).
 
+
+## 9. Facturation P1 au compteur (chauffage et ECS)
+
+Code : `src/lib/billing/p1-compteur.ts` (calcul), `src/lib/billing/contract-billing.ts` (échéances, lignes),
+`src/services/contract-billing-admin.ts` (compteurs, relevés, QE, coefficient du contrat, DJU).
+
+Prestation P1 de type chauffage ou ECS, « Facturation P1 : au compteur », à terme échu, mensuelle ou trimestrielle
+(toute périodicité : chaque mois est calculé et détaillé dans la ligne de facture, base de l'annexe).
+
+- **Consommation du mois**, par compteur : index du dernier relevé du mois − index du dernier relevé facturé de la
+  prestation (à défaut, dernier relevé antérieur au mois). Un même compteur peut servir à deux prestations (ECS facturée
+  et déduite du chauffage) : le dernier index facturé est suivi par prestation.
+- **Compteurs** : celui de la prestation ; sinon, en chauffage, les compteurs signés de la formule de NC des postes du
+  site (entrées − déductions), à défaut ceux d'usage « vente », puis « entrant » ; en ECS, ceux d'usage « ecs ».
+- **Unités** : chauffage en MWh (compteur en MWh, en kWh, ou × QE du compteur ; jamais 1 par défaut) ; ECS en m³.
+- **Prix du mois** : paramétrage P1 (prix de base du site × formule de révision P1 du mois) ou prix unitaire de la
+  prestation × sa révision ; × **coefficient de gestion** : aucun, celui de la prestation, ou celui du contrat
+  (paramétrage P1 daté, `coefficientGestion`) — chaque prestation choisit.
+- **Mois partiel** (début ou fin de contrat, de prestation) : périodes calées sur les mois civils ; méthode choisie par
+  prestation : relevé à la date de coupure s'il existe, sinon prorata des jours (défaut) ou des DJU de la station du
+  site ; ou toujours jours, toujours DJU. Un mois sans DJU (été) se proratise aux jours.
+- **Blocages** (facture non émise, cause affichée) : relevé du mois manquant, index en baisse, QE inconnu, quantité
+  négative (formule de NC), prix ou coefficient du contrat non renseigné, DJU manquants.
+- **Relevés figés** : tous les relevés pris (début et fin de chaque mois et compteur) ne se modifient plus.
+- **Régularisation** : un usage facturé au compteur est déjà au réel, il ne se régularise pas (réel total refusé).
+- **Ligne de facture** : `p1Releve` garde le détail par mois (`detail` : dates, méthode, ratio, DJU, compteurs et
+  index, quantité, prix de base, coefficient et termes de révision, coefficient de gestion, prix appliqué, montant).
+
+## 10. MTI : facturation au DJU et décompte
+
+Règles métier : [p1-regles-metier.md](p1-regles-metier.md). Code : `src/lib/billing/contract-billing.ts` (`mtiAuDju`),
+`src/lib/billing/p1-decompte.ts`, `src/lib/p1/saisons.ts`, `src/lib/p1/formules.ts` (`coefficientSaison`),
+`src/services/p1-regularisation-admin.ts` (`decomptesMti`).
+
+- **Saisons de chauffe** (fiche du site › Paramétrage P1 › Saisons de chauffe ; collection `saisonsChauffe`, écrite
+  par le serveur) : dates d'allumage et d'arrêt par saison (juillet → juin). Un mois d'hiver (octobre à mai) sans
+  saison saisie bloque la facture au DJU et le décompte ; l'été sans saison : hors saison.
+- **MTI au DJU** (prestation P1 chauffage, « Facturation P1 : MTI au DJU », mensuelle à terme échu) : le montant de la
+  prestation est le P1 annuel de base du site. Chaque mois : partie chauffée (allumage → arrêt), DJU de la station du
+  site sur cette partie (arrondis au centième), montant = arrondi(P1 annuel × C/C0 du mois / DJU contractuels × DJU, 2).
+  DJU contractuels : DJU de référence du poste de consommation. Hors saison : pas de ligne.
+- **Acomptes puis décompte** (prestation en acomptes ; paramètre du contrat « Régularisation des acomptes » =
+  `decompte_dju`) : la régularisation calcule, par saison terminée (arrêt saisi), P1 dû = arrondi(quantité de
+  référence × prix de base × C/C0 annuel × DJU de la saison / DJU contractuels, 2), C/C0 annuel = moyenne des
+  coefficients mensuels pondérée par les DJU (allumage et arrêt au prorata), arrondie comme la formule ; P1 dû réparti
+  par mois au prorata des DJU, comparé aux acomptes ; ligne « Décompte P1 chauffage MTI » avec son détail
+  (`p1Regul.decompte`). Les intéressements de la période s'ajoutent comme avant. Acomptes 1/7 : répartition
+  « 14,2857 » sur les 7 mois de la saison.
+- **Formules de révision** : facteur fixe d'avenant (multiplie C/C0) et arrondi du coefficient (ex. 5 décimales),
+  saisis dans la version de la formule (écran ou import « Formules de révision P1 » : colonnes « Facteur fixe »,
+  « Arrondi du coefficient »).
+- **ECS déduite d'une formule de NC** : convertie par le qECS du compteur (MWh PCS / m³), à défaut son QE.
+
+## 11. Annexe P1 des factures et des avoirs
+
+Code : `src/lib/billing/p1-annexe.ts` (contenu, logique pure), `src/lib/pdf/accounting-document.tsx` (pages PDF),
+`src/lib/billing/p1-annexe-xlsx.ts` (tableur), `src/services/document-archive.ts`, route
+`/api/documents/{invoices|credit-notes}/{id}/annexe` (`?format=xlsx` pour le tableur).
+
+- **Contenu**, par façon de facturer présente dans le document (une annexe chacune) : P1 chauffage au compteur, P1 ECS
+  au compteur, MTI au DJU, acomptes, décompte MTI, régularisation sur le réel. Chaque annexe porte la formule en clair
+  et ses références (DJU contractuels, unité), le tableau de révision (indices du mois, valeurs de base, C/C0 ; un
+  tableau par jeu d'indices si les sites n'ont pas les mêmes), une ligne par site et par mois (index M-1 et M avec
+  leurs dates, consommation, conversion, prorata, PU de base, C/C0, coefficient de gestion, PU final ; ou base,
+  montant révisé, période de chauffe, DJU ; ou P1 dû, acomptes), les montants HT, TVA, TTC et les totaux. Une formule
+  de NC à plusieurs compteurs : une ligne grisée par compteur, puis le total du mois. Index estimé : « (e) ».
+- **Tout vient du détail figé dans les lignes** du document (`p1Releve.detail`, `p1Dju`, `p1Acompte`, `p1Regul`) :
+  l'annexe d'une facture émise ne change plus, et se recalcule à l'identique.
+- **Dans le PDF** de la facture ou de l'avoir : pages paysage à la suite du document (archivées avec lui) ; sur la
+  facture, la désignation des lignes P1 est raccourcie (« détail en annexe »). Un document sans P1 détaillé n'a pas
+  d'annexe. Les factures archivées avant cette évolution gardent leur PDF d'origine ; leur annexe reste disponible
+  seule si leurs lignes portent le détail.
+- **Seule** : boutons « Annexe P1 » (PDF) et « Annexe (tableur) » sur la fiche de la facture, entrées du menu de la
+  liste des factures, icône sur la liste des avoirs. Tableur : un onglet par annexe, valeurs numériques brutes.
+- **TVA** : par ligne à titre indicatif, la dernière ligne de chaque taux ajustée pour que la somme soit la TVA du
+  total HT de l'annexe à ce taux (plus de correction manuelle au centime) ; la TVA de la facture reste calculée sur le
+  total HT par taux.

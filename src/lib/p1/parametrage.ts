@@ -115,6 +115,7 @@ export type ParametrageContratP1 = {
     correspondanceTwimm: Historise<CorrespondanceContratTwimm>;
     regimeCp: Historise<RegimeCp>;
     coefficientGestion: Historise<number>;       // régime « coefficient »
+    regularisation: Historise<'reel_moteur' | 'decompte_dju'>;   // acomptes P1 : réel du moteur importé, ou décompte MTI calculé
     fraisGestionAnnuels: Historise<number>;      // régime « frais_gestion », EUR HT / an
     interessementContrat: InteressementContrat[];
     sansSite: Version<boolean> | null;           // le contrat ne porte légitimement aucun site

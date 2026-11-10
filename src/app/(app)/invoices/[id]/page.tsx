@@ -17,7 +17,8 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { ChevronLeft, Mail, FileDown, Loader2 } from 'lucide-react';
+import { ChevronLeft, Mail, FileDown, FileSpreadsheet, Loader2 } from 'lucide-react';
+import { aAnnexeP1 } from '@/lib/billing/p1-annexe';
 import { Logo } from '@/components/logo';
 import { Separator } from '@/components/ui/separator';
 
@@ -169,6 +170,14 @@ export default function InvoiceDetailPage() {
             <Mail className="h-4 w-4 mr-2" />
             Envoyer par email
           </Button>
+          {aAnnexeP1(invoice.lineItems) && (<>
+            <Button variant="outline" size="sm" asChild title="Annexe P1 seule (les mêmes pages sont jointes au PDF de la facture)">
+              <a href={`/api/documents/invoices/${invoice.id}/annexe`} target="_blank" rel="noopener noreferrer"><FileDown className="h-4 w-4 mr-2" />Annexe P1</a>
+            </Button>
+            <Button variant="outline" size="sm" asChild title="Annexe P1 au format tableur">
+              <a href={`/api/documents/invoices/${invoice.id}/annexe?format=xlsx`}><FileSpreadsheet className="h-4 w-4 mr-2" />Annexe (tableur)</a>
+            </Button>
+          </>)}
           <Button size="sm" onClick={handleOpenPdf}>
             <FileDown className="h-4 w-4 mr-2" />
             PDF

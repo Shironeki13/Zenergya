@@ -31,7 +31,18 @@ export type FormuleVersion = {
     prixFixe: boolean;
     periodicite: PeriodiciteRevision;
     termes: TermeRevision[];
+    /**
+     * Facteur fixe multipliant le coefficient (avenant : remplacement d'un indice qui n'est plus publié, ex.
+     * (indice de substitution + taxe) / (indice d'origine + taxe d'origine)). Absent : 1.
+     */
+    facteur?: number | null;
+    /** Décimales du coefficient (ex. 5) ; absent : non arrondi. */
+    arrondiCoefficient?: number | null;
 };
+
+/** Arrondi d'un coefficient au nombre de décimales de la formule (sans arrondi s'il n'est pas fixé). */
+export const arrondirCoefficient = (c: number, decimales: number | null | undefined) =>
+    decimales === null || decimales === undefined ? c : Math.round(c * 10 ** decimales) / 10 ** decimales;
 
 export type PerimetreFormule = { type: 'contrat' } | { type: 'energies'; energies: Energie[] } | { type: 'sites'; siteIds: string[] };
 
@@ -86,6 +97,8 @@ export function validateFormule(v: FormuleVersion, indexCodes: string[]): { erro
     if (v.dateM0 !== null && !/^\d{4}-\d{2}$/.test(v.dateM0)) errors.push('Mois M0 : AAAA-MM.');
     if (v.dateM0 === null && !v.m0Manquante?.trim()) errors.push('Mois M0 inconnu : dites ce qui manque (il ne se suppose pas).');
     if (v.regimeKmol === 'fixe' && !(v.prixMoleculeNegocie && v.prixMoleculeNegocie > 0)) errors.push('Molécule en régime fixe : prix négocié obligatoire.');
+    if (v.facteur !== undefined && v.facteur !== null && !(v.facteur > 0)) errors.push('Facteur fixe : nombre positif.');
+    if (v.arrondiCoefficient !== undefined && v.arrondiCoefficient !== null && !(Number.isInteger(v.arrondiCoefficient) && v.arrondiCoefficient >= 0 && v.arrondiCoefficient <= 8)) errors.push('Arrondi du coefficient : de 0 à 8 décimales.');
     if (v.prixFixe) return { errors, warnings };
     const actifs = v.termes.filter(t => t.actif);
     if (actifs.length === 0) { warnings.push('Aucun terme actif : la formule documente le marché, aucun prix révisé n\'en sort.'); return { errors, warnings }; }
@@ -196,7 +209,32 @@ export function coefficientRevision(v: FormuleVersion, mois: string, series: Ser
         coefficient = den ? num / den : NaN;
     }
     if (causes.length) return { causes: [...new Set(causes)], lignes };
-    return { coefficient, provisoire, alertes, lignes };
+    if (v.facteur !== undefined && v.facteur !== null) {
+        if (!(v.facteur > 0)) return { causes: ['facteur fixe de la formule négatif ou nul'], lignes };
+        coefficient *= v.facteur;
+    }
+    return { coefficient: arrondirCoefficient(coefficient, v.arrondiCoefficient), provisoire, alertes, lignes };
+}
+
+/**
+ * Coefficient annuel d'une saison : moyenne des coefficients mensuels (non arrondis) pondérée par les DJU de chaque mois
+ * (mois d'allumage et d'arrêt au prorata), arrondie comme la formule. Message si un mois n'est pas calculable.
+ */
+export function coefficientSaison(v: FormuleVersion, djuParMois: Record<string, number>, series: SerieValues, seuilReport = 3):
+    { coefficient: number; mois: { mois: string; dju: number; coefficient: number }[] } | { causes: string[] } {
+    const brut = { ...v, arrondiCoefficient: null };
+    const mois = Object.entries(djuParMois).filter(([, d]) => d > 0).sort(([a], [b]) => a.localeCompare(b));
+    const total = mois.reduce((s, [, d]) => s + d, 0);
+    if (!(total > 0)) return { causes: ['aucun DJU sur la saison'] };
+    const detail: { mois: string; dju: number; coefficient: number }[] = [];
+    const causes: string[] = [];
+    for (const [m, d] of mois) {
+        const c = coefficientRevision(brut, m, series, seuilReport);
+        if ('causes' in c) causes.push(...c.causes.map(x => `${m} : ${x}`));
+        else detail.push({ mois: m, dju: d, coefficient: c.coefficient });
+    }
+    if (causes.length) return { causes: [...new Set(causes)] };
+    return { coefficient: arrondirCoefficient(detail.reduce((s, x) => s + x.coefficient * x.dju, 0) / total, v.arrondiCoefficient), mois: detail };
 }
 
 /** RG-41 : le coefficient vaut 1 au mois M0 (sauf base contractuelle : signalé, non bloquant). */

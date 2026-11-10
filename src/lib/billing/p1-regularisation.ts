@@ -35,6 +35,10 @@ export type RegulSite = {
     vatRates?: Partial<Record<UsageP1, number>>;
     /** ECS facturée au relevé (déjà au réel) : seul le chauffage se régularise. */
     ecsAuReleve?: boolean;
+    /** Chauffage facturé au compteur (déjà au réel) : seule l'ECS se régularise. */
+    chauffageAuReleve?: boolean;
+    /** Décompte MTI : le réel chauffage est le P1 dû de la saison (détail repris dans la ligne). */
+    decompte?: import('./p1-decompte').DecompteSaison[];
 };
 
 export type RegulInput = {
@@ -105,6 +109,10 @@ export function regularisationP1(input: RegulInput): RegulResult {
             if (auTotal) { errors.push(`Site ${site.name} : ECS facturée au relevé, le réel total la compterait deux fois : importez le réel chauffage seul (usage chauffage).`); continue; }
             if (acomptes.ecs.size) { errors.push(`Site ${site.name} : acomptes ECS et ECS au relevé sur la même période.`); continue; }
         }
+        if (site.chauffageAuReleve) {
+            if (auTotal) { errors.push(`Site ${site.name} : chauffage facturé au compteur, le réel total le compterait deux fois : importez le réel ECS seul (usage ECS).`); continue; }
+            if (acomptes.chauffage.size) { errors.push(`Site ${site.name} : acomptes chauffage et chauffage au compteur sur la même période.`); continue; }
+        }
 
         const regulariser = (usage: UsageReel, acompteMois: Map<string, number[]>, vatRate: number | undefined) => {
             const manquants = mois.filter(m => acompteMois.has(m) && !has(usage, m));
@@ -119,17 +127,21 @@ export function regularisationP1(input: RegulInput): RegulResult {
             const totalAcomptes = sumCents(moisRegul.flatMap(m => acompteMois.get(m) ?? []));
             const ecart = roundCents(totalReel - totalAcomptes);
             detail.push({ siteId: site.id, site: site.name, usage, reel: totalReel, acomptes: totalAcomptes, ecart });
+            const dec = usage === 'chauffage' && site.decompte?.length ? site.decompte : null;
             lines.push({
-                description: `Régularisation ${LIBELLE[usage]} — Site : ${site.name} — du ${frMois(moisRegul[0])} au ${frMois(moisRegul[moisRegul.length - 1])} : `
+                description: dec
+                    ? `Décompte P1 chauffage MTI — Site : ${site.name} — saison ${dec.map(d => d.saison).join(', ')} : ${dec.map(d => `P1₀ ${eur(d.p1Base)} € × C/C0 ${d.coefficient.toLocaleString('fr-FR', { maximumFractionDigits: 5 })} × ${d.dju.toLocaleString('fr-FR')} / ${d.djuReference.toLocaleString('fr-FR')} DJU = ${eur(d.du)} €`).join(' ; ')}`
+                        + ` (période du ${frMois(moisRegul[0])} au ${frMois(moisRegul[moisRegul.length - 1])} : ${eur(totalReel)} €) − acomptes ${eur(totalAcomptes)} €`
+                    : `Régularisation ${LIBELLE[usage]} — Site : ${site.name} — du ${frMois(moisRegul[0])} au ${frMois(moisRegul[moisRegul.length - 1])} : `
                     + `réel ${eur(totalReel)} € − acomptes ${eur(totalAcomptes)} €`,
                 quantity: 1, unitPrice: ecart, total: ecart, siteId: site.id, activityCode: site.activityCode, vatRate,
                 periodStartDate: `${moisRegul[0]}-01`, periodEndDate: finMois(moisRegul[moisRegul.length - 1]),
-                p1Regul: { siteId: site.id, usage, mois: moisRegul, reel: totalReel, acomptes: totalAcomptes },
+                p1Regul: { siteId: site.id, usage, mois: moisRegul, reel: totalReel, acomptes: totalAcomptes, ...(dec && { decompte: dec }) },
             });
         };
 
-        if (parUsage || site.ecsAuReleve) {
-            for (const usage of site.ecsAuReleve ? ['chauffage'] as const : ['chauffage', 'ecs'] as const) regulariser(usage, acomptes[usage], tva[usage]);
+        if (parUsage || site.ecsAuReleve || site.chauffageAuReleve) {
+            for (const usage of (['chauffage', 'ecs'] as const).filter(u => !(u === 'ecs' ? site.ecsAuReleve : site.chauffageAuReleve))) regulariser(usage, acomptes[usage], tva[usage]);
         } else {
             // Au total : chauffage et ECS confondus, possible seulement avec une TVA commune.
             const usages = (['chauffage', 'ecs'] as const).filter(u => acomptes[u].size > 0);

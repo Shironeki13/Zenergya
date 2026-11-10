@@ -3,6 +3,7 @@
 import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { Loader2, MinusCircle, MoreHorizontal } from 'lucide-react';
+import { aAnnexeP1 } from '@/lib/billing/p1-annexe';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger,
@@ -174,6 +175,8 @@ export default function InvoicesPage() {
               <DropdownMenuLabel>Actions</DropdownMenuLabel>
               <DropdownMenuItem asChild><Link href={`/invoices/${invoice.id}`}>Voir les détails</Link></DropdownMenuItem>
               <DropdownMenuItem asChild><a href={`/api/documents/invoices/${invoice.id}`} target="_blank" rel="noopener noreferrer">Ouvrir le PDF</a></DropdownMenuItem>
+              {aAnnexeP1(invoice.lineItems) && <DropdownMenuItem asChild><a href={`/api/documents/invoices/${invoice.id}/annexe`} target="_blank" rel="noopener noreferrer">Annexe P1 (PDF)</a></DropdownMenuItem>}
+              {aAnnexeP1(invoice.lineItems) && <DropdownMenuItem asChild><a href={`/api/documents/invoices/${invoice.id}/annexe?format=xlsx`}>Annexe P1 (tableur)</a></DropdownMenuItem>}
               {(invoice.status === 'due' || invoice.status === 'overdue') && <DropdownMenuItem onClick={() => marquerPayee(invoice)}>Marquer comme payée</DropdownMenuItem>}
               {invoice.status === 'proforma' && (<>
                 <DropdownMenuSeparator />

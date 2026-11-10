@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { formatBareme, parseBareme, partage, quantiteRegularisation, validateBareme } from '../src/lib/p1/bareme';
 import {
-    coefficientRevision, controleM0, formatTermes, parseTermes, prixExercice, prixRevise, serieAt, validateFormule,
+    coefficientRevision, coefficientSaison, controleM0, formatTermes, parseTermes, prixExercice, prixRevise, serieAt, validateFormule,
     type FormuleVersion, type PrixMois, type SerieValues,
 } from '../src/lib/p1/formules';
 import { baremeAu, formuleAu, type P1ContractDoc, type P1Formule, type P1SiteDoc } from '../src/lib/p1/stockage';
@@ -121,4 +121,27 @@ test('formule la plus précise, barème du site prioritaire', () => {
     const site: P1SiteDoc = { kind: 'site', siteId: 's', codeSite: 'SIT-1', postes: {}, params: { 'bareme:MCI': v([{ sens: 'economie', borneBasse: 0, borneHaute: 1, partClient: 0.4 }]) } };
     const k: P1ContractDoc = { ...contract, params: { 'bareme:MCI': v([{ sens: 'economie', borneBasse: 0, borneHaute: 1, partClient: 0.5 }]) } };
     assert.deepEqual([baremeAu(site, k, 'MCI', '2026-01-01')!.source, baremeAu(null, k, 'MCI', '2026-01-01')!.tranches[0].partClient], ['site', 0.5]);
+});
+
+test('révision : facteur fixe d\'avenant, arrondi à 5 décimales, coefficient de saison pondéré par les DJU', () => {
+    // Forme B, cas réel anonymisé : (Mol + ATRD T2 + TICGN) / (Mol0 + ATRD0 + TICGN0), Mol figée à 36,31.
+    const series = new Map([['MOL', [{ period: '2026-01', value: 36.31 }, { period: '2026-02', value: 36.31 }]], ['ATRD2', [{ period: '2026-01', value: 12.08 }, { period: '2026-02', value: 12.08 }]], ['TICGN', [{ period: '2026-01', value: 15.43 }, { period: '2026-02', value: 16.39 }]]]);
+    const termes = parseTermes('Mol=1*MOL@36,31 ; TVD=1*ATRD2@8,93 ; Accise=1*TICGN@16,37') as never;
+    const v = { forme: 'B' as const, mode: 'standard' as const, baseEnergetique: 'PCS' as const, unitePrix: 'EUR/MWh' as const, dateM0: '2024-02', m0Manquante: null, regimeKmol: 'variable' as const, prixMoleculeNegocie: null, prixFixe: false, periodicite: 'mensuel' as const, termes };
+    const brut = coefficientRevision(v, '2026-01', series as never);
+    assert.ok('coefficient' in brut);
+    assert.equal(Math.round(brut.coefficient * 1e9) / 1e9, Math.round(((36.31 + 12.08 + 15.43) / (36.31 + 8.93 + 16.37)) * 1e9) / 1e9);
+    const arrondi = coefficientRevision({ ...v, arrondiCoefficient: 5 }, '2026-01', series as never);
+    assert.ok('coefficient' in arrondi);
+    assert.equal(arrondi.coefficient, 1.03587);   // annexe : 1,0359 affiché, 1,03587 au calcul
+    const facteur = coefficientRevision({ ...v, facteur: 2, arrondiCoefficient: 5 }, '2026-01', series as never);
+    assert.ok('coefficient' in facteur);
+    assert.equal(facteur.coefficient, 2.07174);
+    // Saison : janvier 400 DJU, février 100 DJU → (c1 × 400 + c2 × 100) / 500, arrondi à 5 décimales.
+    const s = coefficientSaison({ ...v, arrondiCoefficient: 5 }, { '2026-01': 400, '2026-02': 100, '2026-03': 0 }, series as never);
+    assert.ok('coefficient' in s);
+    const c1 = (36.31 + 12.08 + 15.43) / 61.61, c2 = (36.31 + 12.08 + 16.39) / 61.61;
+    assert.equal(s.coefficient, Math.round(((c1 * 400 + c2 * 100) / 500) * 1e5) / 1e5);
+    assert.deepEqual(s.mois.map(m => m.mois), ['2026-01', '2026-02']);
+    assert.match(validateFormule({ ...v, facteur: 0 }, ['MOL', 'ATRD2', 'TICGN']).errors.join(), /Facteur fixe/);
 });

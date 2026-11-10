@@ -4,6 +4,7 @@
 import { Document, Page, View, Text, Image, StyleSheet, renderToBuffer } from '@react-pdf/renderer';
 import type { Client, Company, InvoiceLineItem, InvoiceQuoteLink, VatBreakdown } from '@/lib/types';
 import type { SituationSnapshot } from '@/lib/projects/types';
+import { afficher, type AnnexeP1 } from '@/lib/billing/p1-annexe';
 
 /**
  * Modèle PDF des factures, proformas et avoirs (rendu côté serveur par @react-pdf/renderer).
@@ -45,7 +46,23 @@ export type AccountingDocumentData = {
     quote?: InvoiceQuoteLink;
     /** Facture de situation de travaux (affaire P6). */
     situation?: SituationSnapshot;
+    /** Annexes P1 (détail du calcul), ajoutées en pages à la suite du document. */
+    annexes?: AnnexeP1[];
 };
+
+/**
+ * Texte compatible avec les polices PDF standard (Helvetica, WinAnsi) : les signes absents sont remplacés
+ * (− → -, → → à, ₀ → 0, espaces fines → espace).
+ */
+export function pdfTexte(t: string): string {
+    return t.replace(/\u2212/g, '-').replace(/\s?\u2192\s?/g, ' à ').replace(/\u2080/g, '0').replace(/[\u202f\u00a0\u2009]/g, ' ').replace(/\u2265/g, '>=').replace(/\u2264/g, '<=');
+}
+
+/** Désignation d'une ligne sur la facture : le détail du calcul P1 est renvoyé à l'annexe. */
+function designation(item: InvoiceLineItem, annexe: boolean): string {
+    const detaille = annexe && (item.p1Releve?.detail || item.p1Dju || item.p1Acompte);
+    return pdfTexte(detaille ? `${item.description.split(' — ').slice(0, 4).join(' — ')} — détail en annexe` : item.description);
+}
 
 const TITLES: Record<AccountingDocumentKind, string> = {
     invoice: 'FACTURE',
@@ -104,7 +121,92 @@ const styles = StyleSheet.create({
     grandTotal: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 5, borderTopWidth: 1, borderTopColor: '#111827', marginTop: 3, fontFamily: 'Helvetica-Bold', fontSize: 11 },
     notes: { marginTop: 20 },
     footer: { position: 'absolute', bottom: 24, left: 40, right: 40, fontSize: 7, color: '#6b7280', textAlign: 'center', borderTopWidth: 0.5, borderTopColor: '#e5e7eb', paddingTop: 6 },
+    // Annexe P1 (paysage)
+    aPage: { paddingTop: 28, paddingHorizontal: 28, paddingBottom: 44, fontSize: 7, fontFamily: 'Helvetica', color: '#111827' },
+    aEntete: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 10 },
+    aTitre: { fontSize: 12, fontFamily: 'Helvetica-Bold', color: '#1d4ed8' },
+    aFormule: { backgroundColor: '#eff6ff', padding: 6, marginBottom: 8, fontSize: 8 },
+    aSousTitre: { fontFamily: 'Helvetica-Bold', fontSize: 8, marginTop: 6, marginBottom: 3 },
+    aTh: { flexDirection: 'row', backgroundColor: '#1f3864', color: '#ffffff', fontFamily: 'Helvetica-Bold', paddingVertical: 4, paddingHorizontal: 2, alignItems: 'center' },
+    aTr: { flexDirection: 'row', paddingVertical: 3, paddingHorizontal: 2, borderBottomWidth: 0.5, borderBottomColor: '#e5e7eb' },
+    aDetail: { color: '#6b7280' },
+    aTotal: { flexDirection: 'row', paddingVertical: 4, paddingHorizontal: 2, fontFamily: 'Helvetica-Bold', borderTopWidth: 1, borderTopColor: '#111827' },
+    aCell: { paddingHorizontal: 2 },
+    aFooter: { position: 'absolute', bottom: 20, left: 28, right: 28, fontSize: 7, color: '#6b7280', textAlign: 'center', borderTopWidth: 0.5, borderTopColor: '#e5e7eb', paddingTop: 5 },
 });
+
+/** Pages d'annexe P1 (paysage) : formule, révision des prix, une ligne par site et par mois, totaux. */
+function AnnexePages({ data }: { data: AccountingDocumentData }) {
+    const { company, client } = data;
+    const doc = `${data.kind === 'creditNote' ? "l'avoir" : data.kind === 'proforma' ? 'la facture proforma' : 'la facture'}${data.number ? ` n° ${data.number}` : ''}`;
+    const fr = (m: string) => `${m.slice(5, 7)}/${m.slice(0, 4)}`;
+    return (
+        <>
+            {(data.annexes ?? []).map((a, k) => {
+                const total = a.colonnes.reduce((s, c) => s + c.largeur, 0);
+                const w = (l: number) => `${(l / total) * 100}%`;
+                const droite = (f: string) => f !== 'texte';
+                const avantMontants = a.colonnes.findIndex(c => c.cle === 'ht');
+                return (
+                    <Page key={k} size="A4" orientation="landscape" style={styles.aPage}>
+                        <View style={styles.aEntete} fixed>
+                            <View>
+                                <Text style={styles.aTitre}>{pdfTexte(`ANNEXE ${k + 1}/${data.annexes!.length} — ${a.titre}`)}</Text>
+                                <Text>{pdfTexte(`Annexe à ${doc} du ${formatDate(data.date)}${data.periodStartDate && data.periodEndDate ? ` — période du ${formatDate(data.periodStartDate)} au ${formatDate(data.periodEndDate)}` : ''}`)}</Text>
+                            </View>
+                            <View>
+                                <Text style={{ fontFamily: 'Helvetica-Bold', textAlign: 'right' }}>{company.name}</Text>
+                                <Text style={{ textAlign: 'right' }}>{client.name}</Text>
+                            </View>
+                        </View>
+                        <Text style={styles.aFormule}>{pdfTexte(`${a.formule}${a.references.length ? `     (${a.references.map(([l, v]) => `${l} : ${v}`).join(' ; ')})` : ''}`)}</Text>
+
+                        {a.revisions.length > 0 && (
+                            <View wrap={false}>
+                                <Text style={styles.aSousTitre}>Révision des prix : indices du mois (valeur de base) et coefficient C/C0</Text>
+                                <View style={styles.aTh}>
+                                    <Text style={[styles.aCell, { width: '8%' }]}>Mois</Text>
+                                    <Text style={[styles.aCell, { width: '82%' }]}>Indices</Text>
+                                    <Text style={[styles.aCell, { width: '10%', textAlign: 'right' }]}>C/C0</Text>
+                                </View>
+                                {a.revisions.map((r, i) => (
+                                    <View key={i} style={styles.aTr}>
+                                        <Text style={[styles.aCell, { width: '8%' }]}>{fr(r.mois)}</Text>
+                                        <Text style={[styles.aCell, { width: '82%' }]}>{pdfTexte(`${r.sites.length ? `${r.sites.join(', ')} : ` : ''}${r.termes.map(t =>
+                                            `${t.indice ?? t.terme} ${t.valeur === null ? '—' : afficher(t.valeur, { format: 'coef', decimales: 4 })} (base ${t.base === null ? '—' : afficher(t.base, { format: 'coef', decimales: 4 })})`).join('   ·   ') || 'prix non révisé'}`)}</Text>
+                                        <Text style={[styles.aCell, { width: '10%', textAlign: 'right' }]}>{r.coefficient === null ? '' : afficher(r.coefficient, { format: 'coef', decimales: 5 })}</Text>
+                                    </View>
+                                ))}
+                            </View>
+                        )}
+
+                        <Text style={styles.aSousTitre}>Détail</Text>
+                        <View style={styles.aTh} fixed>
+                            {a.colonnes.map(c => <Text key={c.cle} style={[styles.aCell, { width: w(c.largeur), textAlign: droite(c.format) ? 'right' : 'left' }]}>{pdfTexte(c.libelle)}</Text>)}
+                        </View>
+                        {a.lignes.map((l, i) => (
+                            <View key={i} style={l.detail ? [styles.aTr, styles.aDetail] : styles.aTr} wrap={false}>
+                                {a.colonnes.map(c => <Text key={c.cle} style={[styles.aCell, { width: w(c.largeur), textAlign: droite(c.format) ? 'right' : 'left' }]}>{pdfTexte(afficher(l.valeurs[c.cle] ?? null, c))}</Text>)}
+                            </View>
+                        ))}
+                        <View style={styles.aTotal} wrap={false}>
+                            <Text style={[styles.aCell, { width: w(a.colonnes.slice(0, avantMontants).reduce((s, c) => s + c.largeur, 0)) }]}>{pdfTexte(`TOTAL — ${a.titre}`)}</Text>
+                            {a.colonnes.slice(avantMontants).map(c => (
+                                <Text key={c.cle} style={[styles.aCell, { width: w(c.largeur), textAlign: 'right' }]}>
+                                    {c.cle === 'ht' ? formatEur(a.totaux.ht) : c.cle === 'tva' ? formatEur(a.totaux.tva) : c.cle === 'ttc' ? formatEur(a.totaux.ttc) : ''}
+                                </Text>
+                            ))}
+                        </View>
+                        {a.notes.map((n, i) => <Text key={i} style={[styles.muted, { marginTop: i ? 1 : 6 }]}>{pdfTexte(n)}</Text>)}
+                        <Text style={[styles.muted, { marginTop: 2 }]}>TVA indicative par ligne ; la TVA de la facture est calculée sur le total HT par taux.</Text>
+
+                        <Text style={styles.aFooter} fixed render={({ pageNumber, totalPages }) => pdfTexte(`${company.name} — Annexe P1 à ${doc} — Page ${pageNumber}/${totalPages}`)} />
+                    </Page>
+                );
+            })}
+        </>
+    );
+}
 
 export function AccountingDocumentPdf({ data }: { data: AccountingDocumentData }) {
     const { kind, company, client } = data;
@@ -190,7 +292,7 @@ export function AccountingDocumentPdf({ data }: { data: AccountingDocumentData }
                         <Text style={styles.groupRow}>Prestations {activityCode}</Text>
                         {items.map((item, index) => (
                             <View key={index} style={styles.row} wrap={false}>
-                                <Text style={styles.colDesc}>{item.description}</Text>
+                                <Text style={styles.colDesc}>{designation(item, !!data.annexes?.length)}</Text>
                                 <Text style={styles.colQty}>{String(item.quantity)}</Text>
                                 <Text style={styles.colUnit}>{formatEur(item.unitPrice)}</Text>
                                 <Text style={styles.colTotal}>{formatEur(item.total)}</Text>
@@ -230,6 +332,16 @@ export function AccountingDocumentPdf({ data }: { data: AccountingDocumentData }
                     `${company.name}${legalIds ? ` · ${legalIds}` : ''} — Page ${pageNumber}/${totalPages}`
                 } />
             </Page>
+            {data.annexes && data.annexes.length > 0 && <AnnexePages data={data} />}
+        </Document>
+    );
+}
+
+/** Annexe P1 seule (mêmes pages que celles jointes à la facture). */
+export function AnnexeDocumentPdf({ data }: { data: AccountingDocumentData }) {
+    return (
+        <Document title={`Annexe P1 ${data.number ?? ''}`.trim()} author={data.company.name}>
+            <AnnexePages data={data} />
         </Document>
     );
 }
@@ -237,4 +349,9 @@ export function AccountingDocumentPdf({ data }: { data: AccountingDocumentData }
 /** Rendu PDF (Buffer) d'une facture, d'un proforma ou d'un avoir. */
 export function renderAccountingPdf(data: AccountingDocumentData): Promise<Buffer> {
     return renderToBuffer(h(AccountingDocumentPdf, { data }) as any);
+}
+
+/** Rendu PDF (Buffer) de l'annexe P1 seule ; null si le document n'a pas d'annexe. */
+export function renderAnnexePdf(data: AccountingDocumentData): Promise<Buffer> | null {
+    return data.annexes?.length ? renderToBuffer(h(AnnexeDocumentPdf, { data }) as any) : null;
 }

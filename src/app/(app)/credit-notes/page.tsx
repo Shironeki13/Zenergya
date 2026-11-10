@@ -2,7 +2,8 @@
 
 import { useMemo } from 'react';
 import Link from 'next/link';
-import { FileDown, PlusCircle } from 'lucide-react';
+import { FileDown, FileSpreadsheet, PlusCircle } from 'lucide-react';
+import { aAnnexeP1 } from '@/lib/billing/p1-annexe';
 import { Button } from '@/components/ui/button';
 import { DataTable, type Colonne } from '@/components/data-table/data-table';
 import type { FiltreTable } from '@/components/data-table/logique';
@@ -67,9 +68,16 @@ export default function CreditNotesPage() {
         boutons={<Button asChild size="sm" className="h-9 gap-1"><Link href="/invoices"><PlusCircle className="h-4 w-4" />Créer un avoir</Link></Button>}
         vide={{ titre: 'Aucun avoir.', description: 'Un avoir annule une ou plusieurs factures émises (liste des factures, sélection).' }}
         actions={cn => (
-          <Button variant="ghost" size="icon" className="h-8 w-8" asChild title="Ouvrir le PDF">
-            <a href={`/api/documents/credit-notes/${cn.id}`} target="_blank" rel="noopener noreferrer" aria-label={`PDF de l'avoir ${cn.creditNoteNumber}`}><FileDown className="h-4 w-4" /></a>
-          </Button>
+          <div className="flex justify-end">
+            {aAnnexeP1(cn.lineItems) && (
+              <Button variant="ghost" size="icon" className="h-8 w-8" asChild title="Annexe P1 (tableur)">
+                <a href={`/api/documents/credit-notes/${cn.id}/annexe?format=xlsx`} aria-label={`Annexe P1 de l'avoir ${cn.creditNoteNumber} (tableur)`}><FileSpreadsheet className="h-4 w-4" /></a>
+              </Button>
+            )}
+            <Button variant="ghost" size="icon" className="h-8 w-8" asChild title="Ouvrir le PDF">
+              <a href={`/api/documents/credit-notes/${cn.id}`} target="_blank" rel="noopener noreferrer" aria-label={`PDF de l'avoir ${cn.creditNoteNumber}`}><FileDown className="h-4 w-4" /></a>
+            </Button>
+          </div>
         )}
       />
     </div>

@@ -1,6 +1,8 @@
 'use server';
 
 import { requireUser } from '@/lib/auth/server';
+import { deleteSaisonChauffe, listSaisonsChauffe, setSaisonChauffe } from '@/services/p1-admin';
+import type { SaisonChauffe } from '@/lib/p1/saisons';
 import type { NewVersion } from '@/lib/p1/stockage';
 import type { FormuleVersion, PerimetreFormule } from '@/lib/p1/formules';
 import {
@@ -70,4 +72,16 @@ export async function getP1ReelAction(siteId: string): Promise<Result<P1ReelLign
 /** À la validation d'un contrat : les valeurs P1 saisies à sa création deviennent des versions d'origine. */
 export async function repriseP1ContratAction(contractId: string): Promise<Result<{ reprises: string[]; signalements: string[] }>> {
     try { const user = await requireUser(); return { success: true, data: await repriseP1Contrat(contractId, user.email) }; } catch (e) { return fail(e); }
+}
+
+export async function listSaisonsChauffeAction(siteId: string): Promise<Result<SaisonChauffe[]>> {
+    try { await requireUser(); return { success: true, data: await listSaisonsChauffe(siteId) }; } catch (e) { return fail(e); }
+}
+
+export async function setSaisonChauffeAction(siteId: string, s: { saison: string; allumage: string; arret: string | null }): Promise<Result<null>> {
+    try { const u = await requireUser(); await setSaisonChauffe(siteId, s, u.email); return { success: true, data: null }; } catch (e) { return fail(e); }
+}
+
+export async function deleteSaisonChauffeAction(siteId: string, saison: string): Promise<Result<null>> {
+    try { await requireUser(); await deleteSaisonChauffe(siteId, saison); return { success: true, data: null }; } catch (e) { return fail(e); }
 }

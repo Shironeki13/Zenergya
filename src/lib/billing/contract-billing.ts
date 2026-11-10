@@ -1,5 +1,9 @@
 import { roundCents, sumCents } from '@/lib/money';
+import { partieChauffee, type SaisonChauffe } from '@/lib/p1/saisons';
 import { toDay } from '@/lib/services/site-amounts';
+import {
+    factureAuCompteur, texteCompteur, type CompteurFacture, type IndexPris, type MethodeProrata, type PrixDuMois, type SourceCoefGestion, type UsageCompteur,
+} from './p1-compteur';
 import type { Index, IndexValue, InvoiceLineItem, RevisionRule, ServiceInitialIndexValue, VatBreakdown } from '@/lib/types';
 import {
     revisionAt, revisionConfig, revisionDatesWithin, revisionInForce, revisionText, type RevisionConfig, type RevisionSnapshot,
@@ -84,21 +88,32 @@ export type BillingService = {
     id?: string; siteId: string; contractId: string; activityId: string; price?: number | null; startDate?: unknown; endDate?: unknown;
     isActive?: boolean; vatRateId?: string; label?: string; scheduleId?: string; billingTermId?: string;
     revisionRuleId?: string; initialIndexValues?: ServiceInitialIndexValue[]; revisionMonths?: number; revisionAnchor?: string; revisionFromStart?: boolean;
-    p1Mode?: 'forfait' | 'acompte' | 'releve';
+    p1Mode?: 'forfait' | 'acompte' | 'releve' | 'dju';
     p1Type?: string;
     p1PrixSource?: 'p1' | 'prestation';
     coefficientPrix?: number;
     unitPrice?: number;
     meterId?: string;
+    /** Au compteur : méthode du prorata d'un mois partiel (défaut : relevé à la date, sinon jours). */
+    p1Prorata?: MethodeProrata;
+    /** Au compteur : coefficient de gestion (défaut : celui de la prestation s'il est renseigné, sinon aucun). */
+    p1CoefGestion?: SourceCoefGestion;
 };
 
 /** Relevé d'un compteur (date AAAA-MM-JJ, heure de Paris). */
 export type ReleveReading = { id: string; date: string; value: number; type?: string };
 
-/** ECS au relevé : compteurs ECS facturés d'une prestation et leurs relevés (calculé au serveur). */
+/** P1 au compteur : compteurs facturés d'une prestation et leurs relevés, coefficient du contrat, DJU (calculé au serveur). */
 export type P1ReleveSource = {
-    /** Compteurs ECS de la prestation (son compteur, sinon les compteurs d'usage ECS du site) ; message si aucun. */
-    meters: (siteId: string, serviceMeterId: string | undefined, mois: string) => { id: string; code: string; unit?: string; readings: ReleveReading[] }[] | string;
+    /**
+     * Compteurs facturés d'une prestation pour un mois : son compteur ; sinon, en chauffage, les compteurs signés de la
+     * formule de NC des postes du site (à défaut, ceux d'usage vente, sinon entrant), en ECS ceux d'usage ECS ; message si aucun.
+     */
+    meters: (siteId: string, serviceMeterId: string | undefined, mois: string, usage?: UsageCompteur) => CompteurFacture[] | string;
+    /** Coefficient de gestion du contrat (paramétrage P1 daté) au mois ; null si non renseigné. */
+    coefContrat?: (mois: string) => number | null;
+    /** DJU de la station du site entre deux dates incluses ; message si indisponibles. */
+    dju?: (siteId: string, debut: string, fin: string) => number | string;
 };
 
 export type UsageP1 = 'chauffage' | 'ecs';
@@ -111,6 +126,23 @@ export type P1AcompteSource = {
     repartition: (mois: string, usage: UsageP1) => number[] | string;
     /** Prix révisé P1 du site pour l'usage et le mois (€/MWh, €/m³ en ECS) ; message si non calculable. */
     prix: (siteId: string, mois: string, usage: UsageP1) => number | string;
+    /** Même prix, détaillé (prix de base, coefficient, indices) pour l'annexe. */
+    prixDetail?: (siteId: string, mois: string, usage: UsageP1) => PrixDuMois | string;
+    /** Coefficient de révision P1 seul (formule du site), et ses termes. */
+    coefficient?: P1DjuSource['coefficient'];
+    /** DJU de référence (contractuels) du site : DJU de référence de son poste de consommation. */
+    djuReference?: P1DjuSource['djuReference'];
+};
+
+/** MTI au DJU : coefficient de révision, DJU contractuels, DJU de la station et saisons de chauffe du site (serveur). */
+export type P1DjuSource = {
+    /** Coefficient de révision P1 (formule du site, arrondi comme elle) du mois, et ses termes. */
+    coefficient: (siteId: string, mois: string) => { coefficient: number; indices: NonNullable<PrixDuMois['indices']> } | string;
+    /** DJU de référence (contractuels) du site au jour. */
+    djuReference: (siteId: string, jour: string) => number | string;
+    /** DJU de la station du site entre deux dates incluses. */
+    dju: (siteId: string, debut: string, fin: string) => number | string;
+    saisons: (siteId: string) => SaisonChauffe[];
 };
 export type BillingActivity = { id: string; code: string; label: string; vatRateId?: string };
 export type BillingVatRate = { id: string; code: string; rate: number };
@@ -132,6 +164,8 @@ export type BillingInput = {
     p1?: P1AcompteSource;
     /** ECS au relevé : sans source, une prestation au relevé ne peut pas être facturée. */
     releves?: P1ReleveSource;
+    /** MTI au DJU : sans source, une prestation au DJU ne peut pas être facturée. */
+    p1Dju?: P1DjuSource;
 };
 
 /** Élément facturable : une prestation, ou un montant saisi d'un site sans prestation. */
@@ -154,8 +188,13 @@ export type BillingItem = {
     p1Acompte?: boolean;
     /** Usage de l'acompte P1 (prestation P1 de type ECS : ECS ; sinon chauffage). */
     p1Usage?: UsageP1;
-    /** ECS au relevé : volume relevé chaque mois × prix au m³ (paramétrage P1 ou prix de la prestation révisé) × coefficient. */
-    p1Releve?: { meterId?: string; prixSource: 'p1' | 'prestation'; unitPrice: number | null; coefficient: number | null };
+    /** P1 au compteur : consommation relevée chaque mois × prix (paramétrage P1 ou prestation révisée) × coefficient de gestion. */
+    /** MTI au DJU : P1 annuel de base (montant de la prestation) × C/C0 du mois × DJU chauffés / DJU contractuels. */
+    p1Dju?: boolean;
+    p1Releve?: {
+        meterId?: string; usage: UsageCompteur; prixSource: 'p1' | 'prestation'; unitPrice: number | null;
+        coefficient: number | null; coefGestion: SourceCoefGestion; prorata: MethodeProrata;
+    };
 };
 
 export type Echeance = {
@@ -216,8 +255,10 @@ export function billingItems(input: BillingInput): { items: BillingItem[]; error
                 const a = activity.get(s.activityId);
                 const acompte = s.p1Mode === 'acompte';
                 const releve = s.p1Mode === 'releve';
+                const auDju = s.p1Mode === 'dju';
                 if (!a || !contract.activityIds.includes(a.id) || (!acompte && !releve && !Number(s.price))) continue;
-                if (releve && s.p1Type !== 'ECS') { errors.push(`${a.code} sur le site ${site.name} : facturation au relevé pour une prestation P1 ECS seulement.`); continue; }
+                if (auDju && s.p1Type && s.p1Type !== 'CHAUFFAGE') { errors.push(`${a.code} sur le site ${site.name} : MTI au DJU pour une prestation P1 chauffage seulement (type ${s.p1Type}).`); continue; }
+                if (releve && !['CHAUFFAGE', 'ECS'].includes(s.p1Type ?? '')) { errors.push(`${a.code} sur le site ${site.name} : facturation au compteur pour une prestation P1 de type chauffage ou ECS (type ${s.p1Type || 'non renseigné'}).`); continue; }
                 if (acompte && s.p1Type && !['CHAUFFAGE', 'ECS'].includes(s.p1Type)) {
                     errors.push(`${a.code} sur le site ${site.name} : acompte P1 pour le chauffage ou l'ECS seulement (type ${s.p1Type}).`);
                     continue;
@@ -225,24 +266,24 @@ export function billingItems(input: BillingInput): { items: BillingItem[]; error
                 const where = `${a.code} sur le site ${site.name}`;
                 const sched = periodicity(where, scheduleName.get(s.scheduleId ?? ''), site.billingSchedule, contract.billingSchedule);
                 if (!sched) continue;
-                if (s.p1Mode === 'releve') {
-                    if (sched.months !== 1) { errors.push(`${where} : ECS au relevé facturée chaque mois (périodicité mensuelle attendue).`); continue; }
-                    if (termeOf(termName.get(s.billingTermId || site.termId || '')) !== 'echu') {
-                        errors.push(`${where} : ECS au relevé facturée à terme échu (le relevé du mois n'est connu qu'en fin de mois).`); continue;
-                    }
+                if ((s.p1Mode === 'releve' || auDju) && termeOf(termName.get(s.billingTermId || site.termId || '')) !== 'echu') {
+                    errors.push(`${where} : facturation ${auDju ? 'au DJU' : 'au compteur'} à terme échu (${auDju ? 'les DJU' : 'le relevé'} du mois ne sont connus qu'en fin de mois).`); continue;
                 }
                 // Un acompte P1 (ou un relevé au prix P1) est déjà au prix révisé P1 : pas de révision de la prestation par-dessus.
-                const prixP1 = acompte || (releve && (s.p1PrixSource ?? 'p1') === 'p1');
+                const prixP1 = acompte || auDju || (releve && (s.p1PrixSource ?? 'p1') === 'p1');
                 const revision = prixP1 ? null : revisionConfig(s, contractStart, input.revisionRules ?? []);
                 if (revision && 'error' in revision) { errors.push(`${where} : ${revision.error}.`); continue; }
                 items.push({
                     ...(revision && { revision }),
                     ...(acompte && { p1Acompte: true, p1Usage: s.p1Type === 'ECS' ? 'ecs' as const : 'chauffage' as const }),
+                    ...(auDju && { p1Dju: true }),
                     ...(releve && {
                         p1Releve: {
-                            ...(s.meterId && { meterId: s.meterId }), prixSource: s.p1PrixSource ?? 'p1',
+                            ...(s.meterId && { meterId: s.meterId }), usage: s.p1Type === 'ECS' ? 'ecs' as const : 'chauffage' as const, prixSource: s.p1PrixSource ?? 'p1',
                             unitPrice: typeof s.unitPrice === 'number' && s.unitPrice > 0 ? s.unitPrice : null,
                             coefficient: typeof s.coefficientPrix === 'number' && s.coefficientPrix > 0 ? s.coefficientPrix : null,
+                            coefGestion: s.p1CoefGestion ?? (typeof s.coefficientPrix === 'number' && s.coefficientPrix > 0 ? 'prestation' : 'aucun'),
+                            prorata: s.p1Prorata ?? 'releve_jours',
                         },
                     }),
                     key: `svc:${s.id}`, serviceId: s.id, site, activity: a, label: s.label, annual: Number(s.price),
@@ -316,8 +357,10 @@ export function nominalPeriod(contractStart: string, months: number, day: string
 export function echeancesOf(item: BillingItem, contractStart: string, last: string | null, until: string, max = 400): Echeance[] {
     const out: Echeance[] = [];
     let cursor = last ? maxDay(addDays(last, 1), item.from) : item.from;
+    // Au compteur : périodes calées sur les mois civils (la consommation se relève par mois), dès le mois du début du contrat.
+    const anchor = item.p1Releve || item.p1Dju ? `${contractStart.slice(0, 7)}-01` : contractStart;
     while (cursor <= item.to && out.length < max) {
-        const nominal = nominalPeriod(contractStart, item.months, cursor);
+        const nominal = nominalPeriod(anchor, item.months, cursor);
         const end = minDay(nominal.end, item.to);
         const billableOn = item.terme === 'echoir' ? cursor : addDays(end, 1);
         if (billableOn > until) break;
@@ -341,7 +384,7 @@ export function dueInvoiceLines(input: BillingInput, invoices: BilledInvoice[], 
     if (errors.length) return { echeances: [], lines: [], errors, warnings };
     const billed = billedUntil(items, invoices);
     const echeances = items.flatMap(item => echeancesOf(item, contractStart, billed.get(item.key) ?? null, until))
-        .filter(e => e.amount !== 0 || e.item.p1Acompte || e.item.p1Releve)
+        .filter(e => e.amount !== 0 || e.item.p1Acompte || e.item.p1Releve || e.item.p1Dju)
         .sort((a, b) => a.start.localeCompare(b.start) || a.item.site.name.localeCompare(b.item.site.name) || a.item.activity.code.localeCompare(b.item.activity.code));
 
     // Révisions déjà facturées : réutilisées telles quelles (même coefficient pour une même révision).
@@ -359,15 +402,21 @@ export function dueInvoiceLines(input: BillingInput, invoices: BilledInvoice[], 
     };
 
     // Morceaux facturés : l'échéance, coupée à chaque date de révision, au coefficient de la révision en vigueur.
-    type Piece = { e: Echeance; start: string; end: string; days: number; base: number; amount: number; revision?: RevisionSnapshot; p1?: P1Mois[]; releve?: NonNullable<InvoiceLineItem['p1Releve']> };
+    type Piece = { e: Echeance; start: string; end: string; days: number; base: number; amount: number; revision?: RevisionSnapshot; p1?: P1Mois[]; releve?: NonNullable<InvoiceLineItem['p1Releve']>; dju?: NonNullable<InvoiceLineItem['p1Dju']> };
     const pieces: Piece[] = [];
     const lastIndex = dernierIndexFacture(invoices);
     for (const e of echeances) {
         if (e.item.p1Releve) {
-            const r = releveEcs(e, input, lastIndex, frozen);
-            if (typeof r === 'string') { lineErrors.push(`ECS au relevé impossible : site ${e.item.site.name}, ${r}.`); continue; }
-            for (const c of r.detail.compteurs) lastIndex.set(c.meterId, c.fin);   // échéances suivantes du même appel
+            const r = releveCompteur(e, input, lastIndex, frozen);
+            if (typeof r === 'string') { lineErrors.push(`${e.item.p1Releve.usage === 'ecs' ? 'ECS' : 'Chauffage'} au compteur impossible : site ${e.item.site.name}, ${r}.`); continue; }
+            for (const c of r.detail.compteurs) lastIndex.set(`${e.item.key}|${c.meterId}`, c.fin);   // échéances suivantes du même appel
             pieces.push({ e, start: e.start, end: e.end, days: e.days, base: r.detail.montant, amount: r.detail.montant, releve: r.detail, ...(r.revision && { revision: r.revision }) });
+            continue;
+        }
+        if (e.item.p1Dju) {
+            const r = mtiAuDju(e, input.p1Dju);
+            if (typeof r === 'string') { lineErrors.push(`MTI au DJU impossible : site ${e.item.site.name}, ${r}.`); continue; }
+            pieces.push({ e, start: e.start, end: e.end, days: e.days, base: r.montant, amount: r.montant, dju: r });
             continue;
         }
         if (e.item.p1Acompte) {
@@ -398,14 +447,9 @@ export function dueInvoiceLines(input: BillingInput, invoices: BilledInvoice[], 
         });
     }
 
-    const prorata = (p: { days: number; e: Echeance; p1?: P1Mois[]; releve?: unknown }) => (p.days < p.e.nominalDays && !p.p1 && !p.releve ? ` — prorata ${p.days}/${p.e.nominalDays} j` : '');
-    const releveText = (p: Piece) => {
-        if (!p.releve) return '';
-        const fr = (d: string) => d.split('-').reverse().join('/');
-        const n = (x: number) => x.toLocaleString('fr-FR', { maximumFractionDigits: 3 });
-        return ` — ${p.releve.compteurs.map(c => `${c.code} : ${n(c.fin.index)} (${fr(c.fin.date)}${c.fin.type && c.fin.type !== 'REEL' ? `, ${c.fin.type.toLowerCase()}` : ''}) − ${n(c.debut.index)} (${fr(c.debut.date)}) = ${n(c.volume)} m³`).join(' ; ')}`
-            + ` — ${n(p.releve.volume)} m³ × ${p.releve.prix.toLocaleString('fr-FR', { maximumFractionDigits: 4 })} €/m³`;
-    };
+    const prorata = (p: { days: number; e: Echeance; p1?: P1Mois[]; releve?: unknown; dju?: unknown }) => (p.days < p.e.nominalDays && !p.p1 && !p.releve && !p.dju ? ` — prorata ${p.days}/${p.e.nominalDays} j` : '');
+    const djuText = (p: Piece) => (p.dju ? ` — ${p.dju.mois.map(m => `${m.mois.slice(5)}/${m.mois.slice(0, 4)} : ${eurFr(p.dju!.base)} × ${m.coefficient.toLocaleString('fr-FR', { maximumFractionDigits: 6 })} / ${p.dju!.djuReference.toLocaleString('fr-FR')} × ${m.dju.toLocaleString('fr-FR', { maximumFractionDigits: 2 })} DJU (${frDay(m.debut)} → ${frDay(m.fin)}) = ${eurFr(m.montant)}`).join(' | ')}` : '');
+    const releveText = (p: Piece) => (p.releve?.detail ? ` — ${texteCompteur(p.releve as never)}` : '');
     const p1Text = (p: Piece) => {
         if (!p.p1) return '';
         const q = p.p1.reduce((a, m) => a + m.quantite, 0);
@@ -424,7 +468,7 @@ export function dueInvoiceLines(input: BillingInput, invoices: BilledInvoice[], 
         for (const p of pieces) {
             const rate = rateOf(p.e);
             if (rate === undefined) continue;
-            if (p.p1 || p.releve) { lineErrors.push(`${p.p1 ? 'Acompte P1' : 'ECS au relevé'} : facturation globale non prise en charge (site ${p.e.item.site.name}) ; passez le contrat en multi-site.`); continue; }
+            if (p.p1 || p.releve || p.dju) { lineErrors.push(`${p.p1 ? 'Acompte P1' : p.dju ? 'MTI au DJU' : 'P1 au compteur'} : facturation globale non prise en charge (site ${p.e.item.site.name}) ; passez le contrat en multi-site.`); continue; }
             const key = `${p.e.item.activity.id}|${rate}|${p.start}|${p.end}|${p.revision ? `${p.revision.rule}@${p.revision.date}=${p.revision.coefficient}` : ''}`;
             if (!groups.has(key)) groups.set(key, { p, rate, amounts: [], bases: [], keys: [] });
             const g = groups.get(key)!;
@@ -447,12 +491,13 @@ export function dueInvoiceLines(input: BillingInput, invoices: BilledInvoice[], 
             if (rate === undefined) continue;
             const item = p.e.item;
             lines.push({
-                description: `${p.p1 ? 'Acompte ' : p.releve ? 'ECS au relevé — ' : ''}${item.activity.label}${item.label ? ` — ${item.label}` : ''} (${item.scheduleLabel}, ${TERME_LABEL[item.terme]}) — Site : ${item.site.name} — ${period(p)}${prorata(p)}${p1Text(p)}${releveText(p)}${revised(p)}`,
+                description: `${p.p1 ? 'Acompte ' : p.releve ? `P1 au compteur (${p.releve.usage === 'ecs' ? 'ECS' : 'chauffage'}) — ` : p.dju ? 'P1 MTI au DJU — ' : ''}${item.activity.label}${item.label ? ` — ${item.label}` : ''} (${item.scheduleLabel}, ${TERME_LABEL[item.terme]}) — Site : ${item.site.name} — ${period(p)}${prorata(p)}${p1Text(p)}${releveText(p)}${djuText(p)}${revised(p)}`,
                 quantity: 1, unitPrice: p.amount, total: p.amount, siteId: item.site.id, activityCode: item.activity.code, vatRate: rate,
                 itemKey: item.key, ...(item.serviceId && { serviceId: item.serviceId }), periodStartDate: p.start, periodEndDate: p.end,
                 ...(p.revision && { baseAmount: p.base, revision: p.revision }),
                 ...(p.p1 && { p1Acompte: { siteId: item.site.id, usage: item.p1Usage ?? 'chauffage', mois: p.p1 } }),
                 ...(p.releve && { p1Releve: p.releve }),
+                ...(p.dju && { p1Dju: p.dju }),
             });
         }
     }
@@ -461,73 +506,116 @@ export function dueInvoiceLines(input: BillingInput, invoices: BilledInvoice[], 
 
 export type P1Mois = { mois: string; quantite: number; prix: number; montant: number };
 
-type IndexFacture = { readingId: string; date: string; index: number };
+type IndexFacture = IndexPris;
 
-/** Dernier relevé facturé de chaque compteur (lignes « ECS au relevé » des factures non annulées). */
+/**
+ * Dernier relevé facturé de chaque compteur, par élément facturé (`clé|compteur`) : un même compteur peut servir à
+ * deux prestations (ECS facturée, et déduite de la formule de NC du chauffage).
+ */
 export function dernierIndexFacture(invoices: BilledInvoice[]): Map<string, IndexFacture> {
     const out = new Map<string, IndexFacture>();
     for (const inv of invoices) {
         if (inv.status === 'cancelled' || inv.cancelledByCreditNoteId) continue;
         for (const l of inv.lineItems ?? []) for (const c of l.p1Releve?.compteurs ?? []) {
-            const cur = out.get(c.meterId);
-            if (!cur || c.fin.date > cur.date) out.set(c.meterId, { readingId: c.fin.readingId, date: c.fin.date, index: c.fin.index });
+            for (const key of lineItemKeys(l)) {
+                const k = `${key}|${c.meterId}`;
+                const cur = out.get(k);
+                if (!cur || c.fin.date > cur.date) out.set(k, { readingId: c.fin.readingId, date: c.fin.date, index: c.fin.index });
+            }
         }
     }
     return out;
 }
 
 /**
- * ECS au relevé d'une échéance mensuelle : pour chaque compteur ECS, volume = index du dernier relevé du mois −
- * index du dernier relevé facturé (à défaut, dernier relevé antérieur au mois) ; prix au m³ du paramétrage P1 (prix
- * de base ECS × formule ECS) ou de la prestation (prix unitaire × sa révision), × coefficient de prix.
+ * P1 au compteur d'une échéance (mensuelle, trimestrielle…), chauffage ou ECS : voir `p1-compteur.ts`. Prix du mois :
+ * paramétrage P1 (prix de base × formule de révision P1) ou prix unitaire de la prestation × sa révision ; coefficient de
+ * gestion de la prestation, du contrat (daté) ou aucun.
  */
-function releveEcs(e: Echeance, input: BillingInput, lastIndex: Map<string, IndexFacture>, frozen: Map<string, RevisionSnapshot>):
+function releveCompteur(e: Echeance, input: BillingInput, lastIndex: Map<string, IndexFacture>, frozen: Map<string, RevisionSnapshot>):
     { detail: NonNullable<InvoiceLineItem['p1Releve']>; revision?: RevisionSnapshot } | string {
     const cfg = e.item.p1Releve!;
-    if (!input.releves) return 'relevés indisponibles pour ce calcul';
-    const mois = e.start.slice(0, 7);
-    const meters = input.releves.meters(e.item.site.id, cfg.meterId, mois);
-    if (typeof meters === 'string') return meters;
-    const compteurs: NonNullable<InvoiceLineItem['p1Releve']>['compteurs'] = [];
-    for (const m of meters) {
-        if (!/^m(3|³)$/i.test((m.unit ?? '').trim())) return `compteur ${m.code} en ${m.unit || '?'} : un compteur ECS au m³ est attendu`;
-        const fin = [...m.readings].filter(r => r.date.slice(0, 7) === mois).sort((a, b) => a.date.localeCompare(b.date)).pop();
-        if (!fin) return `aucun relevé du compteur ${m.code} en ${mois.split('-').reverse().join('/')}`;
-        const deja = lastIndex.get(m.id);
-        const debutReading = deja ?? (() => {
-            const r = [...m.readings].filter(x => x.date < `${mois}-01`).sort((a, b) => a.date.localeCompare(b.date)).pop();
-            return r ? { readingId: r.id, date: r.date, index: r.value } : null;
-        })();
-        if (!debutReading) return `aucun relevé du compteur ${m.code} avant ${mois.split('-').reverse().join('/')} (index de départ)`;
-        if (debutReading.date >= fin.date) return `relevé du compteur ${m.code} du ${fin.date} déjà facturé`;
-        const volume = Math.round((fin.value - debutReading.index) * 1e6) / 1e6;
-        if (volume < 0) return `index du compteur ${m.code} en baisse (${debutReading.index} → ${fin.value}) : changement ou remise à zéro du compteur à traiter`;
-        compteurs.push({ meterId: m.id, code: m.code, debut: debutReading, fin: { readingId: fin.id, date: fin.date, index: fin.value, ...(fin.type && { type: fin.type }) }, volume });
-    }
-    const volume = Math.round(compteurs.reduce((a, c) => a + c.volume, 0) * 1e6) / 1e6;
-    let prix: number;
+    const src = input.releves;
+    if (!src) return 'relevés indisponibles pour ce calcul';
     let revision: RevisionSnapshot | undefined;
-    if (cfg.prixSource === 'p1') {
-        if (!input.p1) return 'paramétrage P1 indisponible pour le prix ECS';
-        const p = input.p1.prix(e.item.site.id, mois, 'ecs');
-        if (typeof p === 'string') return `prix ECS ${mois} : ${p}`;
-        prix = p;
-    } else {
-        if (cfg.unitPrice === null) return 'prix unitaire de la prestation (€/m³) non renseigné';
-        prix = cfg.unitPrice;
-        const config = e.item.revision;
-        const date = config ? revisionInForce(config, e.start) : null;
-        if (config && date) {
-            const known = frozen.get(`${e.item.key}|${date}`);
-            const r = known ?? revisionAt(config, date, input.indices ?? [], input.indexValues ?? []);
-            if ('error' in r) return r.error;
-            revision = r;
-            prix *= r.coefficient;
+    const prix = (mois: string): PrixDuMois | string => {
+        if (cfg.prixSource === 'p1') {
+            if (!input.p1) return 'paramétrage P1 indisponible';
+            const d = input.p1.prixDetail?.(e.item.site.id, mois, cfg.usage);
+            if (d) return d;
+            const p = input.p1.prix(e.item.site.id, mois, cfg.usage);
+            return typeof p === 'string' ? p : { prix: p, base: null, coefficient: null, source: 'p1' };
         }
+        if (cfg.unitPrice === null) return `prix unitaire de la prestation (€/${cfg.usage === 'ecs' ? 'm³' : 'MWh'}) non renseigné`;
+        const config = e.item.revision;
+        const date = config ? revisionInForce(config, `${mois}-01`) : null;
+        if (!config || !date) return { prix: cfg.unitPrice, base: cfg.unitPrice, coefficient: 1, source: 'prestation' };
+        const r = frozen.get(`${e.item.key}|${date}`) ?? revisionAt(config, date, input.indices ?? [], input.indexValues ?? []);
+        if ('error' in r) return r.error;
+        revision = r;
+        return {
+            prix: Math.round(cfg.unitPrice * r.coefficient * 1e6) / 1e6, base: cfg.unitPrice, coefficient: r.coefficient, source: 'prestation',
+            indices: r.indices.map(i => ({ terme: i.code, indice: i.code, ponderation: null, valeur: i.value, base: i.base, ratio: i.base ? i.value / i.base : null, periode: i.periods.join(', ') })),
+        };
+    };
+    const coefGestion = (mois: string): number | null | string => {
+        if (cfg.coefGestion === 'aucun') return null;
+        if (cfg.coefGestion === 'prestation') return cfg.coefficient ?? 'coefficient de gestion de la prestation non renseigné';
+        return src.coefContrat?.(mois) ?? `coefficient de gestion du contrat non renseigné en ${mois.slice(5, 7)}/${mois.slice(0, 4)} (paramétrage P1 du contrat)`;
+    };
+    const r = factureAuCompteur({
+        siteId: e.item.site.id, usage: cfg.usage, debut: e.start, fin: e.end, methode: cfg.prorata,
+        compteurs: mois => src.meters(e.item.site.id, cfg.meterId, mois, cfg.usage),
+        prix, coefGestion,
+        ...(src.dju && { dju: (d: string, f: string) => src.dju!(e.item.site.id, d, f) }),
+        dejaFacture: new Map([...lastIndex].filter(([k]) => k.startsWith(`${e.item.key}|`)).map(([k, v]) => [k.slice(e.item.key.length + 1), v])),
+    });
+    if (typeof r === 'string') return r;
+    const compteurs = r.detail.flatMap(m => m.compteurs.map(c => ({ meterId: c.meterId, code: c.code, debut: c.debut, fin: c.fin, volume: c.volume })));
+    return {
+        detail: {
+            siteId: r.siteId, mois: r.detail[0]?.mois ?? e.start.slice(0, 7), volume: r.quantite,
+            prix: r.quantite ? Math.round((r.montant / r.quantite) * 1e4) / 1e4 : 0, montant: r.montant, compteurs,
+            usage: r.usage, unite: r.unite, detail: r.detail,
+        },
+        ...(revision && { revision }),
+    };
+}
+
+const eurFr = (x: number) => `${x.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €`;
+
+/**
+ * MTI au DJU d'une échéance : pour chaque mois, partie chauffée (bornée par l'allumage et l'arrêt de la saison du site),
+ * DJU de cette partie (arrondis au centième), montant = arrondi(P1 annuel × C/C0 du mois / DJU contractuels × DJU, 2).
+ * Mois hors saison : rien.
+ */
+export function mtiAuDju(e: Echeance, src: P1DjuSource | undefined): NonNullable<InvoiceLineItem['p1Dju']> | string {
+    if (!src) return 'paramétrage P1 indisponible pour ce calcul';
+    const siteId = e.item.site.id;
+    const base = e.item.annual;
+    const djuReference = src.djuReference(siteId, e.start);
+    if (typeof djuReference === 'string') return djuReference;
+    const saisons = src.saisons(siteId);
+    const mois: NonNullable<InvoiceLineItem['p1Dju']>['mois'] = [];
+    let cursor = e.start;
+    while (cursor <= e.end) {
+        const m = cursor.slice(0, 7);
+        const finMois = new Date(Date.UTC(+m.slice(0, 4), +m.slice(5, 7), 0)).toISOString().slice(0, 10);
+        const fin = finMois < e.end ? finMois : e.end;
+        const partie = partieChauffee(saisons, cursor, fin);
+        if (typeof partie === 'string') return partie;
+        if (partie) {
+            const d = src.dju(siteId, partie.debut, partie.fin);
+            if (typeof d === 'string') return d;
+            const c = src.coefficient(siteId, m);
+            if (typeof c === 'string') return `C/C0 ${m.slice(5)}/${m.slice(0, 4)} : ${c}`;
+            const dju = Math.round(d * 100) / 100;
+            const revise = base * c.coefficient;
+            mois.push({ mois: m, debut: partie.debut, fin: partie.fin, dju, coefficient: c.coefficient, revise, montant: roundCents((revise / djuReference) * dju), indices: c.indices });
+        }
+        cursor = addDays(fin, 1);
     }
-    if (cfg.coefficient !== null) prix *= cfg.coefficient;
-    prix = Math.round(prix * 1e6) / 1e6;
-    return { detail: { siteId: e.item.site.id, mois, volume, prix, montant: roundCents(volume * prix), compteurs }, ...(revision && { revision }) };
+    return { siteId, base, djuReference, mois, montant: sumCents(mois.map(x => x.montant)) };
 }
 
 /**

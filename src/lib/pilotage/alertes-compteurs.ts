@@ -21,7 +21,7 @@ export type CompteurSuivi = {
     id: string; code: string; name: string; siteId: string; site: string; client: string; unit?: string; status?: string;
     /** Usage P1 (entrant, vente, ecs…) en vigueur, s'il est renseigné. */
     usage?: string | null;
-    /** Compteur d'une ECS facturée au relevé. */
+    /** Compteur facturé au compteur (P1 au relevé : ECS ou chauffage). */
     ecsAuReleve?: boolean;
 };
 export type RelevePilotage = { id: string; date: string; value: number; type?: string };
@@ -99,7 +99,7 @@ export function alertesCompteur(m: CompteurSuivi, relevesBruts: RelevePilotage[]
     if (m.ecsAuReleve) {
         const moisEchu = addDays(`${today.slice(0, 7)}-01`, -1).slice(0, 7);
         if (!readings.some(r => r.date.slice(0, 7) === moisEchu)) {
-            out.push({ ...base, type: 'releve_ecs_manquant', gravite: 'critique', date: today, message: `Relevé de ${moisEchu.slice(5)}/${moisEchu.slice(0, 4)} manquant : la facture ECS au relevé de ce mois est bloquée.` });
+            out.push({ ...base, type: 'releve_ecs_manquant', gravite: 'critique', date: today, message: `Relevé de ${moisEchu.slice(5)}/${moisEchu.slice(0, 4)} manquant : la facture P1 au compteur de ce mois est bloquée.` });
         }
     }
     if (last && last.type === 'ESTIME' && daysIn(last.date, today) - 1 > seuils.estimeJours) {

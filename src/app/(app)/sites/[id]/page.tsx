@@ -39,6 +39,7 @@ import { cn } from '@/lib/utils';
 import { calculateIndexValue } from '@/lib/calculations';
 import { parseAnchor, revisionAt, revisionConfig, revisionDatesWithin, revisionInForce } from '@/lib/billing/revision';
 import { InterestManager } from '@/components/interest-manager';
+import { METHODES_PRORATA, type MethodeProrata, type SourceCoefGestion } from '@/lib/billing/p1-compteur';
 import { SettlementManager } from '@/components/settlement-manager';
 
 export default function SiteDetailsPage() {
@@ -71,9 +72,11 @@ export default function SiteDetailsPage() {
     const [revisionMonths, setRevisionMonths] = useState<string>('12');
     const [revisionAnchor, setRevisionAnchor] = useState<string>('');
     const [revisionFromStart, setRevisionFromStart] = useState<boolean>(false);
-    const [p1Mode, setP1Mode] = useState<'forfait' | 'acompte' | 'releve'>('forfait');
+    const [p1Mode, setP1Mode] = useState<'forfait' | 'acompte' | 'releve' | 'dju'>('forfait');
     const [p1PrixSource, setP1PrixSource] = useState<'p1' | 'prestation'>('p1');
     const [coefficientPrix, setCoefficientPrix] = useState<string>('');
+    const [p1Prorata, setP1Prorata] = useState<MethodeProrata>('releve_jours');
+    const [p1CoefGestion, setP1CoefGestion] = useState<SourceCoefGestion>('aucun');
     const [price, setPrice] = useState<number>(0);
     const [meterId, setMeterId] = useState<string>('');
     const [isMeterComboOpen, setIsMeterComboOpen] = useState(false);
@@ -219,6 +222,8 @@ export default function SiteDetailsPage() {
         setP1Mode('forfait');
         setP1PrixSource('p1');
         setCoefficientPrix('');
+        setP1Prorata('releve_jours');
+        setP1CoefGestion('aucun');
         setPrice(0);
         setMeterId('');
         setStartDate(contract?.startDate || new Date().toISOString().split('T')[0]);
@@ -319,6 +324,8 @@ export default function SiteDetailsPage() {
         setP1Mode(service.p1Mode ?? 'forfait');
         setP1PrixSource(service.p1PrixSource ?? 'p1');
         setCoefficientPrix(service.coefficientPrix ? String(service.coefficientPrix) : '');
+        setP1Prorata(service.p1Prorata ?? 'releve_jours');
+        setP1CoefGestion(service.p1CoefGestion ?? (service.coefficientPrix ? 'prestation' : 'aucun'));
         setPrice(service.price || 0);
         setMeterId(service.meterId || '');
         setStartDate(service.startDate || '');
@@ -378,8 +385,8 @@ export default function SiteDetailsPage() {
             revisionRuleId,
             ...(selectedType === 'P1' && { p1Mode }),
             ...(selectedType === 'P1' && p1Mode === 'releve' && {
-                p1PrixSource,
-                ...(Number(coefficientPrix.replace(',', '.')) > 0 ? { coefficientPrix: Number(coefficientPrix.replace(',', '.')) } : {}),
+                p1PrixSource, p1Prorata, p1CoefGestion,
+                ...(p1CoefGestion === 'prestation' && Number(coefficientPrix.replace(',', '.')) > 0 ? { coefficientPrix: Number(coefficientPrix.replace(',', '.')) } : {}),
             }),
             // Calendrier de révision (lib/billing/revision) : seulement avec une règle ; sans règle, prix ferme.
             ...(revisionRuleId ? {
@@ -833,7 +840,7 @@ export default function SiteDetailsPage() {
                                     {/* Résumé : ce que la prestation facture, sur quelle période, et ce qui manque. */}
                                     <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
                                         <Indicateur titre="Montant annuel HT"
-                                            valeur={activeService.type === 'P1' && (activeService.p1Mode === 'acompte' || activeService.p1Mode === 'releve') ? (activeService.p1Mode === 'acompte' ? 'Acomptes P1' : 'Au relevé') : eur0(Number(activeService.price) || 0)}
+                                            valeur={activeService.type === 'P1' && (activeService.p1Mode === 'acompte' || activeService.p1Mode === 'releve' || activeService.p1Mode === 'dju') ? (activeService.p1Mode === 'acompte' ? 'Acomptes P1' : activeService.p1Mode === 'dju' ? 'MTI au DJU' : 'Au compteur') : eur0(Number(activeService.price) || 0)}
                                             detail={activeSchedule ? `facturé ${activeSchedule.name.toLowerCase()}${activeTerm ? `, ${activeTerm.name.toLowerCase()}` : ''}` : 'périodicité à renseigner'} />
                                         <Indicateur titre="Période" valeur={`${new Date(activeService.startDate).toLocaleDateString('fr-FR')} → ${activeService.endDate ? new Date(activeService.endDate).toLocaleDateString('fr-FR') : '…'}`}
                                             detail={enVigueur(activeService) ? 'en vigueur' : 'hors période ou inactive'} />
@@ -1350,7 +1357,7 @@ export default function SiteDetailsPage() {
                                                         {p.periodEnd.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: '2-digit' })}
                                                     </TableCell>
                                                     <TableCell className="text-xs py-1.5">{p.dueDate.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: '2-digit' })}</TableCell>
-                                                    <TableCell className="text-xs py-1.5 text-right">{p.amount === null ? (activeService?.p1Mode === 'releve' ? 'au relevé' : 'acompte P1') : p.amount.toLocaleString('fr-FR', { style: 'currency', currency: 'EUR' })}</TableCell>
+                                                    <TableCell className="text-xs py-1.5 text-right">{p.amount === null ? (activeService?.p1Mode === 'releve' ? 'au compteur' : activeService?.p1Mode === 'dju' ? 'au DJU' : 'acompte P1') : p.amount.toLocaleString('fr-FR', { style: 'currency', currency: 'EUR' })}</TableCell>
                                                     <TableCell className="py-1.5">
                                                         {p.invoice
                                                             ? <Link href={`/invoices/${p.invoice.id}`} className="text-xs text-green-600 hover:underline font-medium">
@@ -1527,35 +1534,60 @@ export default function SiteDetailsPage() {
                         {selectedType === 'P1' && (
                             <div className="space-y-2 border p-4 rounded-md mt-4">
                                 <Label>Facturation du P1</Label>
-                                <Select value={p1Mode} onValueChange={v => setP1Mode(v as 'forfait' | 'acompte' | 'releve')}>
+                                <Select value={p1Mode} onValueChange={v => setP1Mode(v as 'forfait' | 'acompte' | 'releve' | 'dju')}>
                                     <SelectTrigger><SelectValue /></SelectTrigger>
                                     <SelectContent>
                                         <SelectItem value="forfait">Forfait (montant annuel de la prestation)</SelectItem>
                                         <SelectItem value="acompte">Acomptes P1 (quantité × répartition × prix révisé P1), régularisés sur le réel</SelectItem>
-                                        {p1Type === 'ECS' && <SelectItem value="releve">Au relevé : chaque mois, volume relevé (index du mois − index précédent) × prix au m³</SelectItem>}
+                                        {p1Type === 'CHAUFFAGE' && <SelectItem value="dju">MTI au DJU : chaque mois, P1 annuel × C/C0 × DJU chauffés / DJU contractuels</SelectItem>}
+                                        {(p1Type === 'ECS' || p1Type === 'CHAUFFAGE') && <SelectItem value="releve">Au compteur : chaque mois, consommation relevée (index du mois − index précédent) × prix</SelectItem>}
                                     </SelectContent>
                                 </Select>
                                 {p1Mode === 'releve' && (
                                     <div className="grid grid-cols-2 gap-3 pt-2">
                                         <div className="space-y-1">
-                                            <Label className="text-xs">Prix au m³</Label>
+                                            <Label className="text-xs">Prix {p1Type === 'ECS' ? 'au m³' : 'au MWh'}</Label>
                                             <Select value={p1PrixSource} onValueChange={v => setP1PrixSource(v as 'p1' | 'prestation')}>
                                                 <SelectTrigger><SelectValue /></SelectTrigger>
                                                 <SelectContent>
-                                                    <SelectItem value="p1">Paramétrage P1 : prix de base ECS du site × formule ECS</SelectItem>
+                                                    <SelectItem value="p1">Paramétrage P1 : prix de base {p1Type === 'ECS' ? 'ECS ' : ''}du site × formule de révision P1</SelectItem>
                                                     <SelectItem value="prestation">Prestation : prix unitaire (€/m³) × sa formule de révision</SelectItem>
                                                 </SelectContent>
                                             </Select>
                                         </div>
                                         <div className="space-y-1">
-                                            <Label className="text-xs">Coefficient de prix (facultatif)</Label>
-                                            <Input inputMode="decimal" value={coefficientPrix} onChange={e => setCoefficientPrix(e.target.value)} placeholder="ex. 1,05" />
+                                            <Label className="text-xs">Coefficient de gestion</Label>
+                                            <Select value={p1CoefGestion} onValueChange={v => setP1CoefGestion(v as SourceCoefGestion)}>
+                                                <SelectTrigger><SelectValue /></SelectTrigger>
+                                                <SelectContent>
+                                                    <SelectItem value="aucun">Aucun</SelectItem>
+                                                    <SelectItem value="prestation">Propre à cette prestation</SelectItem>
+                                                    <SelectItem value="contrat">Celui du contrat (paramétrage P1, daté)</SelectItem>
+                                                </SelectContent>
+                                            </Select>
+                                            {p1CoefGestion === 'prestation' && <Input inputMode="decimal" aria-label="Coefficient de gestion de la prestation" value={coefficientPrix} onChange={e => setCoefficientPrix(e.target.value)} placeholder="ex. 1,05" />}
+                                        </div>
+                                        <div className="space-y-1 col-span-2">
+                                            <Label className="text-xs">Mois couvert en partie (début ou fin de contrat)</Label>
+                                            <Select value={p1Prorata} onValueChange={v => setP1Prorata(v as MethodeProrata)}>
+                                                <SelectTrigger><SelectValue /></SelectTrigger>
+                                                <SelectContent>
+                                                    {(Object.entries(METHODES_PRORATA) as [MethodeProrata, string][]).map(([k, l]) => <SelectItem key={k} value={k}>{l}</SelectItem>)}
+                                                </SelectContent>
+                                            </Select>
                                         </div>
                                         <p className="col-span-2 text-xs text-muted-foreground">
-                                            Compteurs : celui de la prestation, sinon ceux du site d&apos;usage « ECS » (paramétrage P1), au m³. Facturation mensuelle à terme échu ;
-                                            un relevé manquant ou un index en baisse bloque la facture. Les relevés facturés sont figés.
+                                            Compteurs : celui de la prestation ; sinon {p1Type === 'ECS' ? 'ceux du site d\'usage « ECS » (au m³)' : 'ceux de la formule de NC du site (signés), à défaut ceux d\'usage « vente » puis « entrant », convertis en MWh (QE)'}.
+                                            Mensuel ou trimestriel, à terme échu : chaque mois est détaillé dans l&apos;annexe. Un relevé manquant ou un index en baisse bloque la facture. Les relevés facturés sont figés.
                                         </p>
                                     </div>
+                                )}
+                                {p1Mode === 'dju' && (
+                                    <p className="text-xs text-muted-foreground pt-1">
+                                        Le montant annuel ci-dessous est le P1 annuel de base du site (€ HT, acte d&apos;engagement). Chaque mois, à terme échu :
+                                        P1 annuel × C/C0 du mois (formule de révision P1 chauffage du site) / DJU contractuels (DJU de référence du poste) × DJU de la
+                                        partie chauffée du mois (station météo du site, entre l&apos;allumage et l&apos;arrêt de la saison de chauffe). Hors saison : rien.
+                                    </p>
                                 )}
                                 {p1Mode === 'acompte' && (
                                     <p className="text-xs text-muted-foreground pt-1">

@@ -1,7 +1,9 @@
 import 'server-only';
 import { createHash } from 'crypto';
 import { adminBucket, adminDb } from '@/lib/firebase-admin';
-import { renderAccountingPdf, type AccountingDocumentData } from '@/lib/pdf/accounting-document';
+import { renderAccountingPdf, renderAnnexePdf, type AccountingDocumentData } from '@/lib/pdf/accounting-document';
+import { annexesP1 } from '@/lib/billing/p1-annexe';
+import { annexeXlsx } from '@/lib/billing/p1-annexe-xlsx';
 import type { ArchivedPdf, Client, Company, CreditNote, Invoice } from '@/lib/types';
 import { getClient, getCompany, getContract, getCreditNote, getInvoice, getInvoicesByIds, resolveIssuingCompany } from './firestore-admin';
 
@@ -82,6 +84,7 @@ async function load(kind: ArchivedKind, id: string): Promise<Loaded> {
                 ...(invoice.vatBreakdown && { vatBreakdown: invoice.vatBreakdown }),
                 ...(invoice.quote && { quote: invoice.quote }),
                 ...(invoice.situation && { situation: invoice.situation }),
+                ...annexesDe(invoice.lineItems),
             },
         };
     }
@@ -109,8 +112,15 @@ async function load(kind: ArchivedKind, id: string): Promise<Loaded> {
             references: originals.map(inv => inv.invoiceNumber || inv.id),
             reason: creditNote.reason,
             ...(creditNote.vatBreakdown && { vatBreakdown: creditNote.vatBreakdown }),
+            ...annexesDe(creditNote.lineItems),
         },
     };
+}
+
+/** Annexes P1 du document (détail figé dans ses lignes) ; rien s'il n'y a pas de P1 détaillé. */
+function annexesDe(lineItems: Invoice['lineItems']): Pick<AccountingDocumentData, 'annexes'> {
+    const annexes = annexesP1(lineItems ?? []);
+    return annexes.length ? { annexes } : {};
 }
 
 function archivePath(kind: ArchivedKind, companyId: string, number: string, date: string): string {
@@ -186,4 +196,18 @@ export async function getDocumentPdf(kind: ArchivedKind, id: string): Promise<{ 
     const [buffer] = await adminBucket().file(pdf.path).download();
     if (sha256(buffer) !== pdf.sha256) throw new DocumentIntegrityError(pdf.path);
     return { buffer, filename: `${label}_${loaded.number}.pdf`, sha256: pdf.sha256 };
+}
+
+/**
+ * Annexe P1 d'une facture ou d'un avoir, seule : PDF (mêmes pages que celles jointes au document) ou tableur.
+ * Recalculée à la demande à partir du détail figé dans les lignes du document.
+ */
+export async function getDocumentAnnexe(kind: ArchivedKind, id: string, format: 'pdf' | 'xlsx'): Promise<{ buffer: Buffer; filename: string; contentType: string }> {
+    const loaded = await load(kind, id);
+    if (!loaded.data.annexes?.length) throw new Error('Annexe introuvable : ce document n\'a pas de détail P1.');
+    const nom = `Annexe_P1_${(loaded.number ?? id).replace(/[^A-Za-z0-9._-]/g, '_')}`;
+    if (format === 'xlsx') {
+        return { buffer: await annexeXlsx(loaded.data), filename: `${nom}.xlsx`, contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' };
+    }
+    return { buffer: (await renderAnnexePdf(loaded.data))!, filename: `${nom}.pdf`, contentType: 'application/pdf' };
 }

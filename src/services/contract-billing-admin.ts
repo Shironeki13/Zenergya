@@ -11,10 +11,12 @@ import {
 } from '@/services/firestore-admin';
 import type { Activity, Client, Company, Contract, Invoice, RevisionRule, VatRate } from '@/lib/types';
 import { P1_DOC_ID, formuleAu, valeurAu, type P1ContractDoc, type P1MeterDoc, type P1SiteDoc } from '@/lib/p1/stockage';
-import { prixRevise, type SerieValues } from '@/lib/p1/formules';
+import { coefficientRevision, prixRevise, type SerieValues } from '@/lib/p1/formules';
+import type { SaisonChauffe } from '@/lib/p1/saisons';
 import type { Energie, TermeNc } from '@/lib/p1/parametrage';
 import { loadSeries } from '@/services/p1-admin';
-import type { P1AcompteSource, P1ReleveSource, ReleveReading } from '@/lib/billing/contract-billing';
+import type { P1AcompteSource, P1DjuSource, P1ReleveSource, ReleveReading } from '@/lib/billing/contract-billing';
+import type { CompteurFacture, UsageCompteur } from '@/lib/billing/p1-compteur';
 
 /**
  * Facture d'un contrat à une date : toutes les échéances facturables de ses prestations (et montants de sites sans
@@ -49,25 +51,35 @@ export async function loadBillingInput(contract: Contract): Promise<BillingInput
         getIndices(),
         getIndexValues(),
     ]);
-    const p1 = services.some(s => s.p1Mode === 'acompte' || s.p1Mode === 'releve') ? await p1Source(contract.id, siteIds) : undefined;
-    const releves = services.some(s => s.p1Mode === 'releve') ? await releveSource(siteIds) : undefined;
+    const auDju = services.some(s => s.p1Mode === 'dju');
+    const p1 = services.some(s => s.p1Mode === 'acompte' || s.p1Mode === 'releve' || s.p1Mode === 'dju') ? await p1Source(contract.id, siteIds) : undefined;
+    const releves = services.some(s => s.p1Mode === 'releve') || auDju ? await releveSource(siteIds, contract.id) : undefined;
+    let p1Dju: P1DjuSource | undefined;
+    if (auDju && p1 && releves?.dju) {
+        const saisons = (await Promise.all(Array.from({ length: Math.ceil(siteIds.length / 30) }, (_, i) =>
+            adminDb.collection('saisonsChauffe').where('siteId', 'in', siteIds.slice(i * 30, i * 30 + 30)).get()))).flatMap(x => x.docs.map(d => ({ id: d.id, ...d.data() }) as SaisonChauffe));
+        p1Dju = { coefficient: p1.coefficient!, djuReference: p1.djuReference!, dju: releves.dju, saisons: siteId => saisons.filter(x => x.siteId === siteId) };
+    }
     return {
         contract: {
             id: contract.id, siteIds, activityIds: contract.activityIds ?? [], invoicingType: contract.invoicingType,
             startDate: contract.startDate, endDate: contract.endDate, billingSchedule: contract.billingSchedule,
         },
-        sites, services, activities: activities as Activity[], vatRates, schedules, terms, revisionRules, indices, indexValues, ...(p1 && { p1 }), ...(releves && { releves }),
+        sites, services, activities: activities as Activity[], vatRates, schedules, terms, revisionRules, indices, indexValues, ...(p1 && { p1 }), ...(releves && { releves }), ...(p1Dju && { p1Dju }),
     };
 }
 
 /**
- * ECS au relevé : compteurs d'une prestation (son compteur, sinon les compteurs du site d'usage « ECS » dans le
- * paramétrage P1 au mois facturé) et tous leurs relevés (date au jour, heure de Paris).
+ * P1 au compteur : compteurs d'une prestation et leurs relevés (date au jour, heure de Paris), avec leur signe et leur
+ * QE ; coefficient de gestion du contrat ; DJU de la station météo du site (paramétrage P1 daté).
+ * Compteurs d'un mois : celui de la prestation ; sinon, en chauffage, les compteurs signés de la formule de NC des postes
+ * du site (à défaut, ceux d'usage « vente », sinon « entrant ») ; en ECS, ceux d'usage ECS.
  */
-export async function releveSource(siteIds: string[]): Promise<P1ReleveSource> {
+export async function releveSource(siteIds: string[], contractId?: string): Promise<P1ReleveSource> {
     const chunk = <T>(l: T[]) => Array.from({ length: Math.ceil(l.length / 30) }, (_, i) => l.slice(i * 30, i * 30 + 30));
     const meters = (await Promise.all(chunk(siteIds).map(c => adminDb.collection('meters').where('siteId', 'in', c).get()))).flatMap(s => s.docs);
-    const p1Docs = meters.length ? new Map((await adminDb.getAll(...meters.map(m => adminDb.collection('p1Parametrage').doc(P1_DOC_ID.meter(m.id))))).filter(d => d.exists).map(d => [d.id, d.data() as P1MeterDoc])) : new Map();
+    const ids = [...meters.map(m => P1_DOC_ID.meter(m.id)), ...siteIds.map(P1_DOC_ID.site), ...(contractId ? [P1_DOC_ID.contract(contractId)] : [])];
+    const p1Docs = ids.length ? new Map((await adminDb.getAll(...ids.map(id => adminDb.collection('p1Parametrage').doc(id)))).filter(d => d.exists).map(d => [d.id, d.data()])) : new Map();
     const readings = (await Promise.all(chunk(meters.map(m => m.id)).map(c => adminDb.collection('meterReadings').where('meterId', 'in', c).get()))).flatMap(s => s.docs);
     const byMeter = new Map<string, ReleveReading[]>();
     for (const r of readings) {
@@ -75,15 +87,73 @@ export async function releveSource(siteIds: string[]): Promise<P1ReleveSource> {
         if (!byMeter.has(meterId)) byMeter.set(meterId, []);
         byMeter.get(meterId)!.push({ id: r.id, date: toDay(r.get('date'))!, value: Number(r.get('value')), type: r.get('type') ?? undefined });
     }
-    const view = (m: FirebaseFirestore.QueryDocumentSnapshot) => ({ id: m.id, code: String(m.get('code') ?? m.id), unit: m.get('unit') as string | undefined, readings: byMeter.get(m.id) ?? [] });
+    const meterDoc = (id: string) => p1Docs.get(P1_DOC_ID.meter(id)) as P1MeterDoc | undefined;
+    const siteDoc = (id: string) => p1Docs.get(P1_DOC_ID.site(id)) as P1SiteDoc | undefined;
+    const view = (m: FirebaseFirestore.QueryDocumentSnapshot, signe: 1 | -1, jour: string): CompteurFacture => ({
+        id: m.id, code: String(m.get('code') ?? m.id), unit: m.get('unit') as string | undefined, signe,
+        // Compteur d'ECS (m³) déduit d'une formule de NC : qECS (MWh PCS / m³), à défaut son QE.
+        qe: (valeurAu<string>(meterDoc(m.id)?.params, 'usage', jour) === 'ecs' ? valeurAu<number>(meterDoc(m.id)?.params, 'qecs', jour) : null)
+            ?? valeurAu<number>(meterDoc(m.id)?.params, 'qe', jour),
+        readings: byMeter.get(m.id) ?? [],
+    });
+
+    // DJU des stations des sites (journaliers), chargés une fois.
+    const stations = [...new Set(siteIds.flatMap(id => Object.values(siteDoc(id)?.params?.stationMeteo ?? []).map(v => (v as { valeur?: unknown }).valeur).filter((v): v is string => typeof v === 'string' && !!v)))];
+    const djuParStation = new Map<string, Map<string, number>>();
+    if (stations.length) {
+        for (const part of chunk(stations)) {
+            for (const d of (await adminDb.collection('djus').where('stationCode', 'in', part).get()).docs) {
+                const code = String(d.get('stationCode'));
+                if (!djuParStation.has(code)) djuParStation.set(code, new Map());
+                djuParStation.get(code)!.set(String(d.get('date')).slice(0, 10), Number(d.get('value')) || 0);
+            }
+        }
+    }
+    const contractDoc = contractId ? p1Docs.get(P1_DOC_ID.contract(contractId)) as P1ContractDoc | undefined : undefined;
     return {
-        meters: (siteId, serviceMeterId, mois) => {
+        meters: (siteId, serviceMeterId, mois, usage: UsageCompteur = 'ecs') => {
+            const jour = `${mois}-01`;
             if (serviceMeterId) {
                 const m = meters.find(x => x.id === serviceMeterId);
-                return m ? [view(m)] : 'compteur de la prestation introuvable';
+                return m ? [view(m, 1, jour)] : 'compteur de la prestation introuvable';
             }
-            const ecs = meters.filter(m => m.get('siteId') === siteId && valeurAu<string>(p1Docs.get(P1_DOC_ID.meter(m.id))?.params, 'usage', `${mois}-01`) === 'ecs');
-            return ecs.length ? ecs.map(view) : 'aucun compteur ECS : choisissez le compteur de la prestation, ou l\'usage « ECS » des compteurs dans le paramétrage P1';
+            const duSite = meters.filter(m => m.get('siteId') === siteId);
+            if (usage === 'chauffage') {
+                const termes = Object.values(siteDoc(siteId)?.postes ?? {}).filter(p => !p.retireLe)
+                    .flatMap(p => valeurAu<TermeNc[]>(p.params, 'formuleNc', jour) ?? []);
+                if (termes.length) {
+                    const out: CompteurFacture[] = [];
+                    for (const t of termes) {
+                        const m = duSite.find(x => String(x.get('code')) === t.codeCompteur);
+                        if (!m) return `compteur ${t.codeCompteur} de la formule de NC introuvable sur le site`;
+                        out.push(view(m, t.signe, jour));
+                    }
+                    return out;
+                }
+            }
+            const usageDe = (m: FirebaseFirestore.QueryDocumentSnapshot) => valeurAu<string>(meterDoc(m.id)?.params, 'usage', jour);
+            // Chauffage sans formule de NC : compteurs de vente, à défaut d'énergie entrante.
+            const parUsage = usage === 'ecs' ? duSite.filter(m => usageDe(m) === 'ecs')
+                : (duSite.filter(m => usageDe(m) === 'vente').length ? duSite.filter(m => usageDe(m) === 'vente') : duSite.filter(m => usageDe(m) === 'entrant'));
+            return parUsage.length ? parUsage.map(m => view(m, 1, jour))
+                : usage === 'ecs'
+                    ? 'aucun compteur ECS : choisissez le compteur de la prestation, ou l\'usage « ECS » des compteurs dans le paramétrage P1'
+                    : 'aucun compteur de chauffage : choisissez le compteur de la prestation, la formule de NC du site, ou l\'usage « vente » / « entrant » des compteurs';
+        },
+        coefContrat: mois => valeurAu<number>(contractDoc?.params, 'coefficientGestion', `${mois}-01`),
+        dju: (siteId, debut, fin) => {
+            const station = valeurAu<string>(siteDoc(siteId)?.params, 'stationMeteo', debut);
+            if (!station) return 'station météo du site non renseignée (paramétrage P1) : DJU indisponibles pour le prorata';
+            const serie = djuParStation.get(station);
+            if (!serie) return `aucun DJU pour la station ${station}`;
+            let total = 0, n = 0;
+            for (let d = debut; d <= fin; d = new Date(Date.parse(`${d}T00:00:00Z`) + 86_400_000).toISOString().slice(0, 10)) {
+                const v = serie.get(d);
+                if (v !== undefined) { total += v; n++; }
+            }
+            const attendus = Math.round((Date.parse(`${fin}T00:00:00Z`) - Date.parse(`${debut}T00:00:00Z`)) / 86_400_000) + 1;
+            if (n < attendus) return `DJU de la station ${station} incomplets du ${debut.split('-').reverse().join('/')} au ${fin.split('-').reverse().join('/')} (${n}/${attendus} jours)`;
+            return Math.round(total * 10) / 10;
         },
     };
 }
@@ -125,6 +195,32 @@ export async function p1Source(contractId: string, siteIds: string[], series?: S
         },
         repartition: (mois, usage) => valeurAu<number[]>(contractDoc?.params, usage === 'ecs' ? 'repartitionAcomptesEcs' : 'repartitionAcomptes', day(mois))
             ?? `répartition des acomptes ${usage === 'ecs' ? 'ECS' : 'P1'} du contrat non renseignée`,
+        prixDetail: (siteId, mois, usage) => {
+            const site = docs.get(P1_DOC_ID.site(siteId)) as P1SiteDoc | undefined;
+            const f = formuleAu(contractDoc, siteId, energiesOf(siteId, day(mois)), usage, day(mois));
+            if (!f) return `aucune formule de révision P1 ${usage === 'ecs' ? 'ECS' : 'chauffage'} en vigueur`;
+            const base = valeurAu<number>(site?.params, usage === 'ecs' ? 'prixBaseEcs' : 'prixBase', day(mois));
+            if (base === null) return `prix de base ${usage === 'ecs' ? 'ECS ' : ''}du site non renseigné`;
+            const r = prixRevise(f.version, base, mois, seriesValues);
+            if ('causes' in r) return r.causes.join(' ; ');
+            return {
+                prix: Math.round(r.prix * 1e6) / 1e6, base, coefficient: Math.round(r.coefficient * 1e6) / 1e6, source: 'p1', provisoire: r.provisoire,
+                indices: r.lignes.map(l => ({ terme: l.terme, indice: l.indice, ponderation: l.ponderation, valeur: l.valeurMois, base: l.valeurBase, ratio: l.ratio, periode: l.periode })),
+            };
+        },
+        coefficient: (siteId, mois) => {
+            const f = formuleAu(contractDoc, siteId, energiesOf(siteId, day(mois)), 'chauffage', day(mois));
+            if (!f) return 'aucune formule de révision P1 chauffage en vigueur';
+            if (f.version.prixFixe) return { coefficient: 1, indices: [] };
+            const c = coefficientRevision(f.version, mois, seriesValues);
+            if ('causes' in c) return c.causes.join(' ; ');
+            return { coefficient: c.coefficient, indices: c.lignes.map(l => ({ terme: l.terme, indice: l.indice, ponderation: l.ponderation, valeur: l.valeurMois, base: l.valeurBase, ratio: l.ratio, periode: l.periode })) };
+        },
+        djuReference: (siteId, jour) => {
+            const site = docs.get(P1_DOC_ID.site(siteId)) as P1SiteDoc | undefined;
+            const valeurs = Object.values(site?.postes ?? {}).filter(p => !p.retireLe).map(p => valeurAu<number>(p.params, 'djuReference', jour)).filter((v): v is number => !!v);
+            return valeurs[0] ?? 'DJU de référence (contractuels) non renseignés sur le poste de consommation du site';
+        },
         prix: (siteId, mois, usage) => {
             const site = docs.get(P1_DOC_ID.site(siteId)) as P1SiteDoc | undefined;
             const f = formuleAu(contractDoc, siteId, energiesOf(siteId, day(mois)), usage, day(mois));

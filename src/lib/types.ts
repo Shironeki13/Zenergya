@@ -635,12 +635,23 @@ export type InvoiceLineItem = {
     /** Acompte P1 : détail par mois (quantité estimée, prix révisé, montant) ; sert à la régularisation. */
     p1Acompte?: { siteId: string; usage?: 'chauffage' | 'ecs'; mois: { mois: string; quantite: number; prix: number; montant: number }[] };
     /** ECS au relevé : relevés utilisés par compteur (index de début et de fin), volume, prix au m³ et montant. */
+    /**
+     * P1 au compteur (chauffage, ECS) : quantité et montant de l'échéance, compteurs et index pris (relevés figés),
+     * et détail par mois (annexe). `volume` : quantité totale (m³ ou MWh) ; `prix` : prix moyen appliqué.
+     */
     p1Releve?: {
         siteId: string; mois: string; volume: number; prix: number; montant: number;
         compteurs: { meterId: string; code: string; debut: { readingId: string; date: string; index: number }; fin: { readingId: string; date: string; index: number; type?: string }; volume: number }[];
+        usage?: 'chauffage' | 'ecs'; unite?: 'MWh' | 'm³';
+        detail?: import('@/lib/billing/p1-compteur').MoisFacture[];
+    };
+    /** MTI au DJU : P1 annuel de base, DJU contractuels, et par mois la partie chauffée, ses DJU, C/C0 et le montant. */
+    p1Dju?: {
+        siteId: string; base: number; djuReference: number; montant: number;
+        mois: { mois: string; debut: string; fin: string; dju: number; coefficient: number; revise: number; montant: number; indices?: import('@/lib/billing/p1-compteur').PrixDuMois['indices'] }[];
     };
     /** Régularisation P1 : site et mois régularisés (réel du moteur − acomptes), ou intéressement facturé. */
-    p1Regul?: { siteId: string; usage?: 'chauffage' | 'ecs' | 'total'; mois: string[]; reel: number; acomptes: number } | { siteId: string; interestId: string };
+    p1Regul?: { siteId: string; usage?: 'chauffage' | 'ecs' | 'total'; mois: string[]; reel: number; acomptes: number; decompte?: import('@/lib/billing/p1-decompte').DecompteSaison[] } | { siteId: string; interestId: string };
     revision?: { date: string; coefficient: number; rule: string; indices: { code: string; periods: string[]; value: number; base: number; basePeriod: string }[] };
 };
 
@@ -996,11 +1007,15 @@ export type Service = {
      * P1 : « acompte » = montant calculé (quantité annuelle × répartition du mois × prix révisé P1) ; « releve » (ECS) =
      * volume relevé chaque mois sur les compteurs ECS (index du mois − index précédent) × prix au m³ ; sinon forfait.
      */
-    p1Mode?: 'forfait' | 'acompte' | 'releve';
+    p1Mode?: 'forfait' | 'acompte' | 'releve' | 'dju';
     /** ECS au relevé : prix au m³ du paramétrage P1 (prix de base ECS × formule ECS) ou de la prestation (prix unitaire × sa révision). */
     p1PrixSource?: 'p1' | 'prestation';
     /** ECS au relevé : coefficient appliqué au prix chaque mois (facultatif). */
     coefficientPrix?: number;
+    /** P1 au compteur : méthode du prorata d'un mois partiel. */
+    p1Prorata?: 'releve_jours' | 'releve_dju' | 'jours' | 'dju';
+    /** P1 au compteur : coefficient de gestion (aucun, celui de la prestation, celui du contrat). */
+    p1CoefGestion?: 'aucun' | 'prestation' | 'contrat';
 
     // Financials
     price: number; // Base price or Flat rate

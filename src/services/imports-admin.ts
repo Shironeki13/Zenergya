@@ -797,9 +797,11 @@ function planService(ctx: Context, row: ParsedRow, pending: Map<string, { line: 
     const taken = refTakenBy(ctx.services, v.externalRef, existing?.id);
     if (taken) item.messages.push(`Réf. externe ${v.externalRef} déjà portée par une autre prestation.`);
 
-    const data = plain(v, ['externalRef', 'label', 'price', 'p1Type', 'energyType', 'unitPrice', 'unit', 'isActive', 'comment', 'p1Mode', 'p1PrixSource', 'coefficientPrix']);
-    if ((v.p1Mode === 'acompte' || v.p1Mode === 'releve') && activity.type !== 'P1') item.messages.push('Acomptes ou relevé : prestation P1 seulement.');
-    if (v.p1Mode === 'releve' && (v.p1Type ?? existing?.p1Type) !== 'ECS') item.messages.push('Au relevé : prestation P1 de type ECS seulement.');
+    const data = plain(v, ['externalRef', 'label', 'price', 'p1Type', 'energyType', 'unitPrice', 'unit', 'isActive', 'comment', 'p1Mode', 'p1PrixSource', 'coefficientPrix', 'p1Prorata', 'p1CoefGestion']);
+    if ((v.p1Mode === 'acompte' || v.p1Mode === 'releve') && activity.type !== 'P1') item.messages.push('Acomptes ou compteur : prestation P1 seulement.');
+    if (v.p1Mode === 'releve' && !['ECS', 'CHAUFFAGE'].includes(String(v.p1Type ?? existing?.p1Type ?? ''))) item.messages.push('Au compteur : prestation P1 de type chauffage ou ECS.');
+    if (v.p1Mode === 'dju' && (activity.type !== 'P1' || String(v.p1Type ?? existing?.p1Type ?? 'CHAUFFAGE') !== 'CHAUFFAGE')) item.messages.push('MTI au DJU : prestation P1 de type chauffage.');
+    if (v.p1CoefGestion === 'prestation' && !(Number(v.coefficientPrix ?? existing?.coefficientPrix) > 0)) item.messages.push('Coefficient de gestion « prestation » : renseignez le coefficient de prix.');
     if (startDay && startDay !== toDay(existing?.startDate)) data.startDate = startDay;
     if (endDay && endDay !== toDay(existing?.endDate)) data.endDate = endDay;
     if (existing && v.activity && activity.id !== existing.activityId) Object.assign(data, { activityId: activity.id, type: activity.type });
@@ -978,7 +980,11 @@ function planP1Formule(ctx: Context, row: ParsedRow, seen: Map<string, number>):
         unitePrix: (v.unitePrix as FormuleVersion['unitePrix']) ?? 'EUR/MWh', dateM0, m0Manquante: v.m0Manquante ? String(v.m0Manquante) : null,
         regimeKmol: (v.regimeKmol as 'variable' | 'fixe') ?? 'variable', prixMoleculeNegocie: typeof v.prixMolecule === 'number' ? v.prixMolecule : null,
         prixFixe: v.prixFixe === true, periodicite: v.periodicite as FormuleVersion['periodicite'], termes,
+        ...(typeof v.facteur === 'number' && { facteur: v.facteur }),
+        ...(typeof v.arrondiCoefficient === 'number' && { arrondiCoefficient: v.arrondiCoefficient }),
     };
+    if (typeof v.facteur === 'number' && !(v.facteur > 0)) item.messages.push('Facteur fixe : nombre positif.');
+    if (typeof v.arrondiCoefficient === 'number' && !(Number.isInteger(v.arrondiCoefficient) && v.arrondiCoefficient >= 0 && v.arrondiCoefficient <= 8)) item.messages.push('Arrondi du coefficient : nombre de décimales entre 0 et 8.');
     const check = validateFormule(version, ctx.indexCodes);
     item.messages.push(...check.errors);
     item.warnings.push(...check.warnings);
