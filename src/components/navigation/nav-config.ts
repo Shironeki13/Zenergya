@@ -51,7 +51,7 @@ export const NAV_GROUPS: NavGroup[] = [
         id: 'travaux', label: 'Travaux', icon: Calculator, items: [
             { href: '/works', label: 'Accueil travaux', icon: Home },
             { href: '/quotes', label: 'Devis', icon: MessageSquareQuote },
-            { href: '/projects', label: 'Affaires (P6)', icon: Calculator },
+            { href: '/projects', label: 'Affaires', icon: Calculator, keywords: 'travaux p5 p6 chantier budget marge rentabilité' },
             { href: '/library', label: 'Bibliothèque de prix', icon: Library, keywords: 'articles ouvrages' },
         ],
     },
