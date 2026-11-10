@@ -72,6 +72,9 @@ Comptes (mot de passe Demo-Zenergya-2026) :
   adv2@example.com           ADV (Julien Petit)
   contratheque@example.com   Contrathèque : validation des documents
   admin@example.com          Administrateur (sans le droit contrathèque)
+  technicien@example.com     Commandes d'achat (demandeur)
+  responsable@example.com    Validation N+1      directeur@example.com   Validation N+2
+  achats@example.com         Validation achats, factures fournisseurs
 Remise à zéro des données sans redémarrer : npm run demo:donnees (dans un autre terminal).
 Extraction Excel des tables : npm run demo:extraction
 Ctrl+C pour arrêter (les données simulées sont effacées).

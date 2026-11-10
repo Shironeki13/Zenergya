@@ -29,6 +29,10 @@ Mot de passe commun : `Demo-Zenergya-2026`.
 | `adv2@example.com` | ADV (Julien Petit) | second portefeuille (pilotage par responsable facturation) |
 | `contratheque@example.com` | Contrathèque | validation des documents : contrôle champ par champ, corrections, refus |
 | `admin@example.com` | Administrateur, sans le droit contrathèque | utilisateurs et rôles ; ne voit pas la validation |
+| `technicien@example.com` | Exploitation (Lucas Morel) | saisit des commandes d'achat ; son N+1 est le responsable |
+| `responsable@example.com` | Exploitation (Nadia Roche) | valide en N+1 les commandes du technicien ; son N+1 est le directeur |
+| `directeur@example.com` | Exploitation (Paul Garnier) | valide en N+2 |
+| `achats@example.com` | Achats (Élise Faure) | valide au-delà du seuil achats ; saisit les factures fournisseurs |
 
 ## Contenu du jeu de données
 

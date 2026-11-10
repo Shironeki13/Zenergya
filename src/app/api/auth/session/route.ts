@@ -40,7 +40,7 @@ export async function POST(req: NextRequest) {
         const claimsUpdated = await syncClaims(decoded.uid, user);
 
         const sessionCookie = await adminAuth.createSessionCookie(idToken, { expiresIn: SESSION_MAX_AGE_MS });
-        const res = NextResponse.json({ user: user.profile, isAdmin: user.isAdmin, isContratheque: user.isContratheque, claimsUpdated });
+        const res = NextResponse.json({ user: user.profile, isAdmin: user.isAdmin, isContratheque: user.isContratheque, isAcheteur: user.isAcheteur, claimsUpdated });
         res.cookies.set(SESSION_COOKIE, sessionCookie, {
             httpOnly: true,
             secure: process.env.NODE_ENV === 'production',

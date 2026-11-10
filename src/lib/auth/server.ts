@@ -11,6 +11,8 @@ export type SessionUser = {
     isAdmin: boolean;
     /** Contrathèque : valide les documents de contrat (garante des documents saisis). */
     isContratheque: boolean;
+    /** Achats : valide les commandes au-delà du seuil « achats ». */
+    isAcheteur: boolean;
     /** Fiche de la collection `users` (ou profil synthétique pour un admin d'amorçage). */
     profile: User;
 };
@@ -64,6 +66,7 @@ export async function resolveAppUser(uid: string, email: string | undefined, dis
             email,
             isAdmin: true,
             isContratheque: true,
+            isAcheteur: true,
             profile: {
                 id: uid,
                 name: displayName || email,
@@ -85,6 +88,7 @@ export async function resolveAppUser(uid: string, email: string | undefined, dis
     let isAdmin = isBootstrapAdmin;
     // Admin d'amorçage : contrathèque de secours.
     let isContratheque = isBootstrapAdmin;
+    let isAcheteur = isBootstrapAdmin;
     let roleName: string | undefined;
     if (data.roleId) {
         const roleSnap = await adminDb.collection('roles').doc(data.roleId).get();
@@ -92,6 +96,7 @@ export async function resolveAppUser(uid: string, email: string | undefined, dis
             roleName = roleSnap.get('name');
             isAdmin = isAdmin || roleSnap.get('isAdmin') === true;
             isContratheque = isContratheque || roleSnap.get('isContratheque') === true;
+            isAcheteur = isAcheteur || roleSnap.get('isAcheteur') === true;
         }
     }
 
@@ -100,6 +105,7 @@ export async function resolveAppUser(uid: string, email: string | undefined, dis
         email,
         isAdmin,
         isContratheque,
+        isAcheteur,
         profile: {
             id: userDoc.id,
             name: data.name || displayName || email,
@@ -107,6 +113,7 @@ export async function resolveAppUser(uid: string, email: string | undefined, dis
             email: data.email,
             roleId: data.roleId,
             roleName: roleName ?? data.roleName,
+            managerId: data.managerId ?? null,
             modules: data.modules || [],
             scope: data.scope || { companyIds: [], agencyIds: [], sectorIds: [] },
         },

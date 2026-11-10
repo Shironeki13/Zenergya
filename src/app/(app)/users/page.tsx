@@ -44,14 +44,16 @@ const RolesSection = () => {
     const [name, setName] = useState('');
     const [isAdminRole, setIsAdminRole] = useState(false);
     const [contrathequeRole, setContrathequeRole] = useState(false);
+    const [acheteurRole, setAcheteurRole] = useState(false);
 
-    const resetForm = () => { setName(''); setIsAdminRole(false); setContrathequeRole(false); setEditingRole(null); };
+    const resetForm = () => { setName(''); setIsAdminRole(false); setContrathequeRole(false); setAcheteurRole(false); setEditingRole(null); };
 
     const handleOpenDialog = (role: Role | null = null) => {
         setEditingRole(role);
         setName(role ? role.name : '');
         setIsAdminRole(role?.isAdmin === true);
         setContrathequeRole(role?.isContratheque === true);
+        setAcheteurRole(role?.isAcheteur === true);
         setDialogOpen(true);
     };
 
@@ -61,10 +63,10 @@ const RolesSection = () => {
         setIsSubmitting(true);
         try {
             if (editingRole) {
-                await updateRole(editingRole.id, { name, isAdmin: isAdminRole, isContratheque: contrathequeRole });
+                await updateRole(editingRole.id, { name, isAdmin: isAdminRole, isContratheque: contrathequeRole, isAcheteur: acheteurRole });
                 toast({ title: "Succès", description: "Rôle mis à jour." });
             } else {
-                await createRole({ name, isAdmin: isAdminRole, isContratheque: contrathequeRole });
+                await createRole({ name, isAdmin: isAdminRole, isContratheque: contrathequeRole, isAcheteur: acheteurRole });
                 toast({ title: "Succès", description: "Rôle créé." });
             }
             await reloadData();
@@ -112,7 +114,7 @@ const RolesSection = () => {
                             ) : (
                                 roles.map(role => (
                                     <TableRow key={role.id}>
-                                        <TableCell className="font-medium">{role.name}{role.isAdmin && <span className="ml-2 text-xs text-muted-foreground">(administrateur)</span>}{role.isContratheque && <span className="ml-2 text-xs text-muted-foreground">(contrathèque)</span>}</TableCell>
+                                        <TableCell className="font-medium">{role.name}{role.isAdmin && <span className="ml-2 text-xs text-muted-foreground">(administrateur)</span>}{role.isContratheque && <span className="ml-2 text-xs text-muted-foreground">(contrathèque)</span>}{role.isAcheteur && <span className="ml-2 text-xs text-muted-foreground">(achats)</span>}</TableCell>
                                         <TableCell className="text-right">
                                             <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleOpenDialog(role)}><Edit className="h-4 w-4" /></Button>
                                             <Dialog open={!!roleToDelete && roleToDelete.id === role.id} onOpenChange={(isOpen) => !isOpen && setRoleToDelete(null)}>
@@ -153,6 +155,13 @@ const RolesSection = () => {
                                 </div>
                                 <Switch id="roleContratheque" checked={contrathequeRole} onCheckedChange={setContrathequeRole} />
                             </div>
+                            <div className="flex items-center justify-between gap-4 rounded-md border p-3">
+                                <div className="space-y-0.5">
+                                    <Label htmlFor="roleAcheteur">Achats</Label>
+                                    <p className="text-xs text-muted-foreground">Valide les commandes d&apos;achat au-delà du seuil « achats » (après les responsables N+1 et N+2).</p>
+                                </div>
+                                <Switch id="roleAcheteur" checked={acheteurRole} onCheckedChange={setAcheteurRole} />
+                            </div>
                             <DialogFooter>
                                 <DialogClose asChild><Button variant="outline">Annuler</Button></DialogClose>
                                 <Button type="submit" disabled={isSubmitting}>{isSubmitting ? "Enregistrement..." : "Enregistrer"}</Button>
@@ -179,6 +188,7 @@ const UsersSection = () => {
     const [firstName, setFirstName] = useState('');
     const [email, setEmail] = useState('');
     const [roleId, setRoleId] = useState('');
+    const [managerId, setManagerId] = useState('');
 
     // Permissions
     const [selectedModules, setSelectedModules] = useState<string[]>([]);
@@ -197,6 +207,7 @@ const UsersSection = () => {
         setFirstName('');
         setEmail('');
         setRoleId('');
+        setManagerId('');
         setSelectedModules([]);
         setSelectedCompanyIds([]);
         setSelectedAgencyIds([]);
@@ -211,6 +222,7 @@ const UsersSection = () => {
             setFirstName(user.firstName || '');
             setEmail(user.email);
             setRoleId(user.roleId);
+            setManagerId(user.managerId ?? '');
             setSelectedModules(user.modules || []);
             setSelectedCompanyIds(user.scope?.companyIds || []);
             setSelectedAgencyIds(user.scope?.agencyIds || []);
@@ -235,6 +247,7 @@ const UsersSection = () => {
                 // Nouvel email : la fiche sera rattachée au compte Firebase correspondant à sa prochaine connexion.
                 ...(emailChanged && { authUid: null }),
                 roleId,
+                managerId: managerId || null,
                 modules: selectedModules,
                 scope: {
                     companyIds: selectedCompanyIds,
@@ -383,6 +396,17 @@ const UsersSection = () => {
                                         {roles.map(r => <SelectItem key={r.id} value={r.id}>{r.name}</SelectItem>)}
                                     </SelectContent>
                                 </Select>
+                            </div>
+                            <div className="space-y-2">
+                                <Label htmlFor="manager">Responsable (N+1)</Label>
+                                <Select onValueChange={v => setManagerId(v === 'aucun' ? '' : v)} value={managerId || 'aucun'}>
+                                    <SelectTrigger id="manager"><SelectValue /></SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="aucun">Aucun</SelectItem>
+                                        {users.filter(u => u.id !== editingUser?.id).map(u => <SelectItem key={u.id} value={u.id}>{[u.firstName, u.name].filter(Boolean).join(' ')}</SelectItem>)}
+                                    </SelectContent>
+                                </Select>
+                                <p className="text-xs text-muted-foreground">Valide les commandes d&apos;achat de cet utilisateur au-delà du seuil d&apos;autovalidation ; son propre responsable est le N+2.</p>
                             </div>
 
                             <div className="space-y-4 border-t pt-4">

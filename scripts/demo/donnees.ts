@@ -19,6 +19,8 @@ import { invoiceQuote } from '../../src/services/quote-billing';
 import { createProjectFromQuote, invoiceSituation, saveSituationDraft } from '../../src/services/projects-admin';
 import { computeQuoteTotals } from '../../src/lib/quotes/pricing';
 import type { Quote, QuoteLine, QuotePricing } from '../../src/lib/quotes/types';
+import { ajouterFactureFournisseur, avancerCommande, deciderCommande, saveCommande, saveFournisseur, soumettreCommande, type CommandeInput } from '../../src/services/commandes-admin';
+import type { SessionUser } from '../../src/lib/auth/server';
 
 const env = process.env;
 const PROJET = env.FIREBASE_PROJECT_ID ?? env.GCLOUD_PROJECT ?? '';
@@ -140,16 +142,23 @@ const COMPTES = [
     { id: 'demo-u-adv2', email: 'adv2@example.com', name: 'Julien Petit (ADV)', firstName: 'Julien', roleId: 'demo-r-adv' },
     { id: 'demo-u-ctq', email: 'contratheque@example.com', name: 'Sophie Bernard (contrathèque)', firstName: 'Sophie', roleId: 'demo-r-ctq' },
     { id: 'demo-u-admin', email: 'admin@example.com', name: 'Marc Leroy (administrateur)', firstName: 'Marc', roleId: 'demo-r-admin' },
-];
+    // Achats : le technicien commande ; son responsable (N+1) puis le directeur d'agence (N+2) valident ; les achats au-delà de leur seuil.
+    { id: 'demo-u-dir', email: 'directeur@example.com', name: 'Paul Garnier (directeur d\'agence)', firstName: 'Paul', roleId: 'demo-r-expl' },
+    { id: 'demo-u-resp', email: 'responsable@example.com', name: 'Nadia Roche (responsable d\'exploitation)', firstName: 'Nadia', roleId: 'demo-r-expl', managerId: 'demo-u-dir' },
+    { id: 'demo-u-tech', email: 'technicien@example.com', name: 'Lucas Morel (technicien)', firstName: 'Lucas', roleId: 'demo-r-expl', managerId: 'demo-u-resp' },
+    { id: 'demo-u-achats', email: 'achats@example.com', name: 'Élise Faure (achats)', firstName: 'Élise', roleId: 'demo-r-achats' },
+] as { id: string; email: string; name: string; firstName: string; roleId: string; managerId?: string }[];
 
 async function comptes() {
     await set('roles', 'demo-r-adv', { name: 'ADV', isAdmin: false });
     await set('roles', 'demo-r-ctq', { name: 'Contrathèque', isAdmin: false, isContratheque: true });
     await set('roles', 'demo-r-admin', { name: 'Administrateur', isAdmin: true });
+    await set('roles', 'demo-r-expl', { name: 'Exploitation', isAdmin: false });
+    await set('roles', 'demo-r-achats', { name: 'Achats', isAdmin: false, isAcheteur: true });
     for (const c of COMPTES) {
         const u = await adminAuth.createUser({ email: c.email, password: MOT_DE_PASSE, displayName: c.name });
         await set('users', c.id, {
-            name: c.name, firstName: c.firstName, email: c.email, roleId: c.roleId, authUid: u.uid,
+            name: c.name, firstName: c.firstName, email: c.email, roleId: c.roleId, authUid: u.uid, ...(c.managerId && { managerId: c.managerId }),
             modules: ['contracts', 'billing', 'settings'], scope: { companyIds: ['*'], agencyIds: ['*'], sectorIds: ['*'] },
         });
     }
@@ -577,6 +586,59 @@ async function travaux(codesClients: string[], contrats: { id: string }[]) {
     await devis(9, 9, 'P5', 'Désembouage du réseau ECS', [L('e1', 'SOUS_TRAITANCE', 'Désembouage hydrodynamique', 1, 2100), L('e2', 'MAIN_OEUVRE', 'Assistance et remise en service', 8)], '2026-11-04');
     await adminDb.collection('config').doc('sequences').set({ [`quote_ZEN_2026`]: n }, { merge: true });
     console.log(`Travaux : ${n} devis, 3 affaires (2 en P5 à facturation directe dont une avec devis complémentaire, 1 en P6 par situations).`);
+    return { circulateur: q1.projectId as string, chaufferie: affaire.id };
+}
+
+// --- Achats : fournisseurs, commandes à chaque état du circuit (seuils par défaut : 500 / 5 000 / 10 000 € HT) ---
+
+async function achats(affaires: { circulateur: string; chaufferie: string }, contrats: { id: string }[]) {
+    const session = async (id: string): Promise<SessionUser> => {
+        const d = await adminDb.collection('users').doc(id).get();
+        const role = await adminDb.collection('roles').doc(String(d.get('roleId'))).get();
+        return { uid: String(d.get('authUid')), email: String(d.get('email')), isAdmin: role.get('isAdmin') === true, isContratheque: role.get('isContratheque') === true, isAcheteur: role.get('isAcheteur') === true, profile: { id: d.id, ...d.data() } as SessionUser['profile'] };
+    };
+    const [tech, resp, dir, ach] = await Promise.all(['demo-u-tech', 'demo-u-resp', 'demo-u-dir', 'demo-u-achats'].map(session));
+    const F = async (name: string, n: number, email: string) => (await saveFournisseur({ name, siret: siretFictif(900 + n), email, address: `${n} rue des Fournisseurs, 69800 Saint-Priest` }, 'achats@example.com')).id;
+    const [negoce, chaudieres, fumiste, calo, levage] = [
+        await F('Négoce Thermique Démo', 1, 'commandes@negoce-demo.example.com'), await F('Chaudières Exemple Industrie', 2, 'adv@chaudieres-demo.example.com'),
+        await F('Fumisterie Rhône Démo', 3, 'contact@fumisterie-demo.example.com'), await F('Calorifuge Services Démo', 4, 'contact@calorifuge-demo.example.com'),
+        await F('Levage et Location Démo', 5, 'agence@levage-demo.example.com'),
+    ];
+    type Ligne = CommandeInput['lines'][number];
+    const aff = (projectId: string) => ({ type: 'affaire' as const, projectId });
+    const cmd = async (par: SessionUser, supplierId: string, title: string, date: string, lines: Ligne[], soumettre = true) => {
+        const c = await saveCommande({ companyId: 'demo-zen', supplierId, title, date, lines }, par);
+        return soumettre ? soumettreCommande(c.id, par) : c;
+    };
+    const A = affaires;
+    // Affaire « circulateur » (P5) : matériel reçu et facturé (N+1), petit achat autovalidé, sous-traitance en attente du N+1.
+    const c1 = await cmd(tech, negoce, 'Circulateur double et accessoires', '2026-09-24', [
+        { label: 'Circulateur double à débit variable', quantity: 1, unitPrice: 1790, nature: 'FOURNITURE', cible: aff(A.circulateur) },
+        { label: 'Vannes d\'isolement et accessoires', quantity: 1, unitPrice: 255, nature: 'FOURNITURE', cible: aff(A.circulateur) }]);
+    await deciderCommande(c1.id, 'validee', '', resp);
+    await avancerCommande(c1.id, tech); await avancerCommande(c1.id, tech);
+    await ajouterFactureFournisseur(c1.id, { numero: 'NTD-2026-4471', date: '2026-10-09', montantHT: 2045, solder: true }, ach);
+    await cmd(tech, negoce, 'Évacuation des déchets (benne)', '2026-10-01', [{ label: 'Benne et traitement', quantity: 1, unitPrice: 72, nature: 'DIVERS', cible: aff(A.circulateur) }]);
+    await cmd(tech, calo, 'Calorifugeage des tuyauteries', '2026-11-05', [{ label: 'Calorifugeage (sous-traité)', quantity: 1, unitPrice: 820, nature: 'SOUS_TRAITANCE', cible: aff(A.circulateur) }]);
+    // Affaire « chaufferie » (P6) : chaudières (N+1, N+2, achats) passées et facturées en partie ; fumisterie validée par le N+1, en attente
+    // des achats ; grutage soldé ; électricité refusée (devis à renégocier) ; un brouillon.
+    const c4 = await cmd(tech, chaudieres, 'Chaudières gaz à condensation 2 × 300 kW', '2026-07-15', [{ label: 'Chaudière gaz à condensation 300 kW', quantity: 2, unitPrice: 22400, nature: 'FOURNITURE', cible: aff(A.chaufferie) }]);
+    await deciderCommande(c4.id, 'validee', '', resp); await deciderCommande(c4.id, 'validee', 'Conforme au budget du devis.', dir); await deciderCommande(c4.id, 'validee', 'Prix négocié au contrat-cadre.', ach);
+    await avancerCommande(c4.id, ach); await avancerCommande(c4.id, tech);
+    await ajouterFactureFournisseur(c4.id, { numero: 'CEI-26-0918', date: '2026-09-30', montantHT: 22400 }, ach);
+    const c5 = await cmd(tech, fumiste, 'Fumisterie et tubage', '2026-11-02', [{ label: 'Tubage inox et conduits', quantity: 1, unitPrice: 12900, nature: 'SOUS_TRAITANCE', cible: aff(A.chaufferie) }]);
+    await deciderCommande(c5.id, 'validee', '', resp); await deciderCommande(c5.id, 'validee', '', dir);
+    const c6 = await cmd(resp, levage, 'Grutage et location de matériel', '2026-08-20', [{ label: 'Grutage des chaudières', quantity: 1, unitPrice: 2400, nature: 'DIVERS', cible: aff(A.chaufferie) }, { label: 'Location de matériel de manutention (semaine)', quantity: 2, unitPrice: 480, nature: 'DIVERS', cible: aff(A.chaufferie) }]);
+    await deciderCommande(c6.id, 'validee', '', dir);
+    await avancerCommande(c6.id, resp); await avancerCommande(c6.id, resp);
+    await ajouterFactureFournisseur(c6.id, { numero: 'LLD-8820', date: '2026-09-12', montantHT: 3510, solder: true }, ach);
+    const c7 = await cmd(tech, fumiste, 'Électricité et régulation', '2026-11-03', [{ label: 'Armoire, câblage et régulation', quantity: 1, unitPrice: 11200, nature: 'SOUS_TRAITANCE', cible: aff(A.chaufferie) }]);
+    await deciderCommande(c7.id, 'refusee', 'Dépasse le budget du devis (9 800 €) : à renégocier ou à justifier.', resp);
+    await cmd(tech, negoce, 'Hydraulique : vannes et pompes de charge', '2026-11-08', [{ label: 'Pompes de charge', quantity: 2, unitPrice: 940, nature: 'FOURNITURE', cible: aff(A.chaufferie) }, { label: 'Vannes trois voies', quantity: 2, unitPrice: 610, nature: 'FOURNITURE', cible: aff(A.chaufferie) }], false);
+    // Sur contrat (dépense d'exploitation P2, hors affaire) : pièces de maintenance, validées par le N+1.
+    const c9 = await cmd(tech, negoce, 'Pièces de maintenance : brûleur', '2026-10-14', [{ label: 'Électrodes et gicleurs', quantity: 4, unitPrice: 86, nature: 'FOURNITURE', cible: { type: 'contrat', contractId: contrats[0].id, activityCode: 'P2' } }, { label: 'Cellule de détection de flamme', quantity: 1, unitPrice: 310, nature: 'FOURNITURE', cible: { type: 'contrat', contractId: contrats[0].id, activityCode: 'P2' } }]);
+    await deciderCommande(c9.id, 'validee', '', resp);
+    console.log('Achats : 5 fournisseurs, 9 commandes (brouillon, à valider N+1 / achats, refusée, validée, reçue, soldées), dont une sur contrat.');
 }
 
 (async () => {
@@ -591,7 +653,8 @@ async function travaux(codesClients: string[], contrats: { id: string }[]) {
     // Analytique : un contrat suivi par un code externe (outil comptable), les autres par le code généré.
     await adminDb.collection('contracts').doc(contrats[6].id).update({ analyticExternal: '68W2/V080912-1' });
     await factures(contrats);
-    await travaux(codesClients, contrats);
+    const affaires = await travaux(codesClients, contrats);
+    await achats(affaires, contrats);
     console.log('Jeu de données prêt.');
     process.exit(0);
 })().catch(e => { console.error(e); process.exit(1); });

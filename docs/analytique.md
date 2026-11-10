@@ -87,8 +87,9 @@ Code : `src/lib/projects/affaire.ts`, `src/services/projects-admin.ts`, `src/com
 
 ## À venir
 
-Commandes d'achat (circuit de validation à seuils), factures fournisseurs et heures portant le même code : par affaire,
-prévu / engagé / réel / facturé par nature ; marge = ventes − achats, par code ou par axe.
+Les **commandes d'achat** portent déjà le code (ligne par ligne, figé à la soumission) : voir `commandes.md`. Restent
+les heures des techniciens, puis, par affaire, prévu / engagé / réel / facturé par nature ; marge = ventes − achats,
+par code ou par axe.
 
 Code : `src/lib/analytique.ts` (logique pure), `src/services/analytique-admin.ts`, `src/lib/analytique-actions.ts`,
 `src/components/analytique/analytique-card.tsx`, `src/app/(app)/billing/analytique/page.tsx`.

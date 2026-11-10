@@ -48,9 +48,10 @@ service cloud.firestore {
 
     // Écrits par le serveur seulement, lisibles par les utilisateurs : paramétrage P1 (versions datées, jamais
     // d'écrasement), réel P1 du moteur, relevés de compteurs (relevés facturés ou repris figés), commentaires de
-    // suivi de la facturation (historique : ni modification ni suppression), saisons de chauffe (allumage, arrêt).
+    // suivi de la facturation (historique : ni modification ni suppression), saisons de chauffe (allumage, arrêt),
+    // commandes d'achat (circuit de validation) et fournisseurs.
     function isServerWritten(coll) {
-      return coll in ['p1Parametrage', 'p1Reel', 'meterReadings', 'suiviCommentaires', 'saisonsChauffe'];
+      return coll in ['p1Parametrage', 'p1Reel', 'meterReadings', 'suiviCommentaires', 'saisonsChauffe', 'commandes', 'fournisseurs'];
     }
 
     // Documents de contrat (avenants et OS, reconductions, résiliations, changements de syndic et de BE) : créés

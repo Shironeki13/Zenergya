@@ -785,6 +785,8 @@ export type Company = {
     /** Date d'entrée en vigueur de l'obligation d'émission électronique pour cette société (ISO, ex. 2027-09-01). */
     einvoicingStartDate?: string;
     // Devis : valeurs par défaut (la fiche client peut fixer son coefficient et son taux horaire)
+    /** Commandes d'achat : seuils de validation en € HT (lib/commandes) ; absents : seuils par défaut. */
+    purchaseThresholds?: import('@/lib/commandes').SeuilsValidation;
     quoteCoefficient?: number | null;     // coefficient de vente sur le déboursé
     quoteLaborRate?: number | null;       // taux horaire de main-d'œuvre facturé (€ HT / h)
     quoteLaborCost?: number | null;       // coût horaire interne de la main-d'œuvre (€ / h)
@@ -888,6 +890,8 @@ export type Role = {
     isAdmin?: boolean;
     /** Contrathèque : valide les documents de contrat (base marché, avenants, OS, reconductions, résiliations…). */
     isContratheque?: boolean;
+    /** Achats : valide les commandes au-delà du seuil « achats ». */
+    isAcheteur?: boolean;
 }
 
 export type UserScope = {
@@ -907,6 +911,8 @@ export type User = {
     scope: UserScope;
     /** UID Firebase Auth rattaché à la première connexion (géré côté serveur). */
     authUid?: string | null;
+    /** Responsable hiérarchique (N+1) : valide les commandes de cet utilisateur au-delà du seuil d'autovalidation. */
+    managerId?: string | null;
 }
 
 // Genkit Flow Schemas
@@ -1252,6 +1258,8 @@ export type DataContextType = {
     isAdmin: boolean;
     /** Droit contrathèque (validation des documents) de l'utilisateur réellement connecté. */
     isContratheque: boolean;
+    /** Droit achats (validation des commandes au-delà du seuil achats) de l'utilisateur réellement connecté. */
+    isAcheteur: boolean;
     isLoading: boolean;
     reloadData: () => Promise<void>;
     login: (email: string, password: string) => Promise<void>;
