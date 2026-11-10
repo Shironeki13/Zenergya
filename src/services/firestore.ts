@@ -569,14 +569,14 @@ export async function deleteCompany(id: string) {
 
 
 // Agences
-export async function createAgency(name: string, companyId: string) {
-    return createSettingItem('agencies', { name, companyId });
+export async function createAgency(name: string, companyId: string, code?: string) {
+    return createSettingItem('agencies', { name, companyId, ...(code && { code }) });
 }
 export async function getAgencies(): Promise<Agency[]> {
     return getCollection<Agency>(collection(db, 'agencies'));
 }
-export async function updateAgency(id: string, name: string, companyId: string) {
-    return updateSettingItem('agencies', id, { name, companyId });
+export async function updateAgency(id: string, name: string, companyId: string, code?: string) {
+    return updateSettingItem('agencies', id, { name, companyId, ...(code && { code }) });
 }
 export async function deleteAgency(id: string) {
     const batch = writeBatch(db);
@@ -589,14 +589,14 @@ export async function deleteAgency(id: string) {
 }
 
 // Secteurs
-export async function createSector(name: string, agencyId: string) {
-    return createSettingItem('sectors', { name, agencyId });
+export async function createSector(name: string, agencyId: string, code?: string) {
+    return createSettingItem('sectors', { name, agencyId, ...(code && { code }) });
 }
 export async function getSectors(): Promise<Sector[]> {
     return getCollection<Sector>(collection(db, 'sectors'));
 }
-export async function updateSector(id: string, name: string, agencyId: string) {
-    return updateSettingItem('sectors', id, { name, agencyId });
+export async function updateSector(id: string, name: string, agencyId: string, code?: string) {
+    return updateSettingItem('sectors', id, { name, agencyId, ...(code && { code }) });
 }
 export async function deleteSector(id: string) {
     return deleteSettingItem('sectors', id);

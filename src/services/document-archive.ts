@@ -112,7 +112,9 @@ async function load(kind: ArchivedKind, id: string): Promise<Loaded> {
             references: originals.map(inv => inv.invoiceNumber || inv.id),
             reason: creditNote.reason,
             ...(creditNote.vatBreakdown && { vatBreakdown: creditNote.vatBreakdown }),
-            ...annexesDe(creditNote.lineItems),
+            // Avoir d'annulation : ses lignes reprennent (inversées) celles de la facture, dont l'annexe fait foi ;
+            // seules les lignes de décompte ou de régularisation ont une annexe propre à l'avoir.
+            ...annexesDe((creditNote.lineItems ?? []).filter(l => l.p1Regul && !(creditNote.originalInvoiceIds ?? []).length)),
         },
     };
 }

@@ -16,6 +16,7 @@ import { P1_DOC_ID, formuleAu, valeurAu, type P1ContractDoc, type P1MeterDoc, ty
 import type { Energie, TermeNc } from '@/lib/p1/parametrage';
 import { loadSeries } from '@/services/p1-admin';
 import { releveSource } from '@/services/contract-billing-admin';
+import { avecAnalytique, figerAnalytique } from '@/services/analytique-admin';
 
 /**
  * Régularisation P1 d'un contrat (préparation et émission) : réel du moteur importé (`p1Reel`) − acomptes facturés,
@@ -180,8 +181,11 @@ export async function emitP1Regularisation(contractId: string, debut: string, fi
     if (!client) throw new Error('Client non trouvé.');
     const company = await resolveIssuingCompany(contract, client);
     const day = toDay(date) ?? toDay(new Date())!;
-    const negatives = prep.lines.filter(l => l.total < 0);
-    const positives = prep.lines.filter(l => l.total > 0);
+    // Analytique figée sur chaque ligne (prestation P1 du site, sinon contrat + activité).
+    const analytique = await figerAnalytique(contract.id);
+    const lignes = avecAnalytique(analytique, prep.lines);
+    const negatives = lignes.filter(l => l.total < 0);
+    const positives = lignes.filter(l => l.total > 0);
     let version = prep.billingVersion;
     const out: { invoice?: { id: string; number?: string }; creditNote?: { id: string; number: string } } = {};
     const periode = `Régularisation P1 de ${debut} à ${fin}`;

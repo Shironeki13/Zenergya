@@ -1,4 +1,5 @@
 import 'server-only';
+import { figerAnalytique } from '@/services/analytique-admin';
 import { Timestamp, FieldPath, type DocumentData, type Query } from 'firebase-admin/firestore';
 import { dueDateFor, type PaymentTermLike } from '@/lib/billing/contract-billing';
 import { toDay } from '@/lib/services/site-amounts';
@@ -327,6 +328,8 @@ export async function convertProformaToInvoice(invoiceId: string): Promise<strin
     const proforma = await getInvoice(invoiceId);
     if (!proforma) throw new Error('Facture introuvable.');
     if (proforma.status !== 'proforma') throw new Error("Cette facture n'est pas un proforma.");
+    // Le proforma devient une facture : les codes analytiques de son contrat sont figés.
+    if (proforma.contractId) await figerAnalytique(proforma.contractId).catch(() => undefined);
 
     const [contract, client] = await Promise.all([
         proforma.contractId ? getContract(proforma.contractId) : Promise.resolve(null),

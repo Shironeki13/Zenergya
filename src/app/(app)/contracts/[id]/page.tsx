@@ -6,6 +6,7 @@ import { CarteContacts, TableauFactures, TableauSites, etatSite } from "@/compon
 import { enRetard, periodesDuContrat } from "@/lib/billing/echeances-fiche";
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
+import { AnalytiqueCard } from '@/components/analytique/analytique-card';
 import { notFound, useRouter, useParams } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -523,6 +524,7 @@ export default function ContractDetailPage() {
             </Card>
             <CarteContacts contacts={contacts} lienClient={`/clients/${contract.clientId}`} />
           </div>
+          <AnalytiqueCard contractId={id} sites={Object.fromEntries(sites.map(s => [s.id, s.name]))} />
         </TabsContent>
 
         <TabsContent value="sites" className="mt-4">

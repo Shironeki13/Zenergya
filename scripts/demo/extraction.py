@@ -19,8 +19,8 @@ SOURCE, SORTIE = (sys.argv[1:3] + ['demo-extraction.json', 'demo-extraction.xlsx
 COMPOSANTS = {
     'Référentiels': {
         'companies': ('Sociétés', 'Sociétés émettrices des factures (numérotation, mentions légales, paramètres de devis).'),
-        'agencies': ('Agences', 'Agences d\'une société ; rattachement des clients.'),
-        'sectors': ('Secteurs', 'Secteurs d\'une agence ; rattachement des clients.'),
+        'agencies': ('Agences', 'Agences d\'une société, avec leur code court (segment du code analytique) ; rattachement des clients.'),
+        'sectors': ('Secteurs', 'Secteurs d\'une agence, avec leur code court (segment du code analytique) ; rattachement des clients.'),
         'typologies': ('Typologies de clients', 'Copropriété, bailleur, collectivité… ; régime de facturation électronique par défaut.'),
         'activities': ('Activités', 'Postes facturés (P1 fourniture d\'énergie, P2 conduite et entretien, P3 garantie totale) et TVA par défaut.'),
         'vatRates': ('Taux de TVA', 'Taux applicables aux prestations (taux en fraction : 0,2 = 20 %).'),
@@ -50,7 +50,7 @@ COMPOSANTS = {
     },
     'Facturation': {
         'invoices': ('Factures', 'Factures émises par le moteur de facturation : numéro, période, montants, statut d\'encaissement.'),
-        'invoices · lignes': ('Lignes de facture', 'Détail des lignes de chaque facture (site, activité, période, montant, TVA).'),
+        'invoices · lignes': ('Lignes de facture', 'Détail des lignes de chaque facture (site, activité, période, montant, TVA) et analytique figée à l\'émission (code, axes).'),
     },
     'Administration': {
         'users': ('Utilisateurs', 'Comptes de l\'application : rôle, modules, périmètre.'),

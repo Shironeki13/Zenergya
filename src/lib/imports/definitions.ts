@@ -96,6 +96,12 @@ const externalRef = (what: string): ImportField => ({
     help: `Code ${what} dans un autre système (ancienne codification). Retrouve ${what === 'du client' ? 'la fiche' : 'l\'élément'} au réimport et permet de le désigner dans les autres fichiers. Unique.`,
 });
 
+/** Code analytique externe (outil comptable) : remplace le code généré par Zenergya pour ce niveau. */
+const analyticExternal = (niveau: string): ImportField => ({
+    key: 'analyticExternal', label: 'Analytique externe', type: 'text', aliases: ['code analytique externe', 'analytique', 'otp'], example: '',
+    help: `Code analytique ${niveau} dans votre outil comptable. Il remplace le code généré par Zenergya ; les niveaux en dessous en héritent. Vide : inchangé.`,
+});
+
 const BASE: Record<ImportEntityKey, Omit<ImportEntity, 'groupe' | 'resume' | 'usage' | 'cles'>> = {
     clients: {
         key: 'clients',
@@ -105,7 +111,7 @@ const BASE: Record<ImportEntityKey, Omit<ImportEntity, 'groupe' | 'resume' | 'us
             + 'Sans aucune de ces clés, une fiche de même nom et même code postal est un doublon probable : ligne refusée.',
         fields: [
             { key: 'code', label: 'Code client', type: 'text', example: '', aliases: ['code', 'cli'], help: 'Vide pour une création (attribué : CLI-00001). Renseigné : met à jour cette fiche.' },
-            externalRef('du client'),
+            externalRef('du client'), analyticExternal('du client'),
             { key: 'name', label: 'Raison sociale', type: 'text', required: 'create', example: 'SCI Les Lilas', aliases: ['nom', 'client', 'societe'] },
             {
                 key: 'clientType', label: 'Type', type: 'enum', required: 'create', example: 'Privé',
@@ -154,7 +160,7 @@ const BASE: Record<ImportEntityKey, Omit<ImportEntity, 'groupe' | 'resume' | 'us
             + 'Sans ces clés, un contrat du même client, de même libellé et de période qui se recouvre est un doublon probable : ligne refusée.',
         fields: [
             { key: 'code', label: 'N° de contrat', type: 'text', aliases: ['ctn', 'numero contrat', 'contractNumber'], help: 'Vide pour une création (attribué : CTN-00001).' },
-            externalRef('du contrat'),
+            externalRef('du contrat'), analyticExternal('du contrat'),
             { key: 'client', label: 'Client', type: 'text', required: 'create', example: 'CLI-00012', help: 'Code client (CLI-…), SIRET ou réf. externe du client.' },
             { key: 'label', label: 'Libellé', type: 'text', required: 'create', example: 'Chauffage résidence Les Lilas', aliases: ['libelle'], help: 'Nom du contrat : « client - libellé ».' },
             { key: 'company', label: 'Société émettrice', type: 'text', refList: 'companies', example: 'VEF', help: 'Code ou nom (vide : celle du client).' },
@@ -243,7 +249,7 @@ const BASE: Record<ImportEntityKey, Omit<ImportEntity, 'groupe' | 'resume' | 'us
         matching: 'Réf. externe, sinon site + activité + date de début : la prestation existante est mise à jour ; sinon elle est créée. '
             + 'Deux prestations du même site et de la même activité ne peuvent pas se recouvrir (elles seraient facturées deux fois).',
         fields: [
-            externalRef('de la prestation'),
+            externalRef('de la prestation'), analyticExternal('de la prestation'),
             { key: 'site', label: 'Site', type: 'text', required: 'create', example: 'SIT-00021', help: 'Code du site (SIT-…) ou réf. externe ; le site doit être rattaché à un contrat.' },
             {
                 key: 'activity', label: 'Activité', type: 'text', required: 'create', refList: 'activities', example: 'P2',

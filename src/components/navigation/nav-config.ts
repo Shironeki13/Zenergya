@@ -1,7 +1,7 @@
 import {
     AlertTriangle, Building, Calculator, CircleDollarSign, Copy, FileSignature, FileText, Gauge, Home, KeyRound, LayoutDashboard,
     Library, ListChecks, MapPin, MessageSquareQuote, MinusCircle, Scale, Send, Settings, ShieldCheck, Store, TrendingUp, Upload, Users,
-    type LucideIcon,
+    Network, type LucideIcon,
 } from 'lucide-react';
 
 /**
@@ -37,6 +37,7 @@ export const NAV_GROUPS: NavGroup[] = [
             { href: '/credit-notes', label: 'Avoirs', icon: MinusCircle },
             { href: '/billing/rfe', label: 'Facturation électronique', icon: Send, keywords: 'chorus rfe pdp' },
             { href: '/billing/p1', label: 'Régularisation P1', icon: Scale, keywords: 'acomptes réel moteur' },
+            { href: '/billing/analytique', label: 'Suivi analytique', icon: Network, keywords: 'ventes marge code projet axe société agence secteur' },
             { href: '/billing/indices', label: 'Indices', icon: TrendingUp, keywords: 'révision prix insee' },
         ],
     },

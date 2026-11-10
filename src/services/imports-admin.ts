@@ -300,7 +300,7 @@ function planClient(ctx: Context, row: ParsedRow, seen: Map<string, number>): Pl
         } else seen.set(key, row.line);
     }
 
-    const data = plain(v, ['externalRef', 'name', 'clientType', 'relation', 'siret', 'address', 'postalCode', 'city', 'representedBy', 'useChorus',
+    const data = plain(v, ['externalRef', 'analyticExternal', 'name', 'clientType', 'relation', 'siret', 'address', 'postalCode', 'city', 'representedBy', 'useChorus',
         'chorusServiceCode', 'chorusServiceCodeRequired', 'chorusLegalCommitmentNumber', 'chorusLegalCommitmentRequired', 'chorusMarketNumber',
         'einvoicingRegime', 'einvoicingAddress', 'quoteCoefficient', 'quoteLaborRate']);
 
@@ -380,7 +380,7 @@ function planContract(ctx: Context, row: ParsedRow, seen: Map<string, number>): 
     const taken = refTakenBy(ctx.contracts, v.externalRef, existing?.id);
     if (taken) item.messages.push(`Réf. externe ${v.externalRef} déjà portée par le contrat ${taken.contractNumber ?? taken.id}.`);
 
-    const data = plain(v, ['externalRef', 'label', 'status', 'marketType', 'baseAmountP1', 'baseAmountP2', 'baseAmountP3', 'baseAmountP3R',
+    const data = plain(v, ['externalRef', 'analyticExternal', 'label', 'status', 'marketType', 'baseAmountP1', 'baseAmountP2', 'baseAmountP3', 'baseAmountP3R',
         'invoicingType', 'renewal', 'tacitRenewal', 'renewalDuration', 'noticePeriod', 'signedByCompany', 'signedByClient', 'einvoicingAddress']);
 
     if (v.company) {
@@ -797,7 +797,7 @@ function planService(ctx: Context, row: ParsedRow, pending: Map<string, { line: 
     const taken = refTakenBy(ctx.services, v.externalRef, existing?.id);
     if (taken) item.messages.push(`Réf. externe ${v.externalRef} déjà portée par une autre prestation.`);
 
-    const data = plain(v, ['externalRef', 'label', 'price', 'p1Type', 'energyType', 'unitPrice', 'unit', 'isActive', 'comment', 'p1Mode', 'p1PrixSource', 'coefficientPrix', 'p1Prorata', 'p1CoefGestion']);
+    const data = plain(v, ['externalRef', 'analyticExternal', 'label', 'price', 'p1Type', 'energyType', 'unitPrice', 'unit', 'isActive', 'comment', 'p1Mode', 'p1PrixSource', 'coefficientPrix', 'p1Prorata', 'p1CoefGestion']);
     if ((v.p1Mode === 'acompte' || v.p1Mode === 'releve') && activity.type !== 'P1') item.messages.push('Acomptes ou compteur : prestation P1 seulement.');
     if (v.p1Mode === 'releve' && !['ECS', 'CHAUFFAGE'].includes(String(v.p1Type ?? existing?.p1Type ?? ''))) item.messages.push('Au compteur : prestation P1 de type chauffage ou ECS.');
     if (v.p1Mode === 'dju' && (activity.type !== 'P1' || String(v.p1Type ?? existing?.p1Type ?? 'CHAUFFAGE') !== 'CHAUFFAGE')) item.messages.push('MTI au DJU : prestation P1 de type chauffage.');

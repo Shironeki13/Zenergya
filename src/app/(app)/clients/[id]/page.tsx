@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
+import { AnalytiqueCard } from '@/components/analytique/analytique-card';
 import { notFound, useParams, useRouter } from 'next/navigation';
 import { Loader2, Pencil, PlusCircle } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
@@ -168,6 +169,7 @@ export default function ClientDetailPage() {
             </Card>
             <CarteContacts contacts={contacts} />
           </div>
+          <AnalytiqueCard clientId={id} />
         </TabsContent>
 
         <TabsContent value="contrats" className="mt-4">

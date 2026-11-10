@@ -1,5 +1,6 @@
 'use client';
 import { SearchableSelect } from '@/components/ui/searchable-select';
+import { controleCodeCourt, proposerCodeCourt } from '@/lib/analytique';
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import Image from 'next/image';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -393,14 +394,16 @@ const AgenciesSection = ({ onAgenciesUpdate }: { onAgenciesUpdate: (agencies: Ag
     const [agencyToDelete, setAgencyToDelete] = useState<Agency | null>(null);
 
     const [name, setName] = useState('');
+    const [code, setCode] = useState('');
     const [companyId, setCompanyId] = useState('');
 
-    const resetForm = () => { setName(''); setCompanyId(''); setEditingAgency(null); };
+    const resetForm = () => { setName(''); setCode(''); setCompanyId(''); setEditingAgency(null); };
 
     const handleOpenDialog = (agency: Agency | null = null) => {
         setEditingAgency(agency);
         if (agency) {
             setName(agency.name);
+            setCode(agency.code ?? '');
             setCompanyId(agency.companyId);
         } else {
             resetForm();
@@ -411,13 +414,17 @@ const AgenciesSection = ({ onAgenciesUpdate }: { onAgenciesUpdate: (agencies: Ag
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!name.trim() || !companyId) return;
+        const codeCourt = code.trim().toUpperCase();
+        const erreur = codeCourt ? controleCodeCourt(codeCourt) : 'Code obligatoire (segment du code analytique).';
+        const doublon = agencies.find(a => a.id !== editingAgency?.id && a.companyId === companyId && (a.code ?? '').toUpperCase() === codeCourt);
+        if (erreur || doublon) { toast({ title: 'Code de l\'agence', description: erreur ?? `Déjà utilisé par l'agence ${doublon!.name}.`, variant: 'destructive' }); return; }
         setIsSubmitting(true);
         try {
             if (editingAgency) {
-                await updateAgency(editingAgency.id, name, companyId);
+                await updateAgency(editingAgency.id, name, companyId, codeCourt);
                 toast({ title: "Succès", description: "Agence mise à jour." });
             } else {
-                await createAgency(name, companyId);
+                await createAgency(name, companyId, codeCourt);
                 toast({ title: "Succès", description: "Agence créée." });
             }
             await reloadData();
@@ -469,17 +476,19 @@ const AgenciesSection = ({ onAgenciesUpdate }: { onAgenciesUpdate: (agencies: Ag
                         <TableHeader>
                             <TableRow>
                                 <TableHead>Agence</TableHead>
+                                <TableHead>Code</TableHead>
                                 <TableHead>Société</TableHead>
                                 <TableHead className="w-[100px] text-right">Actions</TableHead>
                             </TableRow>
                         </TableHeader>
                         <TableBody>
-                            {isLoading ? (<TableRow><TableCell colSpan={3} className="text-center h-24"><Loader2 className="mx-auto h-8 w-8 animate-spin text-muted-foreground" /></TableCell></TableRow>
-                            ) : agenciesWithDetails.length === 0 ? (<TableRow><TableCell colSpan={3} className="text-center">Aucune agence.</TableCell></TableRow>
+                            {isLoading ? (<TableRow><TableCell colSpan={4} className="text-center h-24"><Loader2 className="mx-auto h-8 w-8 animate-spin text-muted-foreground" /></TableCell></TableRow>
+                            ) : agenciesWithDetails.length === 0 ? (<TableRow><TableCell colSpan={4} className="text-center">Aucune agence.</TableCell></TableRow>
                             ) : (
                                 agenciesWithDetails.map(agency => (
                                     <TableRow key={agency.id}>
                                         <TableCell className="font-medium">{agency.name}</TableCell>
+                                        <TableCell className="font-mono text-xs">{agency.code || <span className="font-sans text-destructive">à renseigner</span>}</TableCell>
                                         <TableCell>{agency.companyName}</TableCell>
                                         <TableCell className="text-right">
                                             <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleOpenDialog(agency)}><Edit className="h-4 w-4" /></Button>
@@ -511,7 +520,12 @@ const AgenciesSection = ({ onAgenciesUpdate }: { onAgenciesUpdate: (agencies: Ag
                         <form onSubmit={handleSubmit} className="space-y-4">
                             <div className="space-y-2">
                                 <Label htmlFor="agencyName">Nom de l'agence</Label>
-                                <Input id="agencyName" value={name} onChange={e => setName(e.target.value)} required />
+                                <Input id="agencyName" value={name} onChange={e => { setName(e.target.value); if (!editingAgency?.code) setCode(proposerCodeCourt(e.target.value)); }} required />
+                            </div>
+                            <div className="space-y-2">
+                                <Label htmlFor="agencyCode">Code <span className="text-destructive">*</span></Label>
+                                <Input id="agencyCode" value={code} onChange={e => setCode(e.target.value.toUpperCase())} maxLength={8} className="font-mono" required />
+                                <p className="text-xs text-muted-foreground">2 à 8 lettres ou chiffres : segment du code analytique (société-agence-secteur-client-contrat-activité).</p>
                             </div>
                             <div className="space-y-2">
                                 <Label htmlFor="company">Société</Label>
@@ -546,14 +560,16 @@ const SectorsSection = () => {
     const [sectorToDelete, setSectorToDelete] = useState<Sector | null>(null);
 
     const [name, setName] = useState('');
+    const [code, setCode] = useState('');
     const [agencyId, setAgencyId] = useState('');
 
-    const resetForm = () => { setName(''); setAgencyId(''); setEditingSector(null); };
+    const resetForm = () => { setName(''); setCode(''); setAgencyId(''); setEditingSector(null); };
 
     const handleOpenDialog = (sector: Sector | null = null) => {
         setEditingSector(sector);
         if (sector) {
             setName(sector.name);
+            setCode(sector.code ?? '');
             setAgencyId(sector.agencyId);
         } else {
             resetForm();
@@ -564,13 +580,17 @@ const SectorsSection = () => {
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!name.trim() || !agencyId) return;
+        const codeCourt = code.trim().toUpperCase();
+        const erreur = codeCourt ? controleCodeCourt(codeCourt) : 'Code obligatoire (segment du code analytique).';
+        const doublon = sectors.find(x => x.id !== editingSector?.id && x.agencyId === agencyId && (x.code ?? '').toUpperCase() === codeCourt);
+        if (erreur || doublon) { toast({ title: 'Code du secteur', description: erreur ?? `Déjà utilisé par le secteur ${doublon!.name}.`, variant: 'destructive' }); return; }
         setIsSubmitting(true);
         try {
             if (editingSector) {
-                await updateSector(editingSector.id, name, agencyId);
+                await updateSector(editingSector.id, name, agencyId, codeCourt);
                 toast({ title: "Succès", description: "Secteur mis à jour." });
             } else {
-                await createSector(name, agencyId);
+                await createSector(name, agencyId, codeCourt);
                 toast({ title: "Succès", description: "Secteur créé." });
             }
             await reloadData();
@@ -623,6 +643,7 @@ const SectorsSection = () => {
                         <TableHeader>
                             <TableRow>
                                 <TableHead>Secteur</TableHead>
+                                <TableHead>Code</TableHead>
                                 <TableHead>Agence</TableHead>
                                 <TableHead className="w-[100px] text-right">Actions</TableHead>
                             </TableRow>
@@ -634,6 +655,7 @@ const SectorsSection = () => {
                                 sectorsWithDetails.map(sector => (
                                     <TableRow key={sector.id}>
                                         <TableCell className="font-medium">{sector.name}</TableCell>
+                                        <TableCell className="font-mono text-xs">{sector.code || <span className="font-sans text-destructive">à renseigner</span>}</TableCell>
                                         <TableCell>{sector.agencyName}</TableCell>
                                         <TableCell className="text-right">
                                             <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleOpenDialog(sector)}><Edit className="h-4 w-4" /></Button>
@@ -660,7 +682,10 @@ const SectorsSection = () => {
                     <DialogContent>
                         <DialogHeader><DialogTitle>{editingSector ? "Modifier le secteur" : "Nouveau secteur"}</DialogTitle></DialogHeader>
                         <form onSubmit={handleSubmit} className="space-y-4">
-                            <div className="space-y-2"><Label htmlFor="sectorName">Nom du secteur</Label><Input id="sectorName" value={name} onChange={e => setName(e.target.value)} required /></div>
+                            <div className="space-y-2"><Label htmlFor="sectorName">Nom du secteur</Label><Input id="sectorName" value={name} onChange={e => { setName(e.target.value); if (!editingSector?.code) setCode(proposerCodeCourt(e.target.value)); }} required /></div>
+                            <div className="space-y-2"><Label htmlFor="sectorCode">Code <span className="text-destructive">*</span></Label>
+                                <Input id="sectorCode" value={code} onChange={e => setCode(e.target.value.toUpperCase())} maxLength={8} className="font-mono" required />
+                                <p className="text-xs text-muted-foreground">2 à 8 lettres ou chiffres : segment du code analytique.</p></div>
                             <div className="space-y-2"><Label htmlFor="agency">Agence</Label>
                                 <Select onValueChange={setAgencyId} value={agencyId}>
                                     <SelectTrigger><SelectValue placeholder="Sélectionner une agence" /></SelectTrigger>

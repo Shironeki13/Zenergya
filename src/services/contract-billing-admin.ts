@@ -15,6 +15,7 @@ import { coefficientRevision, prixRevise, type SerieValues } from '@/lib/p1/form
 import type { SaisonChauffe } from '@/lib/p1/saisons';
 import type { Energie, TermeNc } from '@/lib/p1/parametrage';
 import { loadSeries } from '@/services/p1-admin';
+import { analytiqueContrat, avecAnalytique, figerAnalytique } from '@/services/analytique-admin';
 import type { P1AcompteSource, P1DjuSource, P1ReleveSource, ReleveReading } from '@/lib/billing/contract-billing';
 import type { CompteurFacture, UsageCompteur } from '@/lib/billing/p1-compteur';
 
@@ -259,6 +260,9 @@ export async function prepareContractInvoice(contractId: string, invoiceDate: st
         const next = nextBillableOn(input, invoices);
         throw new Error(`Rien à facturer au ${frDay(until)}${next ? ` : prochaine échéance facturable le ${frDay(next)}` : ' : tout est facturé'}.`);
     }
+    // Analytique de chaque ligne : figée (codes enregistrés) à l'émission d'une facture, calculée pour un proforma.
+    const analytique = opts.isProforma ? await analytiqueContrat(contract.id) : await figerAnalytique(contract.id);
+    due.lines = avecAnalytique(analytique, due.lines);
     const starts = due.lines.map(l => l.periodStartDate!).sort();
     const ends = due.lines.map(l => l.periodEndDate!).sort();
     return {

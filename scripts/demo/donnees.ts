@@ -105,9 +105,9 @@ async function referentiels() {
         code: 'ZEN', name: 'Zenergya Services (démo)', address: '12 rue de l\'Exemple', postalCode: '69003', city: 'Lyon',
         siret: '90000000000013', siren: '900000000', vatNumber: 'FR00900000000', quoteCoefficient: 1.35, quoteLaborRate: 68, quoteValidityDays: 90, quoteDefaultVatRate: 20,
     });
-    for (const [id, name] of [['demo-ag-lyon', 'Lyon'], ['demo-ag-paris', 'Paris Est']]) await set('agencies', id, { name, companyId: 'demo-zen', companyName: 'Zenergya Services (démo)' });
-    for (const [id, name, agencyId] of [['demo-se-ln', 'Lyon Nord', 'demo-ag-lyon'], ['demo-se-ls', 'Lyon Sud', 'demo-ag-lyon'], ['demo-se-p', 'Paris 11e-12e', 'demo-ag-paris']]) {
-        await set('sectors', id, { name, agencyId });
+    for (const [id, name, code] of [['demo-ag-lyon', 'Lyon', 'LYO'], ['demo-ag-paris', 'Paris Est', 'PAE']]) await set('agencies', id, { name, code, companyId: 'demo-zen', companyName: 'Zenergya Services (démo)' });
+    for (const [id, name, agencyId, code] of [['demo-se-ln', 'Lyon Nord', 'demo-ag-lyon', 'LN'], ['demo-se-ls', 'Lyon Sud', 'demo-ag-lyon', 'LS'], ['demo-se-p', 'Paris 11e-12e', 'demo-ag-paris', 'P11'], ]) {
+        await set('sectors', id, { name, agencyId, code });
     }
     for (const [id, name, regime] of [['demo-ty-copro', 'Copropriété', 'b2b'], ['demo-ty-bailleur', 'Bailleur social', 'b2b'], ['demo-ty-public', 'Collectivité', 'b2g'], ['demo-ty-tertiaire', 'Tertiaire', 'b2b']]) {
         await set('typologies', id, { name, einvoicingRegime: regime });
@@ -536,6 +536,8 @@ async function factures(contrats: { id: string }[]) {
     const djuMois = await meteoEtIndices();
     const { contrats } = await contratsEtPatrimoine(codesClients, djuMois);
     await documents(contrats);
+    // Analytique : un contrat suivi par un code externe (outil comptable), les autres par le code généré.
+    await adminDb.collection('contracts').doc(contrats[6].id).update({ analyticExternal: '68W2/V080912-1' });
     await factures(contrats);
     console.log('Jeu de données prêt.');
     process.exit(0);

@@ -202,6 +202,10 @@ export const ClientSchema = ClientBaseSchema.superRefine((data, ctx) => {
 
 
 export type Client = z.infer<typeof ClientSchema> & {
+    /** Analytique : code généré par Zenergya, figé (lib/analytique) ; absent tant qu'il n'est pas figé. */
+    analyticCode?: string | null;
+    /** Analytique : code externe (outil comptable), prioritaire sur le code généré. */
+    analyticExternal?: string | null;
     id: string;
     sireneCheck?: SireneCheck; // Dernier contrôle du SIRET dans le répertoire des entreprises (API de l'État)
     typologyName?: string; // denormalized for display
@@ -344,6 +348,10 @@ export type EcsRevisionIndices = {
 export type ContractDocument = z.infer<typeof ContractDocumentSchema>;
 
 export type Contract = {
+    /** Analytique : code généré par Zenergya, figé (lib/analytique) ; absent tant qu'il n'est pas figé. */
+    analyticCode?: string | null;
+    /** Analytique : code externe (outil comptable), prioritaire sur le code généré. */
+    analyticExternal?: string | null;
     id: string;
     clientId: string;
     companyId?: string; // Société émettrice (sinon : celle du client)
@@ -650,6 +658,8 @@ export type InvoiceLineItem = {
         siteId: string; base: number; djuReference: number; montant: number;
         mois: { mois: string; debut: string; fin: string; dju: number; coefficient: number; revise: number; montant: number; indices?: import('@/lib/billing/p1-compteur').PrixDuMois['indices'] }[];
     };
+    /** Analytique figée à l'émission : code effectif, codes généré et externe, axes (lib/analytique). */
+    analytique?: import('@/lib/analytique').AnalytiqueLigne;
     /** Régularisation P1 : site et mois régularisés (réel du moteur − acomptes), ou intéressement facturé. */
     p1Regul?: { siteId: string; usage?: 'chauffage' | 'ecs' | 'total'; mois: string[]; reel: number; acomptes: number; decompte?: import('@/lib/billing/p1-decompte').DecompteSaison[] } | { siteId: string; interestId: string };
     revision?: { date: string; coefficient: number; rule: string; indices: { code: string; periods: string[]; value: number; base: number; basePeriod: string }[] };
@@ -790,6 +800,8 @@ export type Company = {
 export type Agency = {
     id: string;
     name: string;
+    /** Code court (2 à 8 caractères) : segment du code analytique. */
+    code?: string;
     companyId: string;
     companyName?: string; // Optional for display
 }
@@ -797,6 +809,8 @@ export type Agency = {
 export type Sector = {
     id: string;
     name: string;
+    /** Code court (2 à 8 caractères) : segment du code analytique. */
+    code?: string;
     agencyId: string;
     agencyName?: string; // Optional for display
 }
@@ -989,6 +1003,10 @@ export type ServiceBillingLine = {
 };
 
 export type Service = {
+    /** Analytique : code généré par Zenergya, figé (lib/analytique) ; absent tant qu'il n'est pas figé. */
+    analyticCode?: string | null;
+    /** Analytique : code externe (outil comptable), prioritaire sur le code généré. */
+    analyticExternal?: string | null;
     id: string;
     contractId: string;
     siteId: string;

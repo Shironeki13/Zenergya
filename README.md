@@ -4,6 +4,7 @@ Application de gestion des contrats et de la facturation (Next.js, Firebase, Gen
 
 - Démarrer en local : `npm install`, copier `.env.example` en `.env.local`, puis `npm run dev` (port 9002).
 - Vérifications : `npm run typecheck`, `npm test` (arrondis), `npm run test:billing` et `npm run test:rules` (émulateur Firestore).
+- Analytique (code société-agence-secteur-client-contrat-activité, code externe, suivi des ventes) : voir [docs/analytique.md](docs/analytique.md).
 - Démo avec données simulées (émulateurs, comptes de test, extraction Excel des tables) : voir [docs/demo.md](docs/demo.md).
 - Numérotation des factures, avoirs et arrondis : voir [docs/facturation.md](docs/facturation.md).
 - Facturation électronique (régimes, adressage, tableau de bord) : voir [docs/facturation-electronique.md](docs/facturation-electronique.md).

@@ -69,7 +69,7 @@ export default function CreditNotesPage() {
         vide={{ titre: 'Aucun avoir.', description: 'Un avoir annule une ou plusieurs factures émises (liste des factures, sélection).' }}
         actions={cn => (
           <div className="flex justify-end">
-            {aAnnexeP1(cn.lineItems) && (
+            {!(cn.originalInvoiceIds ?? []).length && aAnnexeP1(cn.lineItems) && (
               <Button variant="ghost" size="icon" className="h-8 w-8" asChild title="Annexe P1 (tableur)">
                 <a href={`/api/documents/credit-notes/${cn.id}/annexe?format=xlsx`} aria-label={`Annexe P1 de l'avoir ${cn.creditNoteNumber} (tableur)`}><FileSpreadsheet className="h-4 w-4" /></a>
               </Button>
