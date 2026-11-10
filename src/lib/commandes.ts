@@ -74,6 +74,9 @@ export type Commande = {
     autoValidee?: boolean;
     submittedAt?: string; validatedAt?: string; passedAt?: string; receivedAt?: string; cancelledAt?: string; cancelReason?: string;
     factures?: FactureFournisseur[];
+    /** Import : référence de la commande dans l'outil d'origine (évite le double import) ; `importee` : validée hors Zenergya, sans circuit. */
+    externalRef?: string;
+    importee?: boolean; importedBy?: string;
     createdAt: string; updatedAt: string;
 };
 

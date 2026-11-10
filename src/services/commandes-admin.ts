@@ -7,6 +7,7 @@ import {
     type CibleCommande, type Commande, type FactureFournisseur, type LigneCommande, type SeuilsValidation,
 } from '@/lib/commandes';
 import type { AnalytiqueLigne } from '@/lib/analytique';
+import { lireImportCommandes, type EtatImport } from '@/lib/commandes-import';
 import type { Project } from '@/lib/projects/types';
 import { analytiqueContrat, analytiqueDeLigne, analytiqueLigneAffaire } from '@/services/analytique-admin';
 
@@ -147,16 +148,18 @@ export async function analytiqueCible(cible: CibleCommande): Promise<{ analytiqu
  * Soumet un brouillon : numéro, analytique figée sur chaque ligne, étapes de validation. Sous le seuil
  * d'autovalidation, la commande est validée d'emblée.
  */
-export async function soumettreCommande(id: string, user: SessionUser): Promise<Commande> {
+export async function soumettreCommande(id: string, user: SessionUser, importee = false): Promise<Commande> {
     const c0 = await lire(id);
     if (c0.status !== 'brouillon') throw new Error('Seul un brouillon se soumet.');
-    if (c0.requesterId !== user.profile.id && !user.isAdmin) throw new Error('Seul le demandeur soumet sa commande.');
+    // Commande importée « validée » : déjà validée hors Zenergya, elle ne repasse pas par le circuit (achats ou administrateur).
+    if (importee && !user.isAdmin && !user.isAcheteur) throw new Error('Import d\'une commande déjà validée : réservé aux achats et aux administrateurs.');
+    if (!importee && c0.requesterId !== user.profile.id && !user.isAdmin) throw new Error('Seul le demandeur soumet sa commande.');
     const [seuils, societe, users] = await Promise.all([seuilsDe(c0.companyId), adminDb.collection('companies').doc(c0.companyId).get(), adminDb.collection('users').get()]);
     const code = String(societe.get('code') ?? '').trim();
     if (!code) throw new Error('Code de la société manquant (numérotation des commandes).');
     const hierarchie = users.docs.map(d => ({ id: d.id, name: nomDe(d.data()), managerId: d.get('managerId') as string | null | undefined }));
     const demandeur = hierarchie.find(u => u.id === c0.requesterId) ?? { id: c0.requesterId, name: c0.requesterName };
-    const etapes = etapesPour(c0.totalHT, seuils, demandeur, hierarchie);
+    const etapes = importee ? [] : etapesPour(c0.totalHT, seuils, demandeur, hierarchie);
     if (typeof etapes === 'string') throw new Error(etapes);
     const lines = await Promise.all(c0.lines.map(async l => {
         const { analytique, libelle } = await analytiqueCible(l.cible);
@@ -174,7 +177,7 @@ export async function soumettreCommande(id: string, user: SessionUser): Promise<
         if (!numero) tx.set(sequences, { [counter]: next }, { merge: true });
         tx.update(commandes().doc(id), {
             number: numero ?? `${code}-CMD${year}-${String(next).padStart(4, '0')}`, lines, etapes, seuils, submittedAt: t, updatedAt: t,
-            ...(etapes.length === 0 ? { status: 'validee', autoValidee: true, validatedAt: t } : { status: 'a_valider', autoValidee: false }),
+            ...(etapes.length === 0 ? { status: 'validee', autoValidee: !importee, validatedAt: t, ...(importee && { importee: true, importedBy: user.email }) } : { status: 'a_valider', autoValidee: false }),
         });
     });
     return lire(id);
@@ -239,4 +242,91 @@ export async function getCommande(id: string): Promise<Commande> { return lire(i
 
 export async function listCommandes(): Promise<Commande[]> {
     return (await commandes().get()).docs.map(d => ({ id: d.id, ...d.data() }) as Commande).sort((a, b) => (b.createdAt ?? '').localeCompare(a.createdAt ?? ''));
+}
+
+// --- Import (commandes saisies dans un autre outil) ---
+
+export type LigneRapportCommande = {
+    reference: string; ligne: number; date: string; fournisseur: string; objet: string; demandeur: string; lignes: number; totalHT: number;
+    etat: 'a_creer' | 'doublon' | 'erreur'; resultat: EtatImport | null; messages: string[];
+};
+export type RapportImportCommandes = { commandes: LigneRapportCommande[]; aCreer: number; doublons: number; erreurs: number; totalHT: number; applique: boolean };
+
+/**
+ * Importe des commandes. Simulation par défaut ; `appliquer` n'écrit que si aucune commande n'est en erreur.
+ * « brouillon » : la commande reste à soumettre par son demandeur (circuit de validation normal). « validée » : validée
+ * hors Zenergya, elle entre validée, sans circuit (achats ou administrateur). Une référence déjà importée est ignorée.
+ */
+export async function importerCommandes(table: unknown[][], companyId: string, user: SessionUser, appliquer = false): Promise<RapportImportCommandes> {
+    const { commandes: lues, erreur } = lireImportCommandes(table);
+    if (erreur) throw new Error(erreur);
+    if (lues.reduce((n, c) => n + c.lignes.length, 0) > 5000) throw new Error('5 000 lignes au plus par import.');
+    const [societe, users, frns, projects, contracts, activities, existantes] = await Promise.all([
+        adminDb.collection('companies').doc(String(companyId)).get(), adminDb.collection('users').get(), listFournisseurs(),
+        adminDb.collection('projects').select('code').get(), adminDb.collection('contracts').select('contractNumber', 'activityIds').get(), adminDb.collection('activities').select('code').get(),
+        commandes().where('companyId', '==', String(companyId)).select('externalRef', 'status').get(),
+    ]);
+    if (!societe.exists) throw new Error('Société introuvable.');
+    const cle = (x: unknown) => String(x ?? '').trim().toUpperCase();
+    const parEmail = new Map(users.docs.map(d => [String(d.get('email') ?? '').toLowerCase(), { id: d.id, name: nomDe(d.data() as never), email: String(d.get('email') ?? '') }]));
+    const parCode = new Map(projects.docs.map(d => [cle(d.get('code')), d.id]));
+    const parNumero = new Map(contracts.docs.map(d => [cle(d.get('contractNumber')), d]));
+    const codeActivite = new Map(activities.docs.map(d => [d.id, cle(d.get('code'))]));
+    const dejaImportees = new Set(existantes.docs.filter(d => d.get('externalRef') && d.get('status') !== 'annulee').map(d => cle(d.get('externalRef'))));
+    const privilegie = user.isAdmin || user.isAcheteur;
+    const moi = { id: user.profile.id, name: nomDe(user.profile), email: user.email };
+    const analytiques = new Map<string, Promise<unknown>>();
+    const aEcrire: { donnees: Awaited<ReturnType<typeof contenu>>; demandeur: typeof moi; reference: string; etat: EtatImport }[] = [];
+    const rapport: LigneRapportCommande[] = [];
+    for (const c of lues) {
+        const messages = [...c.erreurs, ...c.lignes.flatMap(l => l.erreurs.map(e => `ligne ${l.ligne} : ${e}`))];
+        const demandeur = c.demandeur ? parEmail.get(c.demandeur) : moi;
+        if (!demandeur) messages.push(`demandeur inconnu : ${c.demandeur}`);
+        else if (demandeur.id !== moi.id && !privilegie) messages.push('commande d\'un autre demandeur : import réservé aux achats et aux administrateurs');
+        if (c.etat === 'validee' && !privilegie) messages.push('état « validée » : réservé aux achats et aux administrateurs');
+        const f = frns.find(x => cle(x.code) === cle(c.fournisseur)) ?? frns.find(x => x.name.trim().toLowerCase() === c.fournisseur.trim().toLowerCase());
+        if (c.fournisseur && !f) messages.push(`fournisseur inconnu : ${c.fournisseur} (à créer dans Fournisseurs)`);
+        const lines = c.lignes.map(l => {
+            let cible: CibleCommande | null = null;
+            if (l.affaire) {
+                const id = parCode.get(cle(l.affaire));
+                if (!id) messages.push(`ligne ${l.ligne} : affaire inconnue : ${l.affaire}`); else cible = { type: 'affaire', projectId: id };
+            } else if (l.contrat) {
+                const k = parNumero.get(cle(l.contrat));
+                if (!k) messages.push(`ligne ${l.ligne} : contrat inconnu : ${l.contrat}`);
+                else if (l.activite && !((k.get('activityIds') as string[] | undefined) ?? []).some(a => codeActivite.get(a) === cle(l.activite))) messages.push(`ligne ${l.ligne} : activité ${l.activite} absente du contrat ${l.contrat}`);
+                else if (l.activite) cible = { type: 'contrat', contractId: k.id, activityCode: cle(l.activite) };
+            }
+            return { label: l.label, quantity: l.quantity, unitPrice: l.unitPrice, nature: l.nature as LigneCommande['nature'], cible: cible as CibleCommande };
+        });
+        const doublon = dejaImportees.has(cle(c.reference));
+        let donnees: Awaited<ReturnType<typeof contenu>> | null = null;
+        if (!messages.length && !doublon && f && demandeur) {
+            try {
+                donnees = await contenu({ companyId: societe.id, supplierId: f.id, title: c.objet, date: c.date, ...(c.livraison && { deliveryDate: c.livraison }), notes: `Importée — référence ${c.reference}`, lines });
+                // L'affectation doit avoir un code analytique (affaire ouverte, codes d'agence et de secteur renseignés).
+                for (const l of lines) {
+                    const k = JSON.stringify(l.cible);
+                    if (!analytiques.has(k)) analytiques.set(k, analytiqueCible(l.cible));
+                    await analytiques.get(k);
+                }
+            } catch (e) { donnees = null; messages.push(e instanceof Error ? e.message : 'commande refusée'); }
+        }
+        const etat: LigneRapportCommande['etat'] = messages.length ? 'erreur' : doublon ? 'doublon' : 'a_creer';
+        if (etat === 'doublon') messages.push('référence déjà importée : ignorée');
+        if (etat === 'a_creer' && donnees && demandeur && c.etat) { aEcrire.push({ donnees, demandeur, reference: c.reference, etat: c.etat }); dejaImportees.add(cle(c.reference)); }
+        rapport.push({ reference: c.reference, ligne: c.ligne, date: c.date, fournisseur: f?.name ?? c.fournisseur, objet: c.objet, demandeur: demandeur?.name ?? c.demandeur, lignes: c.lignes.length, totalHT: donnees?.totalHT ?? c.totalHT, etat, resultat: etat === 'a_creer' ? c.etat : null, messages });
+    }
+    const erreurs = rapport.filter(r => r.etat === 'erreur').length;
+    if (appliquer && erreurs > 0) throw new Error(`${erreurs} commande(s) en erreur : rien n'a été importé. Corrigez le fichier puis relancez.`);
+    const applique = appliquer && aEcrire.length > 0;
+    if (applique) {
+        for (const a of aEcrire) {
+            const t = now();
+            const ref = commandes().doc();
+            await ref.set({ ...a.donnees, status: 'brouillon', etapes: [], requesterId: a.demandeur.id, requesterName: a.demandeur.name, requesterEmail: a.demandeur.email, externalRef: a.reference, importedBy: user.email, createdAt: t, updatedAt: t });
+            if (a.etat === 'validee') await soumettreCommande(ref.id, user, true);
+        }
+    }
+    return { commandes: rapport, aCreer: aEcrire.length, doublons: rapport.filter(r => r.etat === 'doublon').length, erreurs, applique, totalHT: Math.round(aEcrire.reduce((s2, a) => s2 + a.donnees.totalHT, 0) * 100) / 100 };
 }

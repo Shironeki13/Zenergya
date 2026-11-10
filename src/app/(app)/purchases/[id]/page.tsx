@@ -154,7 +154,7 @@ export default function CommandePage() {
                         <h1 className="text-2xl font-bold tracking-tight">{nouvelle ? 'Nouvelle commande' : commande!.number ? <span className="font-mono">{commande!.number}</span> : 'Commande (brouillon)'}</h1>
                         {commande && <Badge variant={commande.status === 'refusee' ? 'destructive' : commande.status === 'a_valider' ? 'default' : 'secondary'}>{LIBELLE_STATUT[commande.status]}</Badge>}
                     </div>
-                    {commande && <p className="mt-1 text-sm text-muted-foreground">Demandée par {commande.requesterName}{commande.submittedAt ? `, soumise le ${jour(commande.submittedAt)}` : ''}{commande.cancelReason ? ` — annulée : ${commande.cancelReason}` : ''}</p>}
+                    {commande && <p className="mt-1 text-sm text-muted-foreground">Demandée par {commande.requesterName}{commande.submittedAt ? `, soumise le ${jour(commande.submittedAt)}` : ''}{commande.externalRef ? ` — importée, référence ${commande.externalRef}` : ''}{commande.cancelReason ? ` — annulée : ${commande.cancelReason}` : ''}</p>}
                 </div>
                 <div className="flex flex-wrap gap-2">
                     {editable && <Button variant="outline" disabled={busy} onClick={enregistrer}>Enregistrer le brouillon</Button>}
@@ -247,6 +247,8 @@ export default function CommandePage() {
                 <CardContent className="text-sm">
                     {editable || !commande ? (
                         <p>{etapesPrevues.length === 0 ? `Total de ${eur(total)} : la commande sera validée à la soumission (autovalidation).` : `Total de ${eur(total)} : à la soumission, validation par ${etapesPrevues.map(r => LIBELLE_ETAPE[r]).join(', puis ')}.`}</p>
+                    ) : commande.importee ? (
+                        <p className="flex items-center gap-2"><CheckCircle2 className="h-4 w-4 text-green-700" />Commande importée (référence {commande.externalRef}), validée hors Zenergya ; entrée le {jour(commande.validatedAt)} par {commande.importedBy}.</p>
                     ) : commande.autoValidee ? (
                         <p className="flex items-center gap-2"><CheckCircle2 className="h-4 w-4 text-green-700" />Validée à la soumission (sous le seuil d&apos;autovalidation), le {jour(commande.validatedAt)}.</p>
                     ) : (

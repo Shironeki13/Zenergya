@@ -2,13 +2,14 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { PlusCircle, Settings2, Truck } from 'lucide-react';
+import { PlusCircle, Settings2, Truck, Upload } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { DataTable, type Colonne } from '@/components/data-table/data-table';
 import { useOngletUrl } from '@/components/fiches/fiche';
 import { FournisseursDialog, SeuilsDialog } from '@/components/commandes/dialogues';
+import { ImportCommandesDialog } from '@/components/commandes/import-dialog';
 import { useData } from '@/context/data-context';
 import { useToast } from '@/hooks/use-toast';
 import { LIBELLE_ETAPE, LIBELLE_STATUT, etapeEnCours, factureHT, peutDecider, type Commande, type StatutCommande } from '@/lib/commandes';
@@ -33,6 +34,7 @@ export default function CommandesPage() {
     const [commandes, setCommandes] = useState<Commande[] | null>(null);
     const [fournisseurs, setFournisseurs] = useState(false);
     const [seuils, setSeuils] = useState(false);
+    const [importer, setImporter] = useState(false);
     const moi = (authUser ?? currentUser)?.id ?? '';
 
     const charger = useCallback(async () => {
@@ -46,7 +48,7 @@ export default function CommandesPage() {
     const lignes = useMemo(() => (onglet === 'a-valider' ? aValider : onglet === 'miennes' ? (commandes ?? []).filter(c => c.requesterId === moi) : commandes ?? []), [onglet, commandes, aValider, moi]);
 
     const colonnes: Colonne<Commande>[] = useMemo(() => [
-        { id: 'numero', label: 'Commande', fixe: true, tri: r => r.number ?? '', exporter: r => r.number ?? '', cell: r => <span className="whitespace-nowrap font-mono text-xs">{r.number ?? <span className="font-sans text-muted-foreground">brouillon</span>}</span> },
+        { id: 'numero', label: 'Commande', fixe: true, tri: r => r.number ?? '', exporter: r => r.number ?? '', cell: r => <span className="whitespace-nowrap font-mono text-xs">{r.number ?? <span className="font-sans text-muted-foreground">brouillon</span>}{r.externalRef && <span className="block font-sans text-muted-foreground" title="Référence d'origine (commande importée)">{r.externalRef}</span>}</span> },
         { id: 'date', label: 'Date', tri: r => r.date, exporter: r => r.date, cell: r => r.date.split('-').reverse().join('/') },
         { id: 'fournisseur', label: 'Fournisseur', tri: r => r.supplierName, exporter: r => r.supplierName, cell: r => <span className="block max-w-[180px] truncate" title={r.supplierName}>{r.supplierName}</span> },
         { id: 'objet', label: 'Objet', exporter: r => r.title, cell: r => <span className="block max-w-[260px] truncate" title={r.title}>{r.title}</span> },
@@ -73,6 +75,7 @@ export default function CommandesPage() {
                 </div>
                 <div className="flex flex-wrap gap-2">
                     {isAdmin && <Button variant="outline" size="sm" onClick={() => setSeuils(true)}><Settings2 className="mr-1 h-4 w-4" />Seuils de validation</Button>}
+                    <Button variant="outline" size="sm" onClick={() => setImporter(true)}><Upload className="mr-1 h-4 w-4" />Importer</Button>
                     <Button variant="outline" size="sm" onClick={() => setFournisseurs(true)}><Truck className="mr-1 h-4 w-4" />Fournisseurs</Button>
                 </div>
             </div>
@@ -92,7 +95,7 @@ export default function CommandesPage() {
                 colonnes={colonnes}
                 chargement={commandes === null}
                 lien={r => `/purchases/${r.id}`}
-                recherche={{ placeholder: 'Numéro, fournisseur, objet, code analytique…', valeurs: r => [r.number, r.supplierName, r.title, r.requesterName, ...r.lines.flatMap(l => [l.analytique?.code, l.cible.libelle])] }}
+                recherche={{ placeholder: 'Numéro, fournisseur, objet, code analytique…', valeurs: r => [r.number, r.externalRef, r.supplierName, r.title, r.requesterName, ...r.lines.flatMap(l => [l.analytique?.code, l.cible.libelle])] }}
                 filtres={[{ id: 'statut', label: 'État', valeur: r => r.status, libelle: v => LIBELLE_STATUT[v as StatutCommande] ?? v }]}
                 triInitial={{ id: 'date', sens: 'desc' }}
                 export={{ fichier: 'commandes.csv' }}
@@ -101,6 +104,7 @@ export default function CommandesPage() {
             />
             <FournisseursDialog open={fournisseurs} onOpenChange={setFournisseurs} />
             <SeuilsDialog open={seuils} onOpenChange={setSeuils} />
+            <ImportCommandesDialog open={importer} onOpenChange={setImporter} onImporte={charger} />
         </div>
     );
 }

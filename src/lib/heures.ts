@@ -96,7 +96,7 @@ type CleImport = typeof COLONNES_IMPORT[number]['cle'];
 
 export type LigneImportHeures = { ligne: number; date: string; email: string; affaire: string; contrat: string; activite: string; hours: number; comment: string; erreurs: string[] };
 
-const norme = (s: unknown) => String(s ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/\*/g, '').replace(/[^a-z0-9]+/g, ' ').trim();
+export const norme = (s: unknown) => String(s ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/\*/g, '').replace(/[^a-z0-9]+/g, ' ').trim();
 
 /** Date d'une cellule : AAAA-MM-JJ, JJ/MM/AAAA (ou JJ-MM-AAAA, JJ.MM.AAAA) ; '' si illisible. */
 export function jourImport(v: unknown): string {

@@ -4,7 +4,7 @@ import { requireAdmin, requireUser } from '@/lib/auth/server';
 import type { Commande, SeuilsValidation } from '@/lib/commandes';
 import {
     ajouterFactureFournisseur, annulerCommande, avancerCommande, deciderCommande, getCommande, listCommandes, listFournisseurs, saveCommande, saveFournisseur,
-    setSeuils, seuilsDe, soumettreCommande, type CommandeInput, type Fournisseur,
+    importerCommandes, setSeuils, seuilsDe, soumettreCommande, type CommandeInput, type Fournisseur, type RapportImportCommandes,
 } from '@/services/commandes-admin';
 
 /** Commandes d'achat : actions serveur (session requise ; les droits de valider sont contrôlés par le service). */
@@ -19,6 +19,7 @@ export const getCommandeAction = async (id: string): Promise<Result<Commande>> =
 export const saveCommandeAction = async (input: CommandeInput & { id?: string }): Promise<Result<Commande>> => run(u => saveCommande(input, u));
 export const soumettreCommandeAction = async (id: string): Promise<Result<Commande>> => run(u => soumettreCommande(id, u));
 export const deciderCommandeAction = async (id: string, decision: 'validee' | 'refusee', commentaire: string): Promise<Result<Commande>> => run(u => deciderCommande(id, decision, commentaire, u));
+export const importerCommandesAction = async (table: unknown[][], companyId: string, appliquer: boolean): Promise<Result<RapportImportCommandes>> => run(u => importerCommandes(table, companyId, u, appliquer));
 export const avancerCommandeAction = async (id: string): Promise<Result<Commande>> => run(u => avancerCommande(id, u));
 export const factureFournisseurAction = async (id: string, input: { numero: string; date: string; montantHT: number; solder?: boolean }): Promise<Result<Commande>> => run(u => ajouterFactureFournisseur(id, input, u));
 export const annulerCommandeAction = async (id: string, motif: string): Promise<Result<Commande>> => run(u => annulerCommande(id, motif, u));

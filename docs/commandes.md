@@ -43,12 +43,34 @@ au demandeur) ; `annulée` (motif obligatoire, impossible dès qu'une facture fo
 Bouton « Fournisseurs » de la liste, ou « + » dans la fiche d'une commande : raison sociale, SIRET, contact ; code
 `FRN-00001` attribué ; un fournisseur inactif n'est plus proposé.
 
-## À venir
+## Import
 
-Import Excel des commandes.
+Pour les commandes saisies dans un autre outil : bouton « Importer » de la liste, fichier Excel (.xlsx) ou CSV ; un
+modèle se télécharge depuis le dialogue. **Une ligne de fichier par ligne de commande** ; les lignes qui portent la même
+**Référence** forment une commande (les lignes suivantes peuvent laisser date, fournisseur, objet et demandeur vides).
+
+| Colonne | |
+|---|---|
+| Référence * | numéro de la commande dans l'outil d'origine |
+| Date *, Fournisseur *, Objet * | fournisseur : code (`FRN-00001`) ou nom exact ; il doit exister dans Fournisseurs |
+| Demandeur (email) | utilisateur Zenergya ; vide : celui qui importe |
+| État | `brouillon` (défaut) ou `validée` |
+| Désignation *, Nature *, Quantité *, Prix unitaire HT * | nature : Fournitures, Sous-traitance, Divers |
+| Affaire, ou Contrat et Activité | affectation analytique de la ligne |
+| Livraison souhaitée | facultative |
+
+- **État « brouillon »** : la commande est créée au nom de son demandeur, qui la soumet ; elle suit le **circuit de
+  validation** normal.
+- **État « validée »** : la commande a été validée hors Zenergya ; elle entre validée, **sans circuit**, avec un numéro
+  et son analytique figée, et elle est marquée « importée » (avec le nom de celui qui l'a importée). Réservé aux
+  **achats** et aux **administrateurs**, comme l'import pour un autre demandeur.
+- Le fichier est d'abord **simulé** ; **rien n'est importé tant qu'une commande est en erreur** (fournisseur, demandeur,
+  affaire ou contrat inconnu, affaire clôturée, ligne incomplète…).
+- Une **référence déjà importée** dans la société est ignorée : le même fichier se réimporte sans doublon. La référence
+  d'origine reste visible et recherchable dans la liste.
 
 Voir aussi `rentabilite.md` : prévu / engagé / réel / facturé par affaire.
 
 Code : `src/lib/commandes.ts` (règles, pures), `src/services/commandes-admin.ts`, `src/lib/commandes-actions.ts`,
-`src/app/(app)/purchases/`, `src/components/commandes/dialogues.tsx`. Tests : `tests/commandes.test.ts`,
-`tests/commandes-flow.test.ts`.
+`src/lib/commandes-import.ts`, `src/app/(app)/purchases/`, `src/components/commandes/`. Tests : `tests/commandes.test.ts`,
+`tests/commandes-flow.test.ts`, `tests/commandes-import.test.ts`, `tests/commandes-import-flow.test.ts`.
