@@ -44,10 +44,7 @@ Excel (.xlsx) ou CSV ; un modèle se télécharge depuis le dialogue.
 - Une ligne déjà présente (même technicien, jour, affectation et durée) est ignorée : le même fichier se réimporte sans
   doublon.
 
-## À venir
-
-Rentabilité par affaire : prévu (devis) / engagé (commandes) / réel (factures fournisseurs, heures) / facturé, par
-nature.
+Voir aussi `rentabilite.md` : prévu / engagé / réel / facturé par affaire.
 
 Code : `src/lib/heures.ts` (règles, pures), `src/services/heures-admin.ts`, `src/lib/heures-actions.ts`,
 `src/app/(app)/timesheets/page.tsx`, `src/components/heures/import-dialog.tsx`. Tests : `tests/heures.test.ts`,

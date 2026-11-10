@@ -14,12 +14,13 @@ import { suiviVentesAction } from '@/lib/analytique-actions';
 import type { SuiviVentes } from '@/services/analytique-admin';
 
 /**
- * Suivi des ventes par analytique : ventes HT facturées sur une période (factures − avoirs), totalisées jusqu'à l'axe
- * choisi (société › agence › secteur › client › contrat › activité › site). Les lignes sans analytique (factures
- * antérieures, non reprises) apparaissent en « non affecté ».
+ * Suivi analytique : ventes HT facturées sur une période (factures − avoirs), achats de la même période (commandes
+ * engagées, heures au coût interne) et marge, totalisés jusqu'à l'axe choisi (société › agence › secteur › client ›
+ * contrat ou affaire › activité › site). Les lignes sans analytique (factures antérieures, non reprises) apparaissent en
+ * « non affecté ». Les achats ne sont pas affectés à un site : au niveau « site », ils sont en « non affecté ».
  */
 
-type Ligne = ReturnType<typeof totauxParAxe>[number];
+type Ligne = Omit<ReturnType<typeof totauxParAxe>[number], 'montant'> & { ventes: number; achats: number; marge: number };
 const eur = (n: number) => n.toLocaleString('fr-FR', { style: 'currency', currency: 'EUR' });
 
 export default function SuiviAnalytiquePage() {
@@ -41,7 +42,22 @@ export default function SuiviAnalytiquePage() {
     }, [debut, fin, toast]);
     useEffect(() => { charger(); }, [charger]);
 
-    const lignes = useMemo(() => totauxParAxe((data?.lignes ?? []).map(l => ({ analytique: l.analytique, montant: l.montant, site: l.site })), axe), [data, axe]);
+    const lignes = useMemo(() => {
+        const par = new Map<string, Ligne>();
+        const ajouter = (source: SuiviVentes['lignes'], colonne: 'ventes' | 'achats') => {
+            for (const t of totauxParAxe(source.map(l => ({ analytique: l.analytique, montant: l.montant, site: l.site })), axe)) {
+                const { montant, ...reste } = t;
+                const r = par.get(t.cle) ?? { ...reste, lignes: 0, ventes: 0, achats: 0, marge: 0 };
+                r[colonne] = montant;
+                if (colonne === 'ventes') r.lignes = t.lignes;
+                r.marge = Math.round((r.ventes - r.achats) * 100) / 100;
+                par.set(t.cle, r);
+            }
+        };
+        ajouter(data?.lignes ?? [], 'ventes');
+        ajouter(data?.achats ?? [], 'achats');
+        return [...par.values()];
+    }, [data, axe]);
     const niveaux = AXES_SUIVI.slice(0, AXES_SUIVI.indexOf(axe) + 1);
     const nom = (n: AxeSuivi, code?: string) => (n === 'site' || !code || code === NON_AFFECTE ? '' : data?.libelles[n]?.[code] ?? '');
 
@@ -57,8 +73,11 @@ export default function SuiviAnalytiquePage() {
             ),
         })),
         { id: 'code', label: 'Code analytique', masquee: true, tri: r => r.code, exporter: r => r.code, cell: r => <span className="break-all font-mono text-xs">{r.code}</span> },
-        { id: 'lignes', label: 'Lignes', align: 'right', tri: r => r.lignes, exporter: r => r.lignes, cell: r => r.lignes },
-        { id: 'montant', label: 'Ventes HT', align: 'right', fixe: true, tri: r => r.montant, exporter: r => r.montant, cell: r => <span className="font-medium">{eur(r.montant)}</span> },
+        { id: 'lignes', label: 'Lignes de facture', align: 'right', masquee: true, tri: r => r.lignes, exporter: r => r.lignes, cell: r => r.lignes },
+        { id: 'montant', label: 'Ventes HT', align: 'right', fixe: true, tri: r => r.ventes, exporter: r => r.ventes, cell: r => <span className="font-medium">{eur(r.ventes)}</span> },
+        { id: 'achats', label: 'Achats et heures', align: 'right', tri: r => r.achats, exporter: r => r.achats, cell: r => (r.achats ? eur(r.achats) : '—') },
+        { id: 'marge', label: 'Marge', align: 'right', tri: r => r.marge, exporter: r => r.marge, cell: r => <span className={r.marge < 0 ? 'font-medium text-destructive' : 'font-medium'}>{eur(r.marge)}</span> },
+        { id: 'taux', label: 'Taux', align: 'right', tri: r => (r.ventes ? r.marge / r.ventes : -Infinity), exporter: r => (r.ventes ? Math.round((r.marge / r.ventes) * 1000) / 10 : ''), cell: r => (r.ventes > 0 ? `${((r.marge / r.ventes) * 100).toLocaleString('fr-FR', { maximumFractionDigits: 1 })} %` : '—') },
         // eslint-disable-next-line react-hooks/exhaustive-deps
     ], [axe, data]);
 
@@ -66,8 +85,8 @@ export default function SuiviAnalytiquePage() {
         <div className="flex flex-col gap-4">
             <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
-                    <h1 className="text-2xl font-bold tracking-tight">Suivi analytique des ventes</h1>
-                    <p className="text-muted-foreground">Ventes HT facturées (factures − avoirs), par axe analytique. Chaque ligne de facture porte le code en vigueur à son émission.</p>
+                    <h1 className="text-2xl font-bold tracking-tight">Suivi analytique : ventes, achats, marge</h1>
+                    <p className="text-muted-foreground">Ventes HT facturées (factures − avoirs), achats (commandes engagées, heures au coût interne) et marge, par axe analytique. Chaque ligne porte le code en vigueur à sa saisie.</p>
                 </div>
                 <Button variant="outline" size="sm" onClick={charger} disabled={chargement}>{chargement ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-1 h-4 w-4" />}Actualiser</Button>
             </div>
@@ -84,10 +103,11 @@ export default function SuiviAnalytiquePage() {
                 </div>
             </div>
 
-            <div className="grid gap-3 sm:grid-cols-3">
-                <Indicateur titre="Ventes HT de la période" valeur={data ? eur0(data.total) : '—'} />
-                <Indicateur titre="Dont non affecté" valeur={data ? eur0(data.nonAffecte) : '—'} detail={data && data.nonAffecte !== 0 ? 'factures sans analytique : à reprendre' : undefined} />
-                <Indicateur titre="Lignes de facture" valeur={data ? String(data.lignes.length) : '—'} />
+            <div className="grid gap-3 sm:grid-cols-4">
+                <Indicateur titre="Ventes HT de la période" valeur={data ? eur0(data.total) : '—'} detail={data ? `${data.lignes.length} lignes de facture` : undefined} />
+                <Indicateur titre="Achats et heures" valeur={data ? eur0(data.totalAchats) : '—'} detail="commandes engagées, heures au coût interne" />
+                <Indicateur titre="Marge" valeur={data ? eur0(data.total - data.totalAchats) : '—'} detail={data && data.total > 0 ? `${(((data.total - data.totalAchats) / data.total) * 100).toLocaleString('fr-FR', { maximumFractionDigits: 1 })} % des ventes` : undefined} />
+                <Indicateur titre="Ventes non affectées" valeur={data ? eur0(data.nonAffecte) : '—'} detail={data && data.nonAffecte !== 0 ? 'factures sans analytique : à reprendre' : undefined} alerte={!!data && data.nonAffecte !== 0} />
             </div>
 
             <DataTable
@@ -98,8 +118,8 @@ export default function SuiviAnalytiquePage() {
                 chargement={data === null}
                 recherche={{ placeholder: 'Code ou libellé…', valeurs: r => [r.cle, r.code, ...niveaux.map(n => nom(n, r.axes[n]))] }}
                 triInitial={{ id: 'montant', sens: 'desc' }}
-                export={{ fichier: `ventes-analytique-${debut}-${fin}.csv` }}
-                vide={{ titre: 'Aucune vente facturée sur cette période.' }}
+                export={{ fichier: `suivi-analytique-${debut}-${fin}.csv` }}
+                vide={{ titre: 'Aucune vente ni achat sur cette période.' }}
             />
         </div>
     );

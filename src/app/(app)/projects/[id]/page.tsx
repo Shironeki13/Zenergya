@@ -23,6 +23,7 @@ import { sumCents } from '@/lib/money';
 import type { Invoice } from '@/lib/types';
 import { getProject, getProjectInvoices, getProjectSituations } from '@/services/projects';
 import { AffaireSynthese } from '@/components/projects/affaire-synthese';
+import { AffaireRentabilite } from '@/components/projects/affaire-rentabilite';
 
 const today = () => new Date().toISOString().slice(0, 10);
 const thisMonth = () => new Date().toISOString().slice(0, 7);
@@ -118,7 +119,9 @@ export default function ProjectPage() {
             </div>
             <ProgressBar value={Math.min(100, billedPct)} />
 
-            <AffaireSynthese project={project} factureHT={billedHT} onChange={load} />
+            <AffaireRentabilite projectId={project.id} sansBudget={!project.budget} />
+
+            <AffaireSynthese project={project} onChange={load} />
 
             {!parSituations && (
                 <Card>

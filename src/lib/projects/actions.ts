@@ -7,6 +7,7 @@ import {
     createProjectFromQuote, deleteSituationDraft, invoiceSituation, saveSituationDraft, setProjectMilestone,
 } from '@/services/projects-admin';
 import { setAnalytiqueExterneAffaire } from '@/services/analytique-admin';
+import { rentabiliteAffaire, rentabiliteAffaires, type RentabiliteAffaire, type ResumeRentabilite } from '@/services/rentabilite-admin';
 
 /** Actions des affaires P6 (serveur, session requise) : seul le serveur écrit affaires et situations. */
 
@@ -55,4 +56,13 @@ export async function invoiceSituationAction(situationId: string): Promise<Resul
 
 export async function projectMilestoneAction(projectId: string, milestone: 'completed' | 'retentionReleased' | 'closed', date: string): Promise<Result<Project>> {
     return run(() => setProjectMilestone(projectId, milestone, date));
+}
+
+/** Rentabilité d'une affaire : prévu, engagé, réel, facturé par nature ; ses commandes et ses heures. */
+export async function rentabiliteAffaireAction(projectId: string): Promise<Result<RentabiliteAffaire>> {
+    return run(async () => JSON.parse(JSON.stringify(await rentabiliteAffaire(projectId))));
+}
+
+export async function rentabiliteAffairesAction(): Promise<Result<Record<string, ResumeRentabilite>>> {
+    return run(async () => JSON.parse(JSON.stringify(await rentabiliteAffaires())));
 }

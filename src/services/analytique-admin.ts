@@ -7,6 +7,7 @@ import {
 import { Timestamp } from 'firebase-admin/firestore';
 import type { InvoiceLineItem } from '@/lib/types';
 import { segmentAffaire } from '@/lib/projects/affaire';
+import { STATUTS_ENGAGES } from '@/lib/commandes';
 
 /**
  * Analytique au serveur : code effectif du client, du contrat et de ses prestations (généré ou externe), figeage des
@@ -206,22 +207,26 @@ export type SuiviVentes = {
     /** Libellés des codes d'axe (« LYO » → « Lyon »), pour l'affichage. */
     libelles: Record<'societe' | 'agence' | 'secteur' | 'client' | 'contrat' | 'activite', Record<string, string>>;
     total: number; nonAffecte: number;
+    /** Coûts de la période portant un code analytique : lignes des commandes engagées (à leur date) et heures saisies (à leur coût). */
+    achats: LigneVente[];
+    totalAchats: number;
 };
 
 /**
  * Ventes HT d'une période (dates AAAA-MM-JJ incluses), ligne à ligne, avec leur analytique : factures émises (hors
- * proformas) et avoirs (lignes négatives).
+ * proformas) et avoirs (lignes négatives). Avec les coûts de la même période : commandes engagées et heures.
  */
 export async function suiviVentes(debut: string, fin: string): Promise<SuiviVentes> {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(debut) || !/^\d{4}-\d{2}-\d{2}$/.test(fin) || fin < debut) throw new Error('Période : dates de début et de fin, dans l\'ordre.');
     const du = Timestamp.fromDate(new Date(`${debut}T00:00:00Z`)), au = Timestamp.fromDate(new Date(`${fin}T23:59:59Z`));
-    const [invoices, creditNotes, sites, companies, agencies, sectors, clients, contracts, activities, projects] = await Promise.all([
+    const [invoices, creditNotes, sites, companies, agencies, sectors, clients, contracts, activities, projects, commandes, heures] = await Promise.all([
         adminDb.collection('invoices').where('date', '>=', du).where('date', '<=', au).get(),
         adminDb.collection('creditNotes').where('date', '>=', du).where('date', '<=', au).get(),
         adminDb.collection('sites').select('name').get(), adminDb.collection('companies').select('code', 'name').get(),
         adminDb.collection('agencies').select('code', 'name').get(), adminDb.collection('sectors').select('code', 'name').get(),
         adminDb.collection('clients').select('externalCode', 'name').get(), adminDb.collection('contracts').select('contractNumber', 'label', 'clientName').get(),
         adminDb.collection('activities').select('code', 'label').get(), adminDb.collection('projects').select('code', 'title', 'clientName').get(),
+        adminDb.collection('commandes').where('date', '>=', debut).where('date', '<=', fin).get(), adminDb.collection('heures').where('date', '>=', debut).where('date', '<=', fin).get(),
     ]);
     const nomSite = new Map(sites.docs.map(d => [d.id, String(d.get('name') ?? '')]));
     const jour = (v: unknown) => (v instanceof Timestamp ? v.toDate() : new Date(String(v))).toISOString().slice(0, 10);
@@ -240,6 +245,13 @@ export async function suiviVentes(debut: string, fin: string): Promise<SuiviVent
     for (const d of creditNotes.docs) ajouter(d.get('lineItems'), String(d.get('creditNoteNumber') ?? d.id), jour(d.get('date')));
     const lib = (docs: FirebaseFirestore.QueryDocumentSnapshot[], code: string, nom: (d: FirebaseFirestore.QueryDocumentSnapshot) => string) =>
         Object.fromEntries(docs.filter(d => d.get(code)).map(d => [segment(d.get(code)), nom(d)]));
+    // Coûts : lignes des commandes engagées (validées, passées, reçues, soldées) et heures, avec l'analytique figée à leur saisie.
+    const achats: LigneVente[] = [];
+    for (const d of commandes.docs) {
+        if (!STATUTS_ENGAGES.includes(d.get('status'))) continue;
+        for (const l of (d.get('lines') ?? []) as { total?: number; analytique?: AnalytiqueLigne }[]) if (l.total) achats.push({ analytique: l.analytique ?? null, montant: l.total, site: '', document: String(d.get('number') ?? d.id), date: String(d.get('date')) });
+    }
+    for (const d of heures.docs) if (d.get('cost')) achats.push({ analytique: (d.get('analytique') as AnalytiqueLigne | undefined) ?? null, montant: Number(d.get('cost')), site: '', document: `Heures — ${d.get('userName') ?? ''}`, date: String(d.get('date')) });
     const total = Math.round(lignes.reduce((t, l) => t + l.montant, 0) * 100) / 100;
     return {
         lignes,
@@ -253,6 +265,7 @@ export async function suiviVentes(debut: string, fin: string): Promise<SuiviVent
             activite: { ...lib(activities.docs, 'code', d => String(d.get('label') ?? '')), P5: 'Travaux P5', P6: 'Travaux P6' },
         },
         total, nonAffecte: Math.round(lignes.filter(l => !l.analytique).reduce((t, l) => t + l.montant, 0) * 100) / 100,
+        achats, totalAchats: Math.round(achats.reduce((t, l) => t + l.montant, 0) * 100) / 100,
     };
 }
 

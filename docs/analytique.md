@@ -85,11 +85,15 @@ ZEN     - LYO    - LN      - CLI00012   - AFF20260007
 Code : `src/lib/projects/affaire.ts`, `src/services/projects-admin.ts`, `src/components/projects/affaire-synthese.tsx`,
 `src/components/quotes/project-panel.tsx`.
 
-## À venir
+## Ventes, achats, marge
 
 Les **commandes d'achat** (ligne par ligne, code figé à la soumission : `commandes.md`) et les **heures** des
-techniciens (code et coût horaire figés à la saisie : `heures.md`) portent déjà le code. Reste, par affaire, prévu / engagé / réel / facturé par nature ; marge = ventes − achats,
-par code ou par axe.
+techniciens (code et coût horaire figés à la saisie : `heures.md`) portent le même code que les ventes.
+
+- **Facturation › Suivi analytique** : sur une période, ventes HT (factures − avoirs), achats (lignes des commandes
+  engagées à leur date, heures à leur coût interne) et marge, totalisés jusqu'à l'axe choisi. Les achats ne sont pas
+  affectés à un site : au niveau « site » ils apparaissent en « non affecté ».
+- **Affaires de travaux** : rentabilité par affaire, par nature — voir `rentabilite.md`.
 
 Code : `src/lib/analytique.ts` (logique pure), `src/services/analytique-admin.ts`, `src/lib/analytique-actions.ts`,
 `src/components/analytique/analytique-card.tsx`, `src/app/(app)/billing/analytique/page.tsx`.

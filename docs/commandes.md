@@ -45,8 +45,9 @@ Bouton « Fournisseurs » de la liste, ou « + » dans la fiche d'une commande :
 
 ## À venir
 
-Import Excel des commandes ; rentabilité par affaire (prévu / engagé / réel /
-facturé par nature) et suivi ventes − achats par code analytique.
+Import Excel des commandes.
+
+Voir aussi `rentabilite.md` : prévu / engagé / réel / facturé par affaire.
 
 Code : `src/lib/commandes.ts` (règles, pures), `src/services/commandes-admin.ts`, `src/lib/commandes-actions.ts`,
 `src/app/(app)/purchases/`, `src/components/commandes/dialogues.tsx`. Tests : `tests/commandes.test.ts`,
