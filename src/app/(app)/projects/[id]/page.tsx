@@ -22,6 +22,7 @@ import {
 import { sumCents } from '@/lib/money';
 import type { Invoice } from '@/lib/types';
 import { getProject, getProjectInvoices, getProjectSituations } from '@/services/projects';
+import { AffaireSynthese } from '@/components/projects/affaire-synthese';
 
 const today = () => new Date().toISOString().slice(0, 10);
 const thisMonth = () => new Date().toISOString().slice(0, 7);
@@ -63,10 +64,12 @@ export default function ProjectPage() {
     if (loading) return <Loader2 className="mx-auto mt-24 h-8 w-8 animate-spin" />;
     if (!project) return <p className="text-muted-foreground">Affaire introuvable. <Link className="underline" href="/projects">Retour</Link></p>;
 
-    const counted = invoices.filter(i => i.status !== 'cancelled' && i.status !== 'proforma' && i.situation);
+    // Par situations : factures de situation ; directe : factures des devis de l'affaire (acompte, solde, totalité).
+    const parSituations = (project.billing ?? 'situations') === 'situations';
+    const counted = invoices.filter(i => i.status !== 'cancelled' && i.status !== 'proforma' && (parSituations ? i.situation : true));
     const billedHT = sumCents(counted.map(i => i.subtotal));
     const billedTTC = sumCents(counted.map(i => i.total));
-    const retained = sumCents(counted.map(i => i.situation!.retention.amount));
+    const retained = sumCents(counted.map(i => i.situation?.retention.amount ?? 0));
     const billedPct = project.totalHT > 0 ? (billedHT / project.totalHT) * 100 : 0;
     const open = project.status !== 'cloture';
 
@@ -108,12 +111,35 @@ export default function ProjectPage() {
                 <Kpi title="Marché" value={formatEur(project.totalHT)} sub={`${formatEur(project.totalTTC)} TTC`} />
                 <Kpi title="Facturé" value={formatEur(billedHT)} sub={`${billedPct.toLocaleString('fr-FR', { maximumFractionDigits: 1 })} % — ${formatEur(billedTTC)} TTC`} />
                 <Kpi title="Reste à facturer" value={formatEur(sumCents([project.totalHT, -billedHT]))} sub="HT" />
-                <Kpi title="Retenue de garantie" value={project.retentionBond ? 'Caution' : formatEur(retained)}
-                    sub={project.retentionBond ? 'remplacée par une caution bancaire' : `${project.retentionPct} % — ${project.retentionReleasedAt ? `libérée le ${frDate(project.retentionReleasedAt)}` : 'retenue'}`} />
+                {parSituations
+                    ? <Kpi title="Retenue de garantie" value={project.retentionBond ? 'Caution' : formatEur(retained)}
+                        sub={project.retentionBond ? 'remplacée par une caution bancaire' : `${project.retentionPct} % — ${project.retentionReleasedAt ? `libérée le ${frDate(project.retentionReleasedAt)}` : 'retenue'}`} />
+                    : <Kpi title="Marge prévue" value={project.budget ? formatEur(project.budget.marge) : '—'} sub={project.budget?.tauxMarge != null ? `${(project.budget.tauxMarge * 100).toLocaleString('fr-FR', { maximumFractionDigits: 1 })} % du prix de vente` : 'budget des devis'} />}
             </div>
             <ProgressBar value={Math.min(100, billedPct)} />
 
-            <Card>
+            <AffaireSynthese project={project} factureHT={billedHT} onChange={load} />
+
+            {!parSituations && (
+                <Card>
+                    <CardHeader>
+                        <CardTitle className="text-base">Facturation directe</CardTitle>
+                        <CardDescription>Cette affaire se facture depuis ses devis (acompte, solde ou totalité) : ouvrez un devis ci-dessus pour émettre une facture.</CardDescription>
+                    </CardHeader>
+                    {counted.length > 0 && (
+                        <CardContent className="text-sm">
+                            <table className="w-full">
+                                <tbody>{counted.map(i => (
+                                    <tr key={i.id} className="border-t"><td className="py-1.5 font-mono text-xs"><Link className="underline" href={`/invoices/${i.id}`}>{i.invoiceNumber}</Link></td>
+                                        <td className="py-1.5">{frDate(i.date)}</td><td className="py-1.5 text-right">{formatEur(i.subtotal)} HT</td></tr>
+                                ))}</tbody>
+                            </table>
+                        </CardContent>
+                    )}
+                </Card>
+            )}
+
+            {parSituations && <Card>
                 <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-2">
                     <div>
                         <CardTitle className="text-base">Situations</CardTitle>
@@ -153,9 +179,9 @@ export default function ProjectPage() {
                         </table>
                     )}
                 </CardContent>
-            </Card>
+            </Card>}
 
-            {progress && computed && (
+            {parSituations && progress && computed && (
                 <Card>
                     <CardHeader className="flex flex-row flex-wrap items-end justify-between gap-2">
                         <div>

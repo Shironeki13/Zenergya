@@ -176,8 +176,9 @@ export default function QuoteEditorPage() {
                     {effectiveStatus(quote) === 'expire' && ` Sa validité a pris fin le ${new Date(quote.validUntil).toLocaleDateString('fr-FR')}.`}
                 </p>
             )}
-            {/* P6 (ou affaire déjà créée) : facturation par situations ; sinon facturation directe. */}
-            {quote.status === 'accepte' && (quote.mode === 'P6' || quote.projectId ? <QuoteProject quote={quote} /> : <QuoteBilling quote={quote} />)}
+            {/* Affaire du devis accepté ; facturation directe (acompte, solde, totalité) sauf affaire par situations. */}
+            {quote.status === 'accepte' && <QuoteProject quote={quote} />}
+            {quote.status === 'accepte' && (quote.projectId ? quote.projectBilling === 'direct' : quote.mode !== 'P6') && <QuoteBilling quote={quote} />}
             {(quote.version > 1 || quote.sentAt || quote.cancellation) && <QuoteHistory quote={quote} />}
 
             <Card>

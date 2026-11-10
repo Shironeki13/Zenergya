@@ -162,6 +162,8 @@ export type Quote = {
     cancellation?: QuoteCancellation;
     projectId?: string;             // affaire P6 créée depuis ce devis (facturation par situations)
     projectCode?: string;
+    /** Facturation de l'affaire : directe (depuis le devis) ou par situations (défaut des affaires antérieures). */
+    projectBilling?: 'direct' | 'situations';
     lastInvoicedAt?: string;        // dernière facture émise depuis ce devis
     lastInvoicedBy?: string;
     createdAt: string;

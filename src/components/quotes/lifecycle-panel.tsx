@@ -1,6 +1,8 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
+import { useAffairesClient } from '@/components/quotes/project-panel';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Ban, CheckCircle2, CopyPlus, FileDown, Loader2, Send, XCircle } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -41,7 +43,8 @@ export function QuoteActions({ quote, dirty, issues, onChange }: {
     const status = effectiveStatus(quote);
     const actions = availableActions(quote);
 
-    const [accept, setAccept] = useState({ acceptedAt: today(), signatoryName: '', signatoryRole: '', purchaseOrderNumber: '', comment: '', createSite: true, confirmExpired: false });
+    const [accept, setAccept] = useState({ acceptedAt: today(), signatoryName: '', signatoryRole: '', purchaseOrderNumber: '', comment: '', createSite: true, confirmExpired: false, attachProjectId: '' });
+    const affaires = useAffairesClient(quote.clientId, quote.companyId, dialog === 'accept');
     const [refuse, setRefuse] = useState({ refusedAt: today(), reason: '' });
     const [cancelReason, setCancelReason] = useState('');
 
@@ -124,6 +127,17 @@ export function QuoteActions({ quote, dirty, issues, onChange }: {
                             <Textarea id="a-comment" rows={2} value={accept.comment} onChange={e => setAccept(a => ({ ...a, comment: e.target.value }))} /></div>
                     </div>
                     {quote.prospect && <p className="text-sm">Le prospect <strong>{quote.clientName}</strong> deviendra client.</p>}
+                    <div className="space-y-1">
+                        <Label htmlFor="a-affaire">Affaire</Label>
+                        <Select value={accept.attachProjectId || 'nouvelle'} onValueChange={v => setAccept(a => ({ ...a, attachProjectId: v === 'nouvelle' ? '' : v }))}>
+                            <SelectTrigger id="a-affaire"><SelectValue /></SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="nouvelle">{quote.mode === 'P6' ? 'Nouvelle affaire (créée ensuite, facturée par situations)' : 'Nouvelle affaire (créée à l\'acceptation)'}</SelectItem>
+                                {affaires.map(p => <SelectItem key={p.id} value={p.id}>Devis complémentaire de {p.code} — {p.title}</SelectItem>)}
+                            </SelectContent>
+                        </Select>
+                        <p className="text-xs text-muted-foreground">Une affaire par devis accepté ; un devis complémentaire rejoint l&apos;affaire d&apos;origine (même code analytique, budget cumulé).</p>
+                    </div>
                     {canCreateSite && (
                         <label className="flex items-center gap-2 text-sm">
                             <Checkbox checked={accept.createSite} onCheckedChange={v => setAccept(a => ({ ...a, createSite: v === true }))} />
@@ -139,7 +153,7 @@ export function QuoteActions({ quote, dirty, issues, onChange }: {
                     <DialogFooter>
                         <Button variant="outline" onClick={() => setDialog(null)}>Annuler</Button>
                         <Button disabled={busy || !accept.signatoryName.trim() || (status === 'expire' && !accept.confirmExpired)}
-                            onClick={() => exec('Devis accepté', () => acceptQuoteAction(quote.id, { ...accept, createSite: canCreateSite && accept.createSite }))}>
+                            onClick={() => exec('Devis accepté', () => acceptQuoteAction(quote.id, { ...accept, createSite: canCreateSite && accept.createSite, ...(accept.attachProjectId ? { attachProjectId: accept.attachProjectId } : { attachProjectId: undefined }) }))}>
                             {busy && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Enregistrer l'accord
                         </Button>
                     </DialogFooter>

@@ -35,8 +35,8 @@ export default function ProjectsPage() {
     return (
         <Card>
             <CardHeader>
-                <CardTitle>Affaires (P6)</CardTitle>
-                <CardDescription>Devis acceptés facturés à l'avancement, par situations mensuelles. Une affaire se crée depuis son devis accepté.</CardDescription>
+                <CardTitle>Affaires de travaux</CardTitle>
+                <CardDescription>Une affaire par devis accepté (P5 : facturation directe ; P6 : par situations) ; les devis complémentaires s&apos;y rattachent. Budget, analytique et rentabilité se suivent par affaire.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
                 <Input className="max-w-xs" placeholder="Code, objet, client, devis…" value={search} onChange={e => setSearch(e.target.value)} />
@@ -47,23 +47,27 @@ export default function ProjectsPage() {
                             <TableHead>Client</TableHead>
                             <TableHead>Objet</TableHead>
                             <TableHead>Devis</TableHead>
+                            <TableHead>Type</TableHead>
                             <TableHead>Statut</TableHead>
-                            <TableHead className="text-right">Marché HT</TableHead>
+                            <TableHead className="text-right">Vente HT</TableHead>
+                            <TableHead className="text-right">Marge prévue</TableHead>
                         </TableRow>
                     </TableHeader>
                     <TableBody>
                         {loading ? (
-                            <TableRow><TableCell colSpan={6} className="h-24 text-center"><Loader2 className="mx-auto h-6 w-6 animate-spin" /></TableCell></TableRow>
+                            <TableRow><TableCell colSpan={8} className="h-24 text-center"><Loader2 className="mx-auto h-6 w-6 animate-spin" /></TableCell></TableRow>
                         ) : visible.length === 0 ? (
-                            <TableRow><TableCell colSpan={6} className="h-24 text-center text-muted-foreground">Aucune affaire.</TableCell></TableRow>
+                            <TableRow><TableCell colSpan={8} className="h-24 text-center text-muted-foreground">Aucune affaire.</TableCell></TableRow>
                         ) : visible.map(p => (
                             <TableRow key={p.id}>
                                 <TableCell className="font-mono text-xs"><Link className="hover:underline" href={`/projects/${p.id}`}>{p.code}</Link></TableCell>
                                 <TableCell>{p.clientName}</TableCell>
                                 <TableCell>{p.title}</TableCell>
                                 <TableCell className="font-mono text-xs"><Link className="hover:underline" href={`/quotes/${p.quoteId}`}>{p.quoteNumber}</Link></TableCell>
+                                <TableCell className="whitespace-nowrap text-xs">{p.mode ?? 'P6'} · {(p.billing ?? 'situations') === 'situations' ? 'situations' : 'directe'}{(p.quotes?.length ?? 1) > 1 ? ` · ${p.quotes!.length} devis` : ''}</TableCell>
                                 <TableCell><Badge variant={p.status === 'en_cours' ? 'secondary' : 'outline'}>{PROJECT_STATUS_LABELS[p.status]}</Badge></TableCell>
                                 <TableCell className="text-right">{formatEur(p.totalHT)}</TableCell>
+                                <TableCell className="text-right">{p.budget ? `${formatEur(p.budget.marge)}${p.budget.tauxMarge != null ? ` (${(p.budget.tauxMarge * 100).toLocaleString('fr-FR', { maximumFractionDigits: 0 })} %)` : ''}` : '—'}</TableCell>
                             </TableRow>
                         ))}
                     </TableBody>

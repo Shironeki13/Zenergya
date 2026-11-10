@@ -90,7 +90,9 @@ export type AnalytiqueLigne = {
     /** Axes : codes du référentiel (et identifiants, les codes pouvant être renommés). */
     axes: {
         societe?: string; agence?: string; secteur?: string; client?: string; contrat?: string; activite?: string;
-        companyId?: string; agencyId?: string; sectorId?: string; clientId?: string; contractId?: string; siteId?: string;
+        /** Travaux : affaire (à la place du contrat) et, si l'affaire dépend d'un contrat, ce contrat. */
+        affaire?: string; contratLie?: string;
+        companyId?: string; agencyId?: string; sectorId?: string; clientId?: string; contractId?: string; siteId?: string; projectId?: string;
     };
 };
 
@@ -110,7 +112,7 @@ export function controleCodeExterne(v: string): string | null {
 export type LigneSuivi = { analytique?: AnalytiqueLigne | null; montant: number; site?: string };
 export const AXES_SUIVI = ['societe', 'agence', 'secteur', 'client', 'contrat', 'activite', 'site'] as const;
 export type AxeSuivi = typeof AXES_SUIVI[number];
-export const LIBELLE_AXE: Record<AxeSuivi, string> = { societe: 'Société', agence: 'Agence', secteur: 'Secteur', client: 'Client', contrat: 'Contrat', activite: 'Activité', site: 'Site' };
+export const LIBELLE_AXE: Record<AxeSuivi, string> = { societe: 'Société', agence: 'Agence', secteur: 'Secteur', client: 'Client', contrat: 'Contrat ou affaire', activite: 'Activité', site: 'Site' };
 export const NON_AFFECTE = '(non affecté)';
 
 /** Totaux des lignes regroupées jusqu'à l'axe choisi (société › agence › … › axe), triés. */
@@ -119,9 +121,11 @@ export function totauxParAxe(lignes: LigneSuivi[], jusqua: AxeSuivi): { cle: str
     const out = new Map<string, { cle: string; axes: Partial<Record<AxeSuivi, string>>; code: string; montant: number; lignes: number }>();
     for (const l of lignes) {
         const a = l.analytique;
-        const axes = Object.fromEntries(niveaux.map(n => [n, n === 'site' ? (l.site || NON_AFFECTE) : (a?.axes[n] || NON_AFFECTE)])) as Partial<Record<AxeSuivi, string>>;
+        // Travaux : l'affaire tient la place du contrat.
+        const axe = (n: AxeSuivi) => (n === 'site' ? l.site : n === 'contrat' ? a?.axes.contrat || a?.axes.affaire : a?.axes[n]) || NON_AFFECTE;
+        const axes = Object.fromEntries(niveaux.map(n => [n, axe(n)])) as Partial<Record<AxeSuivi, string>>;
         const cle = niveaux.map(n => axes[n]).join(' › ');
-        if (!out.has(cle)) out.set(cle, { cle, axes, code: a ? niveaux.filter(n => n !== 'site').map(n => a.axes[n] ?? '?').join('-') : NON_AFFECTE, montant: 0, lignes: 0 });
+        if (!out.has(cle)) out.set(cle, { cle, axes, code: a ? niveaux.filter(n => n !== 'site').map(n => (axe(n) === NON_AFFECTE ? '?' : axe(n))).join('-') : NON_AFFECTE, montant: 0, lignes: 0 });
         const t = out.get(cle)!;
         t.montant = Math.round((t.montant + l.montant) * 100) / 100;
         t.lignes++;

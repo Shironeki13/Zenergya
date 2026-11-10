@@ -1,4 +1,5 @@
 import 'server-only';
+import { analytiqueFacture } from '@/services/projects-admin';
 import { Timestamp } from 'firebase-admin/firestore';
 import { adminDb } from '@/lib/firebase-admin';
 import { buildQuoteInvoice, type QuoteBillingRequest } from '@/lib/quotes/billing';
@@ -38,13 +39,19 @@ export async function invoiceQuote(quoteId: string, request: QuoteBillingRequest
         purchaseOrderNumber: q0.acceptance?.purchaseOrderNumber,
     });
     const invoiceRef = adminDb.collection('invoices').doc();
+    // Affaire du devis (facturation directe) : son analytique est posée sur les lignes de la facture.
+    const analytique = q0.projectId ? await analytiqueFacture(q0.projectId) : null;
 
     const invoiceNumber = await adminDb.runTransaction(async (tx) => {
         // Lectures : devis, factures déjà émises pour ce devis, compteur de numérotation.
         const snap = await tx.get(quoteRef);
         const q = { id: snap.id, ...snap.data() } as Quote;
         if (q.status !== 'accepte') throw new Error('Seul un devis accepté se facture.');
-        if (q.projectId) throw new Error(`Ce devis est facturé à l'avancement par l'affaire ${q.projectCode ?? q.projectId}.`);
+        if (q.projectId) {
+            const projet = await tx.get(adminDb.collection('projects').doc(q.projectId));
+            if ((projet.get('billing') ?? 'situations') !== 'direct') throw new Error(`Ce devis est facturé à l'avancement par l'affaire ${q.projectCode ?? q.projectId}.`);
+            if (projet.get('status') === 'cloture') throw new Error(`Affaire ${q.projectCode ?? ''} clôturée.`);
+        }
         const previousSnap = await tx.get(adminDb.collection('invoices').where('quoteId', '==', quoteId));
         const previous = previousSnap.docs.map(d => {
             const data = d.data() as Invoice;
@@ -71,7 +78,8 @@ export async function invoiceQuote(quoteId: string, request: QuoteBillingRequest
             date: new Date(`${date}T00:00:00Z`),
             dueDate,
             status: 'due',
-            lineItems: draft.lineItems,
+            lineItems: analytique ? draft.lineItems.map(l => ({ ...l, analytique })) : draft.lineItems,
+            ...(q.projectId && { projectId: q.projectId }),
             subtotal: draft.subtotal,
             tax: draft.tax,
             total: draft.total,

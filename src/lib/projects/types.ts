@@ -1,5 +1,7 @@
 /**
- * Affaires (P6) : un devis accepté facturé à l'avancement, par situations mensuelles.
+ * Affaires de travaux : une affaire par devis accepté (P5 ou P6), à laquelle se rattachent les devis complémentaires.
+ * Facturation directe (acompte, solde, totalité, depuis chaque devis) ou par situations mensuelles (le marché de
+ * l'affaire). L'affaire porte le budget prévu de ses devis et son code analytique.
  * Collections `projects` et `projectSituations`, écrites par le serveur seulement.
  */
 
@@ -49,6 +51,19 @@ export type Project = {
     completedAt?: string;            // travaux terminés (réception)
     retentionReleasedAt?: string;    // retenue libérée (fin du délai de garantie)
     closedAt?: string;
+    /** Facturation : par situations (défaut, affaires antérieures) ou directe depuis les devis. */
+    billing?: import('./affaire').FacturationAffaire;
+    mode?: 'P5' | 'P6';
+    agencyId?: string;
+    sectorId?: string;
+    /** Devis de l'affaire (le premier, puis les complémentaires) avec leur budget. */
+    quotes?: import('./affaire').DevisAffaire[];
+    /** Budget prévu : somme des devis (vente, déboursé par nature, heures, marge). */
+    budget?: import('./affaire').BudgetDevis;
+    /** Analytique : code généré figé à la création, axes, code externe (lib/analytique). */
+    analyticCode?: string | null;
+    analyticAxes?: import('@/lib/analytique').AnalytiqueLigne['axes'];
+    analyticExternal?: string | null;
     createdAt: string;
     createdBy?: string;
     updatedAt: string;

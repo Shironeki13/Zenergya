@@ -6,6 +6,7 @@ import {
 } from '@/lib/analytique';
 import { Timestamp } from 'firebase-admin/firestore';
 import type { InvoiceLineItem } from '@/lib/types';
+import { segmentAffaire } from '@/lib/projects/affaire';
 
 /**
  * Analytique au serveur : code effectif du client, du contrat et de ses prestations (généré ou externe), figeage des
@@ -122,6 +123,49 @@ export function avecAnalytique<T extends InvoiceLineItem>(a: AnalytiqueContrat, 
     });
 }
 
+// --- Travaux : analytique d'une affaire ---
+
+export type AffaireAnalytique = {
+    id: string; code: string; clientId: string; companyId: string; agencyId?: string; sectorId?: string; contractId?: string; siteId?: string; mode?: 'P5' | 'P6';
+    analyticCode?: string | null; analyticAxes?: AnalytiqueLigne['axes']; analyticExternal?: string | null;
+};
+
+/**
+ * Analytique d'une affaire de travaux : code du client (société, agence et secteur de l'affaire, sinon du client) +
+ * affaire ; figée à la création de l'affaire (`analyticCode`, `analyticAxes`) ; code externe prioritaire.
+ */
+export async function analytiqueAffaire(p: AffaireAnalytique): Promise<{ effective: AnalytiqueEffective; axes: AnalytiqueLigne['axes'] }> {
+    if (p.analyticCode && p.analyticAxes) {
+        const externe = p.analyticExternal?.trim() || null;
+        return { effective: { code: externe ?? p.analyticCode, origine: externe ? 'externe' : 'genere', genere: p.analyticCode, externe, fige: true, manque: [] }, axes: p.analyticAxes };
+    }
+    const client = await adminDb.collection('clients').doc(p.clientId).get();
+    if (!client.exists) throw new Error('Client de l\'affaire introuvable.');
+    const agencyId = p.agencyId || (client.get('agencyId') as string | undefined), sectorId = p.sectorId || (client.get('sectorId') as string | undefined);
+    const [societe, agence, secteur, contrat] = await Promise.all([
+        codeDe('companies', p.companyId), codeDe('agencies', agencyId), codeDe('sectors', sectorId),
+        p.contractId ? adminDb.collection('contracts').doc(p.contractId).get().then(d => (d.get('contractNumber') as string | undefined) ?? null) : null,
+    ]);
+    const segments: SegmentsAnalytiques = { societe, agence, secteur, client: (client.get('externalCode') as string | undefined) ?? null };
+    const base = analytiqueEffective('client', {}, segments);
+    const affaire = segmentAffaire(p.code);
+    const genere = base.genere ? `${base.genere}-${affaire}` : null;
+    const externe = p.analyticExternal?.trim() || null;
+    const axes: AnalytiqueLigne['axes'] = {
+        ...Object.fromEntries(Object.entries({ societe, agence, secteur, client: segments.client, contratLie: contrat }).filter(([, v]) => v).map(([k, v]) => [k, segment(v)])),
+        affaire, ...(p.mode && { activite: p.mode }),
+        ...Object.fromEntries(Object.entries({ companyId: p.companyId, agencyId, sectorId, clientId: p.clientId, contractId: p.contractId, siteId: p.siteId }).filter(([, v]) => v)),
+        projectId: p.id,
+    };
+    return { effective: { code: externe ?? genere, origine: externe ? 'externe' : genere ? 'genere' : 'aucun', genere, externe, fige: false, manque: base.manque }, axes };
+}
+
+/** Analytique à poser sur les lignes de facture d'une affaire ; null si elle n'a ni code générable ni code externe. */
+export async function analytiqueLigneAffaire(p: AffaireAnalytique): Promise<AnalytiqueLigne | null> {
+    const { effective: e, axes } = await analytiqueAffaire(p);
+    return e.code ? { code: e.code, ...(e.genere && { genere: e.genere }), ...(e.externe && { externe: e.externe }), axes } : null;
+}
+
 const COLLECTION: Record<NiveauAnalytique, string> = { client: 'clients', contrat: 'contracts', prestation: 'services' };
 
 /** Enregistre (ou retire, si vide) le code externe d'un client, d'un contrat ou d'une prestation. */
@@ -171,13 +215,13 @@ export type SuiviVentes = {
 export async function suiviVentes(debut: string, fin: string): Promise<SuiviVentes> {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(debut) || !/^\d{4}-\d{2}-\d{2}$/.test(fin) || fin < debut) throw new Error('Période : dates de début et de fin, dans l\'ordre.');
     const du = Timestamp.fromDate(new Date(`${debut}T00:00:00Z`)), au = Timestamp.fromDate(new Date(`${fin}T23:59:59Z`));
-    const [invoices, creditNotes, sites, companies, agencies, sectors, clients, contracts, activities] = await Promise.all([
+    const [invoices, creditNotes, sites, companies, agencies, sectors, clients, contracts, activities, projects] = await Promise.all([
         adminDb.collection('invoices').where('date', '>=', du).where('date', '<=', au).get(),
         adminDb.collection('creditNotes').where('date', '>=', du).where('date', '<=', au).get(),
         adminDb.collection('sites').select('name').get(), adminDb.collection('companies').select('code', 'name').get(),
         adminDb.collection('agencies').select('code', 'name').get(), adminDb.collection('sectors').select('code', 'name').get(),
         adminDb.collection('clients').select('externalCode', 'name').get(), adminDb.collection('contracts').select('contractNumber', 'label', 'clientName').get(),
-        adminDb.collection('activities').select('code', 'label').get(),
+        adminDb.collection('activities').select('code', 'label').get(), adminDb.collection('projects').select('code', 'title', 'clientName').get(),
     ]);
     const nomSite = new Map(sites.docs.map(d => [d.id, String(d.get('name') ?? '')]));
     const jour = (v: unknown) => (v instanceof Timestamp ? v.toDate() : new Date(String(v))).toISOString().slice(0, 10);
@@ -202,8 +246,11 @@ export async function suiviVentes(debut: string, fin: string): Promise<SuiviVent
         libelles: {
             societe: lib(companies.docs, 'code', d => String(d.get('name') ?? '')), agence: lib(agencies.docs, 'code', d => String(d.get('name') ?? '')),
             secteur: lib(sectors.docs, 'code', d => String(d.get('name') ?? '')), client: lib(clients.docs, 'externalCode', d => String(d.get('name') ?? '')),
-            contrat: lib(contracts.docs, 'contractNumber', d => `${d.get('clientName') ?? ''}${d.get('label') ? ` — ${d.get('label')}` : ''}`),
-            activite: lib(activities.docs, 'code', d => String(d.get('label') ?? '')),
+            contrat: {
+                ...lib(contracts.docs, 'contractNumber', d => `${d.get('clientName') ?? ''}${d.get('label') ? ` — ${d.get('label')}` : ''}`),
+                ...Object.fromEntries(projects.docs.map(d => [segmentAffaire(String(d.get('code') ?? '')), `Travaux — ${d.get('title') ?? ''}`])),
+            },
+            activite: { ...lib(activities.docs, 'code', d => String(d.get('label') ?? '')), P5: 'Travaux P5', P6: 'Travaux P6' },
         },
         total, nonAffecte: Math.round(lignes.filter(l => !l.analytique).reduce((t, l) => t + l.montant, 0) * 100) / 100,
     };
@@ -240,6 +287,8 @@ export async function repriseAnalytique(apply: boolean): Promise<RepriseAnalytiq
             if (d.get('status') === 'proforma') continue;
             const lines = (d.get('lineItems') ?? []) as InvoiceLineItem[];
             if (!lines.some(l => !l.analytique)) continue;
+            // Factures de travaux (devis, situations) : analytique de leur affaire, reprise à part (affaires:reprise).
+            if (d.get('quoteId') || d.get('projectId')) { out.sansContrat++; continue; }
             const a = parContrat.get(String(d.get('contractId') ?? ''));
             if (!a) { out.sansContrat++; continue; }
             const maj = avecAnalytique(a, lines);
@@ -251,4 +300,13 @@ export async function repriseAnalytique(apply: boolean): Promise<RepriseAnalytiq
         }
     }
     return out;
+}
+
+/** Code externe d'une affaire de travaux (vide : retour au code généré). Les factures déjà émises gardent leur code. */
+export async function setAnalytiqueExterneAffaire(projectId: string, valeur: string, by: string): Promise<void> {
+    const erreur = controleCodeExterne(valeur);
+    if (erreur) throw new Error(`Code externe : ${erreur}`);
+    const ref = adminDb.collection('projects').doc(projectId);
+    if (!(await ref.get()).exists) throw new Error('Affaire introuvable.');
+    await ref.update({ analyticExternal: valeur.trim() || FieldValue.delete(), analyticExternalBy: by, analyticExternalAt: new Date().toISOString() });
 }

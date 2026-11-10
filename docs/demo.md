@@ -63,6 +63,14 @@ base M0 = janvier 2024), relevés de fin de mois liés aux DJU. L'intéressement
 (prestation P1 › « Gérer l'intéressement »), saison du 01/10/2025 au 31/05/2026, relevés du 30/09/2025 et du
 31/05/2026 ; l'onglet **Intéressement (calcul)** de l'extraction refait le calcul par des formules Excel.
 
+### Travaux et analytique
+
+- 5 devis : un P5 accepté avec acompte facturé et son devis complémentaire (même affaire), un P5 accepté non facturé,
+  un P6 par situations (une situation facturée, retenue de garantie), un devis envoyé en attente.
+- 3 affaires (Travaux › Affaires) avec leur budget prévu par nature et leur code analytique ; les agences et secteurs
+  ont leur code court ; le contrat `CTN-00007` porte un code analytique externe.
+- Facturation › Suivi analytique : ventes par société, agence, secteur, client, contrat ou affaire, activité, site.
+
 Remettre les données à zéro sans arrêter la démo : `npm run demo:donnees` dans un second terminal.
 
 ## Extraction des tables

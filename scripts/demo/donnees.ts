@@ -14,6 +14,11 @@ import type { ImportEntityKey } from '../../src/lib/imports/definitions';
 import { INDICES, STATIONS, djuJournaliers, djuMensuels, valeursIndice, type CodeStation } from './meteo-indices';
 import { setSaisonChauffe } from '../../src/services/p1-admin';
 import { saisonDe } from '../../src/lib/p1/saisons';
+import { acceptQuote } from '../../src/services/quotes-admin';
+import { invoiceQuote } from '../../src/services/quote-billing';
+import { createProjectFromQuote, invoiceSituation, saveSituationDraft } from '../../src/services/projects-admin';
+import { computeQuoteTotals } from '../../src/lib/quotes/pricing';
+import type { Quote, QuoteLine, QuotePricing } from '../../src/lib/quotes/types';
 
 const env = process.env;
 const PROJET = env.FIREBASE_PROJECT_ID ?? env.GCLOUD_PROJECT ?? '';
@@ -527,6 +532,53 @@ async function factures(contrats: { id: string }[]) {
     console.log(`Factures émises : ${factures.length}.`);
 }
 
+// --- Travaux : devis, affaires (P5 facturation directe, P6 par situations), devis complémentaire ---
+
+async function travaux(codesClients: string[], contrats: { id: string }[]) {
+    const pricing: QuotePricing = { coefficient: 1.35, laborRate: 68, laborCost: 42, defaultVatRate: 20 };
+    const client = async (code: string) => (await adminDb.collection('clients').where('externalCode', '==', code).limit(1).get()).docs[0];
+    let n = 0;
+    const devis = async (iClient: number, iContrat: number | null, mode: 'P5' | 'P6', title: string, lines: QuoteLine[], date: string) => {
+        n++;
+        const c = await client(codesClients[iClient]);
+        const ref = adminDb.collection('quotes').doc(`demo-devis-${n}`);
+        await ref.set({
+            number: `ZEN-DEV2026-${String(n).padStart(4, '0')}`, companyId: 'demo-zen', clientId: c.id, clientName: String(c.get('name')),
+            agencyId: c.get('agencyId'), sectorId: c.get('sectorId'), ...(iContrat !== null && { contractId: contrats[iContrat].id }),
+            title, mode, status: 'envoye', version: 1, date, validityDays: 90, validUntil: '2027-03-31', pricing, lines, totals: computeQuoteTotals(lines, pricing),
+            authorName: 'Claire Martin (ADV)', authorEmail: 'adv@example.com', contactName: 'Le gestionnaire', sentAt: instant(date), sentBy: 'adv@example.com',
+            createdAt: instant(date), createdBy: 'adv@example.com', updatedAt: instant(date),
+        } as Omit<Quote, 'id'>);
+        return ref.id;
+    };
+    const L = (id: string, kind: QuoteLine['kind'], label: string, quantity: number, unitCost?: number): QuoteLine => ({ id, kind, label, quantity, vatRate: 20, ...(unitCost !== undefined && { unitCost }), ...(kind === 'MAIN_OEUVRE' && { unit: 'h' }) });
+    const accord = (acceptedAt: string, attachProjectId?: string) => ({ acceptedAt, signatoryName: 'Le gestionnaire', signatoryRole: 'Gestionnaire de copropriété', ...(attachProjectId && { attachProjectId }) });
+
+    // P5 : remplacement d'un circulateur (affaire créée à l'acceptation, acompte de 30 % facturé), puis devis complémentaire.
+    const d1 = await devis(0, 0, 'P5', 'Remplacement du circulateur chauffage - Bâtiment A', [
+        L('a1', 'FOURNITURE', 'Circulateur double à débit variable', 1, 1850), L('a2', 'FOURNITURE', 'Vannes d\'isolement et accessoires', 1, 240),
+        L('a3', 'MAIN_OEUVRE', 'Dépose, pose et mise en service', 12), L('a4', 'DIVERS', 'Évacuation des déchets', 1, 60)], '2026-09-10');
+    const q1 = await acceptQuote(d1, accord('2026-09-22'), 'adv@example.com');
+    await invoiceQuote(d1, { kind: 'acompte', percent: 30 }, 'adv@example.com');
+    const d2 = await devis(0, 0, 'P5', 'Complément : calorifugeage des tuyauteries', [L('b1', 'SOUS_TRAITANCE', 'Calorifugeage (sous-traité)', 1, 780), L('b2', 'MAIN_OEUVRE', 'Préparation et réception', 3)], '2026-10-05');
+    await acceptQuote(d2, accord('2026-10-12', q1.projectId), 'adv@example.com');
+    // P5 accepté, pas encore facturé (autre client).
+    const d3 = await devis(6, 6, 'P5', 'Remplacement du vase d\'expansion', [L('c1', 'FOURNITURE', 'Vase d\'expansion 300 L', 1, 690), L('c2', 'MAIN_OEUVRE', 'Remplacement et épreuve', 6)], '2026-10-20');
+    await acceptQuote(d3, accord('2026-11-03'), 'adv2@example.com');
+    // P6 : rénovation de chaufferie, par situations (retenue de garantie 5 %), une situation facturée.
+    const d4 = await devis(2, 2, 'P6', 'Rénovation de la chaufferie - remplacement des chaudières', [
+        L('d1', 'FOURNITURE', 'Chaudières gaz à condensation 2 × 300 kW', 1, 46000), L('d2', 'SOUS_TRAITANCE', 'Fumisterie et tubage', 1, 12500),
+        L('d3', 'SOUS_TRAITANCE', 'Électricité et régulation', 1, 9800), L('d4', 'MAIN_OEUVRE', 'Dépose, hydraulique, mise en service', 320), L('d5', 'DIVERS', 'Grutage et location de matériel', 1, 3200)], '2026-06-15');
+    await acceptQuote(d4, accord('2026-07-08'), 'adv@example.com');
+    const affaire = await createProjectFromQuote(d4, { retentionPct: 5 }, 'adv@example.com');
+    const situation = await saveSituationDraft(affaire.id, { period: '2026-10', progress: { d1: 100, d2: 40, d3: 0, d4: 35, d5: 100 } }, 'adv@example.com');
+    await invoiceSituation(situation.id, 'adv@example.com');
+    // Devis envoyé, en attente de réponse.
+    await devis(9, 9, 'P5', 'Désembouage du réseau ECS', [L('e1', 'SOUS_TRAITANCE', 'Désembouage hydrodynamique', 1, 2100), L('e2', 'MAIN_OEUVRE', 'Assistance et remise en service', 8)], '2026-11-04');
+    await adminDb.collection('config').doc('sequences').set({ [`quote_ZEN_2026`]: n }, { merge: true });
+    console.log(`Travaux : ${n} devis, 3 affaires (2 en P5 à facturation directe dont une avec devis complémentaire, 1 en P6 par situations).`);
+}
+
 (async () => {
     console.log(`Données simulées — projet ${PROJET}, au ${AUJOURDHUI}.`);
     await remiseAZero();
@@ -539,6 +591,7 @@ async function factures(contrats: { id: string }[]) {
     // Analytique : un contrat suivi par un code externe (outil comptable), les autres par le code généré.
     await adminDb.collection('contracts').doc(contrats[6].id).update({ analyticExternal: '68W2/V080912-1' });
     await factures(contrats);
+    await travaux(codesClients, contrats);
     console.log('Jeu de données prêt.');
     process.exit(0);
 })().catch(e => { console.error(e); process.exit(1); });

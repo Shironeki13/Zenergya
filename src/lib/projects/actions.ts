@@ -3,8 +3,10 @@
 import { requireUser } from '@/lib/auth/server';
 import type { Progress, Project, ProjectSituation } from '@/lib/projects/types';
 import {
+    attachQuoteToProject, createDirectProject,
     createProjectFromQuote, deleteSituationDraft, invoiceSituation, saveSituationDraft, setProjectMilestone,
 } from '@/services/projects-admin';
+import { setAnalytiqueExterneAffaire } from '@/services/analytique-admin';
 
 /** Actions des affaires P6 (serveur, session requise) : seul le serveur écrit affaires et situations. */
 
@@ -22,6 +24,21 @@ async function run<T>(action: (by: string) => Promise<T>): Promise<Result<T>> {
 
 export async function createProjectAction(quoteId: string, options: { retentionPct: number; retentionBond?: boolean }): Promise<Result<Project>> {
     return run(by => createProjectFromQuote(quoteId, options, by));
+}
+
+/** Affaire à facturation directe d'un devis accepté (P5) : créée à l'acceptation ; ici pour un devis accepté avant. */
+export async function createDirectProjectAction(quoteId: string): Promise<Result<Project>> {
+    return run(by => createDirectProject(quoteId, by));
+}
+
+/** Rattache un devis complémentaire accepté à une affaire existante du même client. */
+export async function attachQuoteAction(quoteId: string, projectId: string): Promise<Result<Project>> {
+    return run(by => attachQuoteToProject(quoteId, projectId, by));
+}
+
+/** Code analytique externe de l'affaire (vide : code généré). */
+export async function setProjectAnalyticExternalAction(projectId: string, valeur: string): Promise<Result<null>> {
+    return run(async by => { await setAnalytiqueExterneAffaire(projectId, valeur, by ?? 'inconnu'); return null; });
 }
 
 export async function saveSituationAction(projectId: string, input: { period: string; progress: Progress }): Promise<Result<ProjectSituation>> {

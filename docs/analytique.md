@@ -57,9 +57,38 @@ choisi (société › agence › secteur › client › contrat › activité �
 lignes des factures et avoirs déjà émis (au code d'aujourd'hui), sans toucher aux montants, numéros ni PDF archivés.
 Liste les contrats sans code générable (code d'agence ou de secteur manquant) à compléter d'abord.
 
+## Travaux : l'affaire
+
+Pour les travaux, l'objet analytique est l'**affaire** (une par devis accepté, P5 comme P6), pas la prestation :
+
+```
+société - agence - secteur - client     - affaire
+ZEN     - LYO    - LN      - CLI00012   - AFF20260007
+```
+
+- Les quatre premiers segments sont ceux des contrats : ventes (et marges) se totalisent ensemble par société, agence,
+  secteur et client. Dans le suivi, l'affaire tient la place du contrat (axe « Contrat ou affaire ») ; l'activité est
+  `P5` ou `P6` ; si les travaux dépendent d'un contrat, il est gardé comme axe (`contratLie`).
+- **P5** : l'affaire est créée à l'acceptation du devis ; il se facture directement (acompte, solde, totalité).
+  **P6** : l'affaire se crée depuis le devis accepté quand on choisit la facturation par situations (retenue de
+  garantie).
+- **Devis complémentaire** : à l'acceptation (ou depuis le devis accepté), « rattacher à une affaire existante » du
+  même client : même code, budget cumulé ; ses lignes rejoignent le marché (à 0 % d'avancement pour une affaire par
+  situations).
+- **Budget prévu** de l'affaire : somme de ses devis — prix de vente, déboursé par nature (fournitures, main-d'œuvre,
+  sous-traitance, divers ; les ouvrages sont ventilés par nature de leurs composants), heures, marge prévue.
+- Le code est **figé à la création** de l'affaire (avec ses axes) ; un **code externe** peut le remplacer (fiche de
+  l'affaire). Chaque ligne des factures de l'affaire (acompte, solde, situation) le porte.
+- Reprise : `npm run affaires:reprise` (simulation), puis `-- --apply` : crée l'affaire des devis P5 acceptés qui n'en
+  ont pas, complète les affaires antérieures (devis, budget, analytique) et pose l'analytique sur leurs factures.
+
+Code : `src/lib/projects/affaire.ts`, `src/services/projects-admin.ts`, `src/components/projects/affaire-synthese.tsx`,
+`src/components/quotes/project-panel.tsx`.
+
 ## À venir
 
-Commandes d'achat et factures fournisseurs portant le même code : marge = ventes − achats, par code ou par axe.
+Commandes d'achat (circuit de validation à seuils), factures fournisseurs et heures portant le même code : par affaire,
+prévu / engagé / réel / facturé par nature ; marge = ventes − achats, par code ou par axe.
 
 Code : `src/lib/analytique.ts` (logique pure), `src/services/analytique-admin.ts`, `src/lib/analytique-actions.ts`,
 `src/components/analytique/analytique-card.tsx`, `src/app/(app)/billing/analytique/page.tsx`.

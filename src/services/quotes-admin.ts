@@ -7,6 +7,7 @@ import { availableActions, effectiveStatus, type QuoteAction } from '@/lib/quote
 import type { Quote, QuoteAcceptance, QuoteVersionRecord } from '@/lib/quotes/types';
 import type { ArchivedPdf, Client, Company, Site } from '@/lib/types';
 import { DocumentIntegrityError, sha256 } from '@/services/document-archive';
+import { attachQuoteToProject, createDirectProject } from '@/services/projects-admin';
 
 /**
  * Cycle de vie des devis, côté serveur (Admin SDK) : seules ces fonctions font changer un devis de statut
@@ -160,6 +161,8 @@ export type AcceptInput = {
     comment?: string;
     /** Créer le site à partir de l'adresse d'intervention (devis sans site). */
     createSite?: boolean;
+    /** Devis complémentaire : affaire existante du client à laquelle le rattacher (sinon une affaire est créée pour un P5). */
+    attachProjectId?: string;
     /** Accepter malgré la fin de validité dépassée. */
     confirmExpired?: boolean;
 };
@@ -171,7 +174,7 @@ export type AcceptInput = {
 export async function acceptQuote(id: string, input: AcceptInput, by?: string): Promise<Quote> {
     if (!input.signatoryName?.trim()) throw new Error('Signataire requis.');
     if (!/^\d{4}-\d{2}-\d{2}$/.test(input.acceptedAt)) throw new Error("Date d'accord invalide.");
-    return adminDb.runTransaction(async (tx) => {
+    const accepte = await adminDb.runTransaction(async (tx) => {
         const snap = await tx.get(quoteRef(id));
         if (!snap.exists) throw new Error('Devis introuvable.');
         const q = { id: snap.id, ...snap.data() } as Quote;
@@ -218,6 +221,18 @@ export async function acceptQuote(id: string, input: AcceptInput, by?: string): 
         tx.update(quoteRef(id), update);
         return { ...q, ...update } as Quote;
     });
+    // Affaire : rattachement à une affaire existante (devis complémentaire), sinon création pour un devis P5 (facturé
+    // directement). Un devis P6 devient une affaire quand on choisit de le facturer par situations (retenue de garantie).
+    // L'acceptation reste acquise si l'affaire ne peut pas être créée (elle se crée ensuite depuis le devis).
+    try {
+        if (input.attachProjectId) await attachQuoteToProject(id, input.attachProjectId, by);
+        else if (accepte.mode === 'P5') await createDirectProject(id, by);
+    } catch (e) {
+        if (input.attachProjectId) throw new Error(`Devis accepté, mais non rattaché à l'affaire : ${e instanceof Error ? e.message : e}`);
+        console.error(`Affaire du devis ${accepte.number} non créée :`, e);
+    }
+    const snap = await quoteRef(id).get();
+    return { id: snap.id, ...snap.data() } as Quote;
 }
 
 export async function refuseQuote(id: string, input: { refusedAt: string; reason: string }, by?: string): Promise<Quote> {
