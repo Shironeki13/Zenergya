@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { ChevronRight } from 'lucide-react';
-import { useData } from '@/context/data-context';
+import { useCollections, useData } from '@/context/data-context';
 import { activeNavItem } from '@/components/navigation/nav-config';
 
 /**
@@ -22,6 +22,8 @@ type Miette = { label: string; href?: string };
 export function Breadcrumbs() {
     const pathname = usePathname();
     const { clients, contracts, sites, invoices } = useData();
+    // Le numéro de la facture n'est utile que sur sa fiche : la liste des factures n'est demandée que là.
+    useCollections(...(/^\/invoices\/[^/]+/.test(pathname) ? ['invoices' as const] : []));
     const actif = activeNavItem(pathname);
     if (!actif) return null;
 

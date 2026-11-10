@@ -39,7 +39,7 @@ export function AttachContractDialog({ client, trigger, onContractAttached }: At
             });
 
             toast({ title: "Succès", description: "Contrat rattaché avec succès." });
-            await reloadData();
+            await reloadData(['clients', 'contracts', 'sites']);
             if (onContractAttached) onContractAttached();
             setIsOpen(false);
             setSelectedContractId('');

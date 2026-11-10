@@ -13,7 +13,7 @@ import type { FiltreTable } from '@/components/data-table/logique';
 import { STATUTS_FACTURE, StatutFacture, eur0 } from '@/components/fiches/fiche';
 import { useConfirm, usePrompt } from '@/components/confirm-provider';
 import type { Invoice } from '@/lib/types';
-import { useData } from '@/context/data-context';
+import { useCollections, useData } from '@/context/data-context';
 import { useToast } from '@/hooks/use-toast';
 import { generateCreditNote } from '@/ai/flows/generate-credit-note-flow';
 import { deleteProformaInvoice, updateInvoiceStatus } from '@/services/firestore';
@@ -33,7 +33,10 @@ const moisFr = (m: string) => new Date(`${m}-01T12:00:00`).toLocaleDateString('f
 export default function InvoicesPage() {
   const confirmer = useConfirm();
   const demander = usePrompt();
-  const { invoices, contracts, isLoading, reloadData } = useData();
+  const { invoices, contracts, isLoading: chargementBase, reloadData } = useData();
+  // Collections volumineuses, chargées à la demande : l'écran attend qu'elles soient en mémoire.
+  const pret = useCollections('invoices');
+  const isLoading = chargementBase || !pret;
   const { toast } = useToast();
   const [isGenerating, setIsGenerating] = useState(false);
 
@@ -93,7 +96,7 @@ export default function InvoicesPage() {
       if (result.success && result.creditNoteId) {
         toast({ title: "Avoir généré", description: `L'avoir ${result.creditNoteNumber || result.creditNoteId} a été créé.` });
         vider();
-        await reloadData();
+        await reloadData(['invoices', 'creditNotes']);
       } else {
         throw new Error(result.error || "Une erreur inconnue est survenue lors de la création de l'avoir.");
       }
@@ -109,7 +112,7 @@ export default function InvoicesPage() {
     try {
       await updateInvoiceStatus(invoice.id, 'paid');
       toast({ title: 'Facture payée', description: `${invoice.invoiceNumber} est marquée payée.` });
-      await reloadData();
+      await reloadData(['invoices']);
     } catch {
       toast({ title: 'Erreur', description: 'Impossible de mettre à jour le statut.', variant: 'destructive' });
     }
@@ -120,7 +123,7 @@ export default function InvoicesPage() {
     const result = await convertProforma(invoiceId);
     if (result.success) {
       toast({ title: "Facture émise", description: `Numéro attribué : ${result.invoiceNumber}.` });
-      await reloadData();
+      await reloadData(['invoices']);
     } else {
       toast({ title: "Conversion impossible", description: result.error, variant: 'destructive' });
     }
@@ -131,7 +134,7 @@ export default function InvoicesPage() {
     try {
       await deleteProformaInvoice(invoice);
       toast({ title: "Proforma supprimé" });
-      await reloadData();
+      await reloadData(['invoices']);
     } catch (error) {
       toast({ title: "Suppression impossible", description: error instanceof Error ? error.message : String(error), variant: 'destructive' });
     }

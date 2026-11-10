@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button';
 import { DataTable, type Colonne } from '@/components/data-table/data-table';
 import type { FiltreTable } from '@/components/data-table/logique';
 import { eur0 } from '@/components/fiches/fiche';
-import { useData } from '@/context/data-context';
+import { useCollections, useData } from '@/context/data-context';
 import type { CreditNote } from '@/lib/types';
 
 /** Liste des avoirs émis : recherche, filtres (client, mois), tri, export, PDF (tableau commun). */
@@ -19,7 +19,10 @@ const jourIso = (d: unknown) => { const t = new Date(d as string); return Number
 const moisFr = (m: string) => new Date(`${m}-01T12:00:00`).toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' });
 
 export default function CreditNotesPage() {
-  const { creditNotes, invoices, isLoading } = useData();
+  const { creditNotes, invoices, isLoading: chargementBase } = useData();
+  // Collections volumineuses, chargées à la demande : l'écran attend qu'elles soient en mémoire.
+  const pret = useCollections('creditNotes', 'invoices');
+  const isLoading = chargementBase || !pret;
 
   const lignes: Ligne[] = useMemo(() => {
     const numero = new Map(invoices.map(i => [i.id, i.invoiceNumber ?? i.id]));

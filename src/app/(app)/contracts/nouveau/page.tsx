@@ -121,7 +121,7 @@ export default function NouveauContratPage() {
         setCreation(false);
         if (!r.success) { toast({ title: 'Création impossible', description: r.error, variant: 'destructive' }); return; }
         try { localStorage.removeItem(CLE_BROUILLON); } catch { /* stockage indisponible */ }
-        await reloadData();
+        await reloadData(['clients', 'contracts', 'sites', 'services', 'contacts']);
         toast({ title: `Contrat ${r.data.contractNumber} créé`, description: 'En attente de validation. Complétez au besoin le paramétrage P1 sur ses sites.' });
         router.push(`/contracts/${r.data.contractId}`);
     };

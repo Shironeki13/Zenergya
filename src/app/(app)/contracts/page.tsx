@@ -127,7 +127,7 @@ export default function ContractsPage() {
     try {
       await updateContract(contractToUpdate.id, updateData);
       toast({ title: "Statut mis à jour", description: `Le contrat est maintenant ${newStatus.toLowerCase()}.` });
-      await reloadData();
+      await reloadData(['contracts']);
     } catch {
       toast({ title: "Erreur", description: "La mise à jour du statut a échoué.", variant: "destructive" });
     } finally {

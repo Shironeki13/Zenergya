@@ -164,7 +164,7 @@ const CompaniesSection = ({ onCompaniesUpdate }: { onCompaniesUpdate: (companies
                 toast({ title: "Succès", description: "Société créée." });
             }
 
-            await reloadData();
+            await reloadData(['companies', 'agencies']);
             setDialogOpen(false);
             resetForm();
         } catch (error) {
@@ -179,7 +179,7 @@ const CompaniesSection = ({ onCompaniesUpdate }: { onCompaniesUpdate: (companies
         try {
             await deleteCompany(companyToDelete.id);
             toast({ title: "Succès", description: `${companyToDelete.name} a été supprimée.` });
-            await reloadData();
+            await reloadData(['companies', 'agencies']);
             setCompanyToDelete(null);
         } catch (error) {
             toast({ title: "Erreur", description: "Impossible de supprimer la société.", variant: "destructive" });
@@ -427,7 +427,7 @@ const AgenciesSection = ({ onAgenciesUpdate }: { onAgenciesUpdate: (agencies: Ag
                 await createAgency(name, companyId, codeCourt);
                 toast({ title: "Succès", description: "Agence créée." });
             }
-            await reloadData();
+            await reloadData(['agencies', 'sectors']);
             setDialogOpen(false);
             resetForm();
         } catch (error) {
@@ -442,7 +442,7 @@ const AgenciesSection = ({ onAgenciesUpdate }: { onAgenciesUpdate: (agencies: Ag
         try {
             await deleteAgency(agencyToDelete.id);
             toast({ title: "Succès", description: "L'agence et ses secteurs ont été supprimés." });
-            await reloadData();
+            await reloadData(['agencies', 'sectors']);
             setAgencyToDelete(null);
         } catch (error) {
             toast({ title: "Erreur", description: "Impossible de supprimer l'agence.", variant: "destructive" });
@@ -593,7 +593,7 @@ const SectorsSection = () => {
                 await createSector(name, agencyId, codeCourt);
                 toast({ title: "Succès", description: "Secteur créé." });
             }
-            await reloadData();
+            await reloadData(['sectors']);
             setDialogOpen(false);
             resetForm();
         } catch (error) {
@@ -608,7 +608,7 @@ const SectorsSection = () => {
         try {
             await deleteSector(sectorToDelete.id);
             toast({ title: "Succès", description: "Secteur supprimé." });
-            await reloadData();
+            await reloadData(['sectors']);
             setSectorToDelete(null);
         } catch (error) {
             toast({ title: "Erreur", description: "Impossible de supprimer le secteur.", variant: "destructive" });
@@ -742,7 +742,7 @@ const ActivitiesSection = () => {
                 await createActivity({ code, label, type, vatRateId: activityVatRateId });
                 toast({ title: "Succès", description: "Activité créée." });
             }
-            await reloadData();
+            await reloadData(['activities']);
             setDialogOpen(false);
             resetForm();
         } catch (error) {
@@ -757,7 +757,7 @@ const ActivitiesSection = () => {
         try {
             await deleteActivity(activityToDelete.id);
             toast({ title: "Succès", description: "Activité supprimée." });
-            await reloadData();
+            await reloadData(['activities']);
             setActivityToDelete(null);
         } catch (error) {
             toast({ title: "Erreur", description: "Impossible de supprimer l'activité.", variant: "destructive" });
@@ -881,7 +881,7 @@ const MeterTypesSection = () => {
                 await createMeterType(data);
                 toast({ title: "Succès", description: "Type de compteur créé." });
             }
-            await reloadData(); setDialogOpen(false); resetForm();
+            await reloadData(['meterTypes']); setDialogOpen(false); resetForm();
         } catch (error) {
             toast({ title: "Erreur", description: "L'opération a échoué.", variant: "destructive" });
         } finally { setIsSubmitting(false); }
@@ -892,7 +892,7 @@ const MeterTypesSection = () => {
         try {
             await deleteMeterType(itemToDelete.id);
             toast({ title: "Succès", description: "Type de compteur supprimé." });
-            await reloadData(); setItemToDelete(null);
+            await reloadData(['meterTypes']); setItemToDelete(null);
         } catch (error) { toast({ title: "Erreur", description: "Impossible de supprimer le type de compteur.", variant: "destructive" }); }
     };
 
@@ -988,7 +988,7 @@ const PricingRulesSection = () => {
                 await createPricingRule(data);
                 toast({ title: "Succès", description: "Règle de prix créée." });
             }
-            await reloadData();
+            await reloadData(['pricingRules']);
             setDialogOpen(false);
             resetForm();
         } catch (error) {
@@ -1003,7 +1003,7 @@ const PricingRulesSection = () => {
         try {
             await deletePricingRule(ruleToDelete.id);
             toast({ title: "Succès", description: "Règle de prix supprimée." });
-            await reloadData();
+            await reloadData(['pricingRules']);
             setRuleToDelete(null);
         } catch (error) {
             toast({ title: "Erreur", description: "Impossible de supprimer la règle.", variant: "destructive" });
@@ -1141,7 +1141,7 @@ const MarketsSection = () => {
                 await createMarket(data);
                 toast({ title: "Succès", description: "Marché créé." });
             }
-            await reloadData();
+            await reloadData(['markets']);
             setDialogOpen(false);
             resetForm();
         } catch (error) {
@@ -1156,7 +1156,7 @@ const MarketsSection = () => {
         try {
             await deleteMarket(itemToDelete.id);
             toast({ title: "Succès", description: "Marché supprimé." });
-            await reloadData();
+            await reloadData(['markets']);
             setItemToDelete(null);
         } catch (error) {
             toast({ title: "Erreur", description: "Impossible de supprimer le marché.", variant: "destructive" });
@@ -1272,7 +1272,7 @@ const VatRatesSection = () => {
                 await createVatRate(code, numericRate);
                 toast({ title: "Succès", description: "Taux de TVA créé." });
             }
-            await reloadData();
+            await reloadData(['vatRates']);
             setDialogOpen(false);
             resetForm();
         } catch (error) {
@@ -1287,7 +1287,7 @@ const VatRatesSection = () => {
         try {
             await deleteVatRate(vatRateToDelete.id);
             toast({ title: "Succès", description: "Taux de TVA supprimé." });
-            await reloadData();
+            await reloadData(['vatRates']);
             setVatRateToDelete(null);
         } catch (error) {
             toast({ title: "Erreur", description: "Impossible de supprimer le taux de TVA.", variant: "destructive" });
@@ -1472,7 +1472,7 @@ const RevisionRulesSection = () => {
                 await createRevisionRule(data);
                 toast({ title: "Succès", description: "Règle de révision créée." });
             }
-            await reloadData();
+            await reloadData(['revisionRules']);
             setDialogOpen(false);
             resetForm();
         } catch (error) {
@@ -1487,7 +1487,7 @@ const RevisionRulesSection = () => {
         try {
             await deleteRevisionRule(itemToDelete.id);
             toast({ title: "Succès", description: "Règle de révision supprimée." });
-            await reloadData();
+            await reloadData(['revisionRules']);
             setItemToDelete(null);
         } catch (error) {
             toast({ title: "Erreur", description: "Impossible de supprimer la règle.", variant: "destructive" });
@@ -1760,7 +1760,7 @@ const PaymentTermsSection = () => {
                 await createPaymentTerm(data);
                 toast({ title: "Succès", description: "Règlement créé." });
             }
-            await reloadData(); setDialogOpen(false); resetForm();
+            await reloadData(['paymentTerms']); setDialogOpen(false); resetForm();
         } catch (error) {
             toast({ title: "Erreur", description: "L'opération a échoué.", variant: "destructive" });
         } finally { setIsSubmitting(false); }
@@ -1771,7 +1771,7 @@ const PaymentTermsSection = () => {
         try {
             await deletePaymentTerm(itemToDelete.id);
             toast({ title: "Succès", description: "Règlement supprimé." });
-            await reloadData(); setItemToDelete(null);
+            await reloadData(['paymentTerms']); setItemToDelete(null);
         } catch (error) { toast({ title: "Erreur", description: "Impossible de supprimer le règlement.", variant: "destructive" }); }
     };
 
@@ -1877,7 +1877,7 @@ const SimpleCrudSection = ({
                 await createItem(name);
                 toast({ title: "Succès", description: `${title} créé.` });
             }
-            await reloadData();
+            await reloadData(['schedules', 'terms', 'typologies']);
             setDialogOpen(false);
             resetForm();
         } catch (error) {
@@ -1892,7 +1892,7 @@ const SimpleCrudSection = ({
         try {
             await deleteItem(itemToDelete.id);
             toast({ title: "Succès", description: `${title} supprimé.` });
-            await reloadData();
+            await reloadData(['schedules', 'terms', 'typologies']);
             setItemToDelete(null);
         } catch (error) {
             toast({ title: "Erreur", description: `Impossible de supprimer: ${title}.`, variant: "destructive" });
@@ -2062,7 +2062,7 @@ const WeatherStationsSection = () => {
                 await createWeatherStation(data);
                 toast({ title: "Succès", description: "Station créée." });
             }
-            await reloadData();
+            await reloadData(['weatherStations']);
             setDialogOpen(false);
             resetForm();
         } catch {
@@ -2077,7 +2077,7 @@ const WeatherStationsSection = () => {
         try {
             await deleteWeatherStation(stationToDelete.id);
             toast({ title: "Succès", description: "Station supprimée." });
-            await reloadData();
+            await reloadData(['weatherStations']);
             setStationToDelete(null);
         } catch {
             toast({ title: "Erreur", description: "Impossible de supprimer.", variant: "destructive" });
@@ -2437,10 +2437,10 @@ export default function SettingsPage() {
                     <TabsTrigger value="weather_stations">Stations météo</TabsTrigger>
                 </TabsList>
                 <TabsContent value="companies">
-                    <CompaniesSection onCompaniesUpdate={reloadData} />
+                    <CompaniesSection onCompaniesUpdate={() => { reloadData(['companies', 'agencies']); }} />
                 </TabsContent>
                 <TabsContent value="agencies">
-                    <AgenciesSection onAgenciesUpdate={reloadData} />
+                    <AgenciesSection onAgenciesUpdate={() => { reloadData(['agencies', 'sectors']); }} />
                 </TabsContent>
                 <TabsContent value="sectors">
                     <SectorsSection />

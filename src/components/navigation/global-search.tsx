@@ -6,7 +6,7 @@ import { Building, FileSignature, FileText, Gauge, MapPin, Search, type LucideIc
 import { Button } from '@/components/ui/button';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
-import { useData } from '@/context/data-context';
+import { useCollectionsPonctuelles, useData } from '@/context/data-context';
 import { navGroupsFor } from '@/components/navigation/nav-config';
 
 /**
@@ -38,6 +38,8 @@ export function GlobalSearch() {
     const router = useRouter();
     const { clients, contracts, sites, meters, invoices, isAdmin, isContratheque } = useData();
     const [open, setOpen] = useState(false);
+    // Compteurs et factures ne sont chargés qu'à l'ouverture de la recherche.
+    useCollectionsPonctuelles(...(open ? ['meters' as const, 'invoices' as const] : []));
     const [q, setQ] = useState('');
 
     useEffect(() => {

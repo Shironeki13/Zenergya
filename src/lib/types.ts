@@ -1192,6 +1192,16 @@ export type ExtractContractInfoOutput = z.infer<typeof ExtractContractInfoOutput
 
 
 // Data Context Type
+/** Collections volumineuses : chargées seulement quand un écran en a besoin, puis gardées en mémoire. */
+export const LAZY_COLLECTIONS = ['invoices', 'creditNotes', 'meterReadings', 'indexValues', 'contacts', 'meters'] as const;
+export type LazyCollectionKey = typeof LAZY_COLLECTIONS[number];
+/** Collections chargées à l'ouverture : référentiels et listes de base (clients, contrats, sites, prestations). */
+export const EAGER_COLLECTIONS = [
+    'clients', 'sites', 'contracts', 'services', 'companies', 'agencies', 'sectors', 'activities', 'schedules', 'terms', 'typologies', 'vatRates', 'revisionFormulas',
+    'revisionRules', 'paymentTerms', 'pricingRules', 'markets', 'roles', 'users', 'indices', 'meterTypes', 'settlementRules', 'weatherStations',
+] as const;
+export type CollectionKey = typeof EAGER_COLLECTIONS[number] | LazyCollectionKey;
+
 export type DataContextType = {
     clients: Client[];
     contacts: Contact[]; // NEW: Contact entity
@@ -1220,36 +1230,8 @@ export type DataContextType = {
     markets: Market[];
     roles: Role[];
     users: User[];
-    // Contract Events
-    amendments: Amendment[];
-    terminations: Termination[];
-    renewals: Renewal[];
-    trusteeChanges: TrusteeChange[];
-    beChanges: BeChange[];
-    interests: Interest[];
     settlementRules: SettlementRule[];
     weatherStations: WeatherStation[];
-
-    // Legacy Works (Keep for compatibility)
-    workProjects: WorkProject[];
-    workQuotes_legacy: WorkQuote[]; // renamed slightly in context if needed
-    progressSituations: ProgressSituation[];
-
-    // Advanced Works Collections
-    advWorkQuotes: AdvWorkQuote[];
-    advWorkQuoteVersions: AdvWorkQuoteVersion[];
-    advWorkQuoteLines: AdvWorkQuoteLine[];
-    advWorkAffairs: AdvWorkAffair[];
-    advWorkBudgetLines: AdvWorkBudgetLine[];
-    advWorkLots: AdvWorkLot[];
-    advWorkPostes: AdvWorkPoste[];
-    advWorkSituations: AdvWorkSituation[];
-    advWorkSituationLines: AdvWorkSituationLine[];
-    advPurchaseOrders: AdvPurchaseOrder[];
-    advPurchaseOrderLines: AdvPurchaseOrderLine[];
-    advCatalogArticles: AdvCatalogArticle[];
-    advCatalogOuvrages: AdvCatalogOuvrage[];
-    advOuvrageComposants: AdvOuvrageComposant[];
 
     /** Utilisateur réellement connecté (session serveur validée). */
     authUser: User | null;
@@ -1263,7 +1245,15 @@ export type DataContextType = {
     /** Droit achats (validation des commandes au-delà du seuil achats) de l'utilisateur réellement connecté. */
     isAcheteur: boolean;
     isLoading: boolean;
-    reloadData: () => Promise<void>;
+    /**
+     * Recharge les données partagées. Sans argument : tout ce qui est chargé, avec l'écran d'attente (comportement
+     * historique). Avec des collections : elles seules, sans écran d'attente (l'écran reste affiché).
+     */
+    reloadData: (collections?: CollectionKey[]) => Promise<void>;
+    /** Collections volumineuses, chargées à la demande (voir `useCollections`) : demande leur chargement. */
+    demander: (collections: LazyCollectionKey[], retenir?: boolean) => void;
+    /** Collections à la demande déjà chargées. */
+    chargees: Partial<Record<LazyCollectionKey, boolean>>;
     login: (email: string, password: string) => Promise<void>;
     loginWithGoogle: () => Promise<void>;
     logout: () => Promise<void>;

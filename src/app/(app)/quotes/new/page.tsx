@@ -137,7 +137,7 @@ function NewQuoteForm() {
                 lines: [],
                 createdBy: currentUser?.email,
             }, company);
-            if (who === 'prospect') await reloadData();
+            if (who === 'prospect') await reloadData(['clients']);
             toast({ title: 'Devis créé', description: quote.number });
             router.push(`/quotes/${quote.id}`);
         } catch (e) {

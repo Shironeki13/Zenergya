@@ -22,11 +22,14 @@ import type { Meter } from '@/lib/types';
 import { MeterReadingsDialog } from '@/components/meter-readings-dialog';
 import { P1CompteurDialog } from '@/components/p1/p1-parametrage-panel';
 import { Badge } from '@/components/ui/badge';
-import { useData } from '@/context/data-context';
+import { useCollections, useData } from '@/context/data-context';
 import { downloadCSV } from '@/lib/utils';
 
 export default function MetersPage() {
-  const { sites, meters, meterTypes, meterReadings, reloadData, isLoading } = useData();
+  const { sites, meters, meterTypes, meterReadings, reloadData, isLoading: chargementBase } = useData();
+  // Collections volumineuses, chargées à la demande : l'écran attend qu'elles soient en mémoire.
+  const pret = useCollections('meters', 'meterReadings');
+  const isLoading = chargementBase || !pret;
   const confirmer = useConfirm();
   const { toast } = useToast();
 
@@ -100,7 +103,7 @@ export default function MetersPage() {
         await createMeter(meterData as Omit<Meter, 'id' | 'code'>);
         toast({ title: 'Compteur créé', description: 'Le nouveau compteur a été ajouté avec succès.' });
       }
-      await reloadData();
+      await reloadData(['meters', 'meterReadings']);
       setDialogOpen(false);
       resetForm();
     } catch (error) {
@@ -115,7 +118,7 @@ export default function MetersPage() {
     try {
       await deleteMeter(meter.id);
       toast({ title: 'Compteur supprimé', description: `${meter.code} a été supprimé.` });
-      await reloadData();
+      await reloadData(['meters', 'meterReadings']);
     } catch (error) {
       toast({ title: 'Erreur', description: 'Impossible de supprimer le compteur.', variant: 'destructive' });
     }

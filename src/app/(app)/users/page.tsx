@@ -69,7 +69,7 @@ const RolesSection = () => {
                 await createRole({ name, isAdmin: isAdminRole, isContratheque: contrathequeRole, isAcheteur: acheteurRole });
                 toast({ title: "Succès", description: "Rôle créé." });
             }
-            await reloadData();
+            await reloadData(['roles']);
             setDialogOpen(false);
             resetForm();
         } catch (error) {
@@ -84,7 +84,7 @@ const RolesSection = () => {
         try {
             await deleteRole(roleToDelete.id);
             toast({ title: "Succès", description: "Rôle supprimé." });
-            await reloadData();
+            await reloadData(['roles']);
             setRoleToDelete(null);
         } catch (error) {
             toast({ title: "Erreur", description: "Impossible de supprimer le rôle.", variant: "destructive" });
@@ -268,7 +268,7 @@ const UsersSection = () => {
                 await syncAccess(normalizedEmail);
                 toast({ title: "Succès", description: "Utilisateur créé." });
             }
-            await reloadData();
+            await reloadData(['users']);
             setDialogOpen(false);
             resetForm();
         } catch (error) {
@@ -284,7 +284,7 @@ const UsersSection = () => {
             await deleteUser(userToDelete.id);
             await syncAccess(userToDelete.email);
             toast({ title: "Succès", description: "L'utilisateur a été supprimé." });
-            await reloadData();
+            await reloadData(['users']);
             setUserToDelete(null);
         } catch (error) {
             toast({ title: "Erreur", description: "Impossible de supprimer l'utilisateur.", variant: "destructive" });

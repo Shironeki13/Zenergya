@@ -18,7 +18,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { useToast } from "@/hooks/use-toast";
 import { deleteReadingAction, readingLocksAction, saveReadingAction } from "@/lib/readings/actions";
 import type { ReadingLocks } from "@/services/readings-admin";
-import { useData } from "@/context/data-context";
+import { useCollections, useData } from "@/context/data-context";
 import type { Meter, MeterReading } from "@/lib/types";
 
 interface MeterReadingsDialogProps {
@@ -30,6 +30,7 @@ export function MeterReadingsDialog({ meter, trigger }: MeterReadingsDialogProps
     const confirmer = useConfirm();
     const { toast } = useToast();
     const { meterReadings, reloadData } = useData();
+    useCollections('meterReadings');
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [editingId, setEditingId] = useState<string | null>(null);
     const [isFormOpen, setIsFormOpen] = useState(false);
@@ -77,7 +78,7 @@ export function MeterReadingsDialog({ meter, trigger }: MeterReadingsDialogProps
         const r = await deleteReadingAction(id);
         if (!r.success) { toast({ title: "Suppression refusée", description: r.error, variant: "destructive" }); return; }
         toast({ title: "Succès", description: "Relevé supprimé." });
-        await reloadData();
+        await reloadData(['meterReadings', 'meters']);
         await loadLocks();
     };
 
@@ -90,7 +91,7 @@ export function MeterReadingsDialog({ meter, trigger }: MeterReadingsDialogProps
         setIsSubmitting(false);
         if (!r.success) { toast({ title: "Enregistrement refusé", description: r.error, variant: "destructive" }); return; }
         toast({ title: "Succès", description: editingId ? "Relevé mis à jour." : "Relevé ajouté." });
-        await reloadData();
+        await reloadData(['meterReadings', 'meters']);
         await loadLocks();
         resetForm();
     };

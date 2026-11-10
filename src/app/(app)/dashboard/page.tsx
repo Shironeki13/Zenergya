@@ -32,12 +32,15 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import type { InvoiceStatus, Invoice, Contract } from '@/lib/types';
-import { useData } from '@/context/data-context';
+import { useCollections, useData } from '@/context/data-context';
 import { useMemo } from 'react';
 import { ChartContainer, ChartTooltipContent, ChartLegend, ChartLegendContent } from '@/components/ui/chart';
 
 export default function Dashboard() {
-  const { clients, contracts, invoices, isLoading } = useData();
+  const { clients, contracts, invoices, isLoading: chargementBase } = useData();
+  // Collections volumineuses, chargées à la demande : l'écran attend qu'elles soient en mémoire.
+  const pret = useCollections('invoices');
+  const isLoading = chargementBase || !pret;
 
   const dashboardData = useMemo(() => {
     if (isLoading) return null;

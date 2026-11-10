@@ -225,7 +225,7 @@ export default function EditContractPage() {
             if (!contract) return;
             await updateClientAndContract(id, contract.clientId, data);
             toast({ title: "Demande renvoyée", description: "Votre contrat a été renvoyé en validation." });
-            await reloadData();
+            await reloadData(['clients', 'contracts']);
             router.push('/contracts/commerce');
         } catch (e) {
             console.error(e);

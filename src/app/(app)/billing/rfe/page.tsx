@@ -3,7 +3,7 @@
 import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { AlertTriangle, CheckCircle2, Download, FileText, MoreHorizontal, RefreshCw, Send, ShieldOff, XCircle } from 'lucide-react';
-import { useData } from '@/context/data-context';
+import { useCollections, useData } from '@/context/data-context';
 import { useToast } from '@/hooks/use-toast';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -41,7 +41,10 @@ const eur = (n: number) => n.toLocaleString('fr-FR', { style: 'currency', curren
 const day = (iso: string) => new Date(iso).toLocaleDateString('fr-FR', { timeZone: 'UTC' });
 
 export default function EInvoicingDashboardPage() {
-    const { invoices, creditNotes, clients, contracts, typologies, companies, isLoading, reloadData } = useData();
+    const { invoices, creditNotes, clients, contracts, typologies, companies, isLoading: chargementBase, reloadData } = useData();
+    // Collections volumineuses, chargées à la demande : l'écran attend qu'elles soient en mémoire.
+    const pret = useCollections('invoices', 'creditNotes');
+    const isLoading = chargementBase || !pret;
     const { toast } = useToast();
 
     const [companyId, setCompanyId] = useState('all');
@@ -130,7 +133,7 @@ export default function EInvoicingDashboardPage() {
         try {
             report(label, await action());
             setSelected(new Set());
-            await reloadData();
+            await reloadData(['invoices', 'creditNotes']);
         } catch (error) {
             toast({ title: 'Erreur', description: error instanceof Error ? error.message : String(error), variant: 'destructive' });
         } finally {

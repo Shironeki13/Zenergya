@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ExternalLink, CheckCircle2, Loader2 } from 'lucide-react';
-import { useData } from '@/context/data-context';
+import { useCollections, useData } from '@/context/data-context';
 import { updateInvoiceStatus } from '@/services/firestore';
 import { useToast } from '@/hooks/use-toast';
 import { format, differenceInDays, addDays, startOfDay } from 'date-fns';
@@ -43,7 +43,10 @@ function periodLabel(start: Date, end: Date) {
 
 // ── Page ──────────────────────────────────────────────────────────────────────
 export default function SuiviFacturationPage() {
-    const { invoices, isLoading, reloadData } = useData();
+    const { invoices, isLoading: chargementBase, reloadData } = useData();
+    // Collections volumineuses, chargées à la demande : l'écran attend qu'elles soient en mémoire.
+    const pret = useCollections('invoices');
+    const isLoading = chargementBase || !pret;
     const { toast } = useToast();
     const [markingPaid, setMarkingPaid] = useState<string | null>(null);
 
@@ -96,7 +99,7 @@ export default function SuiviFacturationPage() {
         setMarkingPaid(inv.id);
         try {
             await updateInvoiceStatus(inv.id, 'paid');
-            await reloadData();
+            await reloadData(['invoices']);
             toast({ title: 'Payée', description: `Facture ${inv.invoiceNumber ?? inv.id} marquée comme payée.` });
         } catch {
             toast({ title: 'Erreur', description: 'Impossible de mettre à jour le statut.', variant: 'destructive' });

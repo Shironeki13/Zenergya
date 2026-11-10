@@ -42,7 +42,7 @@ export default function CommercePage() {
         try {
             await deleteClient(contractToDelete.clientId);
             toast({ title: "Demande supprimée", description: "Le contrat et le client associé ont été supprimés." });
-            await reloadData();
+            await reloadData(['clients', 'contracts', 'sites', 'services']);
         } catch {
             toast({ title: "Erreur", description: "Impossible de supprimer la demande.", variant: "destructive" });
         } finally {

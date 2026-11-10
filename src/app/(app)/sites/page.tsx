@@ -136,7 +136,7 @@ export default function SitesPage() {
     try {
       await updateSite(editingSite.id, siteData);
       toast({ title: "Site mis à jour", description: "Le site a été mis à jour avec succès." });
-      await reloadData();
+      await reloadData(['sites']);
       setEditSiteDialogOpen(false);
       // Do NOT call resetForm() here to avoid clearing data while dialog is closing
     } catch (error) {
@@ -157,7 +157,7 @@ export default function SitesPage() {
     try {
       await deleteSite(deletingSite.id);
       toast({ title: 'Site supprimé', description: `Le site "${deletingSite.name}" a été supprimé.` });
-      await reloadData();
+      await reloadData(['sites', 'contracts', 'services', 'meters']);
     } catch (error) {
       console.error(error);
       toast({ title: 'Erreur', description: 'La suppression a échoué.', variant: 'destructive' });

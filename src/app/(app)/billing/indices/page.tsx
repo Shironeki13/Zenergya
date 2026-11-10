@@ -2,7 +2,7 @@
 
 import { SearchableSelect } from '@/components/ui/searchable-select';
 import { useState, useRef } from 'react';
-import { useData } from '@/context/data-context';
+import { useCollections, useData } from '@/context/data-context';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -31,6 +31,7 @@ function escapeRegExp(string: string) {
 
 export default function IndicesPage() {
     const { indices, indexValues, reloadData } = useData();
+    useCollections('indexValues');
     const { toast } = useToast();
     const [isIndexDialogOpen, setIsIndexDialogOpen] = useState(false);
     const [isValueDialogOpen, setIsValueDialogOpen] = useState(false);
@@ -142,7 +143,7 @@ export default function IndicesPage() {
                 await createIndex(data);
                 toast({ title: "Indice créé", description: "Le nouvel indice a été ajouté." });
             }
-            await reloadData();
+            await reloadData(['indices', 'indexValues']);
             setIsIndexDialogOpen(false);
             resetIndexForm();
         } catch (error) {
@@ -170,7 +171,7 @@ export default function IndicesPage() {
                 await createIndexValue(data);
                 toast({ title: "Valeur ajoutée", description: "La nouvelle valeur a été enregistrée." });
             }
-            await reloadData();
+            await reloadData(['indexValues']);
             setIsValueDialogOpen(false);
             resetValueForm();
         } catch (error: any) {
@@ -185,7 +186,7 @@ export default function IndicesPage() {
             await deleteIndex(indexToDelete.id);
             toast({ title: "Indice supprimé", description: "L'indice et ses valeurs ont été supprimés." });
             if (selectedIndexId === indexToDelete.id) setSelectedIndexId(null);
-            await reloadData();
+            await reloadData(['indices', 'indexValues']);
             setIsDeleteDialogOpen(false);
             setIndexToDelete(null);
         } catch (error) {
@@ -199,7 +200,7 @@ export default function IndicesPage() {
         try {
             await deleteIndexValue(valueToDelete.id);
             toast({ title: "Valeur supprimée", description: "La valeur a été supprimée." });
-            await reloadData();
+            await reloadData(['indexValues']);
             setIsDeleteValueDialogOpen(false);
             setValueToDelete(null);
         } catch (error) {
@@ -220,7 +221,7 @@ export default function IndicesPage() {
                     title: "Synchronisation terminée",
                     description: `${data.stats.newValues} nouvelles valeurs ajoutées.`,
                 });
-                await reloadData();
+                await reloadData(['indices', 'indexValues']);
             } else {
                 throw new Error(data.message || 'Erreur lors de la synchronisation');
             }
@@ -333,7 +334,7 @@ export default function IndicesPage() {
                     }
                 }
 
-                await reloadData();
+                await reloadData(['indices', 'indexValues']);
                 toast({
                     title: "Import terminé",
                     description: `${successCount} indices créés. ${errorCount} erreurs.`,
@@ -390,7 +391,7 @@ export default function IndicesPage() {
                     }
                 }
 
-                await reloadData();
+                await reloadData(['indices', 'indexValues']);
                 toast({
                     title: "Import terminé",
                     description: `${successCount} valeurs ajoutées. ${errorCount} erreurs.`,

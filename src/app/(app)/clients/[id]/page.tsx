@@ -14,7 +14,7 @@ import { getClient, getContractsByClient, getSitesByClient, getContactsByClient 
 import type { Client, Contract, Site, Contact } from '@/lib/types';
 import { useToast } from '@/hooks/use-toast';
 import { AttachContractDialog } from '@/components/attach-contract-dialog';
-import { useData } from '@/context/data-context';
+import { useCollections, useData } from '@/context/data-context';
 import { SireneCheckPanel } from '@/components/clients/sirene-check';
 import { AFaire, Indicateur, eur0, CompteurAFaire, useOngletUrl, type PointAFaire } from '@/components/fiches/fiche';
 import { CarteContacts, TableauContrats, TableauFactures, TableauSites, etatSite } from '@/components/fiches/tableaux';
@@ -30,6 +30,7 @@ export default function ClientDetailPage() {
   const router = useRouter();
   const { toast } = useToast();
   const { typologies, companies, agencies, sectors, services, invoices, users } = useData();
+  useCollections('invoices');
 
   const [client, setClient] = useState<Client | null>(null);
   const [contracts, setContracts] = useState<Contract[]>([]);

@@ -117,12 +117,12 @@ export default function DocumentHubPage() {
       </div>
 
       {/* Global Event Dialogs */}
-      <AmendmentDialog open={amendmentDialogOpen} onOpenChange={setAmendmentDialogOpen} onSuccess={reloadData} />
-      <AmendmentDialog nature="os" open={osDialogOpen} onOpenChange={setOsDialogOpen} onSuccess={reloadData} />
-      <TerminationDialog open={terminationDialogOpen} onOpenChange={setTerminationDialogOpen} onSuccess={reloadData} />
-      <RenewalDialog open={renewalDialogOpen} onOpenChange={setRenewalDialogOpen} onSuccess={reloadData} />
-      <TrusteeChangeDialog open={trusteeChangeDialogOpen} onOpenChange={setTrusteeChangeDialogOpen} onSuccess={reloadData} />
-      <BeChangeDialog open={beChangeDialogOpen} onOpenChange={setBeChangeDialogOpen} onSuccess={reloadData} />
+      <AmendmentDialog open={amendmentDialogOpen} onOpenChange={setAmendmentDialogOpen} onSuccess={() => reloadData(['contracts'])} />
+      <AmendmentDialog nature="os" open={osDialogOpen} onOpenChange={setOsDialogOpen} onSuccess={() => reloadData(['contracts'])} />
+      <TerminationDialog open={terminationDialogOpen} onOpenChange={setTerminationDialogOpen} onSuccess={() => reloadData(['contracts'])} />
+      <RenewalDialog open={renewalDialogOpen} onOpenChange={setRenewalDialogOpen} onSuccess={() => reloadData(['contracts'])} />
+      <TrusteeChangeDialog open={trusteeChangeDialogOpen} onOpenChange={setTrusteeChangeDialogOpen} onSuccess={() => reloadData(['contracts'])} />
+      <BeChangeDialog open={beChangeDialogOpen} onOpenChange={setBeChangeDialogOpen} onSuccess={() => reloadData(['contracts'])} />
     </div>
   )
 }

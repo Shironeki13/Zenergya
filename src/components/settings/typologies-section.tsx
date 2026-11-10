@@ -44,7 +44,7 @@ export function TypologiesSection() {
             if (editing) await updateTypology(editing.id, name.trim(), extra);
             else await createTypology(name.trim(), extra);
             toast({ title: 'Succès', description: 'Typologie enregistrée.' });
-            await reloadData();
+            await reloadData(['typologies']);
             setDialogOpen(false);
         } catch {
             toast({ title: 'Erreur', description: "L'opération a échoué.", variant: 'destructive' });
@@ -58,7 +58,7 @@ export function TypologiesSection() {
         try {
             await deleteTypology(toDelete.id);
             toast({ title: 'Succès', description: 'Typologie supprimée.' });
-            await reloadData();
+            await reloadData(['typologies']);
         } catch {
             toast({ title: 'Erreur', description: 'Impossible de supprimer la typologie.', variant: 'destructive' });
         } finally {

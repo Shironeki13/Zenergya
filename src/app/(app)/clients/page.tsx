@@ -79,7 +79,7 @@ export default function ClientsPage() {
     try {
       await deleteClient(clientToDelete.id);
       toast({ title: "Client supprimé", description: "Le client et toutes ses données associées ont été supprimés." });
-      await reloadData();
+      await reloadData(['clients', 'contracts', 'sites', 'services', 'contacts', 'meters']);
     } catch (error) {
       console.error("Failed to delete client:", error);
       toast({ title: "Erreur", description: "Impossible de supprimer le client.", variant: "destructive" });

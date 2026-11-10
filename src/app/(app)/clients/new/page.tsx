@@ -132,7 +132,7 @@ export default function NewClientPage() {
   async function onSubmit(data: ClientFormValues) {
     try {
       const newClient = await createClient(data);
-      await reloadData();
+      await reloadData(['clients', 'contacts']);
       toast({
         title: "Client Créé",
         description: "Le nouveau client a été créé avec succès.",

@@ -14,7 +14,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/hooks/use-toast';
-import { useData } from '@/context/data-context';
+import { useCollections, useData } from '@/context/data-context';
 import { NumberField } from '@/components/quotes/number-field';
 import { formatEur, formatPct, StatusBadge } from '@/components/quotes/format';
 import { computeLines, computeQuoteTotals, isPriced, newLineId, quoteIssues, addDays, unitCostOf } from '@/lib/quotes/pricing';
@@ -54,6 +54,7 @@ export default function QuoteEditorPage() {
     const router = useRouter();
     const { toast } = useToast();
     const { currentUser, users, contacts, agencies, sectors } = useData();
+    useCollections('contacts');
     const [quote, setQuote] = useState<Quote | null>(null);
     const [draft, setDraft] = useState<Draft | null>(null);
     const [loading, setLoading] = useState(true);

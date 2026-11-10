@@ -4,7 +4,7 @@ import { useConfirm } from '@/components/confirm-provider';
 import Link from 'next/link';
 import { useState, useEffect, useMemo } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { useData } from '@/context/data-context';
+import { useCollections, useData } from '@/context/data-context';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -46,7 +46,10 @@ export default function SiteDetailsPage() {
     const confirmer = useConfirm();
     const params = useParams();
     const router = useRouter();
-    const { sites, contracts, meters, services, activities, revisionRules, pricingRules, terms, schedules, reloadData, isLoading, indices, indexValues, settlementRules, meterReadings, vatRates, invoices, weatherStations } = useData();
+    const { sites, contracts, meters, services, activities, revisionRules, pricingRules, terms, schedules, reloadData, isLoading: chargementBase, indices, indexValues, settlementRules, meterReadings, vatRates, invoices, weatherStations } = useData();
+    // Collections volumineuses, chargées à la demande : l'écran attend qu'elles soient en mémoire.
+    const pret = useCollections('meters', 'indexValues', 'meterReadings', 'invoices');
+    const isLoading = chargementBase || !pret;
     const siteId = params.id as string;
 
     const [site, setSite] = useState<Site | null>(null);
@@ -189,7 +192,7 @@ export default function SiteDetailsPage() {
                 await createMeter(data);
                 toast({ title: "Succès", description: "Compteur créé." });
             }
-            await reloadData();
+            await reloadData(['meters', 'meterReadings']);
             setIsMeterDialogOpen(false);
         } catch (error) {
             console.error(error);
@@ -202,7 +205,7 @@ export default function SiteDetailsPage() {
         try {
             await deleteMeter(id);
             toast({ title: "Succès", description: "Compteur supprimé." });
-            await reloadData();
+            await reloadData(['meters', 'meterReadings']);
         } catch (error) {
             toast({ title: "Erreur", description: "Impossible de supprimer le compteur.", variant: "destructive" });
         }
@@ -296,7 +299,7 @@ export default function SiteDetailsPage() {
                 billingLines: bpLines.filter(l => l.vatRateId),
                 paymentTermDays: bpDays,
             });
-            await reloadData();
+            await reloadData(['sites']);
             setIsEditingBillingParams(false);
             toast({ title: 'Succès', description: 'Paramètres de facturation mis à jour.' });
         } catch {
@@ -440,7 +443,7 @@ export default function SiteDetailsPage() {
                 newServiceId = res.id;
                 toast({ title: "Succès", description: "Prestation créée." });
             }
-            await reloadData();
+            await reloadData(['services']);
             setIsServiceDialogOpen(false);
             resetServiceForm();
             if (newServiceId) setSelectedServiceId(newServiceId);
@@ -455,7 +458,7 @@ export default function SiteDetailsPage() {
         try {
             await deleteService(id);
             toast({ title: "Succès", description: "Prestation supprimée." });
-            await reloadData();
+            await reloadData(['services']);
             if (selectedServiceId === id) setSelectedServiceId(null);
         } catch (error) {
             toast({ title: "Erreur", description: "Impossible de supprimer la prestation.", variant: "destructive" });
@@ -719,7 +722,7 @@ export default function SiteDetailsPage() {
     const enregistrerSite = async (data: SiteModifiable) => {
         try {
             await updateSite(site.id, data);
-            await reloadData();
+            await reloadData(['sites']);
             toast({ title: 'Site enregistré' });
             return true;
         } catch {

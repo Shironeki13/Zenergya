@@ -99,7 +99,7 @@ export default function ValidationsPage() {
                     </div>
                 )}
             />
-            <ControleDocument element={ouvert} onClose={() => setOuvert(null)} onTraite={async () => { await Promise.all([charger(), reloadData()]); }} />
+            <ControleDocument element={ouvert} onClose={() => setOuvert(null)} onTraite={async () => { await Promise.all([charger(), reloadData(['contracts', 'clients', 'sites', 'services'])]); }} />
         </div>
     );
 }
