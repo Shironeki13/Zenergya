@@ -152,6 +152,25 @@ contrats, contacts). Échéances non facturées : `src/lib/billing/echeances-fic
   contrat n'est pas validé (le menu de statut de la fiche est alors figé).
 - **Pièces** déposées « en ligne » (`Content-Disposition: inline`) pour s'afficher dans l'écran de contrôle.
 
+
+### Contrat déjà validé
+
+Une fois validé par la contrathèque, un contrat est protégé (contrôle fait par le serveur, `services/ecritures-admin.ts`) :
+
+- **Données contractuelles** (libellé, dates, type de marché, bases marché P1 / P2 / P3 / P3R, tacite reconduction, durée
+  de reconduction, préavis) : seule la **contrathèque** les modifie, directement et sans nouvelle validation (c'est elle
+  qui valide). Pour tous les autres, ces champs sont verrouillés dans « Modifier » : le changement passe par un
+  **avenant** ou une reconduction, avec sa pièce.
+- **Statut** : « Résilié » s'obtient par une **résiliation validée** ; à la main, seuls la contrathèque et un
+  administrateur changent le statut.
+- **Le reste** (client, contacts, sites, facturation électronique, Chorus) reste modifiable par les utilisateurs ; le
+  contrat ne repasse pas en validation.
+- **Trace** : chaque modification d'un champ contractuel ou du statut est enregistrée sur le contrat (qui, quand, avant
+  → après) et affichée dans son onglet Historique.
+
+Un contrat **en attente ou refusé** se corrige librement ; sa correction le renvoie en validation, et son statut ne
+change pas avant la validation. Un contrat antérieur à la mise en place de la validation est considéré comme validé.
+
 ## Vérification
 
 `npm test` (`tests/ux.test.ts`) : entrée de menu active, droits, champs obligatoires déduits des schémas, messages.

@@ -89,7 +89,7 @@ export default function ContractDetailPage() {
   const id = params.id as string;
   const router = useRouter();
   const { toast } = useToast();
-  const { revisionRules, services, vatRates, schedules, terms } = useData();
+  const { revisionRules, services, vatRates, schedules, terms, isAdmin, isContratheque } = useData();
 
   const [isLoading, setIsLoading] = useState(true);
   const [contract, setContract] = useState<Contract | null>(null);
@@ -316,8 +316,8 @@ export default function ContractDetailPage() {
       await updateContract(id, { status: newStatus });
       setContract(prev => prev ? { ...prev, status: newStatus } : prev);
       toast({ title: 'Statut mis à jour', description: `Contrat passé en "${newStatus}".` });
-    } catch {
-      toast({ title: 'Erreur', description: 'Impossible de mettre à jour le statut.', variant: 'destructive' });
+    } catch (e) {
+      toast({ title: 'Statut non modifié', description: e instanceof Error ? e.message : 'Impossible de mettre à jour le statut.', variant: 'destructive' });
     }
   };
 
@@ -375,7 +375,7 @@ export default function ContractDetailPage() {
     ...(!contactFacturation ? [{ id: 'contact', gravite: 'attention' as const, texte: 'Aucun contact de facturation chez le client.', action: { label: 'Fiche client', onClick: () => router.push(`/clients/${contract.clientId}`) } }] : []),
     ...(showRenewAlert ? [{ id: 'echeance', gravite: 'attention' as const, texte: `Le contrat arrive à échéance dans ${daysUntilEnd} jour(s), le ${new Date(contract.endDate).toLocaleDateString('fr-FR')}${contract.tacitRenewal ? ' (reconduction tacite)' : ''}.`, action: { label: 'Reconductions', onClick: () => changerOnglet('historique') } }] : []),
   ];
-  const nbEvenements = amendments.length + terminations.length + renewals.length + trusteeChanges.length + beChanges.length;
+  const nbEvenements = amendments.length + terminations.length + renewals.length + trusteeChanges.length + beChanges.length + (contract.modificationsValidees?.length ?? 0);
 
   return (
     <div className="space-y-6">
@@ -384,9 +384,11 @@ export default function ContractDetailPage() {
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
             <h1 className="text-2xl font-bold tracking-tight">{contract.contractNumber ?? 'Contrat'}{contract.label ? ` — ${contract.label}` : ''}</h1>
-        {/* Statut modifiable une fois le contrat validé par la contrathèque (sinon : « Actif » à la validation). */}
+        {/* Statut : « Actif » à la validation ; ensuite par un document validé (résiliation) ou, à la main, par la contrathèque ou un administrateur. */}
         {(contract.validationStatus ?? 'validated') !== 'validated' ? (
           <Badge variant={getBadgeVariant(contract.status)} className="ml-auto sm:ml-0" title="Le statut changera à la validation par la contrathèque.">{contract.status}</Badge>
+        ) : !(isAdmin || isContratheque) ? (
+          <Badge variant={getBadgeVariant(contract.status)} className="ml-auto sm:ml-0" title="Le statut d'un contrat validé change par un document validé (résiliation) ou, à la main, par la contrathèque ou un administrateur.">{contract.status}</Badge>
         ) : (
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
@@ -551,6 +553,31 @@ export default function ContractDetailPage() {
         )}
 
         <TabsContent value="historique" className="mt-4">
+          {(contract.modificationsValidees?.length ?? 0) > 0 && (
+            <Card className="mb-4">
+              <CardHeader className="pb-3">
+                <CardTitle className="text-base">Modifications du contrat validé</CardTitle>
+                <CardDescription>Données contractuelles modifiées par la contrathèque (sans nouvelle validation) et changements de statut faits à la main.</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <table className="w-full text-sm">
+                  <thead><tr className="text-left text-xs text-muted-foreground"><th className="pb-1 font-normal">Date</th><th className="pb-1 font-normal">Par</th><th className="pb-1 font-normal">Modification</th></tr></thead>
+                  <tbody>
+                    {[...contract.modificationsValidees!].reverse().map((m, i) => (
+                      <tr key={i} className="border-t align-top">
+                        <td className="whitespace-nowrap py-1.5 pr-3">{new Date(m.le).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' })}</td>
+                        <td className="py-1.5 pr-3">{m.par}</td>
+                        <td className="py-1.5">
+                          {m.statut && <p>Statut : {m.statut.avant} → <span className="font-medium">{m.statut.apres}</span></p>}
+                          {Object.entries(m.champs ?? {}).map(([cle, c]) => <p key={cle}>{c.libelle} : {String(c.avant ?? '—')} → <span className="font-medium">{String(c.apres ?? '—')}</span></p>)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </CardContent>
+            </Card>
+          )}
       <Tabs defaultValue="amendments" className="w-full">
         <TabsList>
           <TabsTrigger value="amendments">Avenants ({amendments.length})</TabsTrigger>

@@ -87,7 +87,10 @@ export default function EditContractPage() {
     const params = useParams();
     const id = params.id as string;
     const { toast } = useToast();
-    const { typologies, companies, agencies, sectors, reloadData, weatherStations, voitClient } = useData();
+    const { typologies, companies, agencies, sectors, reloadData, weatherStations, voitClient, isContratheque } = useData();
+    // Contrat déjà validé : ses champs contractuels ne se modifient que par la contrathèque (sinon : avenant).
+    const [valide, setValide] = useState(false);
+    const verrou = valide && !isContratheque;
 
     const [isLoading, setIsLoading] = useState(true);
     const [refusalReason, setRefusalReason] = useState<string>('');
@@ -133,6 +136,7 @@ export default function EditContractPage() {
                 if (!voitClient(contract.clientId)) { router.push('/contracts'); return; }
 
                 setRefusalReason(contract.refusalReason || '');
+                setValide((contract.validationStatus ?? 'validated') === 'validated');
                 setClientName(contract.clientName || '');
 
                 const [client, contacts, sites] = await Promise.all([
@@ -226,9 +230,9 @@ export default function EditContractPage() {
             const contract = await getContract(id);
             if (!contract) return;
             await updateClientAndContract(id, contract.clientId, data);
-            toast({ title: "Demande renvoyée", description: "Votre contrat a été renvoyé en validation." });
+            toast(valide ? { title: "Contrat enregistré", description: isContratheque ? "Les modifications sont appliquées et tracées sur le contrat." : "Les modifications sont enregistrées." } : { title: "Demande renvoyée", description: "Votre contrat a été renvoyé en validation." });
             await reloadData(['clients', 'contracts']);
-            router.push('/contracts/commerce');
+            router.push(valide ? `/contracts/${id}` : '/contracts/commerce');
         } catch (e) {
             console.error(e);
             toast({ title: "Erreur", description: e instanceof Error ? e.message : "Une erreur est survenue.", variant: "destructive" });
@@ -248,10 +252,10 @@ export default function EditContractPage() {
             {/* Header */}
             <div className="flex items-center gap-4">
                 <Button variant="outline" size="icon" asChild>
-                    <Link href="/contracts/commerce"><ArrowLeft className="h-4 w-4" /></Link>
+                    <Link href={valide ? `/contracts/${id}` : "/contracts/commerce"}><ArrowLeft className="h-4 w-4" /></Link>
                 </Button>
                 <div>
-                    <h1 className="text-2xl font-bold tracking-tight">Corriger la demande</h1>
+                    <h1 className="text-2xl font-bold tracking-tight">{valide ? 'Modifier le contrat' : 'Corriger la demande'}</h1>
                     <p className="text-muted-foreground">{clientName}</p>
                 </div>
             </div>
@@ -262,6 +266,18 @@ export default function EditContractPage() {
                     <AlertTriangle className="h-4 w-4" />
                     <AlertTitle>Motif du refus</AlertTitle>
                     <AlertDescription>{refusalReason}</AlertDescription>
+                </Alert>
+            )}
+
+            {valide && (
+                <Alert>
+                    <AlertTriangle className="h-4 w-4" />
+                    <AlertTitle>Contrat validé</AlertTitle>
+                    <AlertDescription>
+                        {isContratheque
+                            ? "Vous pouvez modifier ses données contractuelles (libellé, dates, bases marché, reconduction, préavis) : elles s'appliquent sans nouvelle validation et la modification est tracée sur le contrat."
+                            : "Ses données contractuelles (libellé, dates, bases marché, reconduction, préavis) sont verrouillées : elles se modifient par un avenant, ou par la contrathèque. Le client, les contacts et les sites restent modifiables."}
+                    </AlertDescription>
                 </Alert>
             )}
 
@@ -437,6 +453,7 @@ export default function EditContractPage() {
 
                         {/* ===== CONTRAT ===== */}
                         <TabsContent value="contrat" className="space-y-4 pt-4">
+                          <fieldset disabled={verrou} className="space-y-4 disabled:opacity-70" aria-label="Données contractuelles">
                             <div className="grid grid-cols-2 gap-4">
                                 <FormField control={form.control} name="startDate" render={({ field }) => (
                                     <FormItem className="flex flex-col">
@@ -540,6 +557,7 @@ export default function EditContractPage() {
                                     </div>
                                 )}
                             </div>
+                          </fieldset>
                         </TabsContent>
 
                         {/* ===== SITES ===== */}
@@ -642,10 +660,10 @@ export default function EditContractPage() {
 
                     <div className="flex justify-end gap-3 pt-2">
                         <Button type="button" variant="outline" asChild>
-                            <Link href="/contracts/commerce">Annuler</Link>
+                            <Link href={valide ? `/contracts/${id}` : '/contracts/commerce'}>Annuler</Link>
                         </Button>
                         <Button type="submit">
-                            Renvoyer en validation
+                            {valide ? 'Enregistrer' : 'Renvoyer en validation'}
                         </Button>
                     </div>
                 </form>

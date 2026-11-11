@@ -96,9 +96,7 @@ test('garde-fous repris des règles : codes immuables, validation des contrats, 
     await assert.rejects(ecrire('updateContract', ['ec-kattente', { validationStatus: 'validated' }], admin), /réservée à la contrathèque/);
     await assert.rejects(ecrire('updateContract', ['ec-kattente', { status: 'Actif' }], admin), /tant qu'il n'est pas validé/);
     await assert.rejects(ecrire('updateContract', ['ec-kl', { validatedBy: 'moi@v.fr' }], admin), /trace de validation/);
-    await ecrire('updateContract', ['ec-kl', { status: 'Suspendu' }], lyon);                    // contrat validé : son statut change
-    await ecrire('updateContract', ['ec-kl', { validationStatus: 'pending_validation' }], lyon); // remis en validation : accepté
-    assert.deepEqual([(await lu('contracts', 'ec-kl')).get('status'), (await lu('contracts', 'ec-kl')).get('validationStatus')], ['Suspendu', 'pending_validation']);
+    await ecrire('updateContract', ['ec-kattente', { label: 'Libellé corrigé' }], lyon);   // contrat en attente : il se corrige librement
     // Factures : seul le suivi d'encaissement ; un proforma annoncé mais qui n'en est pas un ne se supprime pas.
     await assert.rejects(ecrire('updateInvoiceStatus', ['ec-fp', 'cancelled'], admin), /suivi d'encaissement/);
     await assert.rejects(ecrire('updateInvoiceStatus', ['ec-pfp', 'paid'], admin), /suivi d'encaissement/);
@@ -112,4 +110,46 @@ test('garde-fous repris des règles : codes immuables, validation des contrats, 
     await adminDb.collection('quotes').doc('ec-dl').update({ status: 'envoye' });
     await assert.rejects(ecrire('updateQuoteDraft', ['ec-dl', { title: 'X' }], lyon), /plus un brouillon/);
     await assert.rejects(ecrire('deleteQuoteDraft', ['ec-dl'], lyon), /Seul un brouillon/);
+});
+
+test('contrat validé : champs contractuels réservés à la contrathèque, statut par la contrathèque ou un administrateur, modifications tracées', async () => {
+    const ctq = u('ec-ctq', ['ec-ag-lyon'], { isContratheque: true });
+    await set('contracts', 'ec-kv', { clientId: 'ec-cl', clientName: 'Client l', label: 'Chaufferie', contractNumber: 'CTN-9V', status: 'Actif', validationStatus: 'validated', validatedBy: 'ctq@v.fr',
+        startDate: Timestamp.fromDate(new Date('2025-01-01T00:00:00Z')), endDate: Timestamp.fromDate(new Date('2029-12-31T00:00:00Z')), baseAmountP2: 6000, noticePeriod: '3 mois' });
+    await set('contracts', 'ec-kancien', { clientId: 'ec-cl', clientName: 'Client l', label: 'Ancien', contractNumber: 'CTN-9A', status: 'Terminé' });   // antérieur à la validation : considéré validé
+    const k = async (id = 'ec-kv') => (await lu('contracts', id)).data()!;
+
+    // Utilisateur (et administrateur sans le droit contrathèque) : les champs contractuels ne se modifient pas.
+    for (const user of [lyon, admin]) {
+        await assert.rejects(ecrire('updateContract', ['ec-kv', { label: 'Autre libellé' }], user), /Contrat validé : « Libellé » ne se modifie que par la contrathèque, ou par un avenant/);
+        await assert.rejects(ecrire('updateContract', ['ec-kv', { endDate: '2031-12-31', baseAmountP2: 7000 }], user), /« Fin », « Base marché P2 \(€ HT\/an\) » ne se modifient que par la contrathèque/);
+    }
+    await assert.rejects(ecrire('updateContract', ['ec-kancien', { label: 'X' }], lyon), /ne se modifie que par la contrathèque/);
+    await assert.rejects(ecrire('updateContract', ['ec-kv', { validationStatus: 'pending_validation' }], lyon), /ne se remet pas en validation/);
+    // Les autres champs restent libres, et renvoyer les mêmes valeurs (ou un champ vide jamais renseigné) n'est pas une modification.
+    await ecrire('updateContract', ['ec-kv', { einvoicingAddress: 'adresse@pdp', label: 'Chaufferie', endDate: '2029-12-31', baseAmountP2: 6000, baseAmountP1: undefined, tacitRenewal: false, renewalDuration: '' }], lyon);
+    assert.deepEqual([(await k()).einvoicingAddress, (await k()).modificationsValidees], ['adresse@pdp', undefined]);
+
+    // Statut : ni l'utilisateur ; la contrathèque et l'administrateur, oui.
+    await assert.rejects(ecrire('updateContract', ['ec-kv', { status: 'Résilié' }], lyon), /par un document validé \(résiliation\) ou, à la main, par la contrathèque ou un administrateur/);
+    await ecrire('updateContract', ['ec-kv', { status: 'Résilié', terminationDate: '2026-11-30' }], admin);
+    await ecrire('updateContract', ['ec-kv', { status: 'Actif' }], ctq);
+
+    // Contrathèque : modifie les champs contractuels sans nouvelle validation ; le contrat reste validé ; tout est tracé.
+    await ecrire('updateContract', ['ec-kv', { label: 'Chaufferie et ECS', endDate: '2030-12-31' }], ctq);
+    const apres = await k();
+    assert.deepEqual([apres.label, apres.validationStatus, apres.validatedBy, apres.status], ['Chaufferie et ECS', 'validated', 'ctq@v.fr', 'Actif']);
+    const t = apres.modificationsValidees as { par: string; champs?: Record<string, { avant: unknown; apres: unknown }>; statut?: { avant: string; apres: string } }[];
+    assert.deepEqual(t.map(x => [x.par, x.statut ? `${x.statut.avant}→${x.statut.apres}` : null, x.champs ? Object.keys(x.champs).sort().join() : null]),
+        [['ec-adm@v.fr', 'Actif→Résilié', null], ['ec-ctq@v.fr', 'Résilié→Actif', null], ['ec-ctq@v.fr', null, 'endDate,label']]);
+    assert.deepEqual([t[2].champs!.label, t[2].champs!.endDate.avant, t[2].champs!.endDate.apres].map(x => (typeof x === 'object' ? [(x as { avant: unknown }).avant, (x as { apres: unknown }).apres] : x)), [['Chaufferie', 'Chaufferie et ECS'], '2029-12-31', '2030-12-31']);
+
+    // « Modifier » un contrat validé (formulaire complet) : il reste validé ; un utilisateur ne change pas ses champs contractuels.
+    const formulaire = { name: 'Client Lyon renommé', label: 'Chaufferie et ECS', startDate: '2025-01-01', endDate: '2030-12-31', baseAmountP2: 6000, noticePeriod: '3 mois', companyId: 'ec-co', agencyId: 'ec-ag-lyon', sectorId: 'ec-se-l', sites: [] };
+    await assert.rejects(ecrire('updateClientAndContract', ['ec-kv', 'ec-cl', { ...formulaire, noticePeriod: '6 mois' }], lyon), /« Préavis » ne se modifie que par la contrathèque/);
+    assert.deepEqual([(await k()).noticePeriod, (await k()).validationStatus], ['3 mois', 'validated']);
+    // Contrat refusé : la correction le renvoie en validation (comportement inchangé).
+    await set('contracts', 'ec-kref', { clientId: 'ec-cl', label: 'Refusé', status: 'Brouillon', validationStatus: 'refused', refusalReason: 'Dates' });
+    await ecrire('updateClientAndContract', ['ec-kref', 'ec-cl', { ...formulaire, label: 'Corrigé', endDate: '2032-01-01' }], lyon);
+    assert.deepEqual([(await k('ec-kref')).label, (await k('ec-kref')).validationStatus, (await k('ec-kref')).refusalReason], ['Corrigé', 'pending_validation', '']);
 });

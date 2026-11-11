@@ -365,6 +365,8 @@ export type Contract = {
     activityIds: string[];
     status: "Actif" | "Résilié" | "Terminé" | "Brouillon";
     validationStatus: "pending_validation" | "validated" | "refused";
+    /** Modifications faites sur le contrat validé (champs contractuels par la contrathèque, statut changé à la main) : trace écrite par le serveur. */
+    modificationsValidees?: { par: string; le: string; champs?: Record<string, { libelle: string; avant: string | number | boolean | null; apres: string | number | boolean | null }>; statut?: { avant: string; apres: string } }[];
     marketId?: string;
     terminationDate?: string; // ISO String for cancellation date
     documents?: ContractDocument[]; // Champ pour la GED

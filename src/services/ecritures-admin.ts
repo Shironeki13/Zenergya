@@ -1,4 +1,6 @@
 import 'server-only';
+import { AsyncLocalStorage } from 'node:async_hooks';
+import { CHAMPS_VALIDATION, valeursDocument } from '@/lib/validations';
 import { adminBucket } from '@/lib/firebase-admin';
 import { PerimetreError, gardePerimetre, type GardePerimetre, type ObjetPerimetre } from '@/lib/auth/perimetre-server';
 import type { SessionUser } from '@/lib/auth/server';
@@ -32,22 +34,57 @@ async function codeInchange(coll: string, champ: string, id: string, data: Docum
     if (actuel !== undefined && actuel !== null && actuel !== '' && data[champ] !== actuel) throw new Error(`Le code ${actuel} est attribué une fois pour toutes : il ne se modifie pas.`);
 }
 
+/** Utilisateur de l'écriture en cours (les fonctions reprises du navigateur ne le reçoivent pas en paramètre). */
+const contexte = new AsyncLocalStorage<{ user: SessionUser }>();
+
+/** Champs contractuels contrôlés par la contrathèque à la validation (le client ne se change pas ici). */
+const CHAMPS_CONTRAT = CHAMPS_VALIDATION.contrat.filter(c => !c.fige);
+
 /**
- * Contrat : la validation appartient à la contrathèque. Depuis l'écran, un contrat peut être remis « en attente de
- * validation », jamais marqué validé ; la trace de validation est intouchable ; son statut ne change pas tant qu'il
- * n'est pas validé (contrats antérieurs à la validation : considérés validés).
+ * Contrat : la validation appartient à la contrathèque.
+ * - **Non validé** (en attente, refusé) : il se corrige librement et peut être remis « en attente de validation », jamais
+ *   marqué validé depuis l'écran ; son statut ne change pas.
+ * - **Validé** (ou antérieur à la validation) : ses champs contractuels (libellé, dates, type de marché, bases marché,
+ *   reconduction, préavis) ne se modifient que par la contrathèque — directement, sans nouvelle validation, puisque
+ *   c'est elle qui valide — ou par un avenant ; son statut change par un document validé (résiliation) ou, à la main,
+ *   par la contrathèque ou un administrateur. Ces modifications sont tracées sur le contrat.
+ * - La trace de validation (qui, quand) est intouchable.
+ * Renvoie les champs de trace à enregistrer avec la modification.
  */
-async function validationContratIntacte(id: string, data: DocumentData | undefined): Promise<void> {
-    if (!data) return;
+async function validationContratIntacte(id: string, data: DocumentData | undefined): Promise<DocumentData> {
+    if (!data) return {};
     const snap = await getDoc(doc(db, 'contracts', id));
-    if (!snap.exists()) return;
+    if (!snap.exists()) return {};
     const avant = snap.data(), apres = { ...avant, ...data };
+    const user = contexte.getStore()?.user;
     const v = (o: DocumentData, k: string, d: unknown = null) => (o[k] === undefined ? d : o[k]);
     const memeDate = (a: unknown, b: unknown) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
-    if (!(v(apres, 'validationStatus') === v(avant, 'validationStatus') || v(apres, 'validationStatus') === 'pending_validation')) throw new Error('La validation d\'un contrat est réservée à la contrathèque.');
     if (v(apres, 'validatedBy') !== v(avant, 'validatedBy') || !memeDate(apres.validatedAt, avant.validatedAt)) throw new Error('La trace de validation d\'un contrat ne se modifie pas.');
-    const valide = v(avant, 'validationStatus', 'validated') === 'validated' && v(apres, 'validationStatus', 'validated') === 'validated';
-    if (v(apres, 'status') !== v(avant, 'status') && !valide) throw new Error('Le statut d\'un contrat ne change pas tant qu\'il n\'est pas validé par la contrathèque.');
+    const statutChange = v(apres, 'status') !== v(avant, 'status');
+    const valide = v(avant, 'validationStatus', 'validated') === 'validated';
+
+    if (!valide) {
+        if (!(v(apres, 'validationStatus') === v(avant, 'validationStatus') || v(apres, 'validationStatus') === 'pending_validation')) throw new Error('La validation d\'un contrat est réservée à la contrathèque.');
+        if (statutChange) throw new Error('Le statut d\'un contrat ne change pas tant qu\'il n\'est pas validé par la contrathèque.');
+        return {};
+    }
+
+    // Contrat validé.
+    const contratheque = user?.isContratheque === true;
+    if (v(apres, 'validationStatus', 'validated') !== 'validated' && !contratheque) throw new Error('Un contrat validé ne se remet pas en validation : ses données contractuelles se modifient par un avenant, ou par la contrathèque.');
+    const [a, b] = [valeursDocument('contrat', avant), valeursDocument('contrat', apres)];
+    // Vide, « non » et zéro se valent : un champ jamais renseigné n'est pas « modifié » par un formulaire qui l'envoie vide.
+    const neutre = (x: unknown) => (x === null || x === undefined || x === false || x === 0 || x === '' ? '' : JSON.stringify(x));
+    const modifies = CHAMPS_CONTRAT.filter(c => c.cle in data && neutre(a[c.cle]) !== neutre(b[c.cle]));
+    if (modifies.length && !contratheque) throw new Error(`Contrat validé : ${modifies.map(c => `« ${c.libelle} »`).join(', ')} ne se modifie${modifies.length > 1 ? 'nt' : ''} que par la contrathèque, ou par un avenant.`);
+    if (statutChange && !contratheque && user?.isAdmin !== true) throw new Error('Le statut d\'un contrat validé change par un document validé (résiliation) ou, à la main, par la contrathèque ou un administrateur.');
+    if (!modifies.length && !statutChange) return {};
+    const trace = {
+        par: user?.email ?? 'inconnu', le: new Date().toISOString(),
+        ...(modifies.length && { champs: Object.fromEntries(modifies.map(c => [c.cle, { libelle: c.libelle, avant: a[c.cle] ?? null, apres: b[c.cle] ?? null }])) }),
+        ...(statutChange && { statut: { avant: v(avant, 'status'), apres: v(apres, 'status') } }),
+    };
+    return { modificationsValidees: [...((avant.modificationsValidees as unknown[] | undefined) ?? []), trace] };
 }
 
 /** Supprime un fichier du stockage à partir de son adresse de téléchargement (sans bloquer l'opération en cas d'échec). */
@@ -328,9 +365,9 @@ async function batchCreateSites(
 
 async function updateContract(id: string, data: Partial<Omit<Contract, 'id'>>) {
     await codeInchange('contracts', 'contractNumber', id, data);
-    await validationContratIntacte(id, data);
+    const trace = await validationContratIntacte(id, data);
     const contractDoc = doc(db, 'contracts', id);
-    const updateData: { [key: string]: any } = { ...data };
+    const updateData: { [key: string]: any } = { ...data, ...trace };
     const revisionFields: ('revisionP1' | 'revisionP2' | 'revisionP3')[] = ['revisionP1', 'revisionP2', 'revisionP3'];
     for (const field of revisionFields) {
         if (data[field] && data[field]?.date && typeof data[field]!.date === 'string') {
@@ -548,6 +585,8 @@ async function updateClientAndContract(contractId: string, clientId: string, dat
     for (const id of sync.remove) await deleteSite(id);
 
     // 4. Update contract + reset validation status
+    const etat = (await getDoc(doc(db, 'contracts', contractId))).get('validationStatus');
+    const dejaValide = (etat ?? 'validated') === 'validated';
     await updateContract(contractId, {
         clientName: data.name,
         name: data.contractName,
@@ -563,8 +602,9 @@ async function updateClientAndContract(contractId: string, clientId: string, dat
         renewalDuration: data.renewalDuration,
         noticePeriod: data.noticePeriod,
         siteIds: newSiteIds,
-        validationStatus: 'pending_validation',
-        refusalReason: '',
+        // Contrat en attente ou refusé : la correction le renvoie en validation. Contrat validé : il le reste (ses champs
+        // contractuels ne changent que par la contrathèque, contrôlé dans updateContract).
+        ...(dejaValide ? {} : { validationStatus: 'pending_validation', refusalReason: '' }),
     });
 }
 
@@ -758,7 +798,7 @@ export async function ecrire(nom: string, args: unknown[], user: SessionUser): P
     const a = ranimer(Array.isArray(args) ? args : []) as unknown[];
     const c: Ctx = { garde: gardePerimetre(user), user };
     await e.avant(a, c);
-    const r = await e.faire(a, c);
+    const r = await contexte.run({ user }, () => e.faire(a, c));
     return r === undefined ? null : processFirestoreDoc(r as DocumentData);
 }
 

@@ -39,7 +39,9 @@ const varianteStatut = (status: Contract['status']): 'secondary' | 'destructive'
   status === 'Actif' ? 'secondary' : status === 'Résilié' ? 'destructive' : status === 'Terminé' ? 'warning' : 'outline';
 
 export default function ContractsPage() {
-  const { contracts, sites, clients, services, users, isLoading, reloadData, currentUser, companies, agencies, sectors } = useData();
+  const { contracts, sites, clients, services, users, isLoading, reloadData, currentUser, companies, agencies, sectors, isAdmin, isContratheque } = useData();
+  // Statut d'un contrat validé : par un document validé (résiliation) ou, à la main, par la contrathèque ou un administrateur.
+  const peutChangerStatut = isAdmin || isContratheque;
   const { toast } = useToast();
   const [contractToUpdate, setContractToUpdate] = useState<Contract | null>(null);
   const [newStatus, setNewStatus] = useState<"Résilié" | "Terminé" | null>(null);
@@ -128,8 +130,8 @@ export default function ContractsPage() {
       await updateContract(contractToUpdate.id, updateData);
       toast({ title: "Statut mis à jour", description: `Le contrat est maintenant ${newStatus.toLowerCase()}.` });
       await reloadData(['contracts']);
-    } catch {
-      toast({ title: "Erreur", description: "La mise à jour du statut a échoué.", variant: "destructive" });
+    } catch (e) {
+      toast({ title: "Statut non modifié", description: e instanceof Error ? e.message : "La mise à jour du statut a échoué.", variant: "destructive" });
     } finally {
       handleCloseStatusDialog();
     }
@@ -165,7 +167,7 @@ export default function ContractsPage() {
               <DropdownMenuItem asChild><Link href={`/contracts/${r.id}`}>Ouvrir la fiche</Link></DropdownMenuItem>
               <DropdownMenuItem asChild><Link href={`/contracts/${r.id}?onglet=sites`}>Voir les sites</Link></DropdownMenuItem>
               <DropdownMenuItem asChild><Link href={`/contracts/${r.id}/edit`}>Modifier</Link></DropdownMenuItem>
-              {r.status === 'Actif' && (<>
+              {r.status === 'Actif' && peutChangerStatut && (r.validationStatus ?? 'validated') === 'validated' && (<>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem onSelect={() => handleOpenStatusDialog(r, 'Résilié')}>Passer à Résilié</DropdownMenuItem>
                 <DropdownMenuItem onSelect={() => handleOpenStatusDialog(r, 'Terminé')}>Passer à Terminé</DropdownMenuItem>
