@@ -1,5 +1,6 @@
 'use client';
 
+import { JournalSyncIndices } from '@/components/indices/journal-sync';
 import { SearchableSelect } from '@/components/ui/searchable-select';
 import { useState, useRef } from 'react';
 import { useCollections, useData } from '@/context/data-context';
@@ -210,6 +211,7 @@ export default function IndicesPage() {
     };
 
 
+    const [versionJournal, setVersionJournal] = useState(0);
     const handleSyncIndices = async () => {
         setIsSyncing(true);
         try {
@@ -219,8 +221,9 @@ export default function IndicesPage() {
             if (data.success) {
                 toast({
                     title: "Synchronisation terminée",
-                    description: `${data.stats.newValues} nouvelles valeurs ajoutées.`,
+                    description: `${data.stats.newValues} valeur(s) ajoutée(s) ou révisée(s)${data.stats.errors?.length ? ` — ${data.stats.errors.length} source(s) en échec, voir le journal` : ''}.`,
                 });
+                setVersionJournal(v => v + 1);
                 await reloadData(['indices', 'indexValues']);
             } else {
                 throw new Error(data.message || 'Erreur lors de la synchronisation');
@@ -508,6 +511,8 @@ export default function IndicesPage() {
                     Synchroniser les indices
                 </Button>
             </div>
+
+            <JournalSyncIndices version={versionJournal} />
 
             <div className="grid lg:grid-cols-3 gap-6">
                 {/* Left Column: Indices List */}

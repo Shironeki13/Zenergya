@@ -36,6 +36,7 @@ function parseValue(text: string): number | null {
 export function createC2emarketFetcher(code: string, colIndex: 1 | 2): IndexFetcher {
     return {
         code,
+        famille: 'marche',
         fetch: async (): Promise<IndexFetchResult[]> => {
             const url = 'https://c2emarket.com/evolution-du-prix-des-cee';
             const response = await fetch(url, {

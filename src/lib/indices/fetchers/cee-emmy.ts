@@ -1,16 +1,17 @@
 import https from 'node:https';
+import * as tls from 'tls';
+import { DIGICERT_G2_TLS_RSA_SHA256_2020_CA1 } from './certificat-intermediaire-digicert';
 import * as cheerio from 'cheerio';
 import { IndexFetchResult, IndexFetcher } from '../types';
 
 /**
- * Fetch HTTPS avec vérification de certificat désactivée.
- * Nécessaire car emmy.fr sert une chaîne de certificat incomplète
- * (UNABLE_TO_VERIFY_LEAF_SIGNATURE), rejetée par OpenSSL/Node.js
- * mais acceptée par schannel (Windows) et les navigateurs.
+ * Lecture HTTPS d'emmy.fr. Le site sert une chaîne de certificat incomplète (il n'envoie pas son certificat
+ * intermédiaire) : la vérification reste activée, avec cet intermédiaire fourni en plus des autorités racines.
  */
 function fetchHtml(url: string, headers: Record<string, string>): Promise<string> {
     return new Promise((resolve, reject) => {
-        const req = https.get(url, { headers, rejectUnauthorized: false }, (res) => {
+        // Vérification du certificat activée : autorités racines habituelles + l'intermédiaire que le site n'envoie pas.
+        const req = https.get(url, { headers, ca: [...tls.rootCertificates, DIGICERT_G2_TLS_RSA_SHA256_2020_CA1] }, (res) => {
             if (res.statusCode && res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
                 fetchHtml(res.headers.location, headers).then(resolve).catch(reject);
                 return;
@@ -91,6 +92,7 @@ function parseEmmyPage(html: string, year: number): IndexFetchResult[] {
 export function createEmmyFetcher(code: string, precarite: boolean): IndexFetcher {
     return {
         code,
+        famille: 'marche',
         fetch: async (): Promise<IndexFetchResult[]> => {
             const currentYear = new Date().getFullYear();
             const years = [currentYear, currentYear - 1, currentYear - 2];

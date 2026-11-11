@@ -52,3 +52,4 @@ typecheck_*.txt
 # démo (données simulées)
 /demo-extraction.json
 /demo-extraction.xlsx
+functions/*/dist/

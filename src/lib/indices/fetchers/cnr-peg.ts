@@ -4,6 +4,7 @@ import { IndexFetchResult, IndexFetcher } from '../types';
 
 export const cnrPegFetcher: IndexFetcher = {
     code: 'PEG',
+    famille: 'marche',
     fetch: async (): Promise<IndexFetchResult[]> => {
         const url = 'https://www.cnr.fr/espaces/13/indicateurs/88';
         const response = await fetch(url, {

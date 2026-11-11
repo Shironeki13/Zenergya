@@ -1,0 +1,12 @@
+{
+  "name": "indices-sync",
+  "private": true,
+  "description": "Fonction planifiée : mise à jour automatique des indices (INSEE, PEG, CEE).",
+  "main": "dist/index.js",
+  "engines": { "node": "22" },
+  "dependencies": {
+    "@google-cloud/functions-framework": "^3.4.0",
+    "cheerio": "^1.2.0",
+    "firebase-admin": "^13.10.0"
+  }
+}

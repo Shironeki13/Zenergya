@@ -11,10 +11,11 @@ export const indexFetchers: IndexFetcher[] = [
     createInseeFetcher('IC0-018Q', '001766924'),
     createInseeFetcher('BT40_2010', '001710973'),
     createInseeFetcher('BT41_2010', '001710974'),
-    createInseeFetcher('EBI_2010', '001652128'),
-    createInseeFetcher('EBI_2015', '010534840'),
+    // Anciennes bases, arrêtées par l'INSEE : gardées pour les contrats qui les citent encore.
+    createInseeFetcher('EBI_2010', '001652128', { arretee: true }),
+    createInseeFetcher('EBI_2015', '010534840', { arretee: true }),
     createInseeFetcher('EBI_2021', '010764357'),
-    createInseeFetcher('TCH_2004', '000867353'),
+    createInseeFetcher('TCH_2004', '000867353', { arretee: true }),
     createInseeFetcher('TCH_2015', '001763861'),
     // CEE Indices — C2EMARKET (https://c2emarket.com/evolution-du-prix-des-cee)
     ceeoC2emarketFetcher,   // CEE Classique  (colonne 1)

@@ -37,9 +37,11 @@ function inseePeriodToMonth(period: string): string {
     return period;
 }
 
-export function createInseeFetcher(code: string, idbank: string): IndexFetcher {
+export function createInseeFetcher(code: string, idbank: string, options: { arretee?: boolean } = {}): IndexFetcher {
     return {
         code,
+        famille: 'statistique',
+        ...(options.arretee && { arretee: true }),
         fetch: async (): Promise<IndexFetchResult[]> => {
             const url = `https://bdm.insee.fr/series/sdmx/data/SERIES_BDM/${idbank}?lastNObservations=24&detail=dataonly`;
 
