@@ -52,20 +52,26 @@ Utilisateurs et clés API : administrateur seulement. Une page hors de ses modul
    situations, intéressements d'une prestation…) : lus par le serveur par des **lectures nommées** (`/api/lecture`,
    `src/services/lectures-admin.ts`) qui contrôlent le client de l'objet demandé. Un objet hors périmètre est refusé et
    l'écran affiche « Hors de votre périmètre » ; les listes de devis et d'affaires sont réduites au périmètre.
-3. **Actions serveur** (`src/lib/auth/perimetre-server.ts`) : chaque action vérifie l'objet sur lequel elle porte (devis,
+3. **Écritures** sur clients, contrats, sites, compteurs, prestations, intéressements, documents de contrat, statut des
+   factures et devis en brouillon : exécutées par le serveur par des **écritures nommées** (`/api/ecriture`,
+   `src/services/ecritures-admin.ts`). Chacune contrôle le périmètre avant d'agir, ainsi que les garde-fous qui étaient
+   portés par les règles Firestore (codes immuables, validation des contrats réservée à la contrathèque, statut
+   d'encaissement des factures, documents de contrat créés « en attente » avec leur pièce, devis envoyés non
+   modifiables). La logique (numérotation, cascades) est celle d'avant, exécutée par le serveur
+   (`src/lib/firestore-compat-admin.ts`).
+4. **Actions serveur** (`src/lib/auth/perimetre-server.ts`) : chaque action vérifie l'objet sur lequel elle porte (devis,
    affaires, situations, paramétrage P1, relevés, régularisations, facturation, facturation électronique, analytique,
    validation des documents, création de contrat, commandes, heures, PDF des factures, avoirs et devis) ; les listes
    calculées au serveur (suivi de facturation, alertes compteurs, facturation groupée, suivi analytique, rentabilité)
    sont filtrées.
-4. **Imports en masse** : réservés aux administrateurs.
+5. **Imports en masse** : réservés aux administrateurs.
 
 ## Limite actuelle (palier 2)
 
-Les lectures passent par le serveur, mais les **règles Firestore n'interdisent pas encore** au navigateur de lire la
-base directement, et les **écritures** qu'il y fait (création ou modification d'un client, d'un site, d'une
-prestation…) ne sont pas contrôlées par périmètre. Un utilisateur techniquement averti pourrait donc lire
-ou modifier d'autres périmètres avec son propre compte. La suite du palier 2 fait passer les écritures par le serveur,
-puis ferme l'accès direct dans les règles.
+Lectures et écritures passent par le serveur, mais les **règles Firestore n'interdisent pas encore** au navigateur
+d'accéder directement à ces collections : un utilisateur techniquement averti pourrait encore les lire ou les modifier
+avec son propre compte, sans passer par l'application. La dernière étape du palier 2 ferme cet accès direct dans les
+règles (et sert les pièces justificatives par le serveur).
 
 Code : `src/lib/perimetre.ts` (règles, pures), `src/lib/auth/perimetre-server.ts`, `src/lib/auth/perimetre-cibles.ts`,
 `src/components/perimetre/acces.tsx`. Tests : `tests/perimetre.test.ts`, `tests/perimetre-flow.test.ts`.

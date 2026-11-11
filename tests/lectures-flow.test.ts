@@ -24,7 +24,8 @@ before(async () => {
         await set('contacts', `lc-t${v}`, { clientId: `lc-c${v}` });
         await set('invoices', `lc-f${v}`, { clientId: `lc-c${v}`, contractId: `lc-k${v}`, quoteId: `lc-d${v}`, projectId: `lc-x${v}`, invoiceNumber: 'B' });
         await set('invoices', `lc-f${v}2`, { clientId: `lc-c${v}`, contractId: `lc-k${v}`, quoteId: `lc-d${v}`, invoiceNumber: 'A' });
-        await set('meterReadings', `lc-r${v}`, { contractId: `lc-k${v}` });
+        await set('meters', `lc-m${v}`, { siteId: `lc-s${v}` });
+        await set('meterReadings', `lc-r${v}`, { contractId: `lc-k${v}`, meterId: `lc-m${v}` });
         for (const coll of ['amendments', 'terminations', 'renewals', 'trusteeChanges', 'beChanges']) await set(coll, `lc-e${v}-${coll}`, { contractId: `lc-k${v}` });
         await set('interests', `lc-i${v}`, { serviceId: `lc-p${v}` });
         await set('service_settlements', `lc-g${v}`, { serviceId: `lc-p${v}` });
@@ -49,7 +50,7 @@ test('fiches : dans le périmètre, lues ; hors périmètre, refusées ; inexist
 test('éléments d\'un objet : ceux du parent demandé, triés ; parent hors périmètre : refus ; parent inexistant : liste vide', async () => {
     const attendu: Record<string, [string, string]> = {
         contactsDuClient: ['c', 'lc-tl'], sitesDuClient: ['c', 'lc-sl'], contratsDuClient: ['c', 'lc-kl'], sitesDuContrat: ['k', 'lc-sl'], facturesDuContrat: ['k', 'lc-fl,lc-fl2'],
-        relevesDuContrat: ['k', 'lc-rl'], prestationsDuContrat: ['k', 'lc-pl'], prestationsDuSite: ['s', 'lc-pl'], avenantsDuContrat: ['k', 'lc-el-amendments'], resiliationsDuContrat: ['k', 'lc-el-terminations'],
+        relevesDuContrat: ['k', 'lc-rl'], relevesDuCompteur: ['m', 'lc-rl'], prestationsDuContrat: ['k', 'lc-pl'], prestationsDuSite: ['s', 'lc-pl'], avenantsDuContrat: ['k', 'lc-el-amendments'], resiliationsDuContrat: ['k', 'lc-el-terminations'],
         reconductionsDuContrat: ['k', 'lc-el-renewals'], syndicsDuContrat: ['k', 'lc-el-trusteeChanges'], beDuContrat: ['k', 'lc-el-beChanges'], interetsDeLaPrestation: ['p', 'lc-il'],
         reglementsDeLaPrestation: ['p', 'lc-gl'], versionsDuDevis: ['d', 'lc-vl1,lc-vl2'], facturesDuDevis: ['d', 'lc-fl,lc-fl2'], situationsDeLAffaire: ['x', 'lc-nl1,lc-nl2'], facturesDeLAffaire: ['x', 'lc-fl'],
     };

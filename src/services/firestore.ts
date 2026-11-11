@@ -1,5 +1,5 @@
 import { db } from '@/lib/firebase';
-import { lireServeur } from '@/services/lecture';
+import { ecrireServeur, lireServeur } from '@/services/lecture';
 import type { Client, Contact, Site, Contract, Invoice, CreditNote, MeterReading, Company, Agency, Sector, Activity, User, Role, Schedule, Term, Typology, VatRate, RevisionFormula, PaymentTerm, PricingRule, Market, Meter, MeterType, Index, IndexValue, RevisionRule, Service, InvoiceStatus, Amendment, Termination, Renewal, TrusteeChange, BeChange, Interest, Dju, DjuMonthly, WeatherStation, SettlementRule, ServiceSettlement, SettlementMethodType, SettlementTargetType, WorkProject, WorkQuote, ProgressSituation, AdvWorkQuote, AdvWorkQuoteVersion, AdvWorkQuoteLine, AdvWorkAffair, AdvWorkBudgetLine, AdvWorkLot, AdvWorkPoste, AdvWorkSituation, AdvWorkSituationLine, AdvPurchaseOrder, AdvPurchaseOrderLine, AdvCatalogArticle, AdvCatalogOuvrage, AdvOuvrageComposant } from '@/lib/types';
 import { collection, getDocs, doc, getDoc, addDoc, updateDoc, deleteDoc, query, where, DocumentData, writeBatch, runTransaction, Timestamp } from 'firebase/firestore';
 import { deleteFileFromUrl } from './storage';
@@ -84,30 +84,6 @@ export function formatId(prefix: string, number: number): string {
     return `${prefix}-${number.toString().padStart(5, '0')}`;
 }
 
-/**
- * Crée un document et lui attribue son code (PREFIX-00001) dans une même transaction :
- * le numéro n'est consommé que si le document est écrit (ni trou, ni doublon).
- * Le code est ensuite immuable (firestore.rules).
- */
-async function createWithCode(
-    collectionName: string,
-    counterName: string,
-    prefix: string,
-    data: DocumentData,
-): Promise<{ id: string; code: string }> {
-    const counterRef = doc(db, 'config', 'sequences');
-    const docRef = doc(collection(db, collectionName));
-    const code = await runTransaction(db, async (transaction) => {
-        const counterDoc = await transaction.get(counterRef);
-        const next = (counterDoc.exists() ? counterDoc.data()[counterName] || 0 : 0) + 1;
-        const newCode = formatId(prefix, next);
-        transaction.set(counterRef, { [counterName]: next }, { merge: true });
-        transaction.set(docRef, { ...data, code: newCode });
-        return newCode;
-    });
-    return { id: docRef.id, code };
-}
-
 
 // --- Fonctions de Service (Firestore) ---
 
@@ -121,82 +97,16 @@ export async function getClient(id: string): Promise<Client | null> {
 }
 
 export async function createClient(data: Omit<Client, 'id'>): Promise<any> {
-    const clientsCollection = collection(db, 'clients');
-
-    // Generate incremental Client Number (CLI-XXXXX)
-    const seq = await getNextSequence('client');
-    const clientNumber = formatId('CLI', seq);
-
-    const dataWithId = {
-        ...data,
-        externalCode: clientNumber, // Force the generated ID as externalCode
-    };
-
-    // Remove undefined values as Firestore doesn't support them
-    const cleanData = Object.fromEntries(
-        Object.entries(dataWithId).filter(([_, value]) => value !== undefined)
-    );
-    const docRef = await addDoc(clientsCollection, cleanData);
-    return { id: docRef.id, ...data };
+    return ecrireServeur<any>('createClient', [data]);
 }
 
 
 export async function updateClient(id: string, data: Partial<Omit<Client, 'id'>>) {
-    const clientDoc = doc(db, 'clients', id);
-    const before = data.name !== undefined ? (await getDoc(clientDoc)).get('name') as string | undefined : undefined;
-    await updateDoc(clientDoc, data);
-    if (data.name && before !== undefined && before !== data.name) await propagateClientName(id, before, data.name);
-}
-
-/** Report d'un renommage de client sur les noms recopiés : contrats (nom « client - libellé »), sites, compteurs. */
-async function propagateClientName(clientId: string, from: string, to: string) {
-    const [contracts, sites] = await Promise.all([
-        getDocs(query(collection(db, 'contracts'), where('clientId', '==', clientId))),
-        getDocs(query(collection(db, 'sites'), where('clientId', '==', clientId))),
-    ]);
-    const updates: [ReturnType<typeof doc>, DocumentData][] = [];
-    for (const c of contracts.docs) {
-        const label = c.get('label');
-        const name = String(c.get('name') ?? '');
-        updates.push([c.ref, { clientName: to, ...(label ? { name: `${to} - ${label}` } : name.startsWith(from) ? { name: to + name.slice(from.length) } : {}) }]);
-    }
-    for (const site of sites.docs) updates.push([site.ref, { clientName: to }]);
-    const siteIds = sites.docs.map(d => d.id);
-    for (let i = 0; i < siteIds.length; i += 30) {
-        const meters = await getDocs(query(collection(db, 'meters'), where('siteId', 'in', siteIds.slice(i, i + 30))));
-        for (const m of meters.docs) updates.push([m.ref, { clientName: to }]);
-    }
-    for (let i = 0; i < updates.length; i += 400) {
-        const batch = writeBatch(db);
-        for (const [ref, values] of updates.slice(i, i + 400)) batch.update(ref, values);
-        await batch.commit();
-    }
+    return ecrireServeur<any>('updateClient', [id, data]);
 }
 
 export async function deleteClient(id: string) {
-    // 1. Get all associated contacts and delete them
-    const contacts = await getContactsByClient(id);
-    for (const contact of contacts) {
-        await deleteContact(contact.id);
-    }
-
-    // 2. Get all associated sites
-    const sites = await getSitesByClient(id);
-    // 3. Delete all sites
-    for (const site of sites) {
-        await deleteSite(site.id);
-    }
-
-    // 4. Get all associated contracts
-    const contracts = await getContractsByClient(id);
-    // 5. Delete all contracts
-    for (const contract of contracts) {
-        await deleteContract(contract.id);
-    }
-
-    // 6. Delete the client
-    const clientDoc = doc(db, 'clients', id);
-    await deleteDoc(clientDoc);
+    return ecrireServeur<any>('deleteClient', [id]);
 }
 
 
@@ -207,25 +117,6 @@ export async function getContacts(): Promise<Contact[]> {
 
 export async function getContactsByClient(clientId: string): Promise<Contact[]> {
     return lireServeur<Contact[]>('contactsDuClient', { id: clientId }, []);
-}
-
-export async function createContact(data: Omit<Contact, 'id'>): Promise<Contact> {
-    const contactsCollection = collection(db, 'contacts');
-    const cleanData = Object.fromEntries(
-        Object.entries(data).filter(([_, value]) => value !== undefined)
-    );
-    const docRef = await addDoc(contactsCollection, cleanData);
-    return { id: docRef.id, ...data } as Contact;
-}
-
-export async function updateContact(id: string, data: Partial<Omit<Contact, 'id'>>) {
-    const contactDoc = doc(db, 'contacts', id);
-    await updateDoc(contactDoc, data);
-}
-
-export async function deleteContact(id: string) {
-    const contactDoc = doc(db, 'contacts', id);
-    await deleteDoc(contactDoc);
 }
 
 
@@ -243,20 +134,15 @@ export async function getSitesByContract(contractId: string): Promise<Site[]> {
 }
 
 export async function createSite(data: Omit<Site, 'id' | 'code'>) {
-    const cleanData = Object.fromEntries(Object.entries(data).filter(([, v]) => v !== undefined));
-    // Code Zenergya du site (SIT-XXXXX), attribué avec la création
-    const { id, code } = await createWithCode('sites', 'site', 'SIT', cleanData);
-    return { id, ...data, code };
+    return ecrireServeur<any>('createSite', [data]);
 }
 
 export async function updateSite(id: string, data: Partial<Omit<Site, 'id'>>) {
-    const siteDoc = doc(db, 'sites', id);
-    await updateDoc(siteDoc, data);
+    return ecrireServeur<any>('updateSite', [id, data]);
 }
 
 export async function deleteSite(id: string) {
-    const siteDoc = doc(db, 'sites', id);
-    await deleteDoc(siteDoc);
+    return ecrireServeur<any>('deleteSite', [id]);
 }
 
 export async function batchCreateSites(
@@ -264,21 +150,7 @@ export async function batchCreateSites(
     clientId: string,
     sitesData: Omit<Site, 'id' | 'contractId' | 'clientId'>[]
 ): Promise<{ created: number; ids: string[] }> {
-    const ids: string[] = [];
-    for (const siteData of sitesData) {
-        const created = await createSite({
-            ...siteData,
-            contractId,
-            clientId,
-        } as Omit<Site, 'id'>);
-        ids.push(created.id);
-    }
-    // Update contract siteIds
-    const contractDoc = doc(db, 'contracts', contractId);
-    const contractSnap = await getDoc(contractDoc);
-    const existingSiteIds = contractSnap.data()?.siteIds || [];
-    await updateDoc(contractDoc, { siteIds: [...existingSiteIds, ...ids] });
-    return { created: ids.length, ids };
+    return ecrireServeur<{ created: number; ids: string[] }>('batchCreateSites', [contractId, clientId, sitesData]);
 }
 // Contrats
 export async function getContracts(): Promise<Contract[]> {
@@ -294,62 +166,8 @@ export async function getContract(id: string): Promise<Contract | null> {
     return lireServeur<Contract | null>('contrat', { id }, null);
 }
 
-export async function createContract(data: Omit<Contract, 'id' | 'status' | 'validationStatus'>) {
-    // Generate incremental Contract Number (CTN-XXXXX)
-    const seq = await getNextSequence('contract');
-    const contractNumber = formatId('CTN', seq);
-
-    const newContractData: DocumentData = {
-        ...data,
-        contractNumber: contractNumber, // Force the generated ID
-        status: 'Brouillon',
-        validationStatus: 'pending_validation',
-        createdAt: new Date().toISOString(),
-    };
-
-    // Remove undefined values
-    Object.keys(newContractData).forEach(key => newContractData[key] === undefined && delete newContractData[key]);
-    // Convert all date strings to Date objects for Firestore
-    if (data.startDate) newContractData.startDate = new Date(data.startDate);
-    if (data.endDate) newContractData.endDate = new Date(data.endDate);
-    if (data.revisionP1?.date) newContractData.revisionP1.date = new Date(data.revisionP1.date);
-    if (data.revisionP2?.date) newContractData.revisionP2.date = new Date(data.revisionP2.date);
-    if (data.revisionP3?.date) newContractData.revisionP3.date = new Date(data.revisionP3.date);
-
-    const contractsCollection = collection(db, 'contracts');
-    const docRef = await addDoc(contractsCollection, newContractData);
-    return { id: docRef.id, ...newContractData };
-}
-
 export async function updateContract(id: string, data: Partial<Omit<Contract, 'id'>>) {
-    const contractDoc = doc(db, 'contracts', id);
-    const updateData: { [key: string]: any } = { ...data };
-    const revisionFields: ('revisionP1' | 'revisionP2' | 'revisionP3')[] = ['revisionP1', 'revisionP2', 'revisionP3'];
-    for (const field of revisionFields) {
-        if (data[field] && data[field]?.date && typeof data[field]!.date === 'string') {
-            if (!updateData[field]) updateData[field] = {};
-            updateData[field]!.date = new Date(data[field]!.date!);
-        }
-    }
-
-    Object.keys(updateData).forEach(key => updateData[key] === undefined && delete updateData[key]);
-    await updateDoc(contractDoc, updateData);
-}
-
-export async function deleteContract(id: string) {
-    // 1. Get contract to find documents
-    const contract = await getContract(id);
-    if (contract && contract.documents) {
-        // Delete each document
-        for (const doc of contract.documents) {
-            if (doc.url) {
-                await deleteFileFromUrl(doc.url);
-            }
-        }
-    }
-
-    const contractDoc = doc(db, 'contracts', id);
-    await deleteDoc(contractDoc);
+    return ecrireServeur<any>('updateContract', [id, data]);
 }
 
 
@@ -363,20 +181,13 @@ export async function getInvoice(id: string): Promise<Invoice | null> {
     return lireServeur<Invoice | null>('facture', { id }, null);
 }
 
-export async function getInvoicesByIds(ids: string[]): Promise<Invoice[]> {
-    if (ids.length === 0) return [];
-    const q = query(collection(db, 'invoices'), where('__name__', 'in', ids));
-    return getCollection<Invoice>(q);
-}
-
 
 export async function getInvoicesByContract(contractId: string): Promise<Invoice[]> {
     return lireServeur<Invoice[]>('facturesDuContrat', { id: contractId }, []);
 }
 
 export async function updateInvoiceStatus(id: string, status: InvoiceStatus) {
-    const invoiceDoc = doc(db, 'invoices', id);
-    await updateDoc(invoiceDoc, { status });
+    return ecrireServeur<any>('updateInvoiceStatus', [id, status]);
 }
 
 /**
@@ -384,10 +195,7 @@ export async function updateInvoiceStatus(id: string, status: InvoiceStatus) {
  * Une facture émise ne se supprime jamais : elle s'annule par un avoir (règles Firestore en appui).
  */
 export async function deleteProformaInvoice(invoice: Pick<Invoice, 'id' | 'status'>) {
-    if (invoice.status !== 'proforma') {
-        throw new Error("Seul un proforma peut être supprimé. Une facture émise s'annule par un avoir.");
-    }
-    await deleteDoc(doc(db, 'invoices', invoice.id));
+    return ecrireServeur<any>('deleteProformaInvoice', [invoice]);
 }
 
 
@@ -466,22 +274,16 @@ export async function deleteIndexValue(id: string) {
 
 // Compteurs (Meters)
 export async function createMeter(data: Omit<Meter, 'id' | 'code'>) {
-    const meterData = Object.fromEntries(Object.entries({
-        ...data,
-        lastModified: new Date().toISOString(),
-    }).filter(([, v]) => v !== undefined));
-    // Code Zenergya du compteur (CPT-XXXXX), attribué avec la création
-    const { id, code } = await createWithCode('meters', 'meter', 'CPT', meterData);
-    return { id, ...data, lastModified: meterData.lastModified as string, code };
+    return ecrireServeur<any>('createMeter', [data]);
 }
 export async function getMeters(): Promise<Meter[]> {
     return getCollection<Meter>(collection(db, 'meters'));
 }
 export async function updateMeter(id: string, data: Partial<Omit<Meter, 'id' | 'code'>>) {
-    return updateDoc(doc(db, 'meters', id), { ...data, lastModified: new Date().toISOString() });
+    return ecrireServeur<any>('updateMeter', [id, data]);
 }
 export async function deleteMeter(id: string) {
-    return deleteDoc(doc(db, 'meters', id));
+    return ecrireServeur<any>('deleteMeter', [id]);
 }
 
 // Relevés de compteur
@@ -494,8 +296,7 @@ export async function getMeterReadingsByContract(contractId: string): Promise<Me
 }
 
 export async function getMeterReadingsByMeter(meterId: string): Promise<MeterReading[]> {
-    const q = query(collection(db, 'meterReadings'), where("meterId", "==", meterId));
-    return getCollection<MeterReading>(q);
+    return lireServeur<MeterReading[]>('relevesDuCompteur', { id: meterId }, []);
 }
 
 // Relevés : écrits par le serveur seulement (services/readings-admin.ts, imports, API).
@@ -756,21 +557,9 @@ export async function deleteRevisionRule(id: string) {
 
 // Prestations (Services)
 export async function createService(data: Omit<Service, 'id'>) {
-    const created = await createSettingItem('services', data);
-    await refreshSiteAmounts(data.siteId);
-    return created;
+    return ecrireServeur<any>('createService', [data]);
 }
 
-/** Montants du site recalculés à partir de ses prestations (source unique de ce qui est facturé). */
-async function refreshSiteAmounts(siteId?: string) {
-    if (!siteId) return;
-    const siteRef = doc(db, 'sites', siteId);
-    const [siteSnap, servicesSnap] = await Promise.all([getDoc(siteRef), getDocs(query(collection(db, 'services'), where('siteId', '==', siteId)))]);
-    if (!siteSnap.exists()) return;
-    const site = { id: siteSnap.id, ...siteSnap.data() } as Site;
-    const next = computeSiteAmounts(site, servicesSnap.docs.map(d => ({ id: d.id, ...d.data() }) as Service), todayInParis());
-    if (next && amountsDiffer(site, next)) await updateDoc(siteRef, { ...next, amountsComputedAt: new Date().toISOString() });
-}
 export async function getServices(): Promise<Service[]> {
     return getCollection<Service>(collection(db, 'services'));
 }
@@ -781,15 +570,10 @@ export async function getServicesByContract(contractId: string): Promise<Service
     return lireServeur<Service[]>('prestationsDuContrat', { id: contractId }, []);
 }
 export async function updateService(id: string, data: Partial<Omit<Service, 'id'>>) {
-    const before = (await getDoc(doc(db, 'services', id))).get('siteId') as string | undefined;
-    await updateSettingItem('services', id, data);
-    await refreshSiteAmounts(data.siteId ?? before);
-    if (data.siteId && before && before !== data.siteId) await refreshSiteAmounts(before);
+    return ecrireServeur<any>('updateService', [id, data]);
 }
 export async function deleteService(id: string) {
-    const siteId = (await getDoc(doc(db, 'services', id))).get('siteId') as string | undefined;
-    await deleteSettingItem('services', id);
-    await refreshSiteAmounts(siteId);
+    return ecrireServeur<any>('deleteService', [id]);
 }
 
 // --- Fonctions de Gestion des Utilisateurs (Firestore) ---
@@ -828,103 +612,55 @@ export async function deleteUser(id: string) {
 
 // Avenants
 export async function createAmendment(data: Omit<Amendment, 'id'>) {
-    return createSettingItem('amendments', data);
-}
-export async function getAmendments(): Promise<Amendment[]> {
-    return getCollection<Amendment>(collection(db, 'amendments'));
+    return ecrireServeur<any>('createAmendment', [data]);
 }
 export async function getAmendmentsByContract(contractId: string): Promise<Amendment[]> {
     return lireServeur<Amendment[]>('avenantsDuContrat', { id: contractId }, []);
 }
-export async function updateAmendment(id: string, data: Partial<Omit<Amendment, 'id'>>) {
-    return updateSettingItem('amendments', id, data);
-}
-export async function deleteAmendment(id: string) {
-    return deleteSettingItem('amendments', id);
-}
-
 // Résiliations
 export async function createTermination(data: Omit<Termination, 'id'>) {
-    return createSettingItem('terminations', data);
-}
-export async function getTerminations(): Promise<Termination[]> {
-    return getCollection<Termination>(collection(db, 'terminations'));
+    return ecrireServeur<any>('createTermination', [data]);
 }
 export async function getTerminationsByContract(contractId: string): Promise<Termination[]> {
     return lireServeur<Termination[]>('resiliationsDuContrat', { id: contractId }, []);
 }
-export async function updateTermination(id: string, data: Partial<Omit<Termination, 'id'>>) {
-    return updateSettingItem('terminations', id, data);
-}
-export async function deleteTermination(id: string) {
-    return deleteSettingItem('terminations', id);
-}
-
 // Reconductions
 export async function createRenewal(data: Omit<Renewal, 'id'>) {
-    return createSettingItem('renewals', data);
-}
-export async function getRenewals(): Promise<Renewal[]> {
-    return getCollection<Renewal>(collection(db, 'renewals'));
+    return ecrireServeur<any>('createRenewal', [data]);
 }
 export async function getRenewalsByContract(contractId: string): Promise<Renewal[]> {
     return lireServeur<Renewal[]>('reconductionsDuContrat', { id: contractId }, []);
 }
-export async function updateRenewal(id: string, data: Partial<Omit<Renewal, 'id'>>) {
-    return updateSettingItem('renewals', id, data);
-}
-export async function deleteRenewal(id: string) {
-    return deleteSettingItem('renewals', id);
-}
-
 // Changements de Syndic
 export async function createTrusteeChange(data: Omit<TrusteeChange, 'id'>) {
-    return createSettingItem('trusteeChanges', data);
-}
-export async function getTrusteeChanges(): Promise<TrusteeChange[]> {
-    return getCollection<TrusteeChange>(collection(db, 'trusteeChanges'));
+    return ecrireServeur<any>('createTrusteeChange', [data]);
 }
 export async function getTrusteeChangesByContract(contractId: string): Promise<TrusteeChange[]> {
     return lireServeur<TrusteeChange[]>('syndicsDuContrat', { id: contractId }, []);
 }
-export async function updateTrusteeChange(id: string, data: Partial<Omit<TrusteeChange, 'id'>>) {
-    return updateSettingItem('trusteeChanges', id, data);
-}
-export async function deleteTrusteeChange(id: string) {
-    return deleteSettingItem('trusteeChanges', id);
-}
-
 // Changements de BE
 export async function createBeChange(data: Omit<BeChange, 'id'>) {
-    return createSettingItem('beChanges', data);
-}
-export async function getBeChanges(): Promise<BeChange[]> {
-    return getCollection<BeChange>(collection(db, 'beChanges'));
+    return ecrireServeur<any>('createBeChange', [data]);
 }
 export async function getBeChangesByContract(contractId: string): Promise<BeChange[]> {
     return lireServeur<BeChange[]>('beDuContrat', { id: contractId }, []);
 }
 
 // Interest
-export async function getInterests(): Promise<Interest[]> {
-    return getCollection<Interest>(collection(db, 'interests'));
-}
-
 export async function getInterestsByService(serviceId: string): Promise<Interest[]> {
     return lireServeur<Interest[]>('interetsDeLaPrestation', { id: serviceId }, []);
 }
 
 export async function createInterest(data: Omit<Interest, 'id'>): Promise<any> {
-    const docRef = await addDoc(collection(db, 'interests'), data);
-    return { id: docRef.id, ...data };
+    return ecrireServeur<any>('createInterest', [data]);
 }
 
 export async function updateInterest(id: string, data: Partial<Omit<Interest, 'id'>>) {
-    await updateDoc(doc(db, 'interests', id), data);
+    return ecrireServeur<any>('updateInterest', [id, data]);
 }
 
 export async function deleteInterest(id: string) {
-    await deleteDoc(doc(db, 'interests', id));
+    return ecrireServeur<any>('deleteInterest', [id]);
 }
 
 // DJU
@@ -1047,259 +783,10 @@ export async function createDju(data: Omit<Dju, 'id'>): Promise<any> {
 }
 
 // Relevés de Compteurs (Suite)
-export async function updateBeChange(id: string, data: Partial<Omit<BeChange, 'id'>>) {
-    return updateSettingItem('beChanges', id, data);
-}
-export async function deleteBeChange(id: string) {
-    return deleteSettingItem('beChanges', id);
-}
-
 // Orchestration
-export async function createClientAndContract(data: any) {
-
-    // 1. Prepare Client data (cleaned - no contacts, no contract fields)
-    const clientData: Omit<Client, 'id'> = {
-        name: data.name,
-        address: data.address,
-        postalCode: data.postalCode,
-        city: data.city,
-        clientType: data.clientType,
-        typologyId: data.typologyId,
-        representedBy: data.representedBy,
-        externalCode: data.externalCode,
-        isBe: data.isBe,
-        beName: data.beName,
-        beEmail: data.beEmail,
-        bePhone: data.bePhone,
-        useChorus: data.useChorus,
-        siret: data.siret,
-        chorusServiceCode: data.chorusServiceCode,
-        chorusLegalCommitmentNumber: data.chorusLegalCommitmentNumber,
-        chorusMarketNumber: data.chorusMarketNumber,
-        chorusServiceCodeRequired: data.chorusServiceCodeRequired,
-        chorusLegalCommitmentRequired: data.chorusLegalCommitmentRequired,
-        // Hierarchy
-        companyId: data.companyId,
-        agencyId: data.agencyId,
-        sectorId: data.sectorId,
-    };
-
-    // 2. Create Client
-    const newClient = await createClient(clientData);
-
-    // 3. Create Contacts (as separate entities)
-    const contacts: Contact[] = [];
-    if (data.technicalContactName || data.technicalContactEmail || data.technicalContactPhone) {
-        const contact = await createContact({
-            clientId: newClient.id,
-            type: 'technique',
-            name: data.technicalContactName || '',
-            email: data.technicalContactEmail || undefined,
-            phone: data.technicalContactPhone || undefined,
-            role: data.technicalContactRole || undefined,
-        });
-        contacts.push(contact);
-    }
-    if (data.billingContactName || data.billingContactEmail || data.billingContactPhone) {
-        const contact = await createContact({
-            clientId: newClient.id,
-            type: 'facturation',
-            name: data.billingContactName || '',
-            email: data.billingContactEmail || undefined,
-            phone: data.billingContactPhone || undefined,
-            role: data.billingContactRole || undefined,
-        });
-        contacts.push(contact);
-    }
-
-    // 4. Prepare Contract data (cleaned - P1/revision fields go to Site, not Contract)
-    const contractData: Omit<Contract, 'id' | 'status' | 'validationStatus'> = {
-        clientId: newClient.id,
-        clientName: newClient.name,
-        siteIds: [], // Updated after site creation
-        startDate: data.startDate,
-        endDate: data.endDate,
-        activityIds: data.activityIds || [],
-        activitiesDetails: data.activitiesDetails || [],
-        invoicingType: data.invoicingType || 'multi-site',
-
-        // Contract identification
-        name: data.contractName, // Contract Name
-        label: data.label,
-        contractNumber: data.contractNumber,
-        baseAmountP1: data.baseAmountP1,
-        baseAmountP2: data.baseAmountP2,
-        baseAmountP3: data.baseAmountP3,
-        baseAmountP3R: data.baseAmountP3R,
-
-        // Renewal conditions (contract-level)
-        renewal: data.renewal || false,
-        tacitRenewal: data.tacitRenewal || false,
-        renewalDuration: data.renewalDuration,
-        noticePeriod: data.noticePeriod,
-
-        documents: data.documents || [],
-
-        // Market type
-        marketType: data.marketType,
-
-        // Requester
-        requesterEmail: data.requesterEmail,
-    };
-
-    // 5. Create Contract
-    const newContract = await createContract(contractData);
-
-    // 6. Create Sites (supports mono and multi-site)
-    // Accept data.sites[] (new format) or fallback to data.site (legacy)
-    const sitesToCreate: any[] = data.sites && data.sites.length > 0
-        ? data.sites
-        : data.site ? [data.site] : [];
-
-    const createdSites: Site[] = [];
-    for (const site of sitesToCreate) {
-        const siteData: Omit<Site, 'id'> = {
-            contractId: newContract.id,
-            clientId: newClient.id,
-            clientName: newClient.name,
-            name: site.name || newClient.name,
-            address: site.address || data.address || '',
-            postalCode: site.postalCode || data.postalCode,
-            city: site.city || data.city,
-            billingSchedule: site.billingSchedule || 'Mensuel',
-            termId: site.term,
-            revisionP1: site.revisionP1 ? { formula: site.revisionP1 } : undefined,
-            revisionP2: site.revisionP2 ? { formula: site.revisionP2 } : undefined,
-            revisionP3: site.revisionP3 ? { formula: site.revisionP3 } : undefined,
-            hasHeating: site.hasHeating || false,
-            hasECS: site.hasECS || false,
-            hasInterest: site.hasInterest || false,
-            heatingReferenceDju: site.heatingReferenceDju,
-            heatingWeatherStation: site.heatingWeatherStation,
-            contractualNB: site.contractualNB,
-            smallQ: site.smallQ,
-        };
-        const newSite = await createSite(siteData);
-        createdSites.push(newSite);
-    }
-
-    if (createdSites.length > 0) {
-        await updateContract(newContract.id, { siteIds: createdSites.map(s => s.id) });
-    }
-
-    return { client: newClient, contract: newContract, contacts, sites: createdSites };
-}
-
 // Update an existing contract request (after refusal correction)
 export async function updateClientAndContract(contractId: string, clientId: string, data: any) {
-    // 1. Update client fields
-    await updateClient(clientId, {
-        name: data.name,
-        address: data.address,
-        postalCode: data.postalCode,
-        city: data.city,
-        clientType: data.clientType,
-        typologyId: data.typologyId,
-        representedBy: data.representedBy,
-        isBe: data.isBe,
-        beName: data.beName,
-        beEmail: data.beEmail,
-        bePhone: data.bePhone,
-        useChorus: data.useChorus,
-        siret: data.siret,
-        chorusServiceCode: data.chorusServiceCode,
-        chorusLegalCommitmentNumber: data.chorusLegalCommitmentNumber,
-        chorusMarketNumber: data.chorusMarketNumber,
-        companyId: data.companyId,
-        agencyId: data.agencyId,
-        sectorId: data.sectorId,
-    });
-
-    // 2. Contacts technique et facturation : mis à jour en place (les autres contacts du client sont conservés).
-    const existingContacts = await getContactsByClient(clientId);
-    for (const [type, prefix] of [['technique', 'technicalContact'], ['facturation', 'billingContact']] as const) {
-        const values = {
-            name: data[`${prefix}Name`] || '',
-            email: data[`${prefix}Email`] || '',
-            phone: data[`${prefix}Phone`] || '',
-            role: data[`${prefix}Role`] || '',
-        };
-        if (!values.name && !values.email && !values.phone) continue;
-        const current = existingContacts.find(c => c.type === type);
-        if (current) await updateDoc(doc(db, 'contacts', current.id), values);
-        else await createContact({ clientId, type, ...values } as Omit<Contact, 'id'>);
-    }
-
-    // 3. Sites : mis à jour en place (même code SIT, compteurs et prestations conservés), nouveaux créés ;
-    // un site retiré du formulaire n'est supprimé que s'il n'a ni compteur ni prestation.
-    const existingSites = await getSitesByContract(contractId);
-    const formSites: any[] = data.sites && data.sites.length > 0 ? data.sites : [];
-    const sync = planSiteSync(existingSites.map(s => s.id), formSites);
-    const blocked: string[] = [];
-    for (const id of sync.remove) {
-        const [meters, services] = await Promise.all([
-            getDocs(query(collection(db, 'meters'), where('siteId', '==', id))),
-            getDocs(query(collection(db, 'services'), where('siteId', '==', id))),
-        ]);
-        if (!meters.empty || !services.empty) {
-            const site = existingSites.find(s => s.id === id);
-            blocked.push(`${site?.code ?? ''} ${site?.name ?? id}`.trim());
-        }
-    }
-    if (blocked.length) {
-        throw new Error(`Site(s) retiré(s) mais encore équipé(s) de compteurs ou de prestations : ${blocked.join(', ')}. `
-            + "Rattachez-les à un autre contrat ou retirez d'abord leurs compteurs et prestations.");
-    }
-    const siteValues = (site: any) => Object.fromEntries(Object.entries({
-        clientId,
-        clientName: data.name,
-        name: site.name || data.name,
-        address: site.address || data.address || '',
-        postalCode: site.postalCode || data.postalCode,
-        city: site.city || data.city,
-        billingSchedule: site.billingSchedule || 'Mensuel',
-        termId: site.term,
-        revisionP1: site.revisionP1 ? { formula: site.revisionP1 } : undefined,
-        revisionP2: site.revisionP2 ? { formula: site.revisionP2 } : undefined,
-        revisionP3: site.revisionP3 ? { formula: site.revisionP3 } : undefined,
-        hasHeating: site.hasHeating || false,
-        hasECS: site.hasECS || false,
-        hasInterest: site.hasInterest || false,
-        heatingReferenceDju: site.heatingReferenceDju,
-        heatingWeatherStation: site.heatingWeatherStation,
-        contractualNB: site.contractualNB,
-        smallQ: site.smallQ,
-    }).filter(([, v]) => v !== undefined));
-    const newSiteIds: string[] = [];
-    for (const { id, values } of sync.update) {
-        await updateSite(id, siteValues(values));
-        newSiteIds.push(id);
-    }
-    for (const values of sync.create) {
-        const created = await createSite({ contractId, ...siteValues(values) } as Omit<Site, 'id' | 'code'>);
-        newSiteIds.push(created.id);
-    }
-    for (const id of sync.remove) await deleteSite(id);
-
-    // 4. Update contract + reset validation status
-    await updateContract(contractId, {
-        clientName: data.name,
-        name: data.contractName,
-        label: data.label,
-        startDate: data.startDate instanceof Date ? data.startDate.toISOString() : data.startDate,
-        endDate: data.endDate instanceof Date ? data.endDate.toISOString() : data.endDate,
-        baseAmountP1: data.baseAmountP1,
-        baseAmountP2: data.baseAmountP2,
-        baseAmountP3: data.baseAmountP3,
-        baseAmountP3R: data.baseAmountP3R,
-        renewal: data.renewal,
-        tacitRenewal: data.tacitRenewal,
-        renewalDuration: data.renewalDuration,
-        noticePeriod: data.noticePeriod,
-        siteIds: newSiteIds,
-        validationStatus: 'pending_validation',
-        refusalReason: '',
-    });
+    return ecrireServeur<any>('updateClientAndContract', [contractId, clientId, data]);
 }
 
 // Relevés de Compteurs (Suite)
@@ -1320,16 +807,15 @@ export async function getSettlementsByService(serviceId: string): Promise<Servic
 }
 
 export async function createSettlement(data: Omit<ServiceSettlement, 'id'>): Promise<any> {
-    const docRef = await addDoc(collection(db, 'service_settlements'), data);
-    return { id: docRef.id, ...data };
+    return ecrireServeur<any>('createSettlement', [data]);
 }
 
 export async function updateSettlement(id: string, data: Partial<Omit<ServiceSettlement, 'id'>>) {
-    await updateDoc(doc(db, 'service_settlements', id), data);
+    return ecrireServeur<any>('updateSettlement', [id, data]);
 }
 
 export async function deleteSettlement(id: string): Promise<void> {
-    await deleteDoc(doc(db, 'service_settlements', id));
+    return ecrireServeur<void>('deleteSettlement', [id]);
 }
 
 export async function initializeSettlementRules() {

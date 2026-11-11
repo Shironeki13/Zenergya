@@ -62,6 +62,7 @@ export const LECTURES = {
     sitesDuContrat: enfants('sites', 'contractId', 'contrat'),
     facturesDuContrat: enfants('invoices', 'contractId', 'contrat'),
     relevesDuContrat: enfants('meterReadings', 'contractId', 'contrat'),
+    relevesDuCompteur: enfants('meterReadings', 'meterId', 'compteur'),
     prestationsDuContrat: enfants('services', 'contractId', 'contrat'),
     prestationsDuSite: enfants('services', 'siteId', 'site'),
     avenantsDuContrat: enfants('amendments', 'contractId', 'contrat'),
