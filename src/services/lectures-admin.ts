@@ -63,6 +63,13 @@ export const LECTURES = {
     facturesDuContrat: enfants('invoices', 'contractId', 'contrat'),
     relevesDuContrat: enfants('meterReadings', 'contractId', 'contrat'),
     relevesDuCompteur: enfants('meterReadings', 'meterId', 'compteur'),
+    /** Relevés de tous les compteurs d'un site. */
+    relevesDuSite: (async (a, garde) => {
+        if ((await acces(garde, 'site', a.id)) === 'absent') return [];
+        const compteurs = (await adminDb.collection('meters').where('siteId', '==', a.id).select().get()).docs.map(d => d.id);
+        const lots = await Promise.all(Array.from({ length: Math.ceil(compteurs.length / 30) }, (_, i) => adminDb.collection('meterReadings').where('meterId', 'in', compteurs.slice(i * 30, i * 30 + 30)).get()));
+        return lots.flatMap(docs);
+    }) as Lecture,
     prestationsDuContrat: enfants('services', 'contractId', 'contrat'),
     prestationsDuSite: enfants('services', 'siteId', 'site'),
     avenantsDuContrat: enfants('amendments', 'contractId', 'contrat'),

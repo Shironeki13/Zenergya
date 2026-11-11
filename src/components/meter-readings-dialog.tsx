@@ -1,5 +1,6 @@
 'use client';
 
+import { getMeterReadingsByMeter } from '@/services/firestore';
 import { useConfirm } from '@/components/confirm-provider';
 import { useState, useMemo } from 'react';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
@@ -18,7 +19,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { useToast } from "@/hooks/use-toast";
 import { deleteReadingAction, readingLocksAction, saveReadingAction } from "@/lib/readings/actions";
 import type { ReadingLocks } from "@/services/readings-admin";
-import { useCollections, useData } from "@/context/data-context";
+import { useData } from "@/context/data-context";
 import type { Meter, MeterReading } from "@/lib/types";
 
 interface MeterReadingsDialogProps {
@@ -29,8 +30,9 @@ interface MeterReadingsDialogProps {
 export function MeterReadingsDialog({ meter, trigger }: MeterReadingsDialogProps) {
     const confirmer = useConfirm();
     const { toast } = useToast();
-    const { meterReadings, reloadData } = useData();
-    useCollections('meterReadings');
+    const { reloadData } = useData();
+    // Relevés de ce compteur, lus au serveur à l'ouverture du dialogue (jamais tous les relevés).
+    const [meterReadings, setMeterReadings] = useState<MeterReading[]>([]);
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [editingId, setEditingId] = useState<string | null>(null);
     const [isFormOpen, setIsFormOpen] = useState(false);
@@ -50,8 +52,9 @@ export function MeterReadingsDialog({ meter, trigger }: MeterReadingsDialogProps
     }, [meterReadings, meter.id]);
 
     const loadLocks = async () => {
-        const r = await readingLocksAction(meter.id);
+        const [r, releves] = await Promise.all([readingLocksAction(meter.id), getMeterReadingsByMeter(meter.id)]);
         if (r.success) setLocks(r.data);
+        setMeterReadings(releves);
     };
     const editingLocked = editingId ? locks.locked[editingId] : undefined;
 
@@ -78,7 +81,7 @@ export function MeterReadingsDialog({ meter, trigger }: MeterReadingsDialogProps
         const r = await deleteReadingAction(id);
         if (!r.success) { toast({ title: "Suppression refusée", description: r.error, variant: "destructive" }); return; }
         toast({ title: "Succès", description: "Relevé supprimé." });
-        await reloadData(['meterReadings', 'meters']);
+        await reloadData(['meters']);   // le dernier relevé du compteur a pu changer
         await loadLocks();
     };
 
@@ -91,7 +94,7 @@ export function MeterReadingsDialog({ meter, trigger }: MeterReadingsDialogProps
         setIsSubmitting(false);
         if (!r.success) { toast({ title: "Enregistrement refusé", description: r.error, variant: "destructive" }); return; }
         toast({ title: "Succès", description: editingId ? "Relevé mis à jour." : "Relevé ajouté." });
-        await reloadData(['meterReadings', 'meters']);
+        await reloadData(['meters']);   // le dernier relevé du compteur a pu changer
         await loadLocks();
         resetForm();
     };

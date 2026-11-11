@@ -26,9 +26,9 @@ import { useCollections, useData } from '@/context/data-context';
 import { downloadCSV } from '@/lib/utils';
 
 export default function MetersPage() {
-  const { sites, meters, meterTypes, meterReadings, reloadData, isLoading: chargementBase } = useData();
+  const { sites, meters, meterTypes, reloadData, isLoading: chargementBase } = useData();
   // Collections volumineuses, chargées à la demande : l'écran attend qu'elles soient en mémoire.
-  const pret = useCollections('meters', 'meterReadings');
+  const pret = useCollections('meters');
   const isLoading = chargementBase || !pret;
   const confirmer = useConfirm();
   const { toast } = useToast();
@@ -103,7 +103,7 @@ export default function MetersPage() {
         await createMeter(meterData as Omit<Meter, 'id' | 'code'>);
         toast({ title: 'Compteur créé', description: 'Le nouveau compteur a été ajouté avec succès.' });
       }
-      await reloadData(['meters', 'meterReadings']);
+      await reloadData(['meters']);
       setDialogOpen(false);
       resetForm();
     } catch (error) {
@@ -118,7 +118,7 @@ export default function MetersPage() {
     try {
       await deleteMeter(meter.id);
       toast({ title: 'Compteur supprimé', description: `${meter.code} a été supprimé.` });
-      await reloadData(['meters', 'meterReadings']);
+      await reloadData(['meters']);
     } catch (error) {
       toast({ title: 'Erreur', description: 'Impossible de supprimer le compteur.', variant: 'destructive' });
     }
@@ -127,18 +127,14 @@ export default function MetersPage() {
   type Ligne = Meter & { site: string; client: string; dernierReleve: string | null };
   const lignes: Ligne[] = useMemo(() => {
     const siteMap = new Map(sites.map(s => [s.id, s]));
-    const derniers = new Map<string, string>();
-    for (const r of meterReadings) {
-      const d = derniers.get(r.meterId);
-      if (!d || Date.parse(r.date) > Date.parse(d)) derniers.set(r.meterId, r.date);
-    }
     return meters.map(m => ({
       ...m,
       site: siteMap.get(m.siteId)?.name ?? m.siteName ?? '',
       client: siteMap.get(m.siteId)?.clientName ?? m.clientName ?? '',
-      dernierReleve: derniers.get(m.id) ?? null,
+      // Tenu à jour par le serveur sur le compteur : la liste ne charge aucun relevé.
+      dernierReleve: m.lastReadingDate ?? null,
     }));
-  }, [meters, sites, meterReadings]);
+  }, [meters, sites]);
 
   const ancien = (r: Ligne) => r.status !== 'off' && (!r.dernierReleve || Date.parse(r.dernierReleve) < Date.now() - 45 * 86_400_000);
   const colonnes: Colonne<Ligne>[] = useMemo(() => [

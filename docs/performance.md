@@ -8,7 +8,8 @@ Les écrans partagent des données chargées une fois par `DataProvider` (`src/c
 | | Collections | Quand |
 |---|---|---|
 | **À l'ouverture** | référentiels (sociétés, agences, secteurs, activités, TVA, échéanciers, termes, typologies, marchés, règles de révision, de prix et de règlement, indices, types de compteurs, stations météo, rôles, utilisateurs) et listes de base (clients, contrats, sites, prestations) | à la connexion |
-| **À la demande** | factures, avoirs, relevés de compteurs, valeurs d'indices, contacts, compteurs | au premier écran qui en a besoin ; gardées ensuite en mémoire |
+| **À la demande** | factures, avoirs, valeurs d'indices, contacts, compteurs | au premier écran qui en a besoin ; gardées ensuite en mémoire |
+| **Jamais en entier** | relevés de compteurs | lus par compteur ou par site (lectures `relevesDuCompteur`, `relevesDuSite`) |
 
 Les collections **à périmètre** (clients, contrats, sites, prestations, compteurs, relevés, factures, avoirs, contacts)
 sont lues par le serveur en **une seule requête** (`/api/donnees?c=…`), filtrées pour l'utilisateur ; les référentiels
@@ -51,7 +52,20 @@ son type dans `DataContextType` ; puis, pour un référentiel, son chargeur dans
 
 Les temps d'ouverture mesurés figurent dans le compte rendu du lot ; ils dépendent du volume de données.
 
+## Relevés de compteurs
+
+Les relevés sont le plus gros volume (un par compteur et par mois, sur des années) : ils ne sont jamais chargés en
+entier par le navigateur.
+
+- **Liste des compteurs** : le dernier relevé (date, index, type) est inscrit **sur le compteur**
+  (`lastReadingDate`, `lastReadingValue`, `lastReadingType`), tenu à jour par le serveur à chaque saisie, modification,
+  suppression ou import de relevé, API comprise (`majDerniersReleves`, `src/services/readings-admin.ts`).
+- **Relevés d'un compteur** (dialogue) : lus à l'ouverture ; **fiche d'un site** : relevés de ses compteurs seulement.
+- **Reprise de l'existant** : `npm run releves:reprise` (simulation), puis `-- --apply`, une fois, pour inscrire le
+  dernier relevé sur les compteurs déjà en base.
+
 ## Limite connue
 
-Les factures, avoirs et relevés sont encore chargés **en entier** par les écrans qui les utilisent. Avec plusieurs
-années de données réelles, il faudra les charger par période (requêtes bornées, pagination).
+Les factures et les avoirs sont encore chargés **en entier** par les écrans qui les utilisent : ils seront chargés par
+période et par objet (lots suivants). Côté serveur, les alertes compteurs et la facturation lisent encore les relevés
+de tous les compteurs concernés.

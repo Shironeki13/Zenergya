@@ -6,6 +6,8 @@ import { NextRequest } from 'next/server';
 import { adminDb } from '../src/lib/firebase-admin';
 import { createApiKey } from '../src/services/api-admin';
 import { applyImport } from '../src/services/imports-admin';
+import { deleteReading, dernierReleve, majDerniersReleves, saveReading } from '../src/services/readings-admin';
+import { lire } from '../src/services/lectures-admin';
 import { GET as list, POST as upsert } from '../src/app/api/v1/[resource]/route';
 import { GET as detail } from '../src/app/api/v1/[resource]/[ref]/route';
 
@@ -125,4 +127,37 @@ test('import de fichier : formats français, relevé à date texte (ancienne sai
     const created = (await adminDb.collection('meterReadings').doc(report.results[1].id).get()).data()!;
     assert.equal(created.source, 'IMPORT');
     assert.equal(created.date.toDate().toISOString(), '2025-04-01T04:00:00.000Z');   // heure d'été
+});
+
+test('dernier relevé tenu à jour sur le compteur : API, saisie, modification, suppression, import ; relevés d\'un site', async () => {
+    const compteur = async (id = 'rd-m1') => { const d = await adminDb.collection('meters').doc(id).get(); return [d.get('lastReadingDate') ?? null, d.get('lastReadingValue') ?? null, d.get('lastReadingType') ?? null]; };
+    // Les envois par l'API des tests précédents ont déjà inscrit le dernier relevé.
+    const avant = await compteur();
+    assert.match(String(avant[0]), /^\d{4}-\d{2}-\d{2}$/);
+    // Saisie d'un relevé plus récent, puis d'un plus ancien : le dernier reste le plus récent.
+    const recent = await saveReading({ meterId: 'rd-m1', date: '2026-06-15T10:00:00Z', value: 9000, type: 'REEL' }, 'u@v.fr');
+    assert.deepEqual(await compteur(), ['2026-06-15', 9000, 'REEL']);
+    const ancien = await saveReading({ meterId: 'rd-m1', date: '2026-05-10T10:00:00Z', value: 8800, type: 'ESTIME' }, 'u@v.fr');
+    assert.deepEqual(await compteur(), ['2026-06-15', 9000, 'REEL']);
+    // Modification puis suppression du plus récent : le compteur suit.
+    await saveReading({ id: recent, meterId: 'rd-m1', date: '2026-06-15T10:00:00Z', value: 9050, type: 'CORRIGE' }, 'u@v.fr');
+    assert.deepEqual(await compteur(), ['2026-06-15', 9050, 'CORRIGE']);
+    await deleteReading(recent);
+    assert.deepEqual(await compteur(), ['2026-05-10', 8800, 'ESTIME']);
+    await deleteReading(ancien);
+    assert.deepEqual(await compteur(), avant);
+    // Import de fichier : le dernier relevé du compteur importé est remis à jour.
+    await applyImport('readings', [['Compteur', 'Date', 'Index'], ['CPT-08802', '20/07/2026', '321,5']], { fileName: 'r.csv', by: 'u@v.fr' });
+    assert.deepEqual(await compteur('rd-m2'), ['2026-07-20', 321.5, 'REEL']);
+    // Compteur sans relevé : champs vides ; fonction pure : à date égale, le dernier de la liste.
+    await adminDb.collection('meters').doc('rd-m3').set({ code: 'CPT-08803', siteId: 'rd-site' });
+    await majDerniersReleves(['rd-m3', 'inconnu', '']);
+    assert.deepEqual(await compteur('rd-m3'), [null, null, null]);
+    assert.deepEqual(dernierReleve([{ date: '2026-01-01', value: 1 }, { date: '2026-03-01', value: 3, type: 'AUTO' }, { date: '2026-02-01', value: 2 }, { date: 'illisible', value: 9 }]), { lastReadingDate: '2026-03-01', lastReadingValue: 3, lastReadingType: 'AUTO' });
+    // Lecture ciblée : les relevés d'un site sont ceux de ses compteurs, et seulement eux.
+    const admin = { uid: 'a', email: 'a@v.fr', isAdmin: true, isContratheque: false, isAcheteur: false, profile: { id: 'a', scope: { companyIds: [], agencyIds: [], sectorIds: [] } } } as never;
+    const duSite = await lire('relevesDuSite', { id: 'rd-site' }, admin) as { meterId: string }[];
+    const total = (await adminDb.collection('meterReadings').where('meterId', 'in', ['rd-m1', 'rd-m2', 'rd-m3']).get()).size;
+    assert.ok(duSite.length === total && total > 0 && duSite.every(r => ['rd-m1', 'rd-m2'].includes(r.meterId)));
+    assert.deepEqual(await lire('relevesDuSite', { id: 'site-inconnu' }, admin), []);
 });

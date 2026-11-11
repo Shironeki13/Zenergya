@@ -1,5 +1,6 @@
 'use client';
 
+import { lireServeur } from '@/services/lecture';
 import { useConfirm } from '@/components/confirm-provider';
 import Link from 'next/link';
 import { useState, useEffect, useMemo } from 'react';
@@ -28,7 +29,7 @@ import {
     enVigueur, libellePrestation, manquesPrestation, montantSite, type OngletSite, type PointAFaire, type SiteModifiable,
 } from '@/components/sites/fiche-site';
 import { updateSite, createService, updateService, deleteService, createMeter, updateMeter, deleteMeter } from '@/services/firestore';
-import type { Site, Contract, Service, Meter, RevisionRule, Activity, Term, Schedule, PricingRule, ServiceType, ServiceInitialIndexValue, Index, IndexValue, ServiceBillingLine, BillingLineType } from '@/lib/types';
+import type { Site, Contract, Service, Meter, MeterReading, RevisionRule, Activity, Term, Schedule, PricingRule, ServiceType, ServiceInitialIndexValue, Index, IndexValue, ServiceBillingLine, BillingLineType } from '@/lib/types';
 import { MeterReadingsDialog } from '@/components/meter-readings-dialog';
 import { Separator } from '@/components/ui/separator';
 import { Switch } from '@/components/ui/switch';
@@ -46,11 +47,15 @@ export default function SiteDetailsPage() {
     const confirmer = useConfirm();
     const params = useParams();
     const router = useRouter();
-    const { sites, contracts, meters, services, activities, revisionRules, pricingRules, terms, schedules, reloadData, isLoading: chargementBase, indices, indexValues, settlementRules, meterReadings, vatRates, invoices, weatherStations } = useData();
+    const { sites, contracts, meters, services, activities, revisionRules, pricingRules, terms, schedules, reloadData, isLoading: chargementBase, indices, indexValues, settlementRules, vatRates, invoices, weatherStations } = useData();
     // Collections volumineuses, chargées à la demande : l'écran attend qu'elles soient en mémoire.
-    const pret = useCollections('meters', 'indexValues', 'meterReadings', 'invoices');
+    const pret = useCollections('meters', 'indexValues', 'invoices');
     const isLoading = chargementBase || !pret;
     const siteId = params.id as string;
+    // Relevés des compteurs de ce site, lus au serveur (jamais tous les relevés) ; relus quand un compteur change
+    // (son dernier relevé est tenu à jour à chaque saisie).
+    const [meterReadings, setMeterReadings] = useState<MeterReading[]>([]);
+    useEffect(() => { if (siteId && pret) lireServeur<MeterReading[]>('relevesDuSite', { id: siteId }, []).then(setMeterReadings).catch(() => undefined); }, [siteId, meters, pret]);
 
     const [site, setSite] = useState<Site | null>(null);
     const [contract, setContract] = useState<Contract | null>(null);
@@ -192,7 +197,7 @@ export default function SiteDetailsPage() {
                 await createMeter(data);
                 toast({ title: "Succès", description: "Compteur créé." });
             }
-            await reloadData(['meters', 'meterReadings']);
+            await reloadData(['meters']);
             setIsMeterDialogOpen(false);
         } catch (error) {
             console.error(error);
@@ -205,7 +210,7 @@ export default function SiteDetailsPage() {
         try {
             await deleteMeter(id);
             toast({ title: "Succès", description: "Compteur supprimé." });
-            await reloadData(['meters', 'meterReadings']);
+            await reloadData(['meters']);
         } catch (error) {
             toast({ title: "Erreur", description: "Impossible de supprimer le compteur.", variant: "destructive" });
         }
@@ -694,12 +699,8 @@ export default function SiteDetailsPage() {
     const prestationsEnVigueur = siteServices.filter(s => enVigueur(s));
     const montantAnnuel = prestationsEnVigueur.reduce((t, s) => t + (Number(s.price) || 0), 0);
     const incompletes = siteServices.filter(s => s.isActive !== false && manquesPrestation(s).length > 0);
-    const derniersReleves = new Map<string, string>();
-    for (const r of meterReadings) {
-        if (!siteMeters.some(m => m.id === r.meterId)) continue;
-        const d = derniersReleves.get(r.meterId);
-        if (!d || Date.parse(r.date) > Date.parse(d)) derniersReleves.set(r.meterId, r.date);
-    }
+    // Dernier relevé : tenu à jour par le serveur sur chaque compteur.
+    const derniersReleves = new Map<string, string>(siteMeters.filter(m => m.lastReadingDate).map(m => [m.id, m.lastReadingDate!]));
     const sansReleve = siteMeters.filter(m => m.status !== 'off' && (!derniersReleves.get(m.id) || Date.parse(derniersReleves.get(m.id)!) < Date.now() - JOURS_SANS_RELEVE * 86_400_000));
     const maintenant = new Date();
     const echeancesEnRetard = [...periodesParService.values()].flat().filter(p => !p.invoice && p.dueDate <= maintenant)

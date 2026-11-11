@@ -1,4 +1,5 @@
 import 'server-only';
+import { majDerniersReleves } from '@/services/readings-admin';
 import { FieldValue, Timestamp } from 'firebase-admin/firestore';
 import { adminDb } from '@/lib/firebase-admin';
 import { IMPORT_ENTITIES, type ImportEntityKey } from '@/lib/imports/definitions';
@@ -1333,6 +1334,17 @@ export async function applyImport(entity: ImportEntityKey, table: unknown[][], m
         const batch = adminDb.batch();
         writes.slice(i, i + 400).forEach(w => w(batch));
         await batch.commit();
+    }
+
+    // Relevés importés : le dernier relevé de chaque compteur concerné est remis à jour.
+    if (entity === 'readings') {
+        const compteurs = new Set<string>();
+        for (const item of creates) if (item.data?.meterId) compteurs.add(String(item.data.meterId));
+        for (const item of updates) {
+            const id = item.data?.meterId ? String(item.data.meterId) : String((await coll.doc(item.targetId!).get()).get('meterId') ?? '');
+            if (id) compteurs.add(id);
+        }
+        await majDerniersReleves([...compteurs]);
     }
 
     // Paramétrage P1 (colonnes « P1 · … ») : versions ajoutées une fois l'élément écrit (identifiant d'une création).

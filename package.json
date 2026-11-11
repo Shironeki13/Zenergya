@@ -23,7 +23,8 @@
     "demo:extraction": "FIREBASE_PROJECT_ID=demo-zenergya GCLOUD_PROJECT=demo-zenergya FIRESTORE_EMULATOR_HOST=127.0.0.1:8080 FIREBASE_AUTH_EMULATOR_HOST=127.0.0.1:9099 FIREBASE_STORAGE_EMULATOR_HOST=127.0.0.1:9199 tsx --require ./tests/setup-server.cjs scripts/demo/extraction.ts demo-extraction.json && python3 scripts/demo/extraction.py demo-extraction.json demo-extraction.xlsx",
     "analytique:reprise": "tsx --require ./tests/setup-server.cjs scripts/analytique-reprise.ts",
     "affaires:reprise": "tsx --require ./tests/setup-server.cjs scripts/affaires-reprise.ts",
-    "functions:build": "esbuild functions/indices-sync/index.ts --bundle --platform=node --target=node22 --format=cjs --outfile=functions/indices-sync/dist/index.js --alias:@=./src --alias:server-only=./functions/indices-sync/vide.js --external:firebase-admin --external:firebase-admin/* --external:cheerio --log-level=warning"
+    "functions:build": "esbuild functions/indices-sync/index.ts --bundle --platform=node --target=node22 --format=cjs --outfile=functions/indices-sync/dist/index.js --alias:@=./src --alias:server-only=./functions/indices-sync/vide.js --external:firebase-admin --external:firebase-admin/* --external:cheerio --log-level=warning",
+    "releves:reprise": "tsx --require ./tests/setup-server.cjs scripts/releves-reprise.ts"
   },
   "dependencies": {
     "@genkit-ai/google-genai": "^1.24.0",

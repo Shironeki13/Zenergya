@@ -298,6 +298,10 @@ export type Meter = {
     location?: string;
     status: 'on' | 'off';
     lastModified: string; // ISO date string
+    /** Dernier relevé du compteur (jour AAAA-MM-JJ, index, type) : tenu à jour par le serveur à chaque saisie, suppression ou import de relevé. */
+    lastReadingDate?: string | null;
+    lastReadingValue?: number | null;
+    lastReadingType?: string | null;
     modifiedBy: string; // user name/id
 }
 
@@ -1195,7 +1199,7 @@ export type ExtractContractInfoOutput = z.infer<typeof ExtractContractInfoOutput
 
 // Data Context Type
 /** Collections volumineuses : chargées seulement quand un écran en a besoin, puis gardées en mémoire. */
-export const LAZY_COLLECTIONS = ['invoices', 'creditNotes', 'meterReadings', 'indexValues', 'contacts', 'meters'] as const;
+export const LAZY_COLLECTIONS = ['invoices', 'creditNotes', 'indexValues', 'contacts', 'meters'] as const;
 export type LazyCollectionKey = typeof LAZY_COLLECTIONS[number];
 /** Collections chargées à l'ouverture : référentiels et listes de base (clients, contrats, sites, prestations). */
 export const EAGER_COLLECTIONS = [
@@ -1215,7 +1219,6 @@ export type DataContextType = {
     indexValues: IndexValue[];
     meters: Meter[];
     meterTypes: MeterType[];
-    meterReadings: MeterReading[];
     companies: Company[];
     agencies: Agency[];
     sectors: Sector[];

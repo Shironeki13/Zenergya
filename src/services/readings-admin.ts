@@ -56,6 +56,32 @@ export type ReadingInput = { id?: string; meterId: string; date: string; value: 
 const TYPES: MeterReading['type'][] = ['REEL', 'ESTIME', 'CORRIGE', 'AUTO'];
 const fr = (d: string) => d.split('-').reverse().join('/');
 
+/** Dernier relevé d'une liste (le plus récent ; à date égale, le dernier enregistré) : jour, index, type. */
+export function dernierReleve(releves: { date: unknown; value: unknown; type?: unknown }[]): { lastReadingDate: string | null; lastReadingValue: number | null; lastReadingType: string | null } {
+    let meilleur: { jour: string; t: number; value: number; type: string | null } | null = null;
+    for (const r of releves) {
+        const jour = toDay(r.date as never);
+        if (!jour) continue;
+        const t = typeof (r.date as { toMillis?: () => number })?.toMillis === 'function' ? (r.date as { toMillis: () => number }).toMillis() : Date.parse(String(r.date));
+        if (!meilleur || t >= meilleur.t) meilleur = { jour, t, value: Number(r.value), type: r.type ? String(r.type) : null };
+    }
+    return { lastReadingDate: meilleur?.jour ?? null, lastReadingValue: meilleur ? meilleur.value : null, lastReadingType: meilleur?.type ?? null };
+}
+
+/**
+ * Tient à jour, sur chaque compteur, son dernier relevé (date, index, type) : la liste des compteurs l'affiche sans
+ * charger les relevés. À appeler après toute écriture de relevés (saisie, suppression, import, API).
+ */
+export async function majDerniersReleves(meterIds: string[]): Promise<void> {
+    for (const id of [...new Set(meterIds.filter(Boolean))]) {
+        const ref = adminDb.collection('meters').doc(id);
+        const [compteur, releves] = await Promise.all([ref.get(), adminDb.collection('meterReadings').where('meterId', '==', id).get()]);
+        if (!compteur.exists) continue;
+        const d = dernierReleve(releves.docs.map(x => ({ date: x.get('date'), value: x.get('value'), type: x.get('type') })));
+        if (compteur.get('lastReadingDate') !== d.lastReadingDate || compteur.get('lastReadingValue') !== d.lastReadingValue || compteur.get('lastReadingType') !== d.lastReadingType) await ref.update(d);
+    }
+}
+
 /** Crée ou modifie un relevé saisi à l'écran (source MANUEL à la création). */
 export async function saveReading(input: ReadingInput, by: string): Promise<string> {
     const at = new Date(input.date);
@@ -78,6 +104,7 @@ export async function saveReading(input: ReadingInput, by: string): Promise<stri
         if (locked[input.id] && changes) throw new Error(`Relevé repris dans ${locked[input.id]} : index, date et type ne se modifient plus (le commentaire, si). Une correction passe par un avoir.`);
         if (!sameDate && lastBilled && day <= lastBilled.date) throw new Error(`Période déjà facturée jusqu'au ${fr(lastBilled.date)} (facture ${lastBilled.invoice}) : ce relevé ne peut pas y être déplacé.`);
         await ref.update({ date: Timestamp.fromDate(at), value: input.value, type: input.type, comment, modifiedBy: by, modifiedAt: new Date().toISOString() });
+        await majDerniersReleves([input.meterId]);
         return input.id;
     }
     if (lastBilled && day <= lastBilled.date) throw new Error(`Période déjà facturée jusqu'au ${fr(lastBilled.date)} (facture ${lastBilled.invoice}) : un relevé antérieur ne s'ajoute plus.`);
@@ -89,6 +116,7 @@ export async function saveReading(input: ReadingInput, by: string): Promise<stri
         meterId: input.meterId, date: Timestamp.fromDate(at), value: input.value, type: input.type, source: 'MANUEL', comment,
         unit: meter.get('unit') ?? null, ...(contractId && { contractId }), createdBy: by, createdAt: new Date().toISOString(),
     });
+    await majDerniersReleves([input.meterId]);
     return ref.id;
 }
 
@@ -99,4 +127,5 @@ export async function deleteReading(id: string): Promise<void> {
     const { locked } = await readingLocks(String(snap.get('meterId')));
     if (locked[id]) throw new Error(`Relevé repris dans ${locked[id]} : il ne se supprime pas.`);
     await snap.ref.delete();
+    await majDerniersReleves([String(snap.get('meterId'))]);
 }

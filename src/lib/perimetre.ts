@@ -33,13 +33,13 @@ type AvecId = { id: string };
 /** Collections partagées entre les écrans, telles que les charge le navigateur. */
 export type CollectionsPerimetre = {
     clients: (AvecId & Rattachement)[]; contracts: (AvecId & { clientId?: string })[]; sites: (AvecId & { clientId?: string; contractId?: string })[];
-    services: (AvecId & { contractId?: string; siteId?: string })[]; meters: (AvecId & { siteId?: string })[]; meterReadings: (AvecId & { meterId?: string })[];
+    services: (AvecId & { contractId?: string; siteId?: string })[]; meters: (AvecId & { siteId?: string })[];
     invoices: (AvecId & { clientId?: string })[]; creditNotes: (AvecId & { clientId?: string })[]; contacts: (AvecId & { clientId?: string })[];
 };
 
 /**
  * Ne garde que les objets du périmètre : clients par leur rattachement ; contrats, sites, factures, avoirs et contacts
- * par leur client ; prestations par leur contrat ou leur site ; compteurs par leur site ; relevés par leur compteur.
+ * par leur client ; prestations par leur contrat ou leur site ; compteurs par leur site.
  * Les référentiels (sociétés, agences, activités…) ne sont pas filtrés : leurs libellés servent partout.
  */
 export function filtrerPerimetre<T extends CollectionsPerimetre>(d: T, p: Perimetre | null | undefined, isAdmin = false): T {
@@ -51,12 +51,11 @@ export function filtrerPerimetre<T extends CollectionsPerimetre>(d: T, p: Perime
     const sites = d.sites.filter(s => (s.clientId ? cli.has(s.clientId) : !!s.contractId && ctr.has(s.contractId)));
     const sit = new Set(sites.map(s => s.id));
     const meters = d.meters.filter(m => !!m.siteId && sit.has(m.siteId));
-    const cpt = new Set(meters.map(m => m.id));
     return {
         ...d,
         clients: d.clients.filter(c => cli.has(c.id)), contracts, sites,
         services: d.services.filter(s => (s.contractId ? ctr.has(s.contractId) : !!s.siteId && sit.has(s.siteId))),
-        meters, meterReadings: d.meterReadings.filter(r => !!r.meterId && cpt.has(r.meterId)),
+        meters,
         invoices: parClient(d.invoices), creditNotes: parClient(d.creditNotes), contacts: parClient(d.contacts),
     };
 }
@@ -88,5 +87,5 @@ export function accesRoute(pathname: string, modules: string[] | undefined, isAd
 }
 
 /** Collections à périmètre : le navigateur les obtient du serveur (filtrées), pas de la base directement. */
-export const COLLECTIONS_PERIMETRE = ['clients', 'contracts', 'sites', 'services', 'meters', 'meterReadings', 'invoices', 'creditNotes', 'contacts'] as const;
+export const COLLECTIONS_PERIMETRE = ['clients', 'contracts', 'sites', 'services', 'meters', 'invoices', 'creditNotes', 'contacts'] as const;
 export type CollectionPerimetre = typeof COLLECTIONS_PERIMETRE[number];

@@ -33,19 +33,14 @@ export async function chargerDonnees(keys: CollectionPerimetre[], user: SessionU
     const clients = (await garde.clients())!;
     const besoin = (...k: CollectionPerimetre[]) => k.some(x => demandees.includes(x));
     const contrats = besoin('sites', 'services') ? (await garde.ids('contracts'))! : new Set<string>();
-    const sites = besoin('sites', 'services', 'meters', 'meterReadings') ? (await garde.ids('sites'))! : new Set<string>();
-    let compteurs = new Set<string>();
-    if (besoin('meters', 'meterReadings')) {
-        const docs = lues.meters ?? (await adminDb.collection('meters').select('siteId').get()).docs.map(d => ({ id: d.id, siteId: d.get('siteId') }) as Doc);
-        compteurs = new Set(docs.filter(m => sites.has(String(m.siteId))).map(m => m.id));
-    }
+    const sites = besoin('sites', 'services', 'meters') ? (await garde.ids('sites'))! : new Set<string>();
     const s = (x: unknown) => String(x ?? '');
     const filtres: Record<CollectionPerimetre, (d: Doc) => boolean> = {
         clients: d => clients.has(d.id),
         contracts: d => clients.has(s(d.clientId)), invoices: d => clients.has(s(d.clientId)), creditNotes: d => clients.has(s(d.clientId)), contacts: d => clients.has(s(d.clientId)),
         sites: d => sites.has(d.id),
         services: d => (d.contractId ? contrats.has(s(d.contractId)) : sites.has(s(d.siteId))),
-        meters: d => compteurs.has(d.id), meterReadings: d => compteurs.has(s(d.meterId)),
+        meters: d => sites.has(s(d.siteId)),
     };
     return Object.fromEntries(demandees.map(k => [k, (lues[k] ?? []).filter(filtres[k])])) as Partial<Record<CollectionPerimetre, Doc[]>>;
 }
