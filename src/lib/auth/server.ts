@@ -1,4 +1,5 @@
 import 'server-only';
+import { MODULES } from '@/lib/perimetre';
 import { cookies } from 'next/headers';
 import { adminAuth, adminDb } from '@/lib/firebase-admin';
 import type { User } from '@/lib/types';
@@ -24,7 +25,7 @@ export class AuthError extends Error {
     }
 }
 
-const ALL_MODULES = ['contracts', 'billing', 'settings'];
+const ALL_MODULES = MODULES.map(m => m.id as string);
 
 /**
  * Emails toujours administrateurs, même sans fiche dans `users`.

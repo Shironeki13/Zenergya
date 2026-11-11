@@ -140,16 +140,16 @@ async function referentiels() {
 
 const COMPTES = [
     { id: 'demo-u-adv', email: 'adv@example.com', name: 'Claire Martin (ADV)', firstName: 'Claire', roleId: 'demo-r-adv' },
-    { id: 'demo-u-adv2', email: 'adv2@example.com', name: 'Julien Petit (ADV)', firstName: 'Julien', roleId: 'demo-r-adv' },
-    { id: 'demo-u-ctq', email: 'contratheque@example.com', name: 'Sophie Bernard (contrathèque)', firstName: 'Sophie', roleId: 'demo-r-ctq' },
+    { id: 'demo-u-adv2', email: 'adv2@example.com', name: 'Julien Petit (ADV)', firstName: 'Julien', roleId: 'demo-r-adv', modules: ['contracts', 'billing', 'works'], agence: 'demo-ag-paris' },
+    { id: 'demo-u-ctq', email: 'contratheque@example.com', name: 'Sophie Bernard (contrathèque)', firstName: 'Sophie', roleId: 'demo-r-ctq', modules: ['contracts', 'billing'] },
     { id: 'demo-u-admin', email: 'admin@example.com', name: 'Marc Leroy (administrateur)', firstName: 'Marc', roleId: 'demo-r-admin' },
     // Achats : le technicien commande ; son responsable (N+1) puis le directeur d'agence (N+2) valident ; les achats au-delà de leur seuil.
-    { id: 'demo-u-dir', email: 'directeur@example.com', name: 'Paul Garnier (directeur d\'agence)', firstName: 'Paul', roleId: 'demo-r-expl' },
-    { id: 'demo-u-resp', email: 'responsable@example.com', name: 'Nadia Roche (responsable d\'exploitation)', firstName: 'Nadia', roleId: 'demo-r-expl', managerId: 'demo-u-dir' },
-    { id: 'demo-u-tech', email: 'technicien@example.com', name: 'Lucas Morel (technicien)', firstName: 'Lucas', roleId: 'demo-r-expl', managerId: 'demo-u-resp' },
-    { id: 'demo-u-tech2', email: 'technicienne@example.com', name: 'Inès Colin (technicienne)', firstName: 'Inès', roleId: 'demo-r-expl', managerId: 'demo-u-resp', hourlyCost: 46 },
-    { id: 'demo-u-achats', email: 'achats@example.com', name: 'Élise Faure (achats)', firstName: 'Élise', roleId: 'demo-r-achats' },
-] as { id: string; email: string; name: string; firstName: string; roleId: string; managerId?: string; hourlyCost?: number }[];
+    { id: 'demo-u-dir', email: 'directeur@example.com', name: 'Paul Garnier (directeur d\'agence)', firstName: 'Paul', roleId: 'demo-r-expl', modules: ['works', 'purchases'], agence: 'demo-ag-lyon' },
+    { id: 'demo-u-resp', email: 'responsable@example.com', name: 'Nadia Roche (responsable d\'exploitation)', firstName: 'Nadia', roleId: 'demo-r-expl', managerId: 'demo-u-dir', modules: ['works', 'purchases'], agence: 'demo-ag-lyon' },
+    { id: 'demo-u-tech', email: 'technicien@example.com', name: 'Lucas Morel (technicien)', firstName: 'Lucas', roleId: 'demo-r-expl', managerId: 'demo-u-resp', modules: ['works', 'purchases'], agence: 'demo-ag-lyon' },
+    { id: 'demo-u-tech2', email: 'technicienne@example.com', name: 'Inès Colin (technicienne)', firstName: 'Inès', roleId: 'demo-r-expl', managerId: 'demo-u-resp', hourlyCost: 46, modules: ['works', 'purchases'], agence: 'demo-ag-lyon' },
+    { id: 'demo-u-achats', email: 'achats@example.com', name: 'Élise Faure (achats)', firstName: 'Élise', roleId: 'demo-r-achats', modules: ['works', 'purchases'] },
+] as { id: string; email: string; name: string; firstName: string; roleId: string; managerId?: string; hourlyCost?: number; modules?: string[]; agence?: string }[];
 
 async function comptes() {
     await set('roles', 'demo-r-adv', { name: 'ADV', isAdmin: false });
@@ -161,7 +161,8 @@ async function comptes() {
         const u = await adminAuth.createUser({ email: c.email, password: MOT_DE_PASSE, displayName: c.name });
         await set('users', c.id, {
             name: c.name, firstName: c.firstName, email: c.email, roleId: c.roleId, authUid: u.uid, ...(c.managerId && { managerId: c.managerId }), ...(c.hourlyCost && { hourlyCost: c.hourlyCost }),
-            modules: ['contracts', 'billing', 'settings'], scope: { companyIds: ['*'], agencyIds: ['*'], sectorIds: ['*'] },
+            // Modules (menu et pages) et périmètre : tout par défaut ; certains comptes sont limités à une agence.
+            modules: c.modules ?? ['contracts', 'billing', 'works', 'purchases', 'settings'], scope: { companyIds: ['*'], agencyIds: c.agence ? [c.agence] : ['*'], sectorIds: ['*'] },
         });
     }
     console.log(`Comptes de test : ${COMPTES.map(c => c.email).join(', ')} (mot de passe ${MOT_DE_PASSE}).`);

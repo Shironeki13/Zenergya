@@ -1,6 +1,7 @@
 
 'use client';
 
+import { AccesRefuse, useHorsPerimetre } from '@/components/perimetre/acces';
 import Link from 'next/link';
 import { notFound, useParams } from 'next/navigation';
 import React, { useEffect, useMemo, useState } from 'react';
@@ -91,6 +92,9 @@ export default function InvoiceDetailPage() {
     }, {} as Record<string, InvoiceLineItem[]>);
   }, [invoice]);
 
+  // Périmètre : la fiche d'un client hors des sociétés, agences et secteurs de l'utilisateur ne s'affiche pas.
+  const horsPerimetre = useHorsPerimetre(invoice?.clientId);
+  if (horsPerimetre) return <AccesRefuse objet="Cette facture" />;
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-full">

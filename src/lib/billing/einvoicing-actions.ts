@@ -1,6 +1,7 @@
 'use server';
 
 import { requireUser } from '@/lib/auth/server';
+import { gardePerimetre } from '@/lib/auth/perimetre-server';
 import { recomputeEInvoicingState, setEInvoicingStatus, type EInvoicingKind } from '@/services/firestore-admin';
 import type { EInvoicingStatus } from '@/lib/types';
 
@@ -8,6 +9,8 @@ export type EInvoicingTarget = { kind: EInvoicingKind; id: string };
 export type BatchResult = { succeeded: number; failed: { id: string; error: string }[] };
 
 const MAX_BATCH = 500;
+/** Chaque document doit appartenir à un client du périmètre de l'utilisateur. */
+const objet = (t: EInvoicingTarget) => (t.kind === 'creditNote' ? 'avoir' as const : 'facture' as const);
 
 async function forEachTarget(targets: EInvoicingTarget[], run: (t: EInvoicingTarget) => Promise<unknown>): Promise<BatchResult> {
     if (targets.length > MAX_BATCH) throw new Error(`Au plus ${MAX_BATCH} documents à la fois.`);
@@ -29,11 +32,12 @@ export async function updateEInvoicingStatus(
     meta: { platformReference?: string; comment?: string } = {},
 ): Promise<BatchResult> {
     const user = await requireUser();
-    return forEachTarget(targets, t => setEInvoicingStatus(t.kind, t.id, status, { ...meta, by: user.email }));
+    const garde = gardePerimetre(user);
+    return forEachTarget(targets, async t => { await garde.exiger(objet(t), t.id); return setEInvoicingStatus(t.kind, t.id, status, { ...meta, by: user.email }); });
 }
 
 /** Recalcule canal et adressage d'après la configuration actuelle (documents non encore transmis). */
 export async function recomputeEInvoicing(targets: EInvoicingTarget[]): Promise<BatchResult> {
-    await requireUser();
-    return forEachTarget(targets, t => recomputeEInvoicingState(t.kind, t.id));
+    const garde = gardePerimetre(await requireUser());
+    return forEachTarget(targets, async t => { await garde.exiger(objet(t), t.id); return recomputeEInvoicingState(t.kind, t.id); });
 }

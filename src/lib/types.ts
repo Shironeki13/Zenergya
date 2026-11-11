@@ -1244,6 +1244,12 @@ export type DataContextType = {
     isContratheque: boolean;
     /** Droit achats (validation des commandes au-delà du seuil achats) de l'utilisateur réellement connecté. */
     isAcheteur: boolean;
+    /** Le client est-il dans le périmètre de l'utilisateur affiché (société, agence, secteur) ? Voir lib/perimetre. */
+    voitClient: (clientId?: string | null) => boolean;
+    /** Administrateur (hors affichage « en tant que ») : aucun filtre de périmètre ni de module. */
+    toutVoir: boolean;
+    /** Modules de l'utilisateur affiché (menu et accès aux pages). */
+    modules: string[];
     isLoading: boolean;
     /**
      * Recharge les données partagées. Sans argument : tout ce qui est chargé, avec l'écran d'attente (comportement

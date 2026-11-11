@@ -14,13 +14,14 @@ import { createInvoice } from '@/services/firestore-admin';
 import { prepareContractInvoice } from '@/services/contract-billing-admin';
 import { archiveDocumentSafely } from '@/services/document-archive';
 import { requireUser } from '@/lib/auth/server';
+import { gardePerimetre } from '@/lib/auth/perimetre-server';
 import { GenerateInvoiceInputSchema, GenerateInvoiceOutputSchema, type GenerateInvoiceInput, type GenerateInvoiceOutput } from '@/lib/types';
 
 
 // This is the exported function that the UI will call.
 export async function generateInvoice(input: GenerateInvoiceInput): Promise<GenerateInvoiceOutput> {
   try {
-    await requireUser();
+    await gardePerimetre(await requireUser()).exiger('contrat', String(input?.contractId ?? ''));
   } catch (error) {
     return { success: false, error: (error as Error).message };
   }

@@ -10,7 +10,9 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/co
 import { UserNav } from '@/components/user-nav';
 import { Logo } from '@/components/logo';
 import { useData } from '@/context/data-context';
-import { useRouter } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
+import { accesRoute } from '@/lib/perimetre';
+import { AccesRefuse } from '@/components/perimetre/acces';
 import { AppSidebar } from '@/components/navigation/app-sidebar';
 import { Breadcrumbs } from '@/components/navigation/breadcrumbs';
 import { GlobalSearch } from '@/components/navigation/global-search';
@@ -18,7 +20,8 @@ import { ConfirmProvider } from '@/components/confirm-provider';
 
 
 function MainAppLayout({ children }: { children: React.ReactNode }) {
-  const { isLoading, currentUser, isAdmin, isContratheque } = useData();
+  const { isLoading, currentUser, isContratheque, toutVoir, modules } = useData();
+  const pathname = usePathname();
   const router = useRouter();
   const [menuMobile, setMenuMobile] = useState(false);
 
@@ -50,7 +53,7 @@ function MainAppLayout({ children }: { children: React.ReactNode }) {
               </Link>
             </div>
             <div className="flex-1 overflow-y-auto py-3">
-              <AppSidebar isAdmin={isAdmin} isContratheque={isContratheque} />
+              <AppSidebar isAdmin={toutVoir} isContratheque={isContratheque} modules={modules} />
             </div>
           </div>
         </aside>
@@ -68,7 +71,7 @@ function MainAppLayout({ children }: { children: React.ReactNode }) {
                   <SheetTitle className="sr-only">Menu de navigation</SheetTitle>
                   <Logo />
                 </SheetHeader>
-                <AppSidebar isAdmin={isAdmin} isContratheque={isContratheque} onNavigate={() => setMenuMobile(false)} />
+                <AppSidebar isAdmin={toutVoir} isContratheque={isContratheque} modules={modules} onNavigate={() => setMenuMobile(false)} />
               </SheetContent>
             </Sheet>
             <div className="min-w-0 flex-1"><Breadcrumbs /></div>
@@ -76,7 +79,7 @@ function MainAppLayout({ children }: { children: React.ReactNode }) {
             <UserNav />
           </header>
           <main className="flex flex-1 flex-col gap-4 bg-muted/20 p-4 lg:gap-6 lg:p-8">
-            {children}
+            {accesRoute(pathname, modules, toutVoir) ? children : <AccesRefuse motif="module" />}
           </main>
         </div>
       </div>

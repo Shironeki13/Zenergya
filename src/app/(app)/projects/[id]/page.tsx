@@ -1,5 +1,6 @@
 'use client';
 
+import { AccesRefuse, useHorsPerimetre } from '@/components/perimetre/acces';
 import { useConfirm } from '@/components/confirm-provider';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
@@ -62,6 +63,9 @@ export default function ProjectPage() {
     const issues = useMemo(() => (project && progress ? situationIssues(project, progress, previous) : []), [project, progress, previous]);
     const dirty = !!progress && (!draft || draft.period !== period || JSON.stringify(draft.progress) !== JSON.stringify(progress));
 
+    // Périmètre : la fiche d'un client hors des sociétés, agences et secteurs de l'utilisateur ne s'affiche pas.
+    const horsPerimetre = useHorsPerimetre(project?.clientId);
+    if (horsPerimetre) return <AccesRefuse objet="Cette affaire" />;
     if (loading) return <Loader2 className="mx-auto mt-24 h-8 w-8 animate-spin" />;
     if (!project) return <p className="text-muted-foreground">Affaire introuvable. <Link className="underline" href="/projects">Retour</Link></p>;
 

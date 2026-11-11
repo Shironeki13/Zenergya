@@ -1,6 +1,7 @@
 'use server';
 
 import { requireUser } from '@/lib/auth/server';
+import { requireUserDans } from '@/lib/auth/perimetre-server';
 import { emitP1Regularisation, prepareP1Regularisation } from '@/services/p1-regularisation-admin';
 import { vatTotals } from '@/lib/billing/contract-billing';
 import type { InvoiceLineItem } from '@/lib/types';
@@ -20,7 +21,7 @@ export type RegulPreviewView = {
 
 export async function previewP1RegularisationAction(contractId: string, debut: string, fin: string): Promise<Result<RegulPreviewView>> {
     try {
-        await requireUser();
+        await requireUserDans('contrat', contractId);
         const p = await prepareP1Regularisation(contractId, debut, fin);
         const pos = p.lines.filter(l => l.total > 0);
         const neg = p.lines.filter(l => l.total < 0);
@@ -36,5 +37,5 @@ export async function previewP1RegularisationAction(contractId: string, debut: s
 }
 
 export async function emitP1RegularisationAction(contractId: string, debut: string, fin: string, date: string): Promise<Result<{ invoice?: { id: string; number?: string }; creditNote?: { id: string; number: string } }>> {
-    try { await requireUser(); return { success: true, data: await emitP1Regularisation(contractId, debut, fin, date) }; } catch (e) { return fail(e); }
+    try { await requireUserDans('contrat', contractId); return { success: true, data: await emitP1Regularisation(contractId, debut, fin, date) }; } catch (e) { return fail(e); }
 }

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { AuthError, requireUser } from '@/lib/auth/server';
+import { gardePerimetre, PerimetreError } from '@/lib/auth/perimetre-server';
 import { DocumentIntegrityError } from '@/services/document-archive';
 import { getQuotePdf } from '@/services/quotes-admin';
 
@@ -12,9 +13,9 @@ export const dynamic = 'force-dynamic';
  */
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
     try {
-        await requireUser();
+        await gardePerimetre(await requireUser()).exiger('devis', (await params).id);
     } catch (error) {
-        const status = error instanceof AuthError ? error.status : 401;
+        const status = error instanceof AuthError ? error.status : error instanceof PerimetreError ? 403 : 401;
         return NextResponse.json({ error: (error as Error).message }, { status });
     }
     const { id } = await params;

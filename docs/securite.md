@@ -22,7 +22,7 @@
 | Supprimer une facture émise, un avoir, un compteur | ❌ | ❌ (annulation par avoir) |
 | Gérer utilisateurs et rôles | ❌ | ✅ |
 | Lancer la synchronisation des indices | ❌ | ✅ (ou appel planifié avec `CRON_SECRET`) |
-| « Preview As » (aperçu de l'interface d'un autre utilisateur) | ❌ | ✅ (affichage seulement, les droits restent ceux de l'admin) |
+| « Preview As » (aperçu de l'interface d'un autre utilisateur) | ❌ | ✅ (affichage seulement : menu, pages et données du périmètre de cet utilisateur ; côté serveur, les droits restent ceux de l'admin) |
 
 ## Mise en service (dans cet ordre)
 
@@ -57,5 +57,5 @@
 
 ## Limites connues (prochaines étapes)
 
-- Le périmètre (sociétés / agences / secteurs) et les modules d'un utilisateur filtrent l'interface, mais ne sont pas encore appliqués par les règles Firestore.
+- Le périmètre (sociétés / agences / secteurs) et les modules d'un utilisateur sont appliqués par l'application et par le serveur (voir [perimetre.md](perimetre.md)), mais **pas encore par les règles Firestore** : un utilisateur qui interrogerait la base directement avec son compte lirait encore les autres périmètres.
 - Numérotation et documents comptables : voir [facturation.md](facturation.md).

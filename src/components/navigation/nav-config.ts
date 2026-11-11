@@ -4,6 +4,7 @@ import {
     Network, ShoppingCart, Clock, type LucideIcon,
 } from 'lucide-react';
 
+import { accesRoute } from '@/lib/perimetre';
 /**
  * Navigation de l'application, organisée par métier : une seule source pour le menu, le fil d'Ariane et la recherche
  * globale (pages).
@@ -71,8 +72,9 @@ export const NAV_GROUPS: NavGroup[] = [
     },
 ];
 
-export const navGroupsFor = (isAdmin: boolean, isContratheque = false): NavGroup[] =>
-    NAV_GROUPS.map(g => ({ ...g, items: g.items.filter(i => (!i.admin || isAdmin) && (!i.contratheque || isContratheque)) })).filter(g => g.items.length > 0);
+/** Menu de l'utilisateur : selon ses droits (administrateur, contrathèque) et ses modules (`modules` absent : pas de filtre par module). */
+export const navGroupsFor = (isAdmin: boolean, isContratheque = false, modules?: string[]): NavGroup[] =>
+    NAV_GROUPS.map(g => ({ ...g, items: g.items.filter(i => (!i.admin || isAdmin) && (!i.contratheque || isContratheque) && (!modules || accesRoute(i.href, modules, isAdmin))) })).filter(g => g.items.length > 0);
 
 /** Entrée du menu qui correspond à une page : la plus précise dont l'adresse est un préfixe (fiches et sous-pages comprises). */
 export function activeNavItem(pathname: string, groups: NavGroup[] = NAV_GROUPS): { group: NavGroup; item: NavItem } | null {

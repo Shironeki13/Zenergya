@@ -26,7 +26,7 @@ Mot de passe commun : `Demo-Zenergya-2026`.
 | Compte | Rôle | Pour tester |
 |---|---|---|
 | `adv@example.com` | ADV (Claire Martin) | listes, fiches, facturation, saisie d'avenants / OS / reconductions… avec pièce |
-| `adv2@example.com` | ADV (Julien Petit) | second portefeuille (pilotage par responsable facturation) |
+| `adv2@example.com` | ADV (Julien Petit), **limité à l'agence Paris Est**, sans le module Achats | périmètre : ne voit que les clients, contrats, sites, factures, devis et affaires de Paris |
 | `contratheque@example.com` | Contrathèque | validation des documents : contrôle champ par champ, corrections, refus |
 | `admin@example.com` | Administrateur, sans le droit contrathèque | utilisateurs et rôles ; ne voit pas la validation |
 | `technicien@example.com` | Exploitation (Lucas Morel) | saisit des commandes d'achat et ses heures ; son N+1 est le responsable |
@@ -34,6 +34,10 @@ Mot de passe commun : `Demo-Zenergya-2026`.
 | `responsable@example.com` | Exploitation (Nadia Roche) | valide en N+1 les commandes du technicien, saisit ou importe les heures de son équipe ; son N+1 est le directeur |
 | `directeur@example.com` | Exploitation (Paul Garnier) | valide en N+2 |
 | `achats@example.com` | Achats (Élise Faure) | valide au-delà du seuil achats ; saisit les factures fournisseurs |
+
+Périmètre et modules : `adv@`, `contratheque@`, `achats@` et `admin@` voient toutes les agences ; `adv2@` ne voit que
+Paris Est ; les comptes d'exploitation (`technicien@`, `technicienne@`, `responsable@`, `directeur@`) ne voient que
+l'agence de Lyon et n'ont que les modules Travaux et Achats. Voir `perimetre.md`.
 
 ## Contenu du jeu de données
 

@@ -87,7 +87,7 @@ export default function EditContractPage() {
     const params = useParams();
     const id = params.id as string;
     const { toast } = useToast();
-    const { typologies, companies, agencies, sectors, reloadData, weatherStations } = useData();
+    const { typologies, companies, agencies, sectors, reloadData, weatherStations, voitClient } = useData();
 
     const [isLoading, setIsLoading] = useState(true);
     const [refusalReason, setRefusalReason] = useState<string>('');
@@ -129,6 +129,8 @@ export default function EditContractPage() {
             try {
                 const [contract, ] = await Promise.all([getContract(id)]);
                 if (!contract) { router.push('/contracts'); return; }
+                // Périmètre : un contrat hors des sociétés, agences et secteurs de l'utilisateur ne se modifie pas.
+                if (!voitClient(contract.clientId)) { router.push('/contracts'); return; }
 
                 setRefusalReason(contract.refusalReason || '');
                 setClientName(contract.clientName || '');

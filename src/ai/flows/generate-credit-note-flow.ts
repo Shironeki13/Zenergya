@@ -13,13 +13,15 @@ import { createCreditNote } from '@/services/firestore-admin';
 import { creditNoteAmounts } from '@/lib/credit-notes';
 import { archiveDocumentSafely } from '@/services/document-archive';
 import { requireUser } from '@/lib/auth/server';
+import { gardePerimetre } from '@/lib/auth/perimetre-server';
 import type { Invoice } from '@/lib/types';
 import { GenerateCreditNoteInputSchema, GenerateCreditNoteOutputSchema, type GenerateCreditNoteInput, type GenerateCreditNoteOutput } from '@/lib/types';
 
 
 export async function generateCreditNote(input: GenerateCreditNoteInput): Promise<GenerateCreditNoteOutput> {
   try {
-    await requireUser();
+    const garde = gardePerimetre(await requireUser());
+    for (const id of input?.invoiceIds ?? []) await garde.exiger('facture', String(id));
   } catch (error) {
     return { success: false, error: (error as Error).message };
   }

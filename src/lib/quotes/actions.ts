@@ -1,6 +1,7 @@
 'use server';
 
 import { requireUser } from '@/lib/auth/server';
+import { gardePerimetre } from '@/lib/auth/perimetre-server';
 import type { Quote } from '@/lib/quotes/types';
 import type { QuoteBillingRequest } from '@/lib/quotes/billing';
 import { invoiceQuote } from '@/services/quote-billing';
@@ -15,9 +16,11 @@ import {
 
 export type QuoteActionResult = { success: true; quote: Quote } | { success: false; error: string };
 
-async function run(action: (by: string) => Promise<Quote>): Promise<QuoteActionResult> {
+/** Chaque action porte sur un devis : il doit être dans le périmètre de l'utilisateur (client du devis). */
+async function run(id: string, action: (by: string) => Promise<Quote>): Promise<QuoteActionResult> {
     try {
         const user = await requireUser();
+        await gardePerimetre(user).exiger('devis', id);
         return { success: true, quote: await action(user.email) };
     } catch (error) {
         console.error('Action devis :', error);
@@ -26,23 +29,23 @@ async function run(action: (by: string) => Promise<Quote>): Promise<QuoteActionR
 }
 
 export async function sendQuoteAction(id: string) {
-    return run(by => sendQuote(id, by));
+    return run(id, by => sendQuote(id, by));
 }
 
 export async function acceptQuoteAction(id: string, input: AcceptInput) {
-    return run(by => acceptQuote(id, input, by));
+    return run(id, by => acceptQuote(id, input, by));
 }
 
 export async function refuseQuoteAction(id: string, input: { refusedAt: string; reason: string }) {
-    return run(by => refuseQuote(id, input, by));
+    return run(id, by => refuseQuote(id, input, by));
 }
 
 export async function cancelQuoteAction(id: string, reason: string) {
-    return run(by => cancelQuote(id, reason, by));
+    return run(id, by => cancelQuote(id, reason, by));
 }
 
 export async function newQuoteVersionAction(id: string) {
-    return run(by => newQuoteVersion(id, by));
+    return run(id, by => newQuoteVersion(id, by));
 }
 
 /** Facture un devis accepté : totalité, acompte (en %) ou solde. */
@@ -50,6 +53,7 @@ export async function invoiceQuoteAction(id: string, request: QuoteBillingReques
     Promise<{ success: true; invoiceId: string; invoiceNumber: string } | { success: false; error: string }> {
     try {
         const user = await requireUser();
+        await gardePerimetre(user).exiger('devis', id);
         return { success: true, ...(await invoiceQuote(id, request, user.email)) };
     } catch (error) {
         console.error('Facturation du devis :', error);

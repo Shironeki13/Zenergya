@@ -1,5 +1,6 @@
 'use client';
 
+import { AccesRefuse, useHorsPerimetre } from '@/components/perimetre/acces';
 import { EtatValidation, LienPiece } from "@/components/contracts/events/etat-document";
 import { AFaire, Indicateur, eur0, CompteurAFaire, useOngletUrl, type PointAFaire } from "@/components/fiches/fiche";
 import { CarteContacts, TableauFactures, TableauSites, etatSite } from "@/components/fiches/tableaux";
@@ -332,6 +333,9 @@ export default function ContractDetailPage() {
 
   const [onglet, changerOnglet] = useOngletUrl<OngletContrat>(ONGLETS_CONTRAT, 'synthese');
 
+  // Périmètre : la fiche d'un client hors des sociétés, agences et secteurs de l'utilisateur ne s'affiche pas.
+  const horsPerimetre = useHorsPerimetre(contract?.clientId);
+  if (horsPerimetre) return <AccesRefuse objet="Ce contrat" />;
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-full">

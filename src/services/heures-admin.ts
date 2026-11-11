@@ -126,7 +126,7 @@ export type RapportImportHeures = { lignes: LigneRapportHeures[]; aCreer: number
  * Importe des heures saisies ailleurs. Simulation par défaut ; `appliquer` n'écrit que si aucune ligne n'est en erreur.
  * Une ligne déjà présente (même technicien, jour, affectation et durée) est ignorée : le même fichier se réimporte sans doublon.
  */
-export async function importerHeures(table: unknown[][], user: SessionUser, appliquer = false): Promise<RapportImportHeures> {
+export async function importerHeures(table: unknown[][], user: SessionUser, appliquer = false, cibleAutorisee?: (c: CibleCommande) => boolean): Promise<RapportImportHeures> {
     const { lignes, erreur } = lireImportHeures(table, todayInParis());
     if (erreur) throw new Error(erreur);
     if (lignes.length > 5000) throw new Error('5 000 lignes au plus par import.');
@@ -159,6 +159,7 @@ export async function importerHeures(table: unknown[][], user: SessionUser, appl
             else if (l.activite && !((k.get('activityIds') as string[] | undefined) ?? []).some(a => codeActivite.get(a) === l.activite.toUpperCase())) messages.push(`activité ${l.activite} absente du contrat ${l.contrat}`);
             else if (l.activite) cible = { type: 'contrat', contractId: k.id, activityCode: l.activite.toUpperCase() };
         }
+        if (cible && cibleAutorisee && !cibleAutorisee(cible)) messages.push(`${l.affaire || l.contrat} est hors de votre périmètre`);
         let v: Awaited<ReturnType<typeof valorisation>> | null = null;
         if (technicien && cible && !messages.length) {
             const cle = `${technicien.id}|${cleCible(cible)}`;

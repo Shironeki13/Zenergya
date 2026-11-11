@@ -14,9 +14,9 @@ const CLE = 'zenergya.menu.ouverts';
  * Menu latéral par métier. L'entrée de la page courante est surlignée, fiches et sous-pages comprises ; sa rubrique est
  * ouverte. Les rubriques ouvertes ou fermées à la main sont mémorisées (navigateur).
  */
-export function AppSidebar({ isAdmin, isContratheque = false, onNavigate }: { isAdmin: boolean; isContratheque?: boolean; onNavigate?: () => void }) {
+export function AppSidebar({ isAdmin, isContratheque = false, modules, onNavigate }: { isAdmin: boolean; isContratheque?: boolean; modules?: string[]; onNavigate?: () => void }) {
     const pathname = usePathname();
-    const groups = navGroupsFor(isAdmin, isContratheque);
+    const groups = navGroupsFor(isAdmin, isContratheque, modules);
     const actif = activeNavItem(pathname, groups);
     const [ouverts, setOuverts] = useState<Record<string, boolean>>({});
 

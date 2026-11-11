@@ -1,5 +1,6 @@
 "use client"
 
+import { AccesRefuse, useHorsPerimetre } from '@/components/perimetre/acces';
 import { useAlerteModifications } from '@/hooks/use-alerte-modifications';
 import { signalerErreurs } from '@/lib/forms/signaler-erreurs';
 import Link from "next/link"
@@ -184,6 +185,10 @@ export default function EditClientPage() {
   if (isDataLoading || !client) {
     return <div className="flex justify-center items-center h-full"><Loader2 className="h-8 w-8 animate-spin" /></div>;
   }
+
+  // Périmètre : la fiche d'un client hors des sociétés, agences et secteurs de l'utilisateur ne se modifie pas.
+  const horsPerimetre = useHorsPerimetre(client?.id);
+  if (horsPerimetre) return <AccesRefuse objet="Ce client" />;
 
   return (
     <Card>

@@ -1,5 +1,6 @@
 'use client';
 
+import { AccesRefuse, useHorsPerimetre } from '@/components/perimetre/acces';
 import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { AnalytiqueCard } from '@/components/analytique/analytique-card';
@@ -67,6 +68,9 @@ export default function ClientDetailPage() {
     fetchData();
   }, [id, toast, fetchContracts]);
 
+  // Périmètre : la fiche d'un client hors des sociétés, agences et secteurs de l'utilisateur ne s'affiche pas.
+  const horsPerimetre = useHorsPerimetre(client?.id);
+  if (horsPerimetre) return <AccesRefuse objet="Ce client" />;
   if (isLoading) {
     return <div className="flex items-center justify-center h-full"><Loader2 className="h-8 w-8 animate-spin" /></div>;
   }

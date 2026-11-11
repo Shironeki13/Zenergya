@@ -1,7 +1,7 @@
 
 'use client';
 
-import React, { createContext, useContext, useState, useEffect, useCallback, useRef, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useMemo, useRef, ReactNode } from 'react';
 import {
   getClients, getContacts, getSites, getContracts, getInvoices, getCreditNotes, getMeters, getMeterTypes, getMeterReadings,
   getCompanies, getAgencies, getSectors, getActivities, getSchedules, getTerms,
@@ -13,6 +13,7 @@ import {
 import { auth, firebaseReady } from '@/lib/firebase';
 import { EAGER_COLLECTIONS, LAZY_COLLECTIONS, type CollectionKey, type DataContextType, type LazyCollectionKey, type User } from '@/lib/types';
 import { useToast } from '@/hooks/use-toast';
+import { clientsDuPerimetre, filtrerPerimetre } from '@/lib/perimetre';
 
 const DataContext = createContext<DataContextType | undefined>(undefined);
 
@@ -243,8 +244,17 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     };
   }, [loadAllData, establishSession]);
 
+  // Périmètre : les écrans ne reçoivent que les données des sociétés, agences et secteurs de l'utilisateur affiché.
+  // Un administrateur voit tout, sauf lorsqu'il affiche l'application « en tant que » un autre utilisateur.
+  const toutVoir = isAdmin && (!currentUser || currentUser.id === authUser?.id);
+  const perimetre = currentUser?.scope;
+  const visibles = useMemo(() => filtrerPerimetre(data, perimetre, toutVoir), [data, perimetre, toutVoir]);
+  const clientsVisibles = useMemo(() => clientsDuPerimetre(data.clients, perimetre, toutVoir), [data.clients, perimetre, toutVoir]);
+  const voitClient = useCallback((clientId?: string | null) => toutVoir || (!!clientId && clientsVisibles.has(clientId)), [toutVoir, clientsVisibles]);
+  const modules = useMemo(() => currentUser?.modules ?? [], [currentUser]);
+
   return (
-    <DataContext.Provider value={{ ...data, isLoading, reloadData, demander, chargees, authUser, currentUser, setCurrentUser, isAdmin, isContratheque, isAcheteur, login, loginWithGoogle, logout }}>
+    <DataContext.Provider value={{ ...visibles, voitClient, toutVoir, modules, isLoading, reloadData, demander, chargees, authUser, currentUser, setCurrentUser, isAdmin, isContratheque, isAcheteur, login, loginWithGoogle, logout }}>
       {children}
     </DataContext.Provider>
   );

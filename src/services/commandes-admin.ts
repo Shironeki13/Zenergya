@@ -257,7 +257,7 @@ export type RapportImportCommandes = { commandes: LigneRapportCommande[]; aCreer
  * « brouillon » : la commande reste à soumettre par son demandeur (circuit de validation normal). « validée » : validée
  * hors Zenergya, elle entre validée, sans circuit (achats ou administrateur). Une référence déjà importée est ignorée.
  */
-export async function importerCommandes(table: unknown[][], companyId: string, user: SessionUser, appliquer = false): Promise<RapportImportCommandes> {
+export async function importerCommandes(table: unknown[][], companyId: string, user: SessionUser, appliquer = false, cibleAutorisee?: (c: CibleCommande) => boolean): Promise<RapportImportCommandes> {
     const { commandes: lues, erreur } = lireImportCommandes(table);
     if (erreur) throw new Error(erreur);
     if (lues.reduce((n, c) => n + c.lignes.length, 0) > 5000) throw new Error('5 000 lignes au plus par import.');
@@ -297,6 +297,7 @@ export async function importerCommandes(table: unknown[][], companyId: string, u
                 else if (l.activite && !((k.get('activityIds') as string[] | undefined) ?? []).some(a => codeActivite.get(a) === cle(l.activite))) messages.push(`ligne ${l.ligne} : activité ${l.activite} absente du contrat ${l.contrat}`);
                 else if (l.activite) cible = { type: 'contrat', contractId: k.id, activityCode: cle(l.activite) };
             }
+            if (cible && cibleAutorisee && !cibleAutorisee(cible)) messages.push(`ligne ${l.ligne} : ${l.affaire || l.contrat} est hors de votre périmètre`);
             return { label: l.label, quantity: l.quantity, unitPrice: l.unitPrice, nature: l.nature as LigneCommande['nature'], cible: cible as CibleCommande };
         });
         const doublon = dejaImportees.has(cle(c.reference));

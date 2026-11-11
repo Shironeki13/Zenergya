@@ -1,5 +1,6 @@
 'use client';
 
+import { AccesRefuse, useHorsPerimetre } from '@/components/perimetre/acces';
 import { useAlerteModifications } from '@/hooks/use-alerte-modifications';
 import { signalerErreurs } from '@/lib/forms/signaler-erreurs';
 import { useState, useEffect } from 'react';
@@ -82,6 +83,9 @@ export default function AIValidationPage() {
         }
     };
 
+    // Périmètre : la fiche d'un client hors des sociétés, agences et secteurs de l'utilisateur ne s'affiche pas.
+    const horsPerimetre = useHorsPerimetre(contract?.clientId);
+    if (horsPerimetre) return <AccesRefuse objet="Ce contrat" />;
     if (isLoading || !contract) {
         return <div className="flex justify-center p-8"><Loader2 className="animate-spin" /></div>;
     }

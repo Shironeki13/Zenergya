@@ -8,6 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { useToast } from '@/hooks/use-toast';
+import { useData } from '@/context/data-context';
 import { formatEur } from '@/components/quotes/format';
 import { PROJECT_STATUS_LABELS, type Project } from '@/lib/projects/types';
 import { getProjects } from '@/services/projects';
@@ -18,6 +19,7 @@ const pct = (x: number | null | undefined) => (x === null || x === undefined ? '
 
 export default function ProjectsPage() {
     const { toast } = useToast();
+    const { voitClient } = useData();
     const [projects, setProjects] = useState<Project[]>([]);
     const [loading, setLoading] = useState(true);
     const [search, setSearch] = useState('');
@@ -35,9 +37,10 @@ export default function ProjectsPage() {
     const visible = useMemo(() => {
         const s = search.trim().toLowerCase();
         return projects
+            .filter(p => voitClient(p.clientId))   // périmètre de l'utilisateur
             .filter(p => !s || [p.code, p.title, p.clientName, p.siteName, p.quoteNumber].some(v => (v ?? '').toLowerCase().includes(s)))
             .sort((a, b) => b.code.localeCompare(a.code));
-    }, [projects, search]);
+    }, [projects, search, voitClient]);
 
     return (
         <Card>

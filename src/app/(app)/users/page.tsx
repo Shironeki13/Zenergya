@@ -1,5 +1,6 @@
 
 'use client';
+import { MODULES } from '@/lib/perimetre';
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -197,11 +198,8 @@ const UsersSection = () => {
     const [selectedAgencyIds, setSelectedAgencyIds] = useState<string[]>([]);
     const [selectedSectorIds, setSelectedSectorIds] = useState<string[]>([]);
 
-    const availableModules = [
-        { id: 'billing', label: 'Facturation' },
-        { id: 'contracts', label: 'Contrathèque' },
-        { id: 'recovery', label: 'Recouvrement' },
-    ];
+    // Modules : chacun ouvre un groupe du menu et ses pages (lib/perimetre).
+    const availableModules = MODULES;
 
     const resetForm = () => {
         setName('');

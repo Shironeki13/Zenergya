@@ -31,7 +31,7 @@ function QuotesList() {
     const [search, setSearch] = useState('');
     const [status, setStatus] = useState<QuoteStatus | 'all'>('all');
     const [mine, setMine] = useState(false);
-    const { currentUser } = useData();
+    const { currentUser, voitClient } = useData();
     const siteId = params.get('siteId');
     const clientId = params.get('clientId');
 
@@ -45,6 +45,7 @@ function QuotesList() {
     const visible = useMemo(() => {
         const s = search.trim().toLowerCase();
         return quotes
+            .filter(q => voitClient(q.clientId))   // périmètre de l'utilisateur
             .filter(q => status === 'all' || effectiveStatus(q) === status)
             .filter(q => !siteId || q.siteId === siteId)
             .filter(q => !clientId || q.clientId === clientId)
@@ -52,7 +53,7 @@ function QuotesList() {
             .filter(q => !s || [q.number, q.title, q.clientName, q.siteName, q.interventionAddress?.city, q.authorName, q.clientReference]
                 .some(v => (v ?? '').toLowerCase().includes(s)))
             .sort((a, b) => b.number.localeCompare(a.number));
-    }, [quotes, search, status, siteId, clientId, mine, currentUser]);
+    }, [quotes, search, status, siteId, clientId, mine, currentUser, voitClient]);
 
     const newHref = `/quotes/new${clientId || siteId ? `?${new URLSearchParams({ ...(clientId && { clientId }), ...(siteId && { siteId }) })}` : ''}`;
 

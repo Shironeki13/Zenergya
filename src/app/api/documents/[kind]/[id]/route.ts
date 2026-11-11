@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { AuthError, requireUser } from '@/lib/auth/server';
+import { gardePerimetre, PerimetreError } from '@/lib/auth/perimetre-server';
 import { DocumentIntegrityError, getDocumentPdf, type ArchivedKind } from '@/services/document-archive';
 
 export const runtime = 'nodejs';
@@ -13,9 +14,11 @@ const KINDS: Record<string, ArchivedKind> = { invoices: 'invoice', 'credit-notes
  */
 export async function GET(request: NextRequest, { params }: { params: Promise<{ kind: string; id: string }> }) {
     try {
-        await requireUser();
+        // Le document doit appartenir à un client du périmètre de l'utilisateur.
+        const { kind, id } = await params;
+        await gardePerimetre(await requireUser()).exiger(kind === 'credit-notes' ? 'avoir' : 'facture', id);
     } catch (error) {
-        const status = error instanceof AuthError ? error.status : 401;
+        const status = error instanceof AuthError ? error.status : error instanceof PerimetreError ? 403 : 401;
         return NextResponse.json({ error: (error as Error).message }, { status });
     }
 

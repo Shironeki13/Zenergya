@@ -1,5 +1,6 @@
 'use client';
 
+import { AccesRefuse, useHorsPerimetre } from '@/components/perimetre/acces';
 import { useConfirm } from '@/components/confirm-provider';
 import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
@@ -82,6 +83,9 @@ export default function QuoteEditorPage() {
         return () => window.removeEventListener('beforeunload', warn);
     }, [dirty]);
 
+    // Périmètre : la fiche d'un client hors des sociétés, agences et secteurs de l'utilisateur ne s'affiche pas.
+    const horsPerimetre = useHorsPerimetre(quote?.clientId);
+    if (horsPerimetre) return <AccesRefuse objet="Ce devis" />;
     if (loading) return <Loader2 className="mx-auto mt-24 h-8 w-8 animate-spin" />;
     if (!quote || !draft || !totals) return <p className="text-muted-foreground">Devis introuvable. <Link className="underline" href="/quotes">Retour aux devis</Link></p>;
 
