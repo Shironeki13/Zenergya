@@ -48,22 +48,24 @@ Utilisateurs et clés API : administrateur seulement. Une page hors de ses modul
    sont lus par le serveur (`/api/donnees`, `src/services/donnees-admin.ts`), qui ne renvoie au navigateur que le
    périmètre de l'utilisateur. Le `DataProvider` refiltre côté navigateur (utile à l'affichage « en tant que »). Les
    référentiels (agences, activités…) sont lus directement et ne sont pas filtrés.
-2. **Fiches** ouvertes par leur adresse (client, contrat, facture, devis, affaire) : « Hors de votre périmètre ».
-3. **Listes qui lisent leurs propres données** : devis, affaires, sélecteur d'affectation des commandes et des heures.
-4. **Serveur** (`src/lib/auth/perimetre-server.ts`) : chaque action vérifie l'objet sur lequel elle porte (devis,
+2. **Fiches et éléments d'un objet** (client, contrat et ses événements, facture, devis et ses versions, affaire et ses
+   situations, intéressements d'une prestation…) : lus par le serveur par des **lectures nommées** (`/api/lecture`,
+   `src/services/lectures-admin.ts`) qui contrôlent le client de l'objet demandé. Un objet hors périmètre est refusé et
+   l'écran affiche « Hors de votre périmètre » ; les listes de devis et d'affaires sont réduites au périmètre.
+3. **Actions serveur** (`src/lib/auth/perimetre-server.ts`) : chaque action vérifie l'objet sur lequel elle porte (devis,
    affaires, situations, paramétrage P1, relevés, régularisations, facturation, facturation électronique, analytique,
    validation des documents, création de contrat, commandes, heures, PDF des factures, avoirs et devis) ; les listes
    calculées au serveur (suivi de facturation, alertes compteurs, facturation groupée, suivi analytique, rentabilité)
    sont filtrées.
-5. **Imports en masse** : réservés aux administrateurs.
+4. **Imports en masse** : réservés aux administrateurs.
 
 ## Limite actuelle (palier 2)
 
-Le cloisonnement est appliqué par l'application et par le serveur, **pas encore par les règles Firestore** : les
-lectures et écritures que le navigateur fait directement dans la base (création ou modification d'un client, d'un
-site, d'une prestation…) ne sont pas contrôlées par périmètre. Un utilisateur techniquement averti pourrait donc lire
-ou modifier d'autres périmètres avec son propre compte. Le palier 2 inscrit société, agence et secteur sur chaque
-document et les fait vérifier par les règles.
+Les lectures passent par le serveur, mais les **règles Firestore n'interdisent pas encore** au navigateur de lire la
+base directement, et les **écritures** qu'il y fait (création ou modification d'un client, d'un site, d'une
+prestation…) ne sont pas contrôlées par périmètre. Un utilisateur techniquement averti pourrait donc lire
+ou modifier d'autres périmètres avec son propre compte. La suite du palier 2 fait passer les écritures par le serveur,
+puis ferme l'accès direct dans les règles.
 
 Code : `src/lib/perimetre.ts` (règles, pures), `src/lib/auth/perimetre-server.ts`, `src/lib/auth/perimetre-cibles.ts`,
 `src/components/perimetre/acces.tsx`. Tests : `tests/perimetre.test.ts`, `tests/perimetre-flow.test.ts`.

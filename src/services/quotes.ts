@@ -1,4 +1,5 @@
 import { db } from '@/lib/firebase';
+import { lireServeur } from '@/services/lecture';
 import { collection, deleteDoc, doc, getDoc, getDocs, query, runTransaction, where } from 'firebase/firestore';
 import { addDays, computeQuoteTotals, quoteCounterKey, quoteNumber } from '@/lib/quotes/pricing';
 import type { Quote, QuoteVersionRecord } from '@/lib/quotes/types';
@@ -25,35 +26,13 @@ function clean<T>(value: T): T {
     return value;
 }
 
-export async function getQuotes(): Promise<Quote[]> {
-    const snap = await getDocs(collection(db, QUOTES));
-    return snap.docs.map(d => ({ id: d.id, ...d.data() }) as Quote);
-}
-
-export async function getQuote(id: string): Promise<Quote | null> {
-    const snap = await getDoc(doc(db, QUOTES, id));
-    return snap.exists() ? ({ id: snap.id, ...snap.data() } as Quote) : null;
-}
-
-export async function getQuotesBy(field: 'clientId' | 'siteId', value: string): Promise<Quote[]> {
-    const snap = await getDocs(query(collection(db, QUOTES), where(field, '==', value)));
-    return snap.docs.map(d => ({ id: d.id, ...d.data() }) as Quote);
-}
-
+// Lectures : faites par le serveur, qui ne renvoie que les devis des clients du périmètre de l'utilisateur.
+export const getQuotes = (): Promise<Quote[]> => lireServeur<Quote[]>('devisTous', {}, []);
+export const getQuote = (id: string): Promise<Quote | null> => lireServeur<Quote | null>('devis', { id }, null);
 /** Versions envoyées d'un devis (lecture seule : écrites par le serveur). */
-export async function getQuoteVersions(quoteId: string): Promise<QuoteVersionRecord[]> {
-    const snap = await getDocs(query(collection(db, 'quoteVersions'), where('quoteId', '==', quoteId)));
-    return snap.docs.map(d => ({ id: d.id, ...d.data() }) as QuoteVersionRecord).sort((a, b) => a.version - b.version);
-}
-
-/** Factures émises depuis un devis (dates converties en ISO). */
-export async function getQuoteInvoices(quoteId: string): Promise<Invoice[]> {
-    const snap = await getDocs(query(collection(db, 'invoices'), where('quoteId', '==', quoteId)));
-    const iso = (v: any) => (v?.toDate ? v.toDate().toISOString() : v);
-    return snap.docs
-        .map(d => { const data = d.data(); return { ...data, id: d.id, date: iso(data.date), dueDate: iso(data.dueDate) } as Invoice; })
-        .sort((a, b) => (a.invoiceNumber ?? '').localeCompare(b.invoiceNumber ?? ''));
-}
+export const getQuoteVersions = (quoteId: string): Promise<QuoteVersionRecord[]> => lireServeur<QuoteVersionRecord[]>('versionsDuDevis', { id: quoteId }, []);
+/** Factures émises depuis un devis. */
+export const getQuoteInvoices = (quoteId: string): Promise<Invoice[]> => lireServeur<Invoice[]>('facturesDuDevis', { id: quoteId }, []);
 
 export type NewQuoteInput = Omit<Quote, 'id' | 'number' | 'status' | 'version' | 'validUntil' | 'totals' | 'createdAt' | 'updatedAt'>;
 

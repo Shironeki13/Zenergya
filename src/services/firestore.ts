@@ -1,4 +1,5 @@
 import { db } from '@/lib/firebase';
+import { lireServeur } from '@/services/lecture';
 import type { Client, Contact, Site, Contract, Invoice, CreditNote, MeterReading, Company, Agency, Sector, Activity, User, Role, Schedule, Term, Typology, VatRate, RevisionFormula, PaymentTerm, PricingRule, Market, Meter, MeterType, Index, IndexValue, RevisionRule, Service, InvoiceStatus, Amendment, Termination, Renewal, TrusteeChange, BeChange, Interest, Dju, DjuMonthly, WeatherStation, SettlementRule, ServiceSettlement, SettlementMethodType, SettlementTargetType, WorkProject, WorkQuote, ProgressSituation, AdvWorkQuote, AdvWorkQuoteVersion, AdvWorkQuoteLine, AdvWorkAffair, AdvWorkBudgetLine, AdvWorkLot, AdvWorkPoste, AdvWorkSituation, AdvWorkSituationLine, AdvPurchaseOrder, AdvPurchaseOrderLine, AdvCatalogArticle, AdvCatalogOuvrage, AdvOuvrageComposant } from '@/lib/types';
 import { collection, getDocs, doc, getDoc, addDoc, updateDoc, deleteDoc, query, where, DocumentData, writeBatch, runTransaction, Timestamp } from 'firebase/firestore';
 import { deleteFileFromUrl } from './storage';
@@ -116,7 +117,7 @@ export async function getClients(): Promise<Client[]> {
 }
 
 export async function getClient(id: string): Promise<Client | null> {
-    return getDocument<Client>(doc(db, 'clients', id));
+    return lireServeur<Client | null>('client', { id }, null);
 }
 
 export async function createClient(data: Omit<Client, 'id'>): Promise<any> {
@@ -205,8 +206,7 @@ export async function getContacts(): Promise<Contact[]> {
 }
 
 export async function getContactsByClient(clientId: string): Promise<Contact[]> {
-    const q = query(collection(db, 'contacts'), where("clientId", "==", clientId));
-    return getCollection<Contact>(q);
+    return lireServeur<Contact[]>('contactsDuClient', { id: clientId }, []);
 }
 
 export async function createContact(data: Omit<Contact, 'id'>): Promise<Contact> {
@@ -236,12 +236,10 @@ export async function getSites(): Promise<Site[]> {
 
 
 export async function getSitesByClient(clientId: string): Promise<Site[]> {
-    const q = query(collection(db, 'sites'), where("clientId", "==", clientId));
-    return getCollection<Site>(q);
+    return lireServeur<Site[]>('sitesDuClient', { id: clientId }, []);
 }
 export async function getSitesByContract(contractId: string): Promise<Site[]> {
-    const q = query(collection(db, 'sites'), where("contractId", "==", contractId));
-    return getCollection<Site>(q);
+    return lireServeur<Site[]>('sitesDuContrat', { id: contractId }, []);
 }
 
 export async function createSite(data: Omit<Site, 'id' | 'code'>) {
@@ -288,13 +286,12 @@ export async function getContracts(): Promise<Contract[]> {
 }
 
 export async function getContractsByClient(clientId: string): Promise<Contract[]> {
-    const q = query(collection(db, 'contracts'), where("clientId", "==", clientId));
-    return getCollection<Contract>(q);
+    return lireServeur<Contract[]>('contratsDuClient', { id: clientId }, []);
 }
 
 
 export async function getContract(id: string): Promise<Contract | null> {
-    return getDocument<Contract>(doc(db, 'contracts', id));
+    return lireServeur<Contract | null>('contrat', { id }, null);
 }
 
 export async function createContract(data: Omit<Contract, 'id' | 'status' | 'validationStatus'>) {
@@ -363,7 +360,7 @@ export async function getInvoices(): Promise<Invoice[]> {
 }
 
 export async function getInvoice(id: string): Promise<Invoice | null> {
-    return getDocument<Invoice>(doc(db, 'invoices', id));
+    return lireServeur<Invoice | null>('facture', { id }, null);
 }
 
 export async function getInvoicesByIds(ids: string[]): Promise<Invoice[]> {
@@ -374,8 +371,7 @@ export async function getInvoicesByIds(ids: string[]): Promise<Invoice[]> {
 
 
 export async function getInvoicesByContract(contractId: string): Promise<Invoice[]> {
-    const q = query(collection(db, 'invoices'), where("contractId", "==", contractId));
-    return getCollection<Invoice>(q);
+    return lireServeur<Invoice[]>('facturesDuContrat', { id: contractId }, []);
 }
 
 export async function updateInvoiceStatus(id: string, status: InvoiceStatus) {
@@ -494,8 +490,7 @@ export async function getMeterReadings(): Promise<MeterReading[]> {
 }
 
 export async function getMeterReadingsByContract(contractId: string): Promise<MeterReading[]> {
-    const q = query(collection(db, 'meterReadings'), where("contractId", "==", contractId));
-    return getCollection<MeterReading>(q);
+    return lireServeur<MeterReading[]>('relevesDuContrat', { id: contractId }, []);
 }
 
 export async function getMeterReadingsByMeter(meterId: string): Promise<MeterReading[]> {
@@ -780,12 +775,10 @@ export async function getServices(): Promise<Service[]> {
     return getCollection<Service>(collection(db, 'services'));
 }
 export async function getServicesBySite(siteId: string): Promise<Service[]> {
-    const q = query(collection(db, 'services'), where("siteId", "==", siteId));
-    return getCollection<Service>(q);
+    return lireServeur<Service[]>('prestationsDuSite', { id: siteId }, []);
 }
 export async function getServicesByContract(contractId: string): Promise<Service[]> {
-    const q = query(collection(db, 'services'), where("contractId", "==", contractId));
-    return getCollection<Service>(q);
+    return lireServeur<Service[]>('prestationsDuContrat', { id: contractId }, []);
 }
 export async function updateService(id: string, data: Partial<Omit<Service, 'id'>>) {
     const before = (await getDoc(doc(db, 'services', id))).get('siteId') as string | undefined;
@@ -841,8 +834,7 @@ export async function getAmendments(): Promise<Amendment[]> {
     return getCollection<Amendment>(collection(db, 'amendments'));
 }
 export async function getAmendmentsByContract(contractId: string): Promise<Amendment[]> {
-    const q = query(collection(db, 'amendments'), where("contractId", "==", contractId));
-    return getCollection<Amendment>(q);
+    return lireServeur<Amendment[]>('avenantsDuContrat', { id: contractId }, []);
 }
 export async function updateAmendment(id: string, data: Partial<Omit<Amendment, 'id'>>) {
     return updateSettingItem('amendments', id, data);
@@ -859,8 +851,7 @@ export async function getTerminations(): Promise<Termination[]> {
     return getCollection<Termination>(collection(db, 'terminations'));
 }
 export async function getTerminationsByContract(contractId: string): Promise<Termination[]> {
-    const q = query(collection(db, 'terminations'), where("contractId", "==", contractId));
-    return getCollection<Termination>(q);
+    return lireServeur<Termination[]>('resiliationsDuContrat', { id: contractId }, []);
 }
 export async function updateTermination(id: string, data: Partial<Omit<Termination, 'id'>>) {
     return updateSettingItem('terminations', id, data);
@@ -877,8 +868,7 @@ export async function getRenewals(): Promise<Renewal[]> {
     return getCollection<Renewal>(collection(db, 'renewals'));
 }
 export async function getRenewalsByContract(contractId: string): Promise<Renewal[]> {
-    const q = query(collection(db, 'renewals'), where("contractId", "==", contractId));
-    return getCollection<Renewal>(q);
+    return lireServeur<Renewal[]>('reconductionsDuContrat', { id: contractId }, []);
 }
 export async function updateRenewal(id: string, data: Partial<Omit<Renewal, 'id'>>) {
     return updateSettingItem('renewals', id, data);
@@ -895,8 +885,7 @@ export async function getTrusteeChanges(): Promise<TrusteeChange[]> {
     return getCollection<TrusteeChange>(collection(db, 'trusteeChanges'));
 }
 export async function getTrusteeChangesByContract(contractId: string): Promise<TrusteeChange[]> {
-    const q = query(collection(db, 'trusteeChanges'), where("contractId", "==", contractId));
-    return getCollection<TrusteeChange>(q);
+    return lireServeur<TrusteeChange[]>('syndicsDuContrat', { id: contractId }, []);
 }
 export async function updateTrusteeChange(id: string, data: Partial<Omit<TrusteeChange, 'id'>>) {
     return updateSettingItem('trusteeChanges', id, data);
@@ -913,8 +902,7 @@ export async function getBeChanges(): Promise<BeChange[]> {
     return getCollection<BeChange>(collection(db, 'beChanges'));
 }
 export async function getBeChangesByContract(contractId: string): Promise<BeChange[]> {
-    const q = query(collection(db, 'beChanges'), where("contractId", "==", contractId));
-    return getCollection<BeChange>(q);
+    return lireServeur<BeChange[]>('beDuContrat', { id: contractId }, []);
 }
 
 // Interest
@@ -923,8 +911,7 @@ export async function getInterests(): Promise<Interest[]> {
 }
 
 export async function getInterestsByService(serviceId: string): Promise<Interest[]> {
-    const q = query(collection(db, 'interests'), where("serviceId", "==", serviceId));
-    return getCollection<Interest>(q);
+    return lireServeur<Interest[]>('interetsDeLaPrestation', { id: serviceId }, []);
 }
 
 export async function createInterest(data: Omit<Interest, 'id'>): Promise<any> {
@@ -1329,10 +1316,7 @@ export async function createSettlementRule(data: Omit<SettlementRule, 'id'>): Pr
 }
 
 export async function getSettlementsByService(serviceId: string): Promise<ServiceSettlement[]> {
-    const q = query(collection(db, 'service_settlements'), where("serviceId", "==", serviceId));
-    // Since service_settlements can be complex, ensure processFirestoreDoc handles strictly
-    const snapshot = await getDocs(q);
-    return snapshot.docs.map(doc => processFirestoreDoc<ServiceSettlement>({ id: doc.id, ...doc.data() as Record<string, any> }));
+    return lireServeur<ServiceSettlement[]>('reglementsDeLaPrestation', { id: serviceId }, []);
 }
 
 export async function createSettlement(data: Omit<ServiceSettlement, 'id'>): Promise<any> {

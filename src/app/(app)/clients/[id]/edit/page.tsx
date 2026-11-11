@@ -182,13 +182,14 @@ export default function EditClientPage() {
     }
   }
 
+  // Périmètre : la fiche d'un client hors des sociétés, agences et secteurs de l'utilisateur ne se modifie pas.
+  // (Avant tout retour anticipé : un hook s'appelle à chaque rendu.)
+  const horsPerimetre = useHorsPerimetre(client?.id);
+  if (horsPerimetre) return <AccesRefuse objet="Ce client" />;
+
   if (isDataLoading || !client) {
     return <div className="flex justify-center items-center h-full"><Loader2 className="h-8 w-8 animate-spin" /></div>;
   }
-
-  // Périmètre : la fiche d'un client hors des sociétés, agences et secteurs de l'utilisateur ne se modifie pas.
-  const horsPerimetre = useHorsPerimetre(client?.id);
-  if (horsPerimetre) return <AccesRefuse objet="Ce client" />;
 
   return (
     <Card>

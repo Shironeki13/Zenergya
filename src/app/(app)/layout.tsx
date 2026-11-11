@@ -13,6 +13,7 @@ import { useData } from '@/context/data-context';
 import { usePathname, useRouter } from 'next/navigation';
 import { accesRoute } from '@/lib/perimetre';
 import { AccesRefuse } from '@/components/perimetre/acces';
+import { EVENEMENT_HORS_PERIMETRE } from '@/services/lecture';
 import { AppSidebar } from '@/components/navigation/app-sidebar';
 import { Breadcrumbs } from '@/components/navigation/breadcrumbs';
 import { GlobalSearch } from '@/components/navigation/global-search';
@@ -24,6 +25,14 @@ function MainAppLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
   const [menuMobile, setMenuMobile] = useState(false);
+  // Le serveur a refusé une lecture de cette page (objet hors du périmètre) : la page est remplacée par le refus.
+  const [refus, setRefus] = useState<string | null>(null);
+  useEffect(() => {
+    const signaler = (e: Event) => setRefus((e as CustomEvent<{ chemin: string }>).detail?.chemin ?? window.location.pathname);
+    window.addEventListener(EVENEMENT_HORS_PERIMETRE, signaler);
+    return () => window.removeEventListener(EVENEMENT_HORS_PERIMETRE, signaler);
+  }, []);
+  const horsPerimetre = refus !== null && refus === pathname;
 
   useEffect(() => {
     if (!isLoading && !currentUser) {
@@ -79,7 +88,7 @@ function MainAppLayout({ children }: { children: React.ReactNode }) {
             <UserNav />
           </header>
           <main className="flex flex-1 flex-col gap-4 bg-muted/20 p-4 lg:gap-6 lg:p-8">
-            {accesRoute(pathname, modules, toutVoir) ? children : <AccesRefuse motif="module" />}
+            {!accesRoute(pathname, modules, toutVoir) ? <AccesRefuse motif="module" /> : horsPerimetre ? <AccesRefuse /> : children}
           </main>
         </div>
       </div>

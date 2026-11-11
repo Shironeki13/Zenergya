@@ -7,6 +7,8 @@ import { z } from 'zod';
  * nombre, date ou liste de valeurs. Les cases à cocher (booléens) ne sont jamais marquées.
  */
 export function champObligatoire(schema: z.ZodTypeAny, chemin: string): boolean {
+    // Libellé posé hors d'un champ de formulaire (pas de nom) : rien à déduire du schéma.
+    if (typeof chemin !== 'string' || !chemin) return false;
     let t: z.ZodTypeAny | undefined = schema;
     for (const seg of chemin.split('.')) {
         t = deballer(t);

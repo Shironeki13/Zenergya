@@ -12,7 +12,7 @@ import { COLLECTIONS_PERIMETRE, type CollectionPerimetre } from '@/lib/perimetre
  */
 
 /** Même forme que les lectures du navigateur : dates Firestore en chaînes ISO, objets simples. */
-function convertir(v: unknown): unknown {
+export function convertir(v: unknown): unknown {
     if (v === null || v === undefined) return v;
     if (v instanceof Timestamp) return v.toDate().toISOString();
     if (Array.isArray(v)) return v.map(convertir);
