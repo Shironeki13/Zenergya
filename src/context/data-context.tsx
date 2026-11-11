@@ -3,10 +3,9 @@
 
 import React, { createContext, useContext, useState, useEffect, useCallback, useMemo, useRef, ReactNode } from 'react';
 import {
-  getClients, getContacts, getSites, getContracts, getInvoices, getCreditNotes, getMeters, getMeterTypes, getMeterReadings,
-  getCompanies, getAgencies, getSectors, getActivities, getSchedules, getTerms,
+  getMeterTypes, getCompanies, getAgencies, getSectors, getActivities, getSchedules, getTerms,
   getTypologies, getVatRates, getRevisionFormulas, getPaymentTerms, getPricingRules,
-  getMarkets, getRoles, getUsers, getIndices, getIndexValues, getRevisionRules, getServices, getSettlementRules,
+  getMarkets, getRoles, getUsers, getIndices, getIndexValues, getRevisionRules, getSettlementRules,
   getWeatherStations,
   initializeSettlementRules,
 } from '@/services/firestore';
@@ -25,13 +24,13 @@ const DataContext = createContext<DataContextType | undefined>(undefined);
  * - Après un enregistrement : `reloadData(['clients'])` ne recharge que les collections citées, sans écran d'attente.
  */
 type Collections = Pick<DataContextType, CollectionKey>;
-/** Chargeurs directs (référentiels). Les collections à périmètre passent par le serveur ; leurs chargeurs ne servent plus ici. */
-const LOADERS: { [K in CollectionKey]: () => Promise<Collections[K]> } = {
-  clients: getClients, sites: getSites, contracts: getContracts, services: getServices, companies: getCompanies, agencies: getAgencies, sectors: getSectors,
-  activities: getActivities, schedules: getSchedules, terms: getTerms, typologies: getTypologies, vatRates: getVatRates, revisionFormulas: getRevisionFormulas,
-  revisionRules: getRevisionRules, paymentTerms: getPaymentTerms, pricingRules: getPricingRules, markets: getMarkets, roles: getRoles, users: getUsers,
-  indices: getIndices, meterTypes: getMeterTypes, settlementRules: getSettlementRules, weatherStations: getWeatherStations,
-  invoices: getInvoices, creditNotes: getCreditNotes, meterReadings: getMeterReadings, indexValues: getIndexValues, contacts: getContacts, meters: getMeters,
+/** Chargeurs directs des référentiels. Les collections à périmètre viennent du serveur (/api/donnees). */
+type CollectionDirecte = Exclude<CollectionKey, CollectionPerimetre>;
+const LOADERS: { [K in CollectionDirecte]: () => Promise<Collections[K]> } = {
+  companies: getCompanies, agencies: getAgencies, sectors: getSectors, activities: getActivities, schedules: getSchedules, terms: getTerms, typologies: getTypologies,
+  vatRates: getVatRates, revisionFormulas: getRevisionFormulas, revisionRules: getRevisionRules, paymentTerms: getPaymentTerms, pricingRules: getPricingRules,
+  markets: getMarkets, roles: getRoles, users: getUsers, indices: getIndices, meterTypes: getMeterTypes, settlementRules: getSettlementRules,
+  weatherStations: getWeatherStations, indexValues: getIndexValues,
 };
 const estPerimetre = (k: CollectionKey): k is CollectionPerimetre => (COLLECTIONS_PERIMETRE as readonly string[]).includes(k);
 
@@ -135,8 +134,8 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       // Auto-init rules if empty (side effect, but ensures we exist)
       const regles = resultats[keys.indexOf('settlementRules')];
       if (regles.status === 'fulfilled' && (regles.value as unknown[]).length === 0) {
-        await initializeSettlementRules();
-        await charger(['settlementRules']);
+        // Écriture d'un référentiel : possible avec le module Paramétrage seulement ; sinon, il sera créé par un utilisateur qui l'a.
+        await initializeSettlementRules().then(() => charger(['settlementRules'])).catch(() => undefined);
       }
     } catch (error) {
       console.error("A critical error occurred during data loading:", error);

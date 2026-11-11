@@ -5,7 +5,6 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { cn } from '@/lib/utils';
-import { uploadFile } from '@/services/storage';
 
 /**
  * Pièce justificative d'un document de contrat (avenant, OS, reconduction, résiliation, changement de syndic ou de
@@ -48,9 +47,17 @@ export function PieceJustificative({ fichier, onChange, erreur, obligatoire = tr
 /** Pièce valide (présente, du bon type, pas trop grosse). */
 export const pieceValide = (f: File | null): f is File => !!f && f.size <= TAILLE_MAX_PIECE && TYPES.includes(f.type);
 
-/** Dépose la pièce dans le dossier du contrat ; renvoie son adresse et son nom. */
+/**
+ * Dépose la pièce dans le dossier du contrat ; renvoie son adresse et son nom. Le dépôt est fait par le serveur
+ * (/api/pieces), qui contrôle la session, le périmètre de l'utilisateur, le type et la taille du fichier.
+ */
 export async function deposerPiece(fichier: File, contractId: string, dossier: string): Promise<{ documentUrl: string; documentName: string }> {
-    const nom = fichier.name.normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^A-Za-z0-9._-]+/g, '_').slice(-120);
-    const documentUrl = await uploadFile(fichier, `contracts/${contractId}/${dossier}/${Date.now()}-${nom}`, { inline: true });
-    return { documentUrl, documentName: fichier.name };
+    const form = new FormData();
+    form.set('fichier', fichier);
+    form.set('contractId', contractId);
+    form.set('dossier', dossier);
+    const res = await fetch('/api/pieces', { method: 'POST', credentials: 'same-origin', body: form });
+    const corps = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(corps?.error || `Dépôt refusé (${res.status}).`);
+    return { documentUrl: corps.documentUrl, documentName: corps.documentName };
 }

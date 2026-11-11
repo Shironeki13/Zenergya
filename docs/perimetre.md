@@ -66,12 +66,30 @@ Utilisateurs et clés API : administrateur seulement. Une page hors de ses modul
    sont filtrées.
 5. **Imports en masse** : réservés aux administrateurs.
 
-## Limite actuelle (palier 2)
+## Accès direct fermé (règles Firestore et Storage)
 
-Lectures et écritures passent par le serveur, mais les **règles Firestore n'interdisent pas encore** au navigateur
-d'accéder directement à ces collections : un utilisateur techniquement averti pourrait encore les lire ou les modifier
-avec son propre compte, sans passer par l'application. La dernière étape du palier 2 ferme cet accès direct dans les
-règles (et sert les pièces justificatives par le serveur).
+Le navigateur n'accède directement qu'aux **référentiels** : lecture pour tous les utilisateurs, écriture avec le module
+Paramétrage (droit `param`, posé à la connexion) ; utilisateurs et rôles : écriture par l'administrateur. Toutes les
+autres collections — et le stockage des fichiers — sont **fermées au navigateur**, administrateur compris : elles ne
+sont lues et écrites que par le serveur, qui applique le périmètre. Les règles sont une liste blanche : une collection
+qui n'y figure pas est refusée.
+
+- **Pièces justificatives** : déposées par le serveur (`/api/pieces`), qui contrôle le périmètre, le type (PDF, PNG,
+  JPEG) et la taille (20 Mo) ; consultées par leur adresse de téléchargement à jeton.
+- **Mise en service** : déployer l'application **avant** les règles (l'ancienne version de l'application lit la base
+  directement et serait bloquée), puis faire se reconnecter les utilisateurs (leurs droits sont posés à la connexion).
+
+## Limites connues
+
+- Une pièce justificative se consulte par une **adresse à jeton** : quiconque détient l'adresse peut ouvrir le fichier.
+  Le serveur ne la communique qu'avec les documents du périmètre de l'utilisateur, mais elle reste valable si elle est
+  transmise à un tiers.
+- La **bibliothèque de prix** et les compteurs de numérotation (`config`) restent modifiables par tout utilisateur de
+  l'application, comme avant.
+- Les **référentiels** (dont la liste des utilisateurs et leurs périmètres) sont lisibles par tous les utilisateurs.
 
 Code : `src/lib/perimetre.ts` (règles, pures), `src/lib/auth/perimetre-server.ts`, `src/lib/auth/perimetre-cibles.ts`,
-`src/components/perimetre/acces.tsx`. Tests : `tests/perimetre.test.ts`, `tests/perimetre-flow.test.ts`.
+`src/components/perimetre/acces.tsx`, `src/services/donnees-admin.ts`, `src/services/lectures-admin.ts`,
+`src/services/ecritures-admin.ts`, `src/app/api/pieces/route.ts`, `firestore.rules`, `storage.rules`. Tests :
+`tests/perimetre.test.ts`, `tests/perimetre-flow.test.ts`, `tests/donnees-flow.test.ts`, `tests/lectures-flow.test.ts`,
+`tests/ecritures-flow.test.ts`, `tests/firestore-rules.test.mjs`.

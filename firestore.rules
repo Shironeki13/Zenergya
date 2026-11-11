@@ -1,10 +1,14 @@
 rules_version = '2';
 
-// Accès réservé aux utilisateurs autorisés de l'application.
+// Le navigateur n'accède directement qu'aux RÉFÉRENTIELS. Tout le reste — clients, contrats, sites, prestations,
+// compteurs, relevés, factures, avoirs, contacts, documents de contrat, devis, affaires, commandes, heures,
+// paramétrage P1… — est lu et écrit par le serveur (Admin SDK, non soumis à ces règles), qui applique le périmètre
+// de l'utilisateur (sociétés, agences, secteurs) : voir docs/perimetre.md.
+//
 // Les droits sont portés par des custom claims Firebase posés par le serveur (/api/auth/session) :
 //   zen   = compte présent dans la collection `users` (ou dans ADMIN_EMAILS)
 //   admin = rôle marqué « Administrateur » (ou ADMIN_EMAILS)
-// Le serveur (Admin SDK) n'est pas soumis à ces règles.
+//   param = module « Paramétrage et imports » (ou administrateur)
 service cloud.firestore {
   match /databases/{database}/documents {
 
@@ -16,109 +20,33 @@ service cloud.firestore {
       return isAppUser() && request.auth.token.admin == true;
     }
 
-    // Collections modifiables uniquement par un administrateur.
-    function isAdminOnly(coll) {
-      return coll in ['users', 'roles'];
+    // Module Paramétrage : écriture des référentiels.
+    function isParam() {
+      return isAppUser() && (request.auth.token.admin == true || request.auth.token.param == true);
     }
 
-    // Documents comptables, versions de devis envoyées, affaires P6 et situations : écrits uniquement par le
-    // serveur (Admin SDK).
-    // Pour les documents comptables, il attribue les numéros dans la même transaction. Côté navigateur, seules les exceptions ci-dessous sont permises.
-    function isAccounting(coll) {
-      return coll in ['invoices', 'creditNotes', 'counters', 'quoteVersions', 'projects', 'projectSituations', 'imports'];
+    // Référentiels : lisibles par tous les utilisateurs (leurs libellés servent partout), modifiables avec le module
+    // Paramétrage.
+    function isReferentiel(coll) {
+      return coll in ['companies', 'agencies', 'sectors', 'activities', 'schedules', 'terms', 'typologies', 'vatRates',
+        'revisionFormulas', 'revisionRules', 'paymentTerms', 'pricingRules', 'markets', 'meterTypes', 'weatherStations',
+        'djus', 'djuMonthly', 'indices', 'indexValues', 'settlement_rules'];
     }
 
-    // Code Zenergya d'un client, d'un contrat, d'un site ou d'un compteur (CLI-00001, CTN-00001, SIT-00001,
-    // CPT-00001) : identifiant maître, immuable une fois attribué. Le rattrapage des anciens documents passe
-    // par l'Admin SDK.
-    function codeField(coll) {
-      return coll == 'clients' ? 'externalCode' : coll == 'contracts' ? 'contractNumber' : 'code';
-    }
-    function codeInchange(coll) {
-      return !(coll in ['clients', 'contracts', 'sites', 'meters'])
-        || request.method != 'update'
-        || !(codeField(coll) in resource.data)
-        || request.resource.data.get(codeField(coll), null) == resource.data.get(codeField(coll), null);
+    // Bibliothèque de prix (articles, ouvrages) et compteurs de numérotation qu'elle utilise : utilisateurs de
+    // l'application.
+    function isBibliotheque(coll) {
+      return coll in ['priceArticles', 'priceWorks', 'config'];
     }
 
-    // API externe : clés (empreintes), débit, idempotence, journal. Serveur uniquement, même en lecture.
-    function isServerOnly(coll) {
-      return coll in ['apiKeys', 'apiUsage', 'apiIdempotency', 'apiLogs'];
-    }
-
-    // Écrits par le serveur seulement, lisibles par les utilisateurs : paramétrage P1 (versions datées, jamais
-    // d'écrasement), réel P1 du moteur, relevés de compteurs (relevés facturés ou repris figés), commentaires de
-    // suivi de la facturation (historique : ni modification ni suppression), saisons de chauffe (allumage, arrêt),
-    // commandes d'achat (circuit de validation) et fournisseurs, heures de main-d'œuvre (coût et analytique figés).
-    function isServerWritten(coll) {
-      return coll in ['p1Parametrage', 'p1Reel', 'meterReadings', 'suiviCommentaires', 'saisonsChauffe', 'commandes', 'fournisseurs', 'heures'];
-    }
-
-    // Documents de contrat (avenants et OS, reconductions, résiliations, changements de syndic et de BE) : créés
-    // depuis le navigateur « en attente de validation » avec leur pièce justificative (elle fait foi) ; validés ou
-    // refusés par le serveur seulement (services/validations-admin.ts, contrathèque), jamais modifiés ni supprimés.
-    function isContractEvent(coll) {
-      return coll in ['amendments', 'terminations', 'renewals', 'trusteeChanges', 'beChanges'];
-    }
-
-    // Contrats : la validation (base marché) appartient à la contrathèque, au serveur. Depuis le navigateur, un contrat
-    // se crée « en attente de validation » ; il peut y être remis (correction après refus), jamais marqué validé ; la
-    // trace de validation est intouchable ; son statut ne change pas tant qu'il n'est pas validé (« Actif » à la
-    // validation). Contrats antérieurs à la validation (sans statut de validation) : considérés validés.
-    function contratValidationIntacte(coll) {
-      return coll != 'contracts' || request.method == 'delete'
-        || (request.method == 'create' && request.resource.data.get('validationStatus', '') == 'pending_validation'
-            && !('validatedBy' in request.resource.data) && !('validatedAt' in request.resource.data))
-        || (request.method == 'update'
-            && (request.resource.data.get('validationStatus', null) == resource.data.get('validationStatus', null)
-                || request.resource.data.get('validationStatus', null) == 'pending_validation')
-            && request.resource.data.get('validatedBy', null) == resource.data.get('validatedBy', null)
-            && request.resource.data.get('validatedAt', null) == resource.data.get('validatedAt', null)
-            && (request.resource.data.get('status', null) == resource.data.get('status', null)
-                || (resource.data.get('validationStatus', 'validated') == 'validated'
-                    && request.resource.data.get('validationStatus', 'validated') == 'validated')));
-    }
-
-    // Devis : modification et suppression traitées à part (voir match /quotes).
-    function isQuoteChange(coll) {
-      return coll == 'quotes' && request.method in ['update', 'delete'];
-    }
-
-    // Attention : les règles qui correspondent à un même chemin s'additionnent (OU logique),
-    // d'où une règle générique qui exclut explicitement les collections traitées à part.
+    // Les règles qui correspondent à un même chemin s'additionnent (OU logique) : une seule règle, en liste blanche.
+    // Toute collection qui n'y figure pas est refusée, en lecture comme en écriture.
     match /{coll}/{docId} {
-      allow read: if isAppUser() && !isServerOnly(coll);
-      allow create, update, delete: if !isAccounting(coll) && !isServerOnly(coll) && !isServerWritten(coll) && !isContractEvent(coll) && codeInchange(coll) && contratValidationIntacte(coll) && !isQuoteChange(coll)
-        && (isAdmin() || (isAppUser() && !isAdminOnly(coll)));
-    }
-
-    match /{evt}/{docId} {
-      allow create: if isContractEvent(evt) && isAppUser()
-        && request.resource.data.validationStatus == 'pending_validation'
-        && request.resource.data.documentUrl is string && request.resource.data.documentUrl.size() > 0
-        && request.resource.data.contractId is string;
-    }
-
-    match /quotes/{quoteId} {
-      // Seul un brouillon se modifie, et reste un brouillon (même numéro, même version) : envoi, acceptation,
-      // refus, annulation et nouvelle version passent par le serveur (services/quotes-admin.ts).
-      allow update: if isAppUser()
-        && resource.data.status == 'brouillon'
-        && request.resource.data.status == 'brouillon'
-        && request.resource.data.number == resource.data.number
-        && request.resource.data.version == resource.data.version;
-      // Seul un brouillon jamais envoyé (version 1) se supprime ; sinon le devis s'annule.
-      allow delete: if isAppUser() && resource.data.status == 'brouillon' && resource.data.version == 1;
-    }
-
-    match /invoices/{invoiceId} {
-      // Suivi des encaissements : seul le statut d'une facture émise et non annulée peut changer, entre ces valeurs.
-      allow update: if isAppUser()
-        && resource.data.status in ['due', 'overdue', 'paid']
-        && request.resource.data.status in ['due', 'overdue', 'paid']
-        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status']);
-      // Un proforma (sans numéro) peut être supprimé ; une facture émise s'annule par un avoir.
-      allow delete: if isAppUser() && resource.data.status == 'proforma';
+      allow read: if isAppUser() && (isReferentiel(coll) || isBibliotheque(coll) || coll in ['users', 'roles'])
+        || (isAdmin() && coll == 'imports');
+      allow create, update, delete: if (isReferentiel(coll) && isParam())
+        || (isBibliotheque(coll) && isAppUser())
+        || (coll in ['users', 'roles'] && isAdmin());
     }
 
     // Aucune sous-collection n'est utilisée : tout le reste est refusé par défaut.

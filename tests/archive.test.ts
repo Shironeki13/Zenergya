@@ -2,7 +2,7 @@
 import { test, before } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'fs';
-import { initializeTestEnvironment, assertFails, assertSucceeds } from '@firebase/rules-unit-testing';
+import { initializeTestEnvironment, assertFails } from '@firebase/rules-unit-testing';
 import { ref, uploadBytes, getBytes } from 'firebase/storage';
 import { adminBucket, adminDb } from '../src/lib/firebase-admin';
 import { createInvoice, createCreditNote } from '../src/services/firestore-admin';
@@ -105,7 +105,7 @@ test('avoir : archivé dans credit-notes', async () => {
     assert.equal(downloaded.filename, `Avoir_${cn.creditNoteNumber}.pdf`);
 });
 
-test('règles Storage : archives inaccessibles depuis le navigateur', async () => {
+test('règles Storage : le navigateur n\'accède pas directement au stockage (archives, pièces de contrat)', async () => {
     const env = await initializeTestEnvironment({
         projectId: process.env.FIREBASE_PROJECT_ID,
         storage: { rules: readFileSync(new URL('../storage.rules', import.meta.url), 'utf8') },
@@ -116,7 +116,9 @@ test('règles Storage : archives inaccessibles depuis le navigateur', async () =
 
     await assertFails(uploadBytes(ref(user, `archives/${acme.id}/invoices/2026/FAUX.pdf`), bytes));
     await assertFails(getBytes(ref(user, `archives/${acme.id}/invoices/2026/x.pdf`)));
-    await assertSucceeds(uploadBytes(ref(user, 'contracts/test.pdf'), bytes));
+    // Pièces de contrat : déposées par le serveur (/api/pieces), plus par le navigateur, administrateur compris.
+    await assertFails(uploadBytes(ref(user, 'contracts/test.pdf'), bytes));
+    await assertFails(getBytes(ref(user, 'contracts/test.pdf')));
     await assertFails(uploadBytes(ref(stranger, 'contracts/test2.pdf'), bytes));
     await env.cleanup();
 });

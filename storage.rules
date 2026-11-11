@@ -1,18 +1,15 @@
 rules_version = '2';
 
-// Documents (contrats PDF, logos…) réservés aux utilisateurs autorisés de l'application.
-// Voir firestore.rules pour la signification des claims.
+// Le navigateur n'accède pas directement au stockage.
+// - Pièces justificatives des contrats : déposées par le serveur (/api/pieces), qui contrôle la session et le périmètre
+//   de l'utilisateur ; consultées par leur adresse de téléchargement à jeton, que le serveur ne communique qu'avec les
+//   documents du périmètre de l'utilisateur.
+// - Archives légales des factures et avoirs : écrites et lues par le serveur ; téléchargement via /api/documents/…
+// Le serveur (Admin SDK) n'est pas soumis à ces règles.
 service firebase.storage {
   match /b/{bucket}/o {
-    function isAppUser() {
-      return request.auth != null && request.auth.token.zen == true;
-    }
-
-    // Archives légales des factures et avoirs : écrites et lues uniquement par le serveur (Admin SDK),
-    // jamais modifiables depuis le navigateur. Téléchargement via /api/documents/… après contrôle de session.
-    // Les règles s'additionnant (OU logique), le dossier « archives » est exclu de la règle générale.
-    match /{folder}/{allPaths=**} {
-      allow read, write: if folder != 'archives' && isAppUser();
+    match /{allPaths=**} {
+      allow read, write: if false;
     }
   }
 }

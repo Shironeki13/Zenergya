@@ -37,8 +37,10 @@ const isLoading = chargementBase || !pret;
 - `reloadData()` sans argument : recharge tout ce qui est en mémoire, avec l'écran d'attente. Réservé aux opérations
   qui touchent tout (imports en masse).
 
-Pour ajouter une collection partagée : son chargeur dans `LOADERS`, sa clé dans `EAGER_COLLECTIONS` ou
-`LAZY_COLLECTIONS` (`src/lib/types.ts`) et son type dans `DataContextType`.
+Pour ajouter une collection partagée : sa clé dans `EAGER_COLLECTIONS` ou `LAZY_COLLECTIONS` (`src/lib/types.ts`) et
+son type dans `DataContextType` ; puis, pour un référentiel, son chargeur dans `LOADERS` et son nom dans
+`firestore.rules` ; pour une collection à périmètre, son nom dans `COLLECTIONS_PERIMETRE` et son filtre dans
+`src/services/donnees-admin.ts`.
 
 ## Mesures (jeu de démonstration, ouverture directe d'un écran)
 

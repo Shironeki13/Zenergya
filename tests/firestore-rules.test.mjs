@@ -1,161 +1,101 @@
 // Tests des règles Firestore (émulateur requis) : npm run test:rules
+// Le navigateur n'accède directement qu'aux référentiels ; tout le reste passe par le serveur.
 import { initializeTestEnvironment, assertSucceeds, assertFails } from '@firebase/rules-unit-testing';
 import { readFileSync } from 'fs';
-import { doc, getDoc, setDoc, updateDoc, deleteDoc, collection, getDocs } from 'firebase/firestore';
+import { doc, getDoc, setDoc, updateDoc, deleteDoc, collection, getDocs, query, where } from 'firebase/firestore';
 
 const env = await initializeTestEnvironment({
   projectId: 'demo-zenergya',
   firestore: { rules: readFileSync(new URL('../firestore.rules', import.meta.url), 'utf8') },
 });
+
+// Collections lues et écrites par le serveur seulement.
+const SERVEUR = ['clients', 'contracts', 'sites', 'services', 'meters', 'meterReadings', 'invoices', 'creditNotes', 'contacts',
+  'amendments', 'terminations', 'renewals', 'trusteeChanges', 'beChanges', 'interests', 'service_settlements',
+  'quotes', 'quoteVersions', 'projects', 'projectSituations', 'commandes', 'fournisseurs', 'heures',
+  'p1Parametrage', 'p1Reel', 'saisonsChauffe', 'suiviCommentaires', 'counters', 'apiKeys', 'apiUsage', 'apiIdempotency', 'apiLogs',
+  'collectionInconnue'];
+const REFERENTIELS = ['companies', 'agencies', 'sectors', 'activities', 'schedules', 'terms', 'typologies', 'vatRates', 'revisionFormulas',
+  'revisionRules', 'paymentTerms', 'pricingRules', 'markets', 'meterTypes', 'weatherStations', 'djus', 'djuMonthly', 'indices', 'indexValues', 'settlement_rules'];
+const BIBLIOTHEQUE = ['priceArticles', 'priceWorks', 'config'];
+
 await env.withSecurityRulesDisabled(async (ctx) => {
   const db = ctx.firestore();
-  for (const c of ['clients', 'invoices', 'creditNotes', 'users', 'roles', 'counters', 'contracts'])
-    await setDoc(doc(db, c, 'x'), { a: 1 });
+  for (const c of [...SERVEUR, ...REFERENTIELS, ...BIBLIOTHEQUE, 'users', 'roles', 'imports']) await setDoc(doc(db, c, 'x'), { a: 1, clientId: 'c', status: 'due' });
   await setDoc(doc(db, 'clients', 'x', 'sub', 'y'), { a: 1 });
-  await setDoc(doc(db, 'invoices', 'due'), { status: 'due', invoiceNumber: 'ACME-2610-0001', total: 100 });
-  await setDoc(doc(db, 'invoices', 'pro'), { status: 'proforma', total: 100 });
-  await setDoc(doc(db, 'invoices', 'cancelled'), { status: 'cancelled', invoiceNumber: 'ACME-2610-0002', total: 100 });
-  await setDoc(doc(db, 'sites', 's'), { name: 'Site', code: 'SIT-00001' });
-  await setDoc(doc(db, 'sites', 'ancien'), { name: 'Ancien site' });
-  await setDoc(doc(db, 'meters', 'm'), { name: 'Compteur', code: 'CPT-00001' });
-  await setDoc(doc(db, 'clients', 'cli'), { name: 'Client', externalCode: 'CLI-00001' });
-  await setDoc(doc(db, 'contracts', 'ctn'), { label: 'Contrat', contractNumber: 'CTN-00001', siteIds: [] });
-  await setDoc(doc(db, 'p1Parametrage', 'site:s'), { kind: 'site', siteId: 's', params: {}, postes: {} });
-  await setDoc(doc(db, 'meterReadings', 'r'), { meterId: 'm', value: 10, type: 'REEL' });
-  await setDoc(doc(db, 'suiviCommentaires', 'c'), { contractId: 'k', texte: 'x', motif: 'note' });
-  await setDoc(doc(db, 'contracts', 'kpend'), { contractNumber: 'CTN-00002', status: 'Brouillon', validationStatus: 'pending_validation' });
-  await setDoc(doc(db, 'contracts', 'kval'), { contractNumber: 'CTN-00003', status: 'Actif', validationStatus: 'validated', validatedBy: 'ctq@v.fr', validatedAt: '2026-11-01' });
-  await setDoc(doc(db, 'contracts', 'kref'), { contractNumber: 'CTN-00004', status: 'Brouillon', validationStatus: 'refused', refusalReason: 'Dates' });
-  await setDoc(doc(db, 'renewals', 'r1'), { contractId: 'k', validationStatus: 'pending_validation', documentUrl: 'https://x/d.pdf' });
-  await setDoc(doc(db, 'quotes', 'brouillon'), { number: 'VEF-DEV2026-0001', status: 'brouillon', version: 1, title: 'A' });
-  await setDoc(doc(db, 'quoteVersions', 'v'), { quoteId: 'envoye', version: 1 });
-  await setDoc(doc(db, 'projects', 'p'), { code: 'VEF-AFF2026-0001', status: 'en_cours' });
-  await setDoc(doc(db, 'apiKeys', 'k'), { name: 'ERP', prefix: 'abc', hash: 'h' });
-  await setDoc(doc(db, 'apiLogs', 'l'), { status: 200 });
-  await setDoc(doc(db, 'projectSituations', 's'), { projectId: 'p', status: 'brouillon' });
-  await setDoc(doc(db, 'quotes', 'envoye'), { number: 'VEF-DEV2026-0002', status: 'envoye', title: 'B' });
-  await setDoc(doc(db, 'quotes', 'jetable'), { number: 'VEF-DEV2026-0003', status: 'brouillon', version: 1, title: 'C' });
-  await setDoc(doc(db, 'quotes', 'v2'), { number: 'VEF-DEV2026-0005', status: 'brouillon', version: 2, title: 'D' });
+  await setDoc(doc(db, 'companies', 'x', 'sub', 'y'), { a: 1 });
 });
 const anon = env.unauthenticatedContext().firestore();
 const stranger = env.authenticatedContext('s', { email: 'evil@x.com' }).firestore();
 const user = env.authenticatedContext('u', { zen: true, admin: false }).firestore();
-const admin = env.authenticatedContext('a', { zen: true, admin: true }).firestore();
+const param = env.authenticatedContext('p', { zen: true, admin: false, param: true }).firestore();
+const admin = env.authenticatedContext('a', { zen: true, admin: true, param: true }).firestore();
 
 let ok = 0, ko = 0;
 async function t(name, p) { try { await p; ok++; console.log('PASS', name); } catch (e) { ko++; console.log('FAIL', name, e.message); } }
 
-await t('anon cannot read clients', assertFails(getDoc(doc(anon, 'clients', 'x'))));
-await t('anon cannot list invoices', assertFails(getDocs(collection(anon, 'invoices'))));
-await t('anon cannot write', assertFails(setDoc(doc(anon, 'clients', 'n'), { a: 1 })));
-await t('signed-in stranger cannot read', assertFails(getDoc(doc(stranger, 'clients', 'x'))));
-await t('signed-in stranger cannot write', assertFails(setDoc(doc(stranger, 'clients', 'n'), { a: 1 })));
-await t('user reads clients', assertSucceeds(getDoc(doc(user, 'clients', 'x'))));
-await t('user lists invoices', assertSucceeds(getDocs(collection(user, 'invoices'))));
-await t('user creates contract', assertSucceeds(setDoc(doc(user, 'contracts', 'n'), { a: 1, validationStatus: 'pending_validation' })));
-await t('user deletes contract', assertSucceeds(deleteDoc(doc(user, 'contracts', 'n'))));
-await t('user cannot update counter', assertFails(setDoc(doc(user, 'counters', 'x'), { current: 2 })));
-await t('admin cannot update counter', assertFails(setDoc(doc(admin, 'counters', 'x'), { current: 2 })));
-await t('user reads users', assertSucceeds(getDoc(doc(user, 'users', 'x'))));
-await t('user cannot write users', assertFails(setDoc(doc(user, 'users', 'x'), { roleId: 'admin' })));
-await t('user cannot create user', assertFails(setDoc(doc(user, 'users', 'n'), { a: 1 })));
-await t('user cannot write roles', assertFails(setDoc(doc(user, 'roles', 'x'), { isAdmin: true })));
-await t('user cannot delete invoice', assertFails(deleteDoc(doc(user, 'invoices', 'x'))));
-await t('user cannot delete credit note', assertFails(deleteDoc(doc(user, 'creditNotes', 'x'))));
-await t('user cannot delete counter', assertFails(deleteDoc(doc(user, 'counters', 'x'))));
-await t('user marks invoice paid', assertSucceeds(updateDoc(doc(user, 'invoices', 'due'), { status: 'paid' })));
-await t('user marks invoice due again', assertSucceeds(updateDoc(doc(user, 'invoices', 'due'), { status: 'due' })));
-await t('user cannot change invoice amount', assertFails(updateDoc(doc(user, 'invoices', 'due'), { total: 1 })));
-await t('user cannot change number with status', assertFails(updateDoc(doc(user, 'invoices', 'due'), { status: 'paid', invoiceNumber: 'X' })));
-await t('user cannot cancel invoice directly', assertFails(updateDoc(doc(user, 'invoices', 'due'), { status: 'cancelled' })));
-await t('user cannot revive cancelled invoice', assertFails(updateDoc(doc(user, 'invoices', 'cancelled'), { status: 'due' })));
-await t('user cannot create invoice', assertFails(setDoc(doc(user, 'invoices', 'new'), { status: 'due', total: 1 })));
-await t('admin cannot create invoice', assertFails(setDoc(doc(admin, 'invoices', 'new'), { status: 'due', total: 1 })));
-await t('user cannot create credit note', assertFails(setDoc(doc(user, 'creditNotes', 'new'), { total: -1 })));
-await t('user reads credit notes', assertSucceeds(getDoc(doc(user, 'creditNotes', 'x'))));
-await t('anon cannot delete proforma', assertFails(deleteDoc(doc(anon, 'invoices', 'pro'))));
-await t('user deletes proforma', assertSucceeds(deleteDoc(doc(user, 'invoices', 'pro'))));
-await t('admin cannot delete issued invoice', assertFails(deleteDoc(doc(admin, 'invoices', 'due'))));
-await t('admin cannot delete credit note', assertFails(deleteDoc(doc(admin, 'creditNotes', 'x'))));
-await t('user cannot read subcollection', assertFails(getDoc(doc(user, 'clients', 'x', 'sub', 'y'))));
-await t('admin writes users', assertSucceeds(setDoc(doc(admin, 'users', 'x'), { a: 2 })));
-await t('admin writes roles', assertSucceeds(setDoc(doc(admin, 'roles', 'x'), { isAdmin: true })));
-await t('admin deletes contract', assertSucceeds(deleteDoc(doc(admin, 'contracts', 'x'))));
-await t('user updates site keeping its code', assertSucceeds(updateDoc(doc(user, 'sites', 's'), { name: 'Site renommé' })));
-await t('user cannot change site code', assertFails(updateDoc(doc(user, 'sites', 's'), { code: 'SIT-09999' })));
-await t('admin cannot change site code', assertFails(updateDoc(doc(admin, 'sites', 's'), { code: 'SIT-09999' })));
-await t('user cannot remove site code', assertFails(setDoc(doc(user, 'sites', 's'), { name: 'Sans code' })));
-await t('user cannot change meter code', assertFails(updateDoc(doc(user, 'meters', 'm'), { code: 'CPT-09999' })));
-await t('user updates meter keeping its code', assertSucceeds(updateDoc(doc(user, 'meters', 'm'), { name: 'Compteur 2' })));
-await t('user cannot change client code', assertFails(updateDoc(doc(user, 'clients', 'cli'), { externalCode: 'X-1' })));
-await t('admin cannot change client code', assertFails(updateDoc(doc(admin, 'clients', 'cli'), { externalCode: 'CLI-09999' })));
-await t('user updates client keeping its code', assertSucceeds(updateDoc(doc(user, 'clients', 'cli'), { name: 'Client 2', externalRef: 'TW-1' })));
-await t('user cannot change contract number', assertFails(updateDoc(doc(user, 'contracts', 'ctn'), { contractNumber: 'CTN-09999' })));
-await t('user updates contract keeping its number', assertSucceeds(updateDoc(doc(user, 'contracts', 'ctn'), { clientName: 'Client 2' })));
-// Validation des contrats (base marché) : réservée à la contrathèque, au serveur.
-await t('user cannot create a validated contract', assertFails(setDoc(doc(user, 'contracts', 'v1'), { validationStatus: 'validated', status: 'Actif' })));
-await t('user cannot create a contract without validation status', assertFails(setDoc(doc(user, 'contracts', 'v2'), { label: 'x' })));
-await t('admin cannot create a validated contract', assertFails(setDoc(doc(admin, 'contracts', 'v3'), { validationStatus: 'validated' })));
-await t('user cannot validate a pending contract', assertFails(updateDoc(doc(user, 'contracts', 'kpend'), { validationStatus: 'validated' })));
-await t('admin cannot validate a pending contract', assertFails(updateDoc(doc(admin, 'contracts', 'kpend'), { validationStatus: 'validated', status: 'Actif' })));
-await t('user cannot activate a pending contract', assertFails(updateDoc(doc(user, 'contracts', 'kpend'), { status: 'Actif' })));
-await t('user edits a pending contract', assertSucceeds(updateDoc(doc(user, 'contracts', 'kpend'), { label: 'Corrigé' })));
-await t('user resubmits a refused contract', assertSucceeds(updateDoc(doc(user, 'contracts', 'kref'), { validationStatus: 'pending_validation', refusalReason: '' })));
-await t('user cannot forge validation trace', assertFails(updateDoc(doc(user, 'contracts', 'kval'), { validatedBy: 'moi@v.fr' })));
-await t('user changes status of a validated contract', assertSucceeds(updateDoc(doc(user, 'contracts', 'kval'), { status: 'Terminé' })));
-await t('user changes status of a legacy contract', assertSucceeds(updateDoc(doc(user, 'contracts', 'ctn'), { status: 'Terminé' })));
-await t('user reads P1 parametrage', assertSucceeds(getDoc(doc(user, 'p1Parametrage', 'site:s'))));
-await t('user cannot write P1 parametrage', assertFails(updateDoc(doc(user, 'p1Parametrage', 'site:s'), { params: { typeMarche: [] } })));
-await t('user reads heating seasons', assertSucceeds(getDocs(collection(user, 'saisonsChauffe'))));
-await t('user cannot write heating season', assertFails(setDoc(doc(user, 'saisonsChauffe', 's_2025-2026'), { siteId: 's', saison: '2025-2026', allumage: '2025-10-01' })));
-await t('admin cannot write heating season', assertFails(setDoc(doc(admin, 'saisonsChauffe', 's_2025-2026'), { siteId: 's', saison: '2025-2026', allumage: '2025-10-01' })));
-await t('admin cannot write P1 parametrage', assertFails(setDoc(doc(admin, 'p1Parametrage', 'site:x'), { kind: 'site' })));
-await t('admin cannot delete P1 parametrage', assertFails(deleteDoc(doc(admin, 'p1Parametrage', 'site:s'))));
-await t('user reads meter readings', assertSucceeds(getDoc(doc(user, 'meterReadings', 'r'))));
-await t('user cannot change a meter reading', assertFails(updateDoc(doc(user, 'meterReadings', 'r'), { value: 11 })));
-await t('user cannot create a meter reading', assertFails(setDoc(doc(user, 'meterReadings', 'n'), { meterId: 'm', value: 1 })));
-await t('admin cannot delete a meter reading', assertFails(deleteDoc(doc(admin, 'meterReadings', 'r'))));
-await t('user cannot write P1 actuals', assertFails(setDoc(doc(user, 'p1Reel', 's_2025-10'), { montantHt: 1 })));
-await t('admin cannot write P1 actuals', assertFails(setDoc(doc(admin, 'p1Reel', 's_2025-10'), { montantHt: 1 })));
-await t('user creates a pending amendment with its document', assertSucceeds(setDoc(doc(user, 'amendments', 'av1'), { contractId: 'k', description: 'x', validationStatus: 'pending_validation', documentUrl: 'https://x/doc.pdf' })));
-await t('user cannot create an amendment without document', assertFails(setDoc(doc(user, 'amendments', 'av2'), { contractId: 'k', description: 'x', validationStatus: 'pending_validation' })));
-await t('user cannot create an already validated termination', assertFails(setDoc(doc(user, 'terminations', 't1'), { contractId: 'k', validationStatus: 'validated', documentUrl: 'https://x/d.pdf' })));
-await t('admin cannot validate an amendment from the browser', assertFails(updateDoc(doc(admin, 'amendments', 'av1'), { validationStatus: 'validated' })));
-await t('user cannot delete a renewal', assertFails(deleteDoc(doc(user, 'renewals', 'r1'))));
-await t('user reads billing follow-up comments', assertSucceeds(getDoc(doc(user, 'suiviCommentaires', 'c'))));
-await t('user cannot write a billing follow-up comment', assertFails(setDoc(doc(user, 'suiviCommentaires', 'n'), { contractId: 'k', texte: 'x' })));
-await t('admin cannot change a billing follow-up comment', assertFails(updateDoc(doc(admin, 'suiviCommentaires', 'c'), { texte: 'y' })));
-await t('admin cannot delete a billing follow-up comment', assertFails(deleteDoc(doc(admin, 'suiviCommentaires', 'c'))));
-await t('user creates site with code', assertSucceeds(setDoc(doc(user, 'sites', 'nouveau'), { name: 'N', code: 'SIT-00002' })));
-await t('user updates site without code', assertSucceeds(updateDoc(doc(user, 'sites', 'ancien'), { name: 'Ancien site 2' })));
-await t('user deletes site', assertSucceeds(deleteDoc(doc(user, 'sites', 'nouveau'))));
-await t('user creates quote', assertSucceeds(setDoc(doc(user, 'quotes', 'neuf'), { number: 'VEF-DEV2026-0004', status: 'brouillon', version: 1 })));
-await t('anon cannot create quote', assertFails(setDoc(doc(anon, 'quotes', 'x'), { status: 'brouillon' })));
-await t('user edits draft quote', assertSucceeds(updateDoc(doc(user, 'quotes', 'brouillon'), { title: 'A2' })));
-await t('user cannot send quote directly', assertFails(updateDoc(doc(user, 'quotes', 'brouillon'), { status: 'envoye' })));
-await t('user cannot bump quote version', assertFails(updateDoc(doc(user, 'quotes', 'brouillon'), { version: 2 })));
-await t('user reads quote versions', assertSucceeds(getDoc(doc(user, 'quoteVersions', 'v'))));
-await t('user reads projects', assertSucceeds(getDoc(doc(user, 'projects', 'p'))));
-await t('user cannot write projects', assertFails(updateDoc(doc(user, 'projects', 'p'), { status: 'cloture' })));
-await t('admin cannot create project', assertFails(setDoc(doc(admin, 'projects', 'n'), { code: 'X' })));
-await t('user reads situations', assertSucceeds(getDoc(doc(user, 'projectSituations', 's'))));
-await t('user cannot write situations', assertFails(updateDoc(doc(user, 'projectSituations', 's'), { progress: { a: 100 } })));
-await t('user cannot delete situation', assertFails(deleteDoc(doc(user, 'projectSituations', 's'))));
-await t('user cannot read api keys', assertFails(getDoc(doc(user, 'apiKeys', 'k'))));
-await t('admin cannot read api keys', assertFails(getDoc(doc(admin, 'apiKeys', 'k'))));
-await t('admin cannot create api key', assertFails(setDoc(doc(admin, 'apiKeys', 'n'), { name: 'X' })));
-await t('admin cannot read api logs', assertFails(getDoc(doc(admin, 'apiLogs', 'l'))));
-await t('admin cannot write api usage', assertFails(setDoc(doc(admin, 'apiUsage', 'k'), { count: 0 })));
-await t('user cannot write import log', assertFails(setDoc(doc(user, 'imports', 'x'), { created: 1 })));
-await t('admin cannot write import log', assertFails(setDoc(doc(admin, 'imports', 'x'), { created: 1 })));
-await t('user cannot write quote versions', assertFails(setDoc(doc(user, 'quoteVersions', 'v'), { version: 9 })));
-await t('admin cannot write quote versions', assertFails(setDoc(doc(admin, 'quoteVersions', 'n'), { version: 1 })));
-await t('user cannot renumber draft quote', assertFails(updateDoc(doc(user, 'quotes', 'brouillon'), { number: 'X' })));
-await t('user cannot edit sent quote', assertFails(updateDoc(doc(user, 'quotes', 'envoye'), { title: 'B2' })));
-await t('admin cannot edit sent quote', assertFails(updateDoc(doc(admin, 'quotes', 'envoye'), { title: 'B2' })));
-await t('user cannot delete sent quote', assertFails(deleteDoc(doc(user, 'quotes', 'envoye'))));
-await t('user deletes draft quote', assertSucceeds(deleteDoc(doc(user, 'quotes', 'jetable'))));
-await t('user cannot delete a re-opened (V2) draft', assertFails(deleteDoc(doc(user, 'quotes', 'v2'))));
+// --- Sans compte autorisé : rien.
+for (const [qui, db] of [['anonyme', anon], ['compte non autorisé', stranger]]) {
+  await t(`${qui} : ne lit pas un référentiel`, assertFails(getDoc(doc(db, 'companies', 'x'))));
+  await t(`${qui} : ne lit pas un client`, assertFails(getDoc(doc(db, 'clients', 'x'))));
+  await t(`${qui} : n'écrit pas un référentiel`, assertFails(setDoc(doc(db, 'companies', 'n'), { a: 1 })));
+  await t(`${qui} : ne lit pas les utilisateurs`, assertFails(getDoc(doc(db, 'users', 'x'))));
+}
+
+// --- Collections du serveur : fermées au navigateur, pour tous, administrateur compris.
+for (const c of SERVEUR) {
+  for (const [qui, db] of [['utilisateur', user], ['paramétrage', param], ['administrateur', admin]]) {
+    await t(`${c} : ${qui} ne lit pas un document`, assertFails(getDoc(doc(db, c, 'x'))));
+    await t(`${c} : ${qui} ne liste pas`, assertFails(getDocs(collection(db, c))));
+    await t(`${c} : ${qui} ne crée pas`, assertFails(setDoc(doc(db, c, 'n'), { a: 1 })));
+    await t(`${c} : ${qui} ne modifie pas`, assertFails(updateDoc(doc(db, c, 'x'), { a: 2 })));
+    await t(`${c} : ${qui} ne supprime pas`, assertFails(deleteDoc(doc(db, c, 'x'))));
+  }
+}
+// Une requête filtrée ne contourne rien (les règles ne sont pas des filtres).
+await t('utilisateur : requête filtrée sur les contrats refusée', assertFails(getDocs(query(collection(user, 'contracts'), where('clientId', '==', 'c')))));
+await t('utilisateur : requête filtrée sur les factures refusée', assertFails(getDocs(query(collection(user, 'invoices'), where('status', '==', 'due')))));
+await t('utilisateur : statut d\'une facture non modifiable directement', assertFails(updateDoc(doc(user, 'invoices', 'x'), { status: 'paid' })));
+
+// --- Référentiels : lus par tous, écrits avec le module Paramétrage.
+for (const c of REFERENTIELS) {
+  await t(`${c} : utilisateur lit`, assertSucceeds(getDoc(doc(user, c, 'x'))));
+  await t(`${c} : utilisateur liste`, assertSucceeds(getDocs(collection(user, c))));
+  await t(`${c} : utilisateur ne crée pas`, assertFails(setDoc(doc(user, c, 'n'), { a: 1 })));
+  await t(`${c} : utilisateur ne modifie pas`, assertFails(updateDoc(doc(user, c, 'x'), { a: 2 })));
+  await t(`${c} : utilisateur ne supprime pas`, assertFails(deleteDoc(doc(user, c, 'x'))));
+  await t(`${c} : paramétrage crée`, assertSucceeds(setDoc(doc(param, c, 'n'), { a: 1 })));
+  await t(`${c} : paramétrage modifie`, assertSucceeds(updateDoc(doc(param, c, 'n'), { a: 2 })));
+  await t(`${c} : paramétrage supprime`, assertSucceeds(deleteDoc(doc(param, c, 'n'))));
+  await t(`${c} : administrateur modifie`, assertSucceeds(updateDoc(doc(admin, c, 'x'), { a: 3 })));
+}
+
+// --- Bibliothèque de prix et ses compteurs : utilisateurs de l'application.
+for (const c of BIBLIOTHEQUE) {
+  await t(`${c} : utilisateur lit`, assertSucceeds(getDoc(doc(user, c, 'x'))));
+  await t(`${c} : utilisateur écrit`, assertSucceeds(setDoc(doc(user, c, 'n'), { a: 1 })));
+}
+
+// --- Utilisateurs et rôles : lus par tous, écrits par l'administrateur seulement.
+for (const c of ['users', 'roles']) {
+  await t(`${c} : utilisateur lit`, assertSucceeds(getDoc(doc(user, c, 'x'))));
+  await t(`${c} : utilisateur n'écrit pas`, assertFails(setDoc(doc(user, c, 'x'), { roleId: 'admin' })));
+  await t(`${c} : paramétrage n'écrit pas`, assertFails(setDoc(doc(param, c, 'x'), { roleId: 'admin' })));
+  await t(`${c} : paramétrage ne supprime pas`, assertFails(deleteDoc(doc(param, c, 'x'))));
+  await t(`${c} : administrateur écrit`, assertSucceeds(setDoc(doc(admin, c, 'n'), { a: 1 })));
+}
+
+// --- Historique des imports : lu par l'administrateur, écrit par le serveur.
+await t('imports : administrateur lit', assertSucceeds(getDocs(collection(admin, 'imports'))));
+await t('imports : utilisateur ne lit pas', assertFails(getDocs(collection(user, 'imports'))));
+await t('imports : paramétrage ne lit pas', assertFails(getDoc(doc(param, 'imports', 'x'))));
+await t('imports : administrateur n\'écrit pas', assertFails(setDoc(doc(admin, 'imports', 'n'), { a: 1 })));
+
+// --- Sous-collections : refusées, même sous un référentiel.
+await t('sous-collection d\'un client refusée', assertFails(getDoc(doc(admin, 'clients', 'x', 'sub', 'y'))));
+await t('sous-collection d\'un référentiel refusée', assertFails(getDoc(doc(admin, 'companies', 'x', 'sub', 'y'))));
+await t('écriture en sous-collection refusée', assertFails(setDoc(doc(admin, 'companies', 'x', 'sub', 'n'), { a: 1 })));
+
 console.log(`\n${ok} passed, ${ko} failed`);
 await env.cleanup();
 process.exit(ko ? 1 : 0);

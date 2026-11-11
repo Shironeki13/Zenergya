@@ -2,7 +2,6 @@ import { db } from '@/lib/firebase';
 import { ecrireServeur, lireServeur } from '@/services/lecture';
 import type { Client, Contact, Site, Contract, Invoice, CreditNote, MeterReading, Company, Agency, Sector, Activity, User, Role, Schedule, Term, Typology, VatRate, RevisionFormula, PaymentTerm, PricingRule, Market, Meter, MeterType, Index, IndexValue, RevisionRule, Service, InvoiceStatus, Amendment, Termination, Renewal, TrusteeChange, BeChange, Interest, Dju, DjuMonthly, WeatherStation, SettlementRule, ServiceSettlement, SettlementMethodType, SettlementTargetType, WorkProject, WorkQuote, ProgressSituation, AdvWorkQuote, AdvWorkQuoteVersion, AdvWorkQuoteLine, AdvWorkAffair, AdvWorkBudgetLine, AdvWorkLot, AdvWorkPoste, AdvWorkSituation, AdvWorkSituationLine, AdvPurchaseOrder, AdvPurchaseOrderLine, AdvCatalogArticle, AdvCatalogOuvrage, AdvOuvrageComposant } from '@/lib/types';
 import { collection, getDocs, doc, getDoc, addDoc, updateDoc, deleteDoc, query, where, DocumentData, writeBatch, runTransaction, Timestamp } from 'firebase/firestore';
-import { deleteFileFromUrl } from './storage';
 import { planSiteSync } from '@/lib/contracts/site-sync';
 import { amountsDiffer, computeSiteAmounts, todayInParis } from '@/lib/services/site-amounts';
 
@@ -88,10 +87,6 @@ export function formatId(prefix: string, number: number): string {
 // --- Fonctions de Service (Firestore) ---
 
 // Clients
-export async function getClients(): Promise<Client[]> {
-    return getCollection<Client>(collection(db, 'clients'));
-}
-
 export async function getClient(id: string): Promise<Client | null> {
     return lireServeur<Client | null>('client', { id }, null);
 }
@@ -111,20 +106,12 @@ export async function deleteClient(id: string) {
 
 
 // Contacts
-export async function getContacts(): Promise<Contact[]> {
-    return getCollection<Contact>(collection(db, 'contacts'));
-}
-
 export async function getContactsByClient(clientId: string): Promise<Contact[]> {
     return lireServeur<Contact[]>('contactsDuClient', { id: clientId }, []);
 }
 
 
 // Sites
-export async function getSites(): Promise<Site[]> {
-    return getCollection<Site>(collection(db, 'sites'));
-}
-
 
 export async function getSitesByClient(clientId: string): Promise<Site[]> {
     return lireServeur<Site[]>('sitesDuClient', { id: clientId }, []);
@@ -153,10 +140,6 @@ export async function batchCreateSites(
     return ecrireServeur<{ created: number; ids: string[] }>('batchCreateSites', [contractId, clientId, sitesData]);
 }
 // Contrats
-export async function getContracts(): Promise<Contract[]> {
-    return getCollection<Contract>(collection(db, 'contracts'));
-}
-
 export async function getContractsByClient(clientId: string): Promise<Contract[]> {
     return lireServeur<Contract[]>('contratsDuClient', { id: clientId }, []);
 }
@@ -173,10 +156,6 @@ export async function updateContract(id: string, data: Partial<Omit<Contract, 'i
 
 
 // Factures
-export async function getInvoices(): Promise<Invoice[]> {
-    return getCollection<Invoice>(collection(db, 'invoices'));
-}
-
 export async function getInvoice(id: string): Promise<Invoice | null> {
     return lireServeur<Invoice | null>('facture', { id }, null);
 }
@@ -200,10 +179,6 @@ export async function deleteProformaInvoice(invoice: Pick<Invoice, 'id' | 'statu
 
 
 // Avoirs (Credit Notes)
-export async function getCreditNotes(): Promise<CreditNote[]> {
-    return getCollection<CreditNote>(collection(db, 'creditNotes'));
-}
-
 // La création des factures et des avoirs (numérotation comprise) se fait côté serveur : voir firestore-admin.ts.
 
 
@@ -276,9 +251,6 @@ export async function deleteIndexValue(id: string) {
 export async function createMeter(data: Omit<Meter, 'id' | 'code'>) {
     return ecrireServeur<any>('createMeter', [data]);
 }
-export async function getMeters(): Promise<Meter[]> {
-    return getCollection<Meter>(collection(db, 'meters'));
-}
 export async function updateMeter(id: string, data: Partial<Omit<Meter, 'id' | 'code'>>) {
     return ecrireServeur<any>('updateMeter', [id, data]);
 }
@@ -287,10 +259,6 @@ export async function deleteMeter(id: string) {
 }
 
 // Relevés de compteur
-export async function getMeterReadings(): Promise<MeterReading[]> {
-    return getCollection<MeterReading>(collection(db, 'meterReadings'));
-}
-
 export async function getMeterReadingsByContract(contractId: string): Promise<MeterReading[]> {
     return lireServeur<MeterReading[]>('relevesDuContrat', { id: contractId }, []);
 }
@@ -560,9 +528,6 @@ export async function createService(data: Omit<Service, 'id'>) {
     return ecrireServeur<any>('createService', [data]);
 }
 
-export async function getServices(): Promise<Service[]> {
-    return getCollection<Service>(collection(db, 'services'));
-}
 export async function getServicesBySite(siteId: string): Promise<Service[]> {
     return lireServeur<Service[]>('prestationsDuSite', { id: siteId }, []);
 }
@@ -837,131 +802,6 @@ export async function initializeSettlementRules() {
 
 // --- Travaux (Works) ---
 
-export async function getWorkProjects(): Promise<WorkProject[]> {
-    return getCollection<WorkProject>(collection(db, 'workProjects'));
-}
-
-export async function getWorkProject(id: string): Promise<WorkProject | null> {
-    return getDocument<WorkProject>(doc(db, 'workProjects', id));
-}
-
-export async function createWorkProject(data: Omit<WorkProject, 'id'>) {
-    const docRef = await addDoc(collection(db, 'workProjects'), {
-        ...data,
-        createdAt: new Date().toISOString()
-    });
-    return { id: docRef.id, ...data };
-}
-
-export async function updateWorkProject(id: string, data: Partial<Omit<WorkProject, 'id'>>) {
-    await updateDoc(doc(db, 'workProjects', id), data);
-}
-
-export async function deleteWorkProject(id: string) {
-    // Also delete associated quotes and situations
-    const quotes = await getWorkQuotesByProject(id);
-    for (const quote of quotes) {
-        await deleteWorkQuote(quote.id);
-    }
-    const situations = await getProgressSituationsByProject(id);
-    for (const situation of situations) {
-        await deleteProgressSituation(situation.id);
-    }
-    await deleteDoc(doc(db, 'workProjects', id));
-}
-
 // Devise / Devis (P5)
-export async function getWorkQuotesByProject(projectId: string): Promise<WorkQuote[]> {
-    const q = query(collection(db, 'workQuotes'), where("projectId", "==", projectId));
-    return getCollection<WorkQuote>(q);
-}
-
-export async function createWorkQuote(data: Omit<WorkQuote, 'id'>) {
-    const docRef = await addDoc(collection(db, 'workQuotes'), data);
-    return { id: docRef.id, ...data };
-}
-
-export async function updateWorkQuote(id: string, data: Partial<Omit<WorkQuote, 'id'>>) {
-    await updateDoc(doc(db, 'workQuotes', id), data);
-}
-
-export async function deleteWorkQuote(id: string) {
-    await deleteDoc(doc(db, 'workQuotes', id));
-}
-
 // Situations (P6)
-export async function getProgressSituationsByProject(projectId: string): Promise<ProgressSituation[]> {
-    const q = query(collection(db, 'progressSituations'), where("projectId", "==", projectId));
-    return getCollection<ProgressSituation>(q);
-}
-
-export async function createProgressSituation(data: Omit<ProgressSituation, 'id'>) {
-    const docRef = await addDoc(collection(db, 'progressSituations'), data);
-    return { id: docRef.id, ...data };
-}
-
-export async function updateProgressSituation(id: string, data: Partial<Omit<ProgressSituation, 'id'>>) {
-    await updateDoc(doc(db, 'progressSituations', id), data);
-}
-
-export async function deleteProgressSituation(id: string) {
-    await deleteDoc(doc(db, 'progressSituations', id));
-}
-
 // Advanced Works (P6 & Chiffrage)
-export async function getAdvWorkQuotes(): Promise<AdvWorkQuote[]> {
-    return getCollection<AdvWorkQuote>(collection(db, 'advWorkQuotes'));
-}
-
-export async function getAdvWorkQuoteVersions(): Promise<AdvWorkQuoteVersion[]> {
-    return getCollection<AdvWorkQuoteVersion>(collection(db, 'advWorkQuoteVersions'));
-}
-
-export async function getAdvWorkQuoteLines(): Promise<AdvWorkQuoteLine[]> {
-    return getCollection<AdvWorkQuoteLine>(collection(db, 'advWorkQuoteLines'));
-}
-
-export async function getAdvWorkAffairs(): Promise<AdvWorkAffair[]> {
-    return getCollection<AdvWorkAffair>(collection(db, 'advWorkAffairs'));
-}
-
-export async function getAdvWorkBudgetLines(): Promise<AdvWorkBudgetLine[]> {
-    return getCollection<AdvWorkBudgetLine>(collection(db, 'advWorkBudgetLines'));
-}
-
-export async function getAdvWorkLots(): Promise<AdvWorkLot[]> {
-    return getCollection<AdvWorkLot>(collection(db, 'advWorkLots'));
-}
-
-export async function getAdvWorkPostes(): Promise<AdvWorkPoste[]> {
-    return getCollection<AdvWorkPoste>(collection(db, 'advWorkPostes'));
-}
-
-export async function getAdvWorkSituations(): Promise<AdvWorkSituation[]> {
-    return getCollection<AdvWorkSituation>(collection(db, 'advWorkSituations'));
-}
-
-export async function getAdvWorkSituationLines(): Promise<AdvWorkSituationLine[]> {
-    return getCollection<AdvWorkSituationLine>(collection(db, 'advWorkSituationLines'));
-}
-
-export async function getAdvPurchaseOrders(): Promise<AdvPurchaseOrder[]> {
-    return getCollection<AdvPurchaseOrder>(collection(db, 'advPurchaseOrders'));
-}
-
-export async function getAdvPurchaseOrderLines(): Promise<AdvPurchaseOrderLine[]> {
-    return getCollection<AdvPurchaseOrderLine>(collection(db, 'advPurchaseOrderLines'));
-}
-
-export async function getCatalogArticles(): Promise<AdvCatalogArticle[]> {
-    return getCollection<AdvCatalogArticle>(collection(db, 'advCatalogArticles'));
-}
-
-export async function getCatalogOuvrages(): Promise<AdvCatalogOuvrage[]> {
-    return getCollection<AdvCatalogOuvrage>(collection(db, 'advCatalogOuvrages'));
-}
-
-export async function getOuvrageComposants(): Promise<AdvOuvrageComposant[]> {
-    return getCollection<AdvOuvrageComposant>(collection(db, 'advOuvrageComposants'));
-}
-

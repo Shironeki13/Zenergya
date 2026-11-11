@@ -133,18 +133,20 @@ export async function linkAuthUid(user: SessionUser): Promise<void> {
 
 /**
  * Aligne les custom claims Firebase (lus par les règles Firestore / Storage) sur les droits applicatifs.
- * `zen` = utilisateur autorisé, `admin` = administrateur. Retourne true si les claims ont changé.
+ * `zen` = utilisateur autorisé, `admin` = administrateur, `param` = module Paramétrage. Retourne true si les claims ont changé.
  */
 export async function syncClaims(uid: string, user: SessionUser | null): Promise<boolean> {
     const record = await adminAuth.getUser(uid);
     const current = record.customClaims || {};
     const zen = user !== null;
     const admin = user?.isAdmin === true;
+    // `param` : module « Paramétrage » — autorise l'écriture des référentiels (règles Firestore).
+    const param = admin || user?.profile.modules?.includes('settings') === true;
 
-    if (current.zen === zen && (current.admin === true) === admin) return false;
+    if (current.zen === zen && (current.admin === true) === admin && (current.param === true) === (zen && param)) return false;
 
-    const { zen: _z, admin: _a, ...others } = current;
-    await adminAuth.setCustomUserClaims(uid, zen ? { ...others, zen: true, admin } : others);
+    const { zen: _z, admin: _a, param: _p, ...others } = current;
+    await adminAuth.setCustomUserClaims(uid, zen ? { ...others, zen: true, admin, param } : others);
     if (!zen) {
         // Coupe aussi les jetons déjà émis.
         await adminAuth.revokeRefreshTokens(uid);

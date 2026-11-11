@@ -6,16 +6,17 @@
 2. Le navigateur envoie son ID token à `POST /api/auth/session`. Le serveur (Admin SDK) :
    - vérifie que l'email a une fiche dans **Utilisateurs** (collection `users`) ou figure dans `ADMIN_EMAILS` ; sinon accès refusé ;
    - rattache la fiche au compte Firebase à la première connexion (`authUid`) : un autre compte ne peut plus la reprendre ;
-   - pose les custom claims `zen` (utilisateur autorisé) et `admin` (rôle coché « Administrateur ») ;
+   - pose les custom claims `zen` (utilisateur autorisé), `admin` (rôle coché « Administrateur ») et `param` (module Paramétrage) ;
    - dépose un cookie de session httpOnly `__session` (5 jours).
-3. Les règles Firestore et Storage n'autorisent que les jetons portant `zen == true`.
+3. Les règles Firestore n'ouvrent au navigateur que les **référentiels** (jetons portant `zen == true` ; écriture avec `param`) ; toutes les autres collections et le stockage des fichiers lui sont fermés : le serveur les lit et les écrit en appliquant le périmètre de l'utilisateur (voir [perimetre.md](perimetre.md)).
 4. Le middleware redirige vers `/login` toute page demandée sans cookie de session.
 5. Les routes API et les server actions (génération de factures, avoirs, IA, PDF) vérifient le cookie et relisent les droits à chaque appel.
 6. Le code serveur accède à Firestore via l'Admin SDK (`src/services/firestore-admin.ts`), indépendamment des règles.
 
 | Action | Utilisateur | Administrateur |
 | --- | --- | --- |
-| Lire / créer / modifier les données métier | ✅ | ✅ |
+| Lire / créer / modifier les données métier | ✅ dans son périmètre, par le serveur | ✅ |
+| Modifier les référentiels (sociétés, agences, TVA, indices…) | avec le module Paramétrage | ✅ |
 | Créer / numéroter une facture ou un avoir | Serveur uniquement | Serveur uniquement |
 | Changer le statut d'encaissement d'une facture (due, en retard, payée) | ✅ | ✅ |
 | Supprimer un proforma | ✅ | ✅ |
@@ -26,7 +27,7 @@
 
 ## Mise en service (dans cet ordre)
 
-> ⚠️ Déployer les règles **en dernier** : tant que les utilisateurs n'ont pas leurs droits (claims), des règles fermées les bloqueraient.
+> ⚠️ Déployer les règles **en dernier**, après l'application : la version précédente de l'application lit la base directement et serait bloquée par les nouvelles règles ; et tant que les utilisateurs n'ont pas leurs droits (claims, posés à la connexion), des règles fermées les bloqueraient.
 
 1. **Console Firebase → Authentication → Settings → User actions** : décocher « Enable create (sign-up) ».
    Les comptes sont créés par un administrateur (ou via Google), plus personne ne peut s'inscrire seul.
@@ -57,5 +58,5 @@
 
 ## Limites connues (prochaines étapes)
 
-- Le périmètre (sociétés / agences / secteurs) et les modules d'un utilisateur sont appliqués par l'application et par le serveur (voir [perimetre.md](perimetre.md)), mais **pas encore par les règles Firestore** : un utilisateur qui interrogerait la base directement avec son compte lirait encore les autres périmètres.
+- Périmètre et modules : voir les limites connues dans [perimetre.md](perimetre.md) (adresses à jeton des pièces justificatives, bibliothèque de prix).
 - Numérotation et documents comptables : voir [facturation.md](facturation.md).
