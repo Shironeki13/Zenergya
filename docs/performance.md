@@ -10,6 +10,10 @@ Les écrans partagent des données chargées une fois par `DataProvider` (`src/c
 | **À l'ouverture** | référentiels (sociétés, agences, secteurs, activités, TVA, échéanciers, termes, typologies, marchés, règles de révision, de prix et de règlement, indices, types de compteurs, stations météo, rôles, utilisateurs) et listes de base (clients, contrats, sites, prestations) | à la connexion |
 | **À la demande** | factures, avoirs, relevés de compteurs, valeurs d'indices, contacts, compteurs | au premier écran qui en a besoin ; gardées ensuite en mémoire |
 
+Les collections **à périmètre** (clients, contrats, sites, prestations, compteurs, relevés, factures, avoirs, contacts)
+sont lues par le serveur en **une seule requête** (`/api/donnees?c=…`), filtrées pour l'utilisateur ; les référentiels
+sont lus directement dans la base. Voir `perimetre.md`.
+
 Un écran qui lit une collection « à la demande » la déclare :
 
 ```tsx

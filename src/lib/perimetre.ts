@@ -86,3 +86,7 @@ export function accesRoute(pathname: string, modules: string[] | undefined, isAd
     const m = moduleDeRoute(pathname);
     return isAdmin || m === null || (m !== 'admin' && !!modules?.includes(m));
 }
+
+/** Collections à périmètre : le navigateur les obtient du serveur (filtrées), pas de la base directement. */
+export const COLLECTIONS_PERIMETRE = ['clients', 'contracts', 'sites', 'services', 'meters', 'meterReadings', 'invoices', 'creditNotes', 'contacts'] as const;
+export type CollectionPerimetre = typeof COLLECTIONS_PERIMETRE[number];

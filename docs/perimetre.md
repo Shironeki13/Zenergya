@@ -44,8 +44,10 @@ Utilisateurs et clés API : administrateur seulement. Une page hors de ses modul
 
 ## Où c'est appliqué
 
-1. **Chargement des données** (`DataProvider`) : clients, contrats, sites, prestations, compteurs, relevés, factures,
-   avoirs et contacts sont filtrés une fois pour tous les écrans. Les référentiels (agences, activités…) ne le sont pas.
+1. **Chargement des données** : clients, contrats, sites, prestations, compteurs, relevés, factures, avoirs et contacts
+   sont lus par le serveur (`/api/donnees`, `src/services/donnees-admin.ts`), qui ne renvoie au navigateur que le
+   périmètre de l'utilisateur. Le `DataProvider` refiltre côté navigateur (utile à l'affichage « en tant que »). Les
+   référentiels (agences, activités…) sont lus directement et ne sont pas filtrés.
 2. **Fiches** ouvertes par leur adresse (client, contrat, facture, devis, affaire) : « Hors de votre périmètre ».
 3. **Listes qui lisent leurs propres données** : devis, affaires, sélecteur d'affectation des commandes et des heures.
 4. **Serveur** (`src/lib/auth/perimetre-server.ts`) : chaque action vérifie l'objet sur lequel elle porte (devis,

@@ -13,7 +13,7 @@ import {
 import { auth, firebaseReady } from '@/lib/firebase';
 import { EAGER_COLLECTIONS, LAZY_COLLECTIONS, type CollectionKey, type DataContextType, type LazyCollectionKey, type User } from '@/lib/types';
 import { useToast } from '@/hooks/use-toast';
-import { clientsDuPerimetre, filtrerPerimetre } from '@/lib/perimetre';
+import { COLLECTIONS_PERIMETRE, clientsDuPerimetre, filtrerPerimetre, type CollectionPerimetre } from '@/lib/perimetre';
 
 const DataContext = createContext<DataContextType | undefined>(undefined);
 
@@ -25,6 +25,7 @@ const DataContext = createContext<DataContextType | undefined>(undefined);
  * - Après un enregistrement : `reloadData(['clients'])` ne recharge que les collections citées, sans écran d'attente.
  */
 type Collections = Pick<DataContextType, CollectionKey>;
+/** Chargeurs directs (référentiels). Les collections à périmètre passent par le serveur ; leurs chargeurs ne servent plus ici. */
 const LOADERS: { [K in CollectionKey]: () => Promise<Collections[K]> } = {
   clients: getClients, sites: getSites, contracts: getContracts, services: getServices, companies: getCompanies, agencies: getAgencies, sectors: getSectors,
   activities: getActivities, schedules: getSchedules, terms: getTerms, typologies: getTypologies, vatRates: getVatRates, revisionFormulas: getRevisionFormulas,
@@ -32,6 +33,15 @@ const LOADERS: { [K in CollectionKey]: () => Promise<Collections[K]> } = {
   indices: getIndices, meterTypes: getMeterTypes, settlementRules: getSettlementRules, weatherStations: getWeatherStations,
   invoices: getInvoices, creditNotes: getCreditNotes, meterReadings: getMeterReadings, indexValues: getIndexValues, contacts: getContacts, meters: getMeters,
 };
+const estPerimetre = (k: CollectionKey): k is CollectionPerimetre => (COLLECTIONS_PERIMETRE as readonly string[]).includes(k);
+
+/** Collections à périmètre, lues et filtrées par le serveur (/api/donnees). */
+async function chargerDuServeur(keys: CollectionPerimetre[]): Promise<Partial<Record<CollectionPerimetre, unknown[]>>> {
+  const res = await fetch(`/api/donnees?c=${keys.join(',')}`, { credentials: 'same-origin' });
+  if (!res.ok) throw new Error(`Lecture des données refusée (${res.status}).`);
+  return res.json();
+}
+
 const estLazy = (k: CollectionKey): k is LazyCollectionKey => (LAZY_COLLECTIONS as readonly string[]).includes(k);
 
 /**
@@ -87,7 +97,11 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   /** Charge des collections et les range dans l'état ; une collection en échec garde sa valeur précédente. */
   const charger = useCallback(async (keys: CollectionKey[]) => {
     const uniques = [...new Set(keys)];
-    const resultats = await Promise.allSettled(uniques.map(k => LOADERS[k]()));
+    // Collections à périmètre : une seule requête au serveur, qui ne renvoie que le périmètre de l'utilisateur.
+    // Référentiels : lus directement dans la base.
+    const duServeur = uniques.filter(estPerimetre);
+    const serveur = duServeur.length ? chargerDuServeur(duServeur) : null;
+    const resultats = await Promise.allSettled(uniques.map(k => (estPerimetre(k) ? serveur!.then(r => r[k] as Collections[typeof k]) : LOADERS[k]())));
     const maj: Partial<Collections> = {};
     resultats.forEach((r, i) => {
       if (r.status === 'fulfilled') (maj as Record<string, unknown>)[uniques[i]] = r.value;
