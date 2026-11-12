@@ -64,8 +64,23 @@ entier par le navigateur.
 - **Reprise de l'existant** : `npm run releves:reprise` (simulation), puis `-- --apply`, une fois, pour inscrire le
   dernier relevé sur les compteurs déjà en base.
 
+## Factures et avoirs : par période
+
+Les listes ne chargent plus tout l'historique (`src/hooks/use-lecture-periode.ts`, lectures `facturesDePeriode`,
+`avoirsDePeriode`, `facturesImpayees`) :
+
+- **Liste des factures** : la période choisie — par défaut **l'exercice en cours et le précédent** — plus les factures
+  **impayées** et les **proformas**, quelle que soit leur date. Le sélecteur (`SelecteurPeriode`) propose l'année en
+  cours, les deux dernières ou tout l'historique ; la période est retenue d'un écran à l'autre pendant la session.
+- **Avoirs** : la période choisie ; le serveur joint les numéros des factures annulées.
+- **Facturation électronique** : la période des filtres « Du / Au » (sans dates : la période par défaut), plus les
+  documents **à transmettre ou rejetés**, quelle que soit leur date.
+- **Suivi des encaissements** : les seules factures impayées.
+- **Listes allégées** : le détail des lignes d'une facture (97 % de son poids) n'est pas transmis aux listes ; un
+  indicateur `annexeP1` dit si le document a une annexe P1. La fiche d'une facture lit le document complet.
+
 ## Limite connue
 
-Les factures et les avoirs sont encore chargés **en entier** par les écrans qui les utilisent : ils seront chargés par
-période et par objet (lots suivants). Côté serveur, les alertes compteurs et la facturation lisent encore les relevés
+Quelques écrans chargent encore toutes les factures (tableau de bord, fiche d'un client, fiche d'un site, recherche
+globale) : ils passeront à des lectures ciblées (lot suivant). Côté serveur, les alertes compteurs et la facturation lisent encore les relevés
 de tous les compteurs concernés.

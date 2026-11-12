@@ -1,9 +1,10 @@
 'use client';
 
+import { periodeParDefaut, useLecturePeriode } from '@/hooks/use-lecture-periode';
 import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { AlertTriangle, CheckCircle2, Download, FileText, MoreHorizontal, RefreshCw, Send, ShieldOff, XCircle } from 'lucide-react';
-import { useCollections, useData } from '@/context/data-context';
+import { useData } from '@/context/data-context';
 import { useToast } from '@/hooks/use-toast';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -22,7 +23,7 @@ import {
     type EInvoicingRow,
 } from '@/lib/einvoicing';
 import { recomputeEInvoicing, updateEInvoicingStatus, type BatchResult } from '@/lib/billing/einvoicing-actions';
-import type { EInvoicingChannel, EInvoicingStatus } from '@/lib/types';
+import type { CreditNote, EInvoicingChannel, EInvoicingStatus, Invoice } from '@/lib/types';
 import { downloadCSV } from '@/lib/utils';
 
 type StatusFilter = 'actionable' | 'blocked' | EInvoicingStatus | 'all';
@@ -41,10 +42,7 @@ const eur = (n: number) => n.toLocaleString('fr-FR', { style: 'currency', curren
 const day = (iso: string) => new Date(iso).toLocaleDateString('fr-FR', { timeZone: 'UTC' });
 
 export default function EInvoicingDashboardPage() {
-    const { invoices, creditNotes, clients, contracts, typologies, companies, isLoading: chargementBase, reloadData } = useData();
-    // Collections volumineuses, chargées à la demande : l'écran attend qu'elles soient en mémoire.
-    const pret = useCollections('invoices', 'creditNotes');
-    const isLoading = chargementBase || !pret;
+    const { clients, contracts, typologies, companies, isLoading: chargementBase, reloadData: rechargerPartage } = useData();
     const { toast } = useToast();
 
     const [companyId, setCompanyId] = useState('all');
@@ -52,6 +50,14 @@ export default function EInvoicingDashboardPage() {
     const [status, setStatus] = useState<StatusFilter>('actionable');
     const [from, setFrom] = useState('');
     const [to, setTo] = useState('');
+    // Factures et avoirs lus au serveur pour la période des filtres « Du / Au » (sans dates : l'exercice en cours et le
+    // précédent), plus ceux qui restent à transmettre ou ont été rejetés, quelle que soit leur date.
+    const periode = useMemo(() => { const d = periodeParDefaut(); return { du: from || d.du, au: to && to >= (from || d.du) ? to : d.au }; }, [from, to]);
+    const lecture = { einvoicing: '1' };
+    const { donnees: invoices, chargement: chargementFactures, recharger: rechargerFactures } = useLecturePeriode<Invoice>('facturesDePeriode', periode, lecture);
+    const { donnees: creditNotes, chargement: chargementAvoirs, recharger: rechargerAvoirs } = useLecturePeriode<CreditNote>('avoirsDePeriode', periode, lecture);
+    const isLoading = chargementBase || chargementFactures || chargementAvoirs;
+    const reloadData = async (collections: Parameters<typeof rechargerPartage>[0]) => { await Promise.all([rechargerFactures(), rechargerAvoirs(), rechargerPartage(collections)]); };
     const [search, setSearch] = useState('');
     const [selected, setSelected] = useState<Set<string>>(new Set());
     const [pending, setPending] = useState<PendingAction>(null);

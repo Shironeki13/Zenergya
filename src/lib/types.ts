@@ -697,6 +697,8 @@ export type Invoice = {
     dueDate: string; // ISO String date
     status: InvoiceStatus;
     lineItems: InvoiceLineItem[];
+    /** Listes : le détail des lignes n'est pas transmis ; `annexeP1` indique si le document a une annexe P1. */
+    annexeP1?: boolean;
     subtotal: number;
     tax: number;
     total: number;
@@ -727,12 +729,16 @@ export type CreditNote = {
     id: string;
     creditNoteNumber: string;
     originalInvoiceIds: string[];
+    /** Numéros des factures annulées (ajoutés par le serveur à la lecture des avoirs d'une période). */
+    originalInvoiceNumbers?: string[];
     contractId: string;
     clientId: string;
     clientName: string;
     date: string; // ISO date
     status: 'finalized';
     lineItems: InvoiceLineItem[];
+    /** Listes : le détail des lignes n'est pas transmis ; `annexeP1` indique si le document a une annexe P1. */
+    annexeP1?: boolean;
     subtotal: number;
     tax: number;
     total: number;

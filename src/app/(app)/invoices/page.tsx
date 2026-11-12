@@ -1,5 +1,7 @@
 'use client';
 
+import { SelecteurPeriode } from '@/components/periode/selecteur-periode';
+import { useLecturePeriode, usePeriode } from '@/hooks/use-lecture-periode';
 import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { Loader2, MinusCircle, MoreHorizontal } from 'lucide-react';
@@ -13,7 +15,7 @@ import type { FiltreTable } from '@/components/data-table/logique';
 import { STATUTS_FACTURE, StatutFacture, eur0 } from '@/components/fiches/fiche';
 import { useConfirm, usePrompt } from '@/components/confirm-provider';
 import type { Invoice } from '@/lib/types';
-import { useCollections, useData } from '@/context/data-context';
+import { useData } from '@/context/data-context';
 import { useToast } from '@/hooks/use-toast';
 import { generateCreditNote } from '@/ai/flows/generate-credit-note-flow';
 import { deleteProformaInvoice, updateInvoiceStatus } from '@/services/firestore';
@@ -33,10 +35,13 @@ const moisFr = (m: string) => new Date(`${m}-01T12:00:00`).toLocaleDateString('f
 export default function InvoicesPage() {
   const confirmer = useConfirm();
   const demander = usePrompt();
-  const { invoices, contracts, isLoading: chargementBase, reloadData } = useData();
-  // Collections volumineuses, chargées à la demande : l'écran attend qu'elles soient en mémoire.
-  const pret = useCollections('invoices');
-  const isLoading = chargementBase || !pret;
+  const { contracts, isLoading: chargementBase, reloadData: rechargerPartage } = useData();
+  // Factures de la période choisie (plus les impayées et les proformas, quelle que soit leur date) : lues au serveur.
+  const [periode, setPeriode] = usePeriode();
+  const { donnees: invoices, chargement, recharger } = useLecturePeriode<Invoice>('facturesDePeriode', periode);
+  const isLoading = chargementBase || chargement;
+  // Après un enregistrement : cette liste, et les données partagées encore utilisées par d'autres écrans.
+  const reloadData = async (collections: Parameters<typeof rechargerPartage>[0]) => { await Promise.all([recharger(), rechargerPartage(collections)]); };
   const { toast } = useToast();
   const [isGenerating, setIsGenerating] = useState(false);
 
@@ -148,6 +153,7 @@ export default function InvoicesPage() {
           Factures et proformas. Une facture émise ne se supprime pas : sélectionnez-la pour l&apos;annuler par un avoir.
         </p>
       </div>
+      <SelecteurPeriode periode={periode} onChange={setPeriode} note="Les factures impayées et les proformas restent affichés quelle que soit la période." />
       <DataTable
         id="factures"
         rows={lignes}
@@ -178,8 +184,8 @@ export default function InvoicesPage() {
               <DropdownMenuLabel>Actions</DropdownMenuLabel>
               <DropdownMenuItem asChild><Link href={`/invoices/${invoice.id}`}>Voir les détails</Link></DropdownMenuItem>
               <DropdownMenuItem asChild><a href={`/api/documents/invoices/${invoice.id}`} target="_blank" rel="noopener noreferrer">Ouvrir le PDF</a></DropdownMenuItem>
-              {aAnnexeP1(invoice.lineItems) && <DropdownMenuItem asChild><a href={`/api/documents/invoices/${invoice.id}/annexe`} target="_blank" rel="noopener noreferrer">Annexe P1 (PDF)</a></DropdownMenuItem>}
-              {aAnnexeP1(invoice.lineItems) && <DropdownMenuItem asChild><a href={`/api/documents/invoices/${invoice.id}/annexe?format=xlsx`}>Annexe P1 (tableur)</a></DropdownMenuItem>}
+              {(invoice.annexeP1 ?? aAnnexeP1(invoice.lineItems)) && <DropdownMenuItem asChild><a href={`/api/documents/invoices/${invoice.id}/annexe`} target="_blank" rel="noopener noreferrer">Annexe P1 (PDF)</a></DropdownMenuItem>}
+              {(invoice.annexeP1 ?? aAnnexeP1(invoice.lineItems)) && <DropdownMenuItem asChild><a href={`/api/documents/invoices/${invoice.id}/annexe?format=xlsx`}>Annexe P1 (tableur)</a></DropdownMenuItem>}
               {(invoice.status === 'due' || invoice.status === 'overdue') && <DropdownMenuItem onClick={() => marquerPayee(invoice)}>Marquer comme payée</DropdownMenuItem>}
               {invoice.status === 'proforma' && (<>
                 <DropdownMenuSeparator />

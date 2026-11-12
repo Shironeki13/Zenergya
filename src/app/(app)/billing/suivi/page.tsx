@@ -1,5 +1,6 @@
 'use client';
 
+import { useLecturePeriode } from '@/hooks/use-lecture-periode';
 import { useEffect, useMemo, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -7,7 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ExternalLink, CheckCircle2, Loader2 } from 'lucide-react';
-import { useCollections, useData } from '@/context/data-context';
+import { useData } from '@/context/data-context';
 import { updateInvoiceStatus } from '@/services/firestore';
 import { useToast } from '@/hooks/use-toast';
 import { format, differenceInDays, addDays, startOfDay } from 'date-fns';
@@ -43,10 +44,11 @@ function periodLabel(start: Date, end: Date) {
 
 // ── Page ──────────────────────────────────────────────────────────────────────
 export default function SuiviFacturationPage() {
-    const { invoices, isLoading: chargementBase, reloadData } = useData();
-    // Collections volumineuses, chargées à la demande : l'écran attend qu'elles soient en mémoire.
-    const pret = useCollections('invoices');
-    const isLoading = chargementBase || !pret;
+    const { isLoading: chargementBase, reloadData: rechargerPartage } = useData();
+    // Factures impayées (à payer, en retard), toutes dates : les seules dont cet écran a besoin.
+    const { donnees: invoices, chargement, recharger } = useLecturePeriode<Invoice>('facturesImpayees');
+    const isLoading = chargementBase || chargement;
+    const reloadData = async (collections: Parameters<typeof rechargerPartage>[0]) => { await Promise.all([recharger(), rechargerPartage(collections)]); };
     const { toast } = useToast();
     const [markingPaid, setMarkingPaid] = useState<string | null>(null);
 

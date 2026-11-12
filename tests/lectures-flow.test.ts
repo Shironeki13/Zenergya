@@ -1,6 +1,7 @@
 // Lectures nommées par le serveur (émulateur) : fiches et éléments d'un objet, contrôlés par le périmètre : npm run test:billing
 import { test, before } from 'node:test';
 import assert from 'node:assert/strict';
+import { Timestamp } from 'firebase-admin/firestore';
 import { adminDb } from '../src/lib/firebase-admin';
 import { LECTURES, lire } from '../src/services/lectures-admin';
 import { PerimetreError } from '../src/lib/auth/perimetre-server';
@@ -63,7 +64,7 @@ test('éléments d\'un objet : ceux du parent demandé, triés ; parent hors pé
     assert.deepEqual((await lire('versionsDuDevis', { id: 'lc-dl' }, lyon) as { id: string }[]).map(x => x.id), ['lc-vl1', 'lc-vl2']);
     assert.deepEqual((await lire('facturesDuDevis', { id: 'lc-dl' }, lyon) as { id: string }[]).map(x => x.id), ['lc-fl2', 'lc-fl']);
     // Toutes les lectures nommées sont couvertes par ce test.
-    assert.deepEqual(Object.keys(LECTURES).sort(), [...Object.keys(PARENTS), ...Object.keys(attendu), 'devisTous', 'affaires'].sort());
+    assert.deepEqual(Object.keys(LECTURES).sort(), [...Object.keys(PARENTS), ...Object.keys(attendu), 'devisTous', 'affaires', 'facturesDePeriode', 'avoirsDePeriode', 'facturesImpayees'].sort());
 });
 
 test('listes entières (devis, affaires) : réduites au périmètre ; lecture inconnue refusée', async () => {
@@ -71,4 +72,44 @@ test('listes entières (devis, affaires) : réduites au périmètre ; lecture in
     assert.deepEqual([ids(await lire('devisTous', {}, admin)), ids(await lire('affaires', {}, admin))], ['lc-dl,lc-dp', 'lc-xl,lc-xp']);
     await assert.rejects(lire('users', {}, admin), /Lecture inconnue/);
     await assert.rejects(lire('constructor', {}, admin), /Lecture inconnue/);
+});
+
+test('factures et avoirs par période : la période, plus les impayées et proformas de toute date ; périmètre ; numéros des factures annulées', async () => {
+    const t = (jour: string) => Timestamp.fromDate(new Date(`${jour}T10:00:00Z`));
+    const f = (id: string, v: string, date: unknown, status: string, plus: object = {}) => set('invoices', id, { clientId: `lc-c${v}`, date, status, invoiceNumber: id.toUpperCase(), ...plus });
+    await f('lp-2024-payee', 'l', t('2024-03-10'), 'paid');
+    await f('lp-2024-due', 'l', t('2024-05-10'), 'due');                       // ancienne mais impayée : toujours renvoyée
+    await f('lp-2023-proforma', 'l', t('2023-01-10'), 'proforma');             // proforma : toujours renvoyé
+    await f('lp-2026-payee', 'l', t('2026-02-10'), 'paid');
+    await f('lp-2026-bord', 'l', t('2026-12-31'), 'paid');                     // dernier jour de la période : inclus
+    await f('lp-2026-texte', 'l', '2026-06-01T00:00:00.000Z', 'paid');          // date en texte (ancienne écriture)
+    await f('lp-2022-rejet', 'l', t('2022-01-10'), 'paid', { einvoicing: { status: 'rejected' } });
+    await f('lp-2026-paris', 'p', t('2026-02-10'), 'paid');
+    await set('creditNotes', 'lp-a-2026', { clientId: 'lc-cl', date: t('2026-03-01'), originalInvoiceIds: ['lp-2026-payee', 'facture-inconnue'] });
+    await set('creditNotes', 'lp-a-2024', { clientId: 'lc-cl', date: t('2024-03-01'), originalInvoiceIds: [] });
+    await set('creditNotes', 'lp-a-2021', { clientId: 'lc-cl', date: t('2021-03-01'), einvoicing: { status: 'to_send' } });
+    await set('creditNotes', 'lp-a-paris', { clientId: 'lc-cp', date: t('2026-03-01') });
+    const lp = (l: unknown) => (l as { id: string }[]).map(x => x.id).filter(x => x.startsWith('lp-')).sort();
+    const P = { du: '2026-01-01', au: '2026-12-31' };
+
+    assert.deepEqual(lp(await lire('facturesDePeriode', P, lyon)), ['lp-2023-proforma', 'lp-2024-due', 'lp-2026-bord', 'lp-2026-payee', 'lp-2026-texte']);
+    assert.deepEqual(lp(await lire('facturesDePeriode', { ...P, einvoicing: '1' }, lyon)), ['lp-2022-rejet', 'lp-2023-proforma', 'lp-2024-due', 'lp-2026-bord', 'lp-2026-payee', 'lp-2026-texte']);
+    assert.deepEqual(lp(await lire('facturesDePeriode', { du: '2024-01-01', au: '2024-12-31' }, lyon)), ['lp-2023-proforma', 'lp-2024-due', 'lp-2024-payee']);
+    assert.ok(lp(await lire('facturesDePeriode', P, admin)).includes('lp-2026-paris'));
+    assert.deepEqual(lp(await lire('facturesImpayees', {}, lyon)), ['lp-2024-due']);
+    // Dates converties en texte ISO, comme toutes les lectures.
+    const une = (await lire('facturesDePeriode', P, lyon) as { id: string; date: string }[]).find(x => x.id === 'lp-2026-payee')!;
+    assert.equal(une.date, '2026-02-10T10:00:00.000Z');
+    // Listes allégées : le détail des lignes n'est pas transmis, l'existence d'une annexe P1 est indiquée.
+    await set('invoices', 'lp-2026-lignes', { clientId: 'lc-cl', date: t('2026-04-10'), status: 'paid', lineItems: [{ description: 'P2', total: 100 }, { description: 'P1', total: 50, p1: { mode: 'compteur' } }] });
+    const lourde = (await lire('facturesDePeriode', P, lyon) as { id: string; lineItems: unknown[]; annexeP1: boolean }[]).find(x => x.id === 'lp-2026-lignes')!;
+    assert.deepEqual([lourde.lineItems, typeof lourde.annexeP1, (await lire('facture', { id: 'lp-2026-lignes' }, lyon) as { lineItems: unknown[] }).lineItems.length], [[], 'boolean', 2]);
+
+    const avoirs = await lire('avoirsDePeriode', P, lyon) as { id: string; originalInvoiceNumbers: string[] }[];
+    assert.deepEqual(lp(avoirs), ['lp-a-2026']);
+    assert.deepEqual(avoirs.find(x => x.id === 'lp-a-2026')!.originalInvoiceNumbers, ['LP-2026-PAYEE', 'facture-inconnue']);
+    assert.deepEqual(lp(await lire('avoirsDePeriode', { ...P, einvoicing: '1' }, lyon)), ['lp-a-2021', 'lp-a-2026']);
+    // Période invalide : refusée.
+    await assert.rejects(lire('facturesDePeriode', { du: '2026-12-31', au: '2026-01-01' }, lyon), /Période/);
+    await assert.rejects(lire('avoirsDePeriode', { du: 'hier', au: '2026-01-01' }, lyon), /Période/);
 });

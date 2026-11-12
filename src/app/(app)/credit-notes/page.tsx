@@ -1,5 +1,7 @@
 'use client';
 
+import { SelecteurPeriode } from '@/components/periode/selecteur-periode';
+import { useLecturePeriode, usePeriode } from '@/hooks/use-lecture-periode';
 import { useMemo } from 'react';
 import Link from 'next/link';
 import { FileDown, FileSpreadsheet, PlusCircle } from 'lucide-react';
@@ -8,7 +10,7 @@ import { Button } from '@/components/ui/button';
 import { DataTable, type Colonne } from '@/components/data-table/data-table';
 import type { FiltreTable } from '@/components/data-table/logique';
 import { eur0 } from '@/components/fiches/fiche';
-import { useCollections, useData } from '@/context/data-context';
+import { useData } from '@/context/data-context';
 import type { CreditNote } from '@/lib/types';
 
 /** Liste des avoirs émis : recherche, filtres (client, mois), tri, export, PDF (tableau commun). */
@@ -19,19 +21,19 @@ const jourIso = (d: unknown) => { const t = new Date(d as string); return Number
 const moisFr = (m: string) => new Date(`${m}-01T12:00:00`).toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' });
 
 export default function CreditNotesPage() {
-  const { creditNotes, invoices, isLoading: chargementBase } = useData();
-  // Collections volumineuses, chargées à la demande : l'écran attend qu'elles soient en mémoire.
-  const pret = useCollections('creditNotes', 'invoices');
-  const isLoading = chargementBase || !pret;
+  const { isLoading: chargementBase } = useData();
+  // Avoirs de la période choisie, lus au serveur avec les numéros des factures qu'ils annulent.
+  const [periode, setPeriode] = usePeriode();
+  const { donnees: creditNotes, chargement } = useLecturePeriode<CreditNote>('avoirsDePeriode', periode);
+  const isLoading = chargementBase || chargement;
 
   const lignes: Ligne[] = useMemo(() => {
-    const numero = new Map(invoices.map(i => [i.id, i.invoiceNumber ?? i.id]));
     return creditNotes.map(cn => ({
       ...cn,
-      factures: (cn.originalInvoiceIds ?? []).map(id => numero.get(id) ?? id).join(', '),
+      factures: (cn.originalInvoiceNumbers ?? cn.originalInvoiceIds ?? []).join(', '),
       mois: jourIso(cn.date).slice(0, 7),
     }));
-  }, [creditNotes, invoices]);
+  }, [creditNotes]);
 
   const colonnes: Colonne<Ligne>[] = useMemo(() => [
     { id: 'numero', label: "N° d'avoir", fixe: true, tri: r => r.creditNoteNumber, exporter: r => r.creditNoteNumber, cell: r => <span className="font-mono text-xs font-medium">{r.creditNoteNumber}</span> },
@@ -58,6 +60,7 @@ export default function CreditNotesPage() {
         <h1 className="text-2xl font-bold tracking-tight">Avoirs</h1>
         <p className="text-muted-foreground">Avoirs émis. Pour en créer un : sélectionnez les factures à annuler dans la liste des factures.</p>
       </div>
+      <SelecteurPeriode periode={periode} onChange={setPeriode} />
       <DataTable
         id="avoirs"
         rows={lignes}
@@ -72,7 +75,7 @@ export default function CreditNotesPage() {
         vide={{ titre: 'Aucun avoir.', description: 'Un avoir annule une ou plusieurs factures émises (liste des factures, sélection).' }}
         actions={cn => (
           <div className="flex justify-end">
-            {!(cn.originalInvoiceIds ?? []).length && aAnnexeP1(cn.lineItems) && (
+            {!(cn.originalInvoiceIds ?? []).length && (cn.annexeP1 ?? aAnnexeP1(cn.lineItems)) && (
               <Button variant="ghost" size="icon" className="h-8 w-8" asChild title="Annexe P1 (tableur)">
                 <a href={`/api/documents/credit-notes/${cn.id}/annexe?format=xlsx`} aria-label={`Annexe P1 de l'avoir ${cn.creditNoteNumber} (tableur)`}><FileSpreadsheet className="h-4 w-4" /></a>
               </Button>

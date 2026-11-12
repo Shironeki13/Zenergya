@@ -1,8 +1,10 @@
 import 'server-only';
+import { Timestamp } from 'firebase-admin/firestore';
 import { adminDb } from '@/lib/firebase-admin';
 import { PerimetreError, clientDe, gardePerimetre, type GardePerimetre, type ObjetPerimetre } from '@/lib/auth/perimetre-server';
 import type { SessionUser } from '@/lib/auth/server';
 import { convertir } from '@/services/donnees-admin';
+import { aAnnexeP1 } from '@/lib/billing/p1-annexe';
 
 /**
  * Lectures spécifiques des écrans (une fiche, les éléments d'un contrat, d'un client, d'un devis, d'une affaire) : faites
@@ -50,6 +52,62 @@ const enfants = (coll: string, champ: string, parent: ObjetPerimetre, tri?: (x: 
 const s = (v: unknown) => String(v ?? '');
 const n = (v: unknown) => Number(v ?? 0);
 
+// --- Factures et avoirs : par période, jamais tout l'historique ---
+
+const estJour = (x: string) => /^\d{4}-\d{2}-\d{2}$/.test(x);
+/** Bornes d'une période (jours AAAA-MM-JJ inclus), en horodatages. */
+function bornes(a: Args): [Timestamp, Timestamp] {
+    if (!estJour(a.du) || !estJour(a.au) || a.au < a.du) throw new Error('Période : dates de début et de fin (AAAA-MM-JJ), dans l\'ordre.');
+    return [Timestamp.fromDate(new Date(`${a.du}T00:00:00Z`)), Timestamp.fromDate(new Date(`${a.au}T23:59:59.999Z`))];
+}
+/** Documents d'une période : date en horodatage (cas normal) ou en texte ISO (anciennes écritures). */
+const dePeriode = (c: FirebaseFirestore.CollectionReference, a: Args) => {
+    const [du, au] = bornes(a);
+    return [c.where('date', '>=', du).where('date', '<=', au).get(), c.where('date', '>=', a.du).where('date', '<=', `${a.au}T23:59:59.999Z`).get()];
+};
+/**
+ * Document de liste : sans le détail de ses lignes (97 % du poids d'une facture), dont les listes ne se servent que
+ * pour savoir si une annexe P1 existe — indiqué par `annexeP1`. La fiche d'une facture lit le document complet.
+ */
+const pourListe = (d: Doc): Doc => ({ ...d, lineItems: [], annexeP1: aAnnexeP1((d.lineItems ?? []) as never) });
+const sansDoublon = (l: Doc[]): Doc[] => [...new Map(l.map(d => [d.id, d])).values()];
+/** États de facturation électronique qui demandent une action : à transmettre, rejeté. */
+const A_TRANSMETTRE = ['to_send', 'rejected'];
+
+/**
+ * Factures d'une période, plus celles qui demandent une action quelle que soit leur date : impayées (à payer, en
+ * retard) et proformas ; avec `einvoicing=1`, celles qui restent à transmettre ou ont été rejetées.
+ */
+const facturesDePeriode: Lecture = async (a, garde) => {
+    const c = adminDb.collection('invoices');
+    const lots = await Promise.all([
+        ...dePeriode(c, a),
+        c.where('status', 'in', ['due', 'overdue', 'proforma']).get(),
+        ...(a.einvoicing === '1' ? [c.where('einvoicing.status', 'in', A_TRANSMETTRE).get()] : []),
+    ]);
+    return (await garde.filtrer(sansDoublon(lots.flatMap(docs)), d => s(d.clientId))).map(pourListe);
+};
+
+/** Avoirs d'une période (avec `einvoicing=1` : plus ceux à transmettre), et les numéros des factures qu'ils annulent. */
+const avoirsDePeriode: Lecture = async (a, garde) => {
+    const c = adminDb.collection('creditNotes');
+    const lots = await Promise.all([
+        ...dePeriode(c, a),
+        ...(a.einvoicing === '1' ? [c.where('einvoicing.status', 'in', A_TRANSMETTRE).get()] : []),
+    ]);
+    const avoirs = await garde.filtrer(sansDoublon(lots.flatMap(docs)), d => s(d.clientId));
+    const ids = [...new Set(avoirs.flatMap(x => (Array.isArray(x.originalInvoiceIds) ? x.originalInvoiceIds as string[] : [])))];
+    const numeros = new Map<string, string>();
+    for (let i = 0; i < ids.length; i += 100) {
+        const refs = ids.slice(i, i + 100).map(id => adminDb.collection('invoices').doc(id));
+        for (const d of refs.length ? await adminDb.getAll(...refs) : []) if (d.exists) numeros.set(d.id, s(d.get('invoiceNumber')) || d.id);
+    }
+    return avoirs.map(pourListe).map(x => ({ ...x, originalInvoiceNumbers: (Array.isArray(x.originalInvoiceIds) ? x.originalInvoiceIds as string[] : []).map(id => numeros.get(id) ?? id) }));
+};
+
+/** Factures impayées (à payer, en retard), toutes dates : suivi des encaissements. */
+const facturesImpayees: Lecture = async (_a, garde) => (await garde.filtrer(docs(await adminDb.collection('invoices').where('status', 'in', ['due', 'overdue']).get()), d => s(d.clientId))).map(pourListe);
+
 export const LECTURES = {
     client: fiche('clients', d => d.id),
     contrat: fiche('contracts', d => s(d.clientId) || null),
@@ -83,6 +141,7 @@ export const LECTURES = {
     facturesDuDevis: enfants('invoices', 'quoteId', 'devis', (x, y) => s(x.invoiceNumber).localeCompare(s(y.invoiceNumber))),
     situationsDeLAffaire: enfants('projectSituations', 'projectId', 'affaire', (x, y) => n(x.number) - n(y.number)),
     facturesDeLAffaire: enfants('invoices', 'projectId', 'affaire'),
+    facturesDePeriode, avoirsDePeriode, facturesImpayees,
     /** Listes entières, réduites au périmètre. */
     devisTous: (async (_a, garde) => garde.filtrer(docs(await adminDb.collection('quotes').get()), d => s(d.clientId))) as Lecture,
     affaires: (async (_a, garde) => garde.filtrer(docs(await adminDb.collection('projects').get()), d => s(d.clientId))) as Lecture,
