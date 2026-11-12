@@ -108,6 +108,47 @@ const avoirsDePeriode: Lecture = async (a, garde) => {
 /** Factures impayées (à payer, en retard), toutes dates : suivi des encaissements. */
 const facturesImpayees: Lecture = async (_a, garde) => (await garde.filtrer(docs(await adminDb.collection('invoices').where('status', 'in', ['due', 'overdue']).get()), d => s(d.clientId))).map(pourListe);
 
+/** Factures d'un client, tous contrats (liste allégée). */
+const facturesDuClient: Lecture = async (a, garde) => ((await acces(garde, 'client', a.id)) === 'absent' ? [] : (await par('invoices', 'clientId', a.id)).map(pourListe));
+
+/** Numéro d'une facture (fil d'Ariane) : sans lire le document entier côté navigateur. */
+const numeroDeFacture: Lecture = async (a, garde) => {
+    const d = a.id ? await adminDb.collection('invoices').doc(a.id).get() : null;
+    if (!d?.exists) return null;
+    if (!garde.tout && !(await garde.voitClient(s(d.get('clientId'))))) throw new PerimetreError();
+    return { id: d.id, invoiceNumber: d.get('invoiceNumber') ?? null };
+};
+
+/** Recherche de factures par début de numéro (recherche globale) : 20 au plus, dans le périmètre. */
+const rechercheFactures: Lecture = async (a, garde) => {
+    const q = s(a.q).trim().toUpperCase();
+    if (q.length < 3) return [];
+    const trouvees = await adminDb.collection('invoices').where('invoiceNumber', '>=', q).where('invoiceNumber', '<=', `${q}\uf8ff`).limit(40).select('invoiceNumber', 'clientId', 'clientName', 'status').get();
+    return (await garde.filtrer(trouvees.docs.map(d => ({ id: d.id, ...d.data() }) as Doc), d => s(d.clientId))).slice(0, 20);
+};
+
+/**
+ * Synthèse des factures pour le tableau de bord : total facturé HT, chiffre d'affaires des 12 derniers mois, dernière
+ * période facturée de chaque contrat, 5 dernières factures. Calculée au serveur sur les seuls champs utiles : le
+ * navigateur ne reçoit pas la liste des factures.
+ */
+const syntheseFactures: Lecture = async (_a, garde) => {
+    const tout = await adminDb.collection('invoices').select('status', 'subtotal', 'date', 'contractId', 'clientId', 'clientName', 'periodEndDate', 'invoiceNumber', 'total').get();
+    const factures = await garde.filtrer(tout.docs.map(d => convertir({ id: d.id, ...d.data() }) as Doc), d => s(d.clientId));
+    const emises = factures.filter(f => f.status !== 'proforma');
+    const parMois: Record<string, number> = {};
+    const dernierePeriode: Record<string, string> = {};
+    for (const f of emises) {
+        const mois = s(f.date).slice(0, 7);
+        if (mois) parMois[mois] = Math.round(((parMois[mois] ?? 0) + n(f.subtotal)) * 100) / 100;
+        const fin = s(f.periodEndDate), k = s(f.contractId);
+        if (k && fin && fin > (dernierePeriode[k] ?? '')) dernierePeriode[k] = fin;
+    }
+    const recentes = [...factures].sort((x, y) => s(y.date).localeCompare(s(x.date))).slice(0, 5)
+        .map(f => ({ id: f.id, invoiceNumber: f.invoiceNumber ?? null, clientName: f.clientName ?? '', date: f.date ?? null, status: f.status, total: n(f.total), subtotal: n(f.subtotal) }));
+    return { totalFactureHT: Math.round(emises.reduce((t, f) => t + n(f.subtotal), 0) * 100) / 100, parMois, dernierePeriode, recentes, nombre: factures.length };
+};
+
 export const LECTURES = {
     client: fiche('clients', d => d.id),
     contrat: fiche('contracts', d => s(d.clientId) || null),
@@ -141,7 +182,7 @@ export const LECTURES = {
     facturesDuDevis: enfants('invoices', 'quoteId', 'devis', (x, y) => s(x.invoiceNumber).localeCompare(s(y.invoiceNumber))),
     situationsDeLAffaire: enfants('projectSituations', 'projectId', 'affaire', (x, y) => n(x.number) - n(y.number)),
     facturesDeLAffaire: enfants('invoices', 'projectId', 'affaire'),
-    facturesDePeriode, avoirsDePeriode, facturesImpayees,
+    facturesDePeriode, avoirsDePeriode, facturesImpayees, facturesDuClient, numeroDeFacture, rechercheFactures, syntheseFactures,
     /** Listes entières, réduites au périmètre. */
     devisTous: (async (_a, garde) => garde.filtrer(docs(await adminDb.collection('quotes').get()), d => s(d.clientId))) as Lecture,
     affaires: (async (_a, garde) => garde.filtrer(docs(await adminDb.collection('projects').get()), d => s(d.clientId))) as Lecture,

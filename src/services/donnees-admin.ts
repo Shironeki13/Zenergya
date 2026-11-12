@@ -6,7 +6,8 @@ import type { SessionUser } from '@/lib/auth/server';
 import { COLLECTIONS_PERIMETRE, type CollectionPerimetre } from '@/lib/perimetre';
 
 /**
- * Lecture des collections à périmètre pour le navigateur : le serveur lit la base et ne renvoie que les objets des
+ * Lecture des collections à périmètre chargées en entier par le navigateur (clients, contrats, sites, prestations,
+ * compteurs, contacts ; les factures, avoirs et relevés se lisent par période ou par objet, voir lectures-admin) : le serveur lit la base et ne renvoie que les objets des
  * sociétés, agences et secteurs de l'utilisateur (lib/perimetre). Le navigateur n'a pas à lire ces collections
  * directement. Les référentiels (sociétés, agences, activités…) ne passent pas par ici : ils sont lisibles par tous.
  */
@@ -37,7 +38,7 @@ export async function chargerDonnees(keys: CollectionPerimetre[], user: SessionU
     const s = (x: unknown) => String(x ?? '');
     const filtres: Record<CollectionPerimetre, (d: Doc) => boolean> = {
         clients: d => clients.has(d.id),
-        contracts: d => clients.has(s(d.clientId)), invoices: d => clients.has(s(d.clientId)), creditNotes: d => clients.has(s(d.clientId)), contacts: d => clients.has(s(d.clientId)),
+        contracts: d => clients.has(s(d.clientId)), contacts: d => clients.has(s(d.clientId)),
         sites: d => sites.has(d.id),
         services: d => (d.contractId ? contrats.has(s(d.contractId)) : sites.has(s(d.siteId))),
         meters: d => sites.has(s(d.siteId)),

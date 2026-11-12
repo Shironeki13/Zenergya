@@ -34,19 +34,21 @@ before(async () => {
 
 test('administrateur : tout, dates Firestore en chaînes ISO (y compris imbriquées)', async () => {
     const r = await chargerDonnees([...COLLECTIONS_PERIMETRE], admin);
-    assert.deepEqual(miens(r), { clients: 'dn-cl,dn-cp', contracts: 'dn-kl,dn-kp', sites: 'dn-sl,dn-sl2,dn-sp,dn-sp2', services: 'dn-pl,dn-pl2,dn-pp,dn-pp2', meters: 'dn-ml,dn-mp', invoices: 'dn-fl,dn-fp', creditNotes: 'dn-al,dn-ap', contacts: 'dn-tl,dn-tp' });
+    assert.deepEqual(miens(r), { clients: 'dn-cl,dn-cp', contracts: 'dn-kl,dn-kp', sites: 'dn-sl,dn-sl2,dn-sp,dn-sp2', services: 'dn-pl,dn-pl2,dn-pp,dn-pp2', meters: 'dn-ml,dn-mp', contacts: 'dn-tl,dn-tp' });
     const k = r.contracts!.find(x => x.id === 'dn-kl')! as unknown as { periode: { debut: string }; jalons: string[] };
-    assert.deepEqual([r.clients!.find(x => x.id === 'dn-cl')!.createdAt, k.periode.debut, k.jalons, r.invoices!.find(x => x.id === 'dn-fl')!.date], ['2026-01-02T03:04:05.000Z', '2026-02-01T00:00:00.000Z', ['2026-03-01T00:00:00.000Z'], '2026-04-05T00:00:00.000Z']);
+    assert.deepEqual([r.clients!.find(x => x.id === 'dn-cl')!.createdAt, k.periode.debut, k.jalons], ['2026-01-02T03:04:05.000Z', '2026-02-01T00:00:00.000Z', ['2026-03-01T00:00:00.000Z']]);
     assert.equal(JSON.stringify(r).includes('_seconds'), false);
 });
 
 test('utilisateur limité à Lyon : seuls les objets de ses clients, quelle que soit la collection demandée ; sans périmètre : rien', async () => {
-    assert.deepEqual(miens(await chargerDonnees([...COLLECTIONS_PERIMETRE], lyon)), { clients: 'dn-cl', contracts: 'dn-kl', sites: 'dn-sl,dn-sl2', services: 'dn-pl,dn-pl2', meters: 'dn-ml', invoices: 'dn-fl', creditNotes: 'dn-al', contacts: 'dn-tl' });
+    assert.deepEqual(miens(await chargerDonnees([...COLLECTIONS_PERIMETRE], lyon)), { clients: 'dn-cl', contracts: 'dn-kl', sites: 'dn-sl,dn-sl2', services: 'dn-pl,dn-pl2', meters: 'dn-ml', contacts: 'dn-tl' });
     // Une collection demandée seule est filtrée de la même façon (le serveur relit ce qu'il faut pour la rattacher au client).
     assert.deepEqual(miens(await chargerDonnees(['meters'], lyon)), { meters: 'dn-ml' });
     // Les relevés ne se chargent plus en entier : ils se lisent par compteur ou par site (lectures nommées).
     assert.deepEqual(await chargerDonnees(['meterReadings' as never], admin), {});
-    assert.deepEqual(miens(await chargerDonnees(['services', 'invoices'], lyon)), { services: 'dn-pl,dn-pl2', invoices: 'dn-fl' });
+    assert.deepEqual(miens(await chargerDonnees(['services', 'contacts'], lyon)), { services: 'dn-pl,dn-pl2', contacts: 'dn-tl' });
+    // Factures et avoirs : plus jamais en entier (lectures par période ou par objet).
+    assert.deepEqual(await chargerDonnees(['invoices' as never, 'creditNotes' as never], admin), {});
     assert.deepEqual(miens(await chargerDonnees([...COLLECTIONS_PERIMETRE], rien)), Object.fromEntries(COLLECTIONS_PERIMETRE.map(k => [k, ''])));
     assert.deepEqual(await chargerDonnees(['users' as never], lyon), {});
 });

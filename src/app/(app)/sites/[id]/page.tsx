@@ -28,8 +28,8 @@ import {
     AFaire, CompteursDuSite, FacturesDuSite, Indicateur, JOURS_SANS_RELEVE, ListePrestations, ModifierSiteDialog, ONGLETS_SITE, TableauPrestations,
     enVigueur, libellePrestation, manquesPrestation, montantSite, type OngletSite, type PointAFaire, type SiteModifiable,
 } from '@/components/sites/fiche-site';
-import { updateSite, createService, updateService, deleteService, createMeter, updateMeter, deleteMeter } from '@/services/firestore';
-import type { Site, Contract, Service, Meter, MeterReading, RevisionRule, Activity, Term, Schedule, PricingRule, ServiceType, ServiceInitialIndexValue, Index, IndexValue, ServiceBillingLine, BillingLineType } from '@/lib/types';
+import { updateSite, createService, updateService, deleteService, createMeter, updateMeter, deleteMeter, getInvoicesByContract } from '@/services/firestore';
+import type { Site, Contract, Service, Meter, MeterReading, Invoice, RevisionRule, Activity, Term, Schedule, PricingRule, ServiceType, ServiceInitialIndexValue, Index, IndexValue, ServiceBillingLine, BillingLineType } from '@/lib/types';
 import { MeterReadingsDialog } from '@/components/meter-readings-dialog';
 import { Separator } from '@/components/ui/separator';
 import { Switch } from '@/components/ui/switch';
@@ -47,9 +47,9 @@ export default function SiteDetailsPage() {
     const confirmer = useConfirm();
     const params = useParams();
     const router = useRouter();
-    const { sites, contracts, meters, services, activities, revisionRules, pricingRules, terms, schedules, reloadData, isLoading: chargementBase, indices, indexValues, settlementRules, vatRates, invoices, weatherStations } = useData();
+    const { sites, contracts, meters, services, activities, revisionRules, pricingRules, terms, schedules, reloadData, isLoading: chargementBase, indices, indexValues, settlementRules, vatRates, weatherStations } = useData();
     // Collections volumineuses, chargées à la demande : l'écran attend qu'elles soient en mémoire.
-    const pret = useCollections('meters', 'indexValues', 'invoices');
+    const pret = useCollections('meters', 'indexValues');
     const isLoading = chargementBase || !pret;
     const siteId = params.id as string;
     // Relevés des compteurs de ce site, lus au serveur (jamais tous les relevés) ; relus quand un compteur change
@@ -59,6 +59,9 @@ export default function SiteDetailsPage() {
 
     const [site, setSite] = useState<Site | null>(null);
     const [contract, setContract] = useState<Contract | null>(null);
+    // Factures du contrat du site, lues au serveur (documents complets : le montant du site se lit dans leurs lignes).
+    const [invoices, setInvoices] = useState<Invoice[]>([]);
+    useEffect(() => { if (contract?.id) getInvoicesByContract(contract.id).then(setInvoices).catch(() => undefined); else setInvoices([]); }, [contract?.id]);
     const [siteMeters, setSiteMeters] = useState<Meter[]>([]);
     const [siteServices, setSiteServices] = useState<Service[]>([]);
 

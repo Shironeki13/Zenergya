@@ -1205,7 +1205,7 @@ export type ExtractContractInfoOutput = z.infer<typeof ExtractContractInfoOutput
 
 // Data Context Type
 /** Collections volumineuses : chargées seulement quand un écran en a besoin, puis gardées en mémoire. */
-export const LAZY_COLLECTIONS = ['invoices', 'creditNotes', 'indexValues', 'contacts', 'meters'] as const;
+export const LAZY_COLLECTIONS = ['indexValues', 'contacts', 'meters'] as const;
 export type LazyCollectionKey = typeof LAZY_COLLECTIONS[number];
 /** Collections chargées à l'ouverture : référentiels et listes de base (clients, contrats, sites, prestations). */
 export const EAGER_COLLECTIONS = [
@@ -1219,8 +1219,6 @@ export type DataContextType = {
     contacts: Contact[]; // NEW: Contact entity
     sites: Site[];
     contracts: Contract[];
-    invoices: Invoice[];
-    creditNotes: CreditNote[];
     indices: Index[];
     indexValues: IndexValue[];
     meters: Meter[];

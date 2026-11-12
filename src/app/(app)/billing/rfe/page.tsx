@@ -42,7 +42,7 @@ const eur = (n: number) => n.toLocaleString('fr-FR', { style: 'currency', curren
 const day = (iso: string) => new Date(iso).toLocaleDateString('fr-FR', { timeZone: 'UTC' });
 
 export default function EInvoicingDashboardPage() {
-    const { clients, contracts, typologies, companies, isLoading: chargementBase, reloadData: rechargerPartage } = useData();
+    const { clients, contracts, typologies, companies, isLoading: chargementBase } = useData();
     const { toast } = useToast();
 
     const [companyId, setCompanyId] = useState('all');
@@ -57,7 +57,7 @@ export default function EInvoicingDashboardPage() {
     const { donnees: invoices, chargement: chargementFactures, recharger: rechargerFactures } = useLecturePeriode<Invoice>('facturesDePeriode', periode, lecture);
     const { donnees: creditNotes, chargement: chargementAvoirs, recharger: rechargerAvoirs } = useLecturePeriode<CreditNote>('avoirsDePeriode', periode, lecture);
     const isLoading = chargementBase || chargementFactures || chargementAvoirs;
-    const reloadData = async (collections: Parameters<typeof rechargerPartage>[0]) => { await Promise.all([rechargerFactures(), rechargerAvoirs(), rechargerPartage(collections)]); };
+    const reloadData = async () => { await Promise.all([rechargerFactures(), rechargerAvoirs()]); };
     const [search, setSearch] = useState('');
     const [selected, setSelected] = useState<Set<string>>(new Set());
     const [pending, setPending] = useState<PendingAction>(null);
@@ -139,7 +139,7 @@ export default function EInvoicingDashboardPage() {
         try {
             report(label, await action());
             setSelected(new Set());
-            await reloadData(['invoices', 'creditNotes']);
+            await reloadData();
         } catch (error) {
             toast({ title: 'Erreur', description: error instanceof Error ? error.message : String(error), variant: 'destructive' });
         } finally {

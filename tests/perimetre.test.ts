@@ -19,16 +19,16 @@ const D = {
     sites: [{ id: 's1', clientId: 'c1', contractId: 'k1' }, { id: 's2', contractId: 'k2' }, { id: 's3', contractId: 'k1' }],
     services: [{ id: 'p1', contractId: 'k1', siteId: 's1' }, { id: 'p2', contractId: 'k2', siteId: 's2' }, { id: 'p3', siteId: 's3' }],
     meters: [{ id: 'm1', siteId: 's1' }, { id: 'm2', siteId: 's2' }],
-    invoices: [{ id: 'f1', clientId: 'c1' }, { id: 'f2', clientId: 'c2' }], creditNotes: [{ id: 'a2', clientId: 'c2' }], contacts: [{ id: 'ct1', clientId: 'c1' }, { id: 'ct2', clientId: 'c2' }],
+    contacts: [{ id: 'ct1', clientId: 'c1' }, { id: 'ct2', clientId: 'c2' }],
     activities: [{ id: 'P2' }],
 };
 const ids = (d: typeof D) => Object.fromEntries(Object.entries(d).map(([k, v]) => [k, (v as { id: string }[]).map(x => x.id).join()]));
 
-test('filtrage : chaque objet suit son client (contrat, site, prestation, compteur, relevé, facture, avoir, contact) ; référentiels intacts', () => {
-    assert.deepEqual(ids(filtrerPerimetre(D, lyon)), { clients: 'c1', contracts: 'k1', sites: 's1,s3', services: 'p1,p3', meters: 'm1', invoices: 'f1', creditNotes: '', contacts: 'ct1', activities: 'P2' });
+test('filtrage : chaque objet suit son client (contrat, site, prestation, compteur, contact) ; référentiels intacts', () => {
+    assert.deepEqual(ids(filtrerPerimetre(D, lyon)), { clients: 'c1', contracts: 'k1', sites: 's1,s3', services: 'p1,p3', meters: 'm1', contacts: 'ct1', activities: 'P2' });
     assert.equal(filtrerPerimetre(D, PERIMETRE_TOTAL), D);
     assert.equal(filtrerPerimetre(D, lyonNord, true), D);
-    assert.deepEqual(ids(filtrerPerimetre(D, null)), { clients: '', contracts: '', sites: '', services: '', meters: '', invoices: '', creditNotes: '', contacts: '', activities: 'P2' });
+    assert.deepEqual(ids(filtrerPerimetre(D, null)), { clients: '', contracts: '', sites: '', services: '', meters: '', contacts: '', activities: 'P2' });
     assert.deepEqual([...clientsDuPerimetre(D.clients, { companyIds: ['zen'], agencyIds: ['*'], sectorIds: ['se-p'] })], ['c2']);
 });
 

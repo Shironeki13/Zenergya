@@ -1,9 +1,11 @@
 'use client';
 
+import { useEffect, useState } from 'react';
+import { lireServeur } from '@/services/lecture';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { ChevronRight } from 'lucide-react';
-import { useCollections, useData } from '@/context/data-context';
+import { useData } from '@/context/data-context';
 import { activeNavItem } from '@/components/navigation/nav-config';
 
 /**
@@ -21,9 +23,14 @@ type Miette = { label: string; href?: string };
 
 export function Breadcrumbs() {
     const pathname = usePathname();
-    const { clients, contracts, sites, invoices } = useData();
-    // Le numéro de la facture n'est utile que sur sa fiche : la liste des factures n'est demandée que là.
-    useCollections(...(/^\/invoices\/[^/]+/.test(pathname) ? ['invoices' as const] : []));
+    const { clients, contracts, sites, currentUser } = useData();
+    // Numéro de la facture affichée : lu au serveur, sur sa fiche seulement.
+    const idFacture = /^\/invoices\/([^/]+)/.exec(pathname)?.[1] ?? '';
+    const [numeroFacture, setNumeroFacture] = useState<{ id: string; numero: string } | null>(null);
+    useEffect(() => {
+        if (!idFacture || !currentUser) return;
+        lireServeur<{ id: string; invoiceNumber: string | null } | null>('numeroDeFacture', { id: idFacture }, null).then(r => setNumeroFacture(r?.invoiceNumber ? { id: r.id, numero: r.invoiceNumber } : null)).catch(() => undefined);
+    }, [idFacture, currentUser]);
     const actif = activeNavItem(pathname);
     if (!actif) return null;
 
@@ -34,7 +41,7 @@ export function Breadcrumbs() {
             return c ? `${c.contractNumber ?? ''}${c.contractNumber && c.clientName ? ' — ' : ''}${c.clientName ?? ''}` || 'Fiche contrat' : 'Fiche contrat';
         }
         if (base === '/sites') return sites.find(s => s.id === id)?.name ?? 'Fiche site';
-        if (base === '/invoices') return invoices.find(i => i.id === id)?.invoiceNumber ?? 'Facture';
+        if (base === '/invoices') return numeroFacture?.id === id ? numeroFacture.numero : 'Facture';
         if (base === '/quotes') return 'Devis';
         if (base === '/projects') return 'Affaire';
         return 'Fiche';

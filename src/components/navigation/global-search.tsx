@@ -1,5 +1,6 @@
 'use client';
 
+import { lireServeur } from '@/services/lecture';
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Building, FileSignature, FileText, Gauge, MapPin, Search, type LucideIcon } from 'lucide-react';
@@ -36,11 +37,24 @@ function chercher(items: Resultat[], q: string): Resultat[] {
 
 export function GlobalSearch() {
     const router = useRouter();
-    const { clients, contracts, sites, meters, invoices, isAdmin, isContratheque, toutVoir, modules } = useData();
+    const { clients, contracts, sites, meters, isAdmin, isContratheque, toutVoir, modules } = useData();
     const [open, setOpen] = useState(false);
-    // Compteurs et factures ne sont chargés qu'à l'ouverture de la recherche.
-    useCollectionsPonctuelles(...(open ? ['meters' as const, 'invoices' as const] : []));
+    // Les compteurs ne sont chargés qu'à l'ouverture de la recherche.
+    useCollectionsPonctuelles(...(open ? ['meters' as const] : []));
     const [q, setQ] = useState('');
+    // Factures : cherchées au serveur par début de numéro (3 caractères au moins), après une courte pause de frappe.
+    const [factures, setFactures] = useState<Resultat[]>([]);
+    useEffect(() => {
+        const terme = q.trim();
+        if (!open || terme.length < 3) { setFactures([]); return; }
+        let annule = false;
+        const t = setTimeout(() => {
+            lireServeur<{ id: string; invoiceNumber: string; clientName?: string; status?: string }[]>('rechercheFactures', { q: terme }, [])
+                .then(l => { if (!annule) setFactures(l.map(i => ({ id: i.id, href: `/invoices/${i.id}`, titre: i.invoiceNumber, detail: i.clientName, texte: norm(`${i.invoiceNumber} ${i.clientName ?? ''}`) }))); })
+                .catch(() => undefined);
+        }, 250);
+        return () => { annule = true; clearTimeout(t); };
+    }, [q, open]);
 
     useEffect(() => {
         const onKey = (e: KeyboardEvent) => {
@@ -61,9 +75,8 @@ export function GlobalSearch() {
             contrats: contracts.map(c => r(c.id, `/contracts/${c.id}`, `${c.contractNumber ?? 'Contrat'} — ${c.clientName ?? ''}`, [c.label, c.status].filter(Boolean).join(' · '), c.name, c.externalRef)),
             sites: sites.map(s => r(s.id, `/sites/${s.id}`, s.name, [s.code, s.clientName, s.city].filter(Boolean).join(' · '), s.externalRef, s.siteNumber, s.address, s.postalCode)),
             compteurs: meters.map(m => r(m.id, `/meters?q=${encodeURIComponent(m.code ?? m.name)}`, `${m.code ?? ''} — ${m.name}`, [m.siteName, m.clientName].filter(Boolean).join(' · '), m.reference, m.externalRef)),
-            factures: invoices.filter(i => i.invoiceNumber).map(i => r(i.id, `/invoices/${i.id}`, i.invoiceNumber!, i.clientName, i.status)),
         };
-    }, [clients, contracts, sites, meters, invoices, isAdmin, isContratheque, toutVoir, modules]);
+    }, [clients, contracts, sites, meters, isAdmin, isContratheque, toutVoir, modules]);
 
     const rubriques: Rubrique[] = useMemo(() => [
         { label: 'Pages', icon: Search, items: chercher(index.pages, q) },
@@ -71,8 +84,8 @@ export function GlobalSearch() {
         { label: 'Contrats', icon: FileSignature, items: chercher(index.contrats, q) },
         { label: 'Sites', icon: MapPin, items: chercher(index.sites, q) },
         { label: 'Compteurs', icon: Gauge, items: chercher(index.compteurs, q) },
-        { label: 'Factures', icon: FileText, items: chercher(index.factures, q) },
-    ].filter(r => r.items.length > 0), [index, q]);
+        { label: 'Factures', icon: FileText, items: factures.slice(0, PAR_RUBRIQUE) },
+    ].filter(r => r.items.length > 0), [index, q, factures]);
 
     const aller = (href: string) => { setOpen(false); router.push(href); };
 

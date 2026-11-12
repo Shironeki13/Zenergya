@@ -34,11 +34,11 @@ type AvecId = { id: string };
 export type CollectionsPerimetre = {
     clients: (AvecId & Rattachement)[]; contracts: (AvecId & { clientId?: string })[]; sites: (AvecId & { clientId?: string; contractId?: string })[];
     services: (AvecId & { contractId?: string; siteId?: string })[]; meters: (AvecId & { siteId?: string })[];
-    invoices: (AvecId & { clientId?: string })[]; creditNotes: (AvecId & { clientId?: string })[]; contacts: (AvecId & { clientId?: string })[];
+    contacts: (AvecId & { clientId?: string })[];
 };
 
 /**
- * Ne garde que les objets du périmètre : clients par leur rattachement ; contrats, sites, factures, avoirs et contacts
+ * Ne garde que les objets du périmètre : clients par leur rattachement ; contrats, sites et contacts
  * par leur client ; prestations par leur contrat ou leur site ; compteurs par leur site.
  * Les référentiels (sociétés, agences, activités…) ne sont pas filtrés : leurs libellés servent partout.
  */
@@ -56,7 +56,7 @@ export function filtrerPerimetre<T extends CollectionsPerimetre>(d: T, p: Perime
         clients: d.clients.filter(c => cli.has(c.id)), contracts, sites,
         services: d.services.filter(s => (s.contractId ? ctr.has(s.contractId) : !!s.siteId && sit.has(s.siteId))),
         meters,
-        invoices: parClient(d.invoices), creditNotes: parClient(d.creditNotes), contacts: parClient(d.contacts),
+        contacts: parClient(d.contacts),
     };
 }
 
@@ -87,5 +87,5 @@ export function accesRoute(pathname: string, modules: string[] | undefined, isAd
 }
 
 /** Collections à périmètre : le navigateur les obtient du serveur (filtrées), pas de la base directement. */
-export const COLLECTIONS_PERIMETRE = ['clients', 'contracts', 'sites', 'services', 'meters', 'invoices', 'creditNotes', 'contacts'] as const;
+export const COLLECTIONS_PERIMETRE = ['clients', 'contracts', 'sites', 'services', 'meters', 'contacts'] as const;
 export type CollectionPerimetre = typeof COLLECTIONS_PERIMETRE[number];

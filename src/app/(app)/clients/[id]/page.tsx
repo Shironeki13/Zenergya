@@ -1,5 +1,7 @@
 'use client';
 
+import type { Invoice } from '@/lib/types';
+import { lireServeur } from '@/services/lecture';
 import { AccesRefuse, useHorsPerimetre } from '@/components/perimetre/acces';
 import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
@@ -15,7 +17,7 @@ import { getClient, getContractsByClient, getSitesByClient, getContactsByClient 
 import type { Client, Contract, Site, Contact } from '@/lib/types';
 import { useToast } from '@/hooks/use-toast';
 import { AttachContractDialog } from '@/components/attach-contract-dialog';
-import { useCollections, useData } from '@/context/data-context';
+import { useData } from '@/context/data-context';
 import { SireneCheckPanel } from '@/components/clients/sirene-check';
 import { AFaire, Indicateur, eur0, CompteurAFaire, useOngletUrl, type PointAFaire } from '@/components/fiches/fiche';
 import { CarteContacts, TableauContrats, TableauFactures, TableauSites, etatSite } from '@/components/fiches/tableaux';
@@ -30,8 +32,9 @@ export default function ClientDetailPage() {
   const id = params.id as string;
   const router = useRouter();
   const { toast } = useToast();
-  const { typologies, companies, agencies, sectors, services, invoices, users } = useData();
-  useCollections('invoices');
+  const { typologies, companies, agencies, sectors, services, users } = useData();
+  // Factures de ce client, lues au serveur (liste allégée).
+  const [facturesClient, setFacturesClient] = useState<Invoice[]>([]);
 
   const [client, setClient] = useState<Client | null>(null);
   const [contracts, setContracts] = useState<Contract[]>([]);
@@ -52,11 +55,12 @@ export default function ClientDetailPage() {
     async function fetchData() {
       setIsLoading(true);
       try {
-        const [clientData, clientSites, clientContacts] = await Promise.all([getClient(id), getSitesByClient(id), getContactsByClient(id)]);
+        const [clientData, clientSites, clientContacts, clientFactures] = await Promise.all([getClient(id), getSitesByClient(id), getContactsByClient(id), lireServeur<Invoice[]>('facturesDuClient', { id }, [])]);
         if (!clientData) { notFound(); return; }
         setClient(clientData);
         setSites(clientSites);
         setContacts(clientContacts);
+        setFacturesClient(clientFactures);
         await fetchContracts();
       } catch (error) {
         console.error("Failed to fetch data for client detail page", error);
@@ -84,7 +88,6 @@ export default function ClientDetailPage() {
   // ── Synthèse du client : indicateurs et points à traiter ──
   const actifs = contracts.filter(c => c.status === 'Actif');
   const montantAnnuel = sites.reduce((t, s) => t + etatSite(s, services).montant, 0);
-  const facturesClient = invoices.filter(i => i.clientId === id);
   const aPayer = facturesClient.filter(i => i.status === 'due' || i.status === 'overdue');
   const soldeDu = aPayer.reduce((t, i) => t + (Number(i.total) || 0), 0);
   const enRetardPaiement = facturesClient.filter(i => i.status === 'overdue' || (i.status === 'due' && i.dueDate && new Date(i.dueDate) < new Date()));

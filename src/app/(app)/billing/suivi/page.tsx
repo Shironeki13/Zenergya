@@ -44,11 +44,11 @@ function periodLabel(start: Date, end: Date) {
 
 // ── Page ──────────────────────────────────────────────────────────────────────
 export default function SuiviFacturationPage() {
-    const { isLoading: chargementBase, reloadData: rechargerPartage } = useData();
+    const { isLoading: chargementBase } = useData();
     // Factures impayées (à payer, en retard), toutes dates : les seules dont cet écran a besoin.
     const { donnees: invoices, chargement, recharger } = useLecturePeriode<Invoice>('facturesImpayees');
     const isLoading = chargementBase || chargement;
-    const reloadData = async (collections: Parameters<typeof rechargerPartage>[0]) => { await Promise.all([recharger(), rechargerPartage(collections)]); };
+    const reloadData = recharger;   // après un enregistrement : la liste se relit au serveur
     const { toast } = useToast();
     const [markingPaid, setMarkingPaid] = useState<string | null>(null);
 
@@ -101,7 +101,7 @@ export default function SuiviFacturationPage() {
         setMarkingPaid(inv.id);
         try {
             await updateInvoiceStatus(inv.id, 'paid');
-            await reloadData(['invoices']);
+            await reloadData();
             toast({ title: 'Payée', description: `Facture ${inv.invoiceNumber ?? inv.id} marquée comme payée.` });
         } catch {
             toast({ title: 'Erreur', description: 'Impossible de mettre à jour le statut.', variant: 'destructive' });

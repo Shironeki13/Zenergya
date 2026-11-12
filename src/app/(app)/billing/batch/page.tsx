@@ -8,7 +8,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Checkbox } from '@/components/ui/checkbox';
 import { Loader2, CalendarIcon } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import { useCollections, useData } from '@/context/data-context';
+import { useData } from '@/context/data-context';
 import { frDay } from '@/lib/billing/contract-billing';
 import { previewBatchBillingAction } from '@/lib/billing/actions';
 import { toDay } from '@/lib/services/site-amounts';
@@ -39,10 +39,7 @@ type BillableItem = {
 };
 
 export default function BatchBillingPage() {
-    const { invoices, isLoading: chargementBase } = useData();
-    // Collections volumineuses, chargées à la demande : l'écran attend qu'elles soient en mémoire.
-    const pret = useCollections('invoices');
-    const isLoading = chargementBase || !pret;
+    const { isLoading } = useData();
     const { toast } = useToast();
     const [isGenerating, setIsGenerating] = useState(false);
     const [selectedItems, setSelectedItems] = useState<string[]>([]);
@@ -63,7 +60,7 @@ export default function BatchBillingPage() {
             else toast({ title: 'Aperçu impossible', description: r.error, variant: 'destructive' });
         });
         return () => { cancelled = true; };
-    }, [isLoading, dueDate, invoices, toast, refresh]);
+    }, [isLoading, dueDate, toast, refresh]);
     const selectable = billableItems.filter(item => !item.error);
 
     const handleSelect = (id: string, checked: boolean) => {

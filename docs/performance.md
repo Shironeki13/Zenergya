@@ -8,8 +8,8 @@ Les écrans partagent des données chargées une fois par `DataProvider` (`src/c
 | | Collections | Quand |
 |---|---|---|
 | **À l'ouverture** | référentiels (sociétés, agences, secteurs, activités, TVA, échéanciers, termes, typologies, marchés, règles de révision, de prix et de règlement, indices, types de compteurs, stations météo, rôles, utilisateurs) et listes de base (clients, contrats, sites, prestations) | à la connexion |
-| **À la demande** | factures, avoirs, valeurs d'indices, contacts, compteurs | au premier écran qui en a besoin ; gardées ensuite en mémoire |
-| **Jamais en entier** | relevés de compteurs | lus par compteur ou par site (lectures `relevesDuCompteur`, `relevesDuSite`) |
+| **À la demande** | valeurs d'indices, contacts, compteurs | au premier écran qui en a besoin ; gardées ensuite en mémoire |
+| **Jamais en entier** | relevés de compteurs, factures, avoirs | lus par compteur, par site, par période ou par objet (lectures nommées) |
 
 Les collections **à périmètre** (clients, contrats, sites, prestations, compteurs, relevés, factures, avoirs, contacts)
 sont lues par le serveur en **une seule requête** (`/api/donnees?c=…`), filtrées pour l'utilisateur ; les référentiels
@@ -18,15 +18,15 @@ sont lus directement dans la base. Voir `perimetre.md`.
 Un écran qui lit une collection « à la demande » la déclare :
 
 ```tsx
-const { invoices, isLoading: chargementBase } = useData();
-const pret = useCollections('invoices');          // demande le chargement ; true quand c'est en mémoire
+const { meters, isLoading: chargementBase } = useData();
+const pret = useCollections('meters');            // demande le chargement ; true quand c'est en mémoire
 const isLoading = chargementBase || !pret;
 ```
 
 - L'application retient, par écran, les collections demandées (stockage local du navigateur) : à l'ouverture directe
   de cet écran, elles sont chargées en même temps que le reste.
-- Les composants toujours affichés ne demandent ces collections que lorsqu'elles servent : la recherche globale à son
-  ouverture (`useCollectionsPonctuelles`), le fil d'Ariane sur la fiche d'une facture.
+- Les composants toujours affichés ne demandent ces collections que lorsqu'elles servent : la recherche globale charge
+  les compteurs à son ouverture (`useCollectionsPonctuelles`).
 - Les écrans qui lisent leurs propres données (fiche contrat, devis, affaires, commandes, heures…) ne passent pas par
   ce mécanisme.
 
@@ -78,9 +78,15 @@ Les listes ne chargent plus tout l'historique (`src/hooks/use-lecture-periode.ts
 - **Suivi des encaissements** : les seules factures impayées.
 - **Listes allégées** : le détail des lignes d'une facture (97 % de son poids) n'est pas transmis aux listes ; un
   indicateur `annexeP1` dit si le document a une annexe P1. La fiche d'une facture lit le document complet.
+- **Fiche d'un client** : ses factures (liste allégée) ; **fiche d'un site** : les factures de son contrat (documents
+  complets, le montant du site se lisant dans leurs lignes).
+- **Tableau de bord** : une synthèse calculée au serveur (total facturé, 12 derniers mois, dernière période facturée
+  par contrat, 5 dernières factures) — il ne reçoit pas la liste des factures.
+- **Recherche globale** : factures cherchées au serveur par **début de numéro** (3 caractères au moins, 20 résultats).
+- **Fil d'Ariane** : le seul numéro de la facture affichée.
 
 ## Limite connue
 
-Quelques écrans chargent encore toutes les factures (tableau de bord, fiche d'un client, fiche d'un site, recherche
-globale) : ils passeront à des lectures ciblées (lot suivant). Côté serveur, les alertes compteurs et la facturation lisent encore les relevés
-de tous les compteurs concernés.
+Côté serveur, certains calculs lisent encore des collections entières : la synthèse du tableau de bord (factures,
+sur quelques champs), les alertes compteurs (relevés), la rentabilité des affaires (commandes, heures) et la
+facturation groupée. À mesurer avec les volumes réels.

@@ -1,6 +1,10 @@
 
 'use client';
 
+import { lireServeur } from '@/services/lecture';
+
+type SyntheseFactures = { totalFactureHT: number; parMois: Record<string, number>; dernierePeriode: Record<string, string>; recentes: { id: string; invoiceNumber: string | null; clientName: string; date: string; status: Invoice['status']; total: number; subtotal: number }[]; nombre: number };
+const SYNTHESE_VIDE: SyntheseFactures = { totalFactureHT: 0, parMois: {}, dernierePeriode: {}, recentes: [], nombre: 0 };
 import Link from 'next/link';
 import {
   ArrowUpRight,
@@ -32,40 +36,30 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import type { InvoiceStatus, Invoice, Contract } from '@/lib/types';
-import { useCollections, useData } from '@/context/data-context';
-import { useMemo } from 'react';
+import { useData } from '@/context/data-context';
+import { useEffect, useMemo, useState } from 'react';
 import { ChartContainer, ChartTooltipContent, ChartLegend, ChartLegendContent } from '@/components/ui/chart';
 
 export default function Dashboard() {
-  const { clients, contracts, invoices, isLoading: chargementBase } = useData();
-  // Collections volumineuses, chargées à la demande : l'écran attend qu'elles soient en mémoire.
-  const pret = useCollections('invoices');
-  const isLoading = chargementBase || !pret;
+  const { clients, contracts, isLoading: chargementBase, currentUser } = useData();
+  // Synthèse des factures calculée au serveur (total, 12 derniers mois, dernière période par contrat, 5 dernières) :
+  // le tableau de bord ne charge pas la liste des factures.
+  const [synthese, setSynthese] = useState<SyntheseFactures | null>(null);
+  useEffect(() => { if (currentUser) lireServeur<SyntheseFactures | null>('syntheseFactures', {}, null).then(r => setSynthese(r ?? SYNTHESE_VIDE)).catch(() => setSynthese(SYNTHESE_VIDE)); }, [currentUser]);
+  const isLoading = chargementBase || !synthese;
 
   const dashboardData = useMemo(() => {
     if (isLoading) return null;
 
     const activeContracts = contracts.filter((c) => c.status === 'Actif').length;
     const totalClients = clients.length;
-    const totalBilledHT = invoices
-      .filter(i => i.status !== 'proforma')
-      .reduce((sum, i) => sum + i.subtotal, 0);
-
-    const invoicesPerContract = invoices.reduce((acc, inv) => {
-      if (inv.status !== 'proforma') {
-        if (!acc[inv.contractId]) acc[inv.contractId] = [];
-        acc[inv.contractId].push(inv);
-      }
-      return acc;
-    }, {} as Record<string, Invoice[]>);
+    const totalBilledHT = synthese!.totalFactureHT;
 
     const invoicesToBeIssued = contracts.filter(contract => {
       if (contract.status !== 'Actif') return false;
 
-      const contractInvoices = invoicesPerContract[contract.id] || [];
-      contractInvoices.sort((a, b) => new Date(b.periodEndDate!).getTime() - new Date(a.periodEndDate!).getTime());
-
-      const lastInvoice = contractInvoices[0];
+      // Dernière période facturée du contrat (fin de période la plus récente de ses factures émises).
+      const lastInvoice = synthese!.dernierePeriode[contract.id] ? { periodEndDate: synthese!.dernierePeriode[contract.id] } : null;
       const contractStartDate = new Date(contract.startDate);
 
       let nextBillingDate = lastInvoice ? new Date(lastInvoice.periodEndDate!) : contractStartDate;
@@ -93,13 +87,10 @@ export default function Dashboard() {
       monthlyRevenue.push({ month: monthStr, total: 0 });
     }
 
-    invoices.filter(i => i.status !== 'proforma').forEach(invoice => {
-      const invoiceDate = new Date(invoice.date);
-      const monthIndex = 11 - ((now.getFullYear() - invoiceDate.getFullYear()) * 12 + (now.getMonth() - invoiceDate.getMonth()));
-      if (monthIndex >= 0 && monthIndex < 12) {
-        monthlyRevenue[monthIndex].total += invoice.subtotal;
-      }
-    });
+    for (const [mois, total] of Object.entries(synthese!.parMois)) {
+      const monthIndex = 11 - ((now.getFullYear() - Number(mois.slice(0, 4))) * 12 + (now.getMonth() - (Number(mois.slice(5, 7)) - 1)));
+      if (monthIndex >= 0 && monthIndex < 12) monthlyRevenue[monthIndex].total += total;
+    }
 
     const contractStatusData = contracts.reduce((acc, contract) => {
       const status = contract.status;
@@ -113,10 +104,10 @@ export default function Dashboard() {
     }, [] as { name: string, value: number, fill: string }[]);
 
 
-    const recentInvoices = [...invoices].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()).slice(0, 5);
+    const recentInvoices = synthese!.recentes;
 
     return { activeContracts, totalClients, totalBilledHT, invoicesToBeIssued, recentInvoices, monthlyRevenue, contractStatusData };
-  }, [isLoading, contracts, invoices, clients]);
+  }, [isLoading, contracts, synthese, clients]);
 
   if (isLoading || !dashboardData) {
     return (

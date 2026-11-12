@@ -50,7 +50,7 @@ test('fiches : dans le périmètre, lues ; hors périmètre, refusées ; inexist
 
 test('éléments d\'un objet : ceux du parent demandé, triés ; parent hors périmètre : refus ; parent inexistant : liste vide', async () => {
     const attendu: Record<string, [string, string]> = {
-        contactsDuClient: ['c', 'lc-tl'], sitesDuClient: ['c', 'lc-sl'], contratsDuClient: ['c', 'lc-kl'], sitesDuContrat: ['k', 'lc-sl'], facturesDuContrat: ['k', 'lc-fl,lc-fl2'],
+        contactsDuClient: ['c', 'lc-tl'], facturesDuClient: ['c', 'lc-fl,lc-fl2'], sitesDuClient: ['c', 'lc-sl'], contratsDuClient: ['c', 'lc-kl'], sitesDuContrat: ['k', 'lc-sl'], facturesDuContrat: ['k', 'lc-fl,lc-fl2'],
         relevesDuContrat: ['k', 'lc-rl'], relevesDuCompteur: ['m', 'lc-rl'], relevesDuSite: ['s', 'lc-rl'], prestationsDuContrat: ['k', 'lc-pl'], prestationsDuSite: ['s', 'lc-pl'], avenantsDuContrat: ['k', 'lc-el-amendments'], resiliationsDuContrat: ['k', 'lc-el-terminations'],
         reconductionsDuContrat: ['k', 'lc-el-renewals'], syndicsDuContrat: ['k', 'lc-el-trusteeChanges'], beDuContrat: ['k', 'lc-el-beChanges'], interetsDeLaPrestation: ['p', 'lc-il'],
         reglementsDeLaPrestation: ['p', 'lc-gl'], versionsDuDevis: ['d', 'lc-vl1,lc-vl2'], facturesDuDevis: ['d', 'lc-fl,lc-fl2'], situationsDeLAffaire: ['x', 'lc-nl1,lc-nl2'], facturesDeLAffaire: ['x', 'lc-fl'],
@@ -64,7 +64,7 @@ test('éléments d\'un objet : ceux du parent demandé, triés ; parent hors pé
     assert.deepEqual((await lire('versionsDuDevis', { id: 'lc-dl' }, lyon) as { id: string }[]).map(x => x.id), ['lc-vl1', 'lc-vl2']);
     assert.deepEqual((await lire('facturesDuDevis', { id: 'lc-dl' }, lyon) as { id: string }[]).map(x => x.id), ['lc-fl2', 'lc-fl']);
     // Toutes les lectures nommées sont couvertes par ce test.
-    assert.deepEqual(Object.keys(LECTURES).sort(), [...Object.keys(PARENTS), ...Object.keys(attendu), 'devisTous', 'affaires', 'facturesDePeriode', 'avoirsDePeriode', 'facturesImpayees'].sort());
+    assert.deepEqual(Object.keys(LECTURES).sort(), [...Object.keys(PARENTS), ...Object.keys(attendu), 'devisTous', 'affaires', 'facturesDePeriode', 'avoirsDePeriode', 'facturesImpayees', 'numeroDeFacture', 'rechercheFactures', 'syntheseFactures'].sort());
 });
 
 test('listes entières (devis, affaires) : réduites au périmètre ; lecture inconnue refusée', async () => {
@@ -112,4 +112,36 @@ test('factures et avoirs par période : la période, plus les impayées et profo
     // Période invalide : refusée.
     await assert.rejects(lire('facturesDePeriode', { du: '2026-12-31', au: '2026-01-01' }, lyon), /Période/);
     await assert.rejects(lire('avoirsDePeriode', { du: 'hier', au: '2026-01-01' }, lyon), /Période/);
+});
+
+test('lectures ciblées : numéro d\'une facture, recherche par début de numéro, synthèse du tableau de bord ; périmètre', async () => {
+    const t = (jour: string) => Timestamp.fromDate(new Date(`${jour}T10:00:00Z`));
+    const f = (id: string, v: string, numero: string | null, plus: object) => set('invoices', id, { clientId: `lc-c${v}`, clientName: `Client ${v}`, ...(numero && { invoiceNumber: numero }), ...plus });
+    await f('lt-1', 'l', 'LCT-2601-0001', { date: t('2026-01-15'), status: 'paid', subtotal: 1000, total: 1200, contractId: 'lc-kl', periodEndDate: t('2026-01-31') });
+    await f('lt-2', 'l', 'LCT-2602-0002', { date: t('2026-02-15'), status: 'due', subtotal: 500.55, total: 600.66, contractId: 'lc-kl', periodEndDate: t('2026-02-28') });
+    await f('lt-3', 'l', null, { date: t('2026-03-15'), status: 'proforma', subtotal: 9999, total: 9999, contractId: 'lc-kl', periodEndDate: t('2026-03-31') });
+    await f('lt-4', 'p', 'LCT-2602-0003', { date: t('2026-02-20'), status: 'paid', subtotal: 7000, total: 8400, contractId: 'lc-kp', periodEndDate: t('2026-02-28') });
+
+    assert.deepEqual(await lire('numeroDeFacture', { id: 'lt-1' }, lyon), { id: 'lt-1', invoiceNumber: 'LCT-2601-0001' });
+    assert.deepEqual([await lire('numeroDeFacture', { id: 'lt-3' }, lyon), await lire('numeroDeFacture', { id: 'inconnue' }, lyon)], [{ id: 'lt-3', invoiceNumber: null }, null]);
+    await assert.rejects(lire('numeroDeFacture', { id: 'lt-4' }, lyon), PerimetreError);
+
+    const numeros = async (q: string, user = lyon) => (await lire('rechercheFactures', { q }, user) as { invoiceNumber: string }[]).map(x => x.invoiceNumber).sort();
+    assert.deepEqual([await numeros('lct-26'), await numeros('LCT-2602'), await numeros('LC'), await numeros('ZZZ')], [['LCT-2601-0001', 'LCT-2602-0002'], ['LCT-2602-0002'], [], []]);
+    assert.deepEqual(await numeros('LCT-2602', admin), ['LCT-2602-0002', 'LCT-2602-0003']);
+    // Les résultats ne portent que le nécessaire à l'affichage.
+    assert.deepEqual(Object.keys((await lire('rechercheFactures', { q: 'LCT-2601' }, lyon) as object[])[0]).sort(), ['clientId', 'clientName', 'id', 'invoiceNumber', 'status']);
+
+    type Synthese = { totalFactureHT: number; parMois: Record<string, number>; dernierePeriode: Record<string, string>; recentes: { id: string }[]; nombre: number };
+    const avant = await lire('syntheseFactures', {}, lyon) as Synthese;
+    await f('lt-5', 'l', 'LCT-2604-0005', { date: t('2026-04-10'), status: 'paid', subtotal: 100.1, total: 120, contractId: 'lc-kl', periodEndDate: t('2026-04-30') });
+    const apres = await lire('syntheseFactures', {}, lyon) as Synthese;
+    // Une facture de plus dans le périmètre : total, mois, dernière période du contrat et factures récentes suivent.
+    assert.equal(Math.round((apres.totalFactureHT - avant.totalFactureHT) * 100) / 100, 100.1);
+    assert.deepEqual([apres.nombre - avant.nombre, apres.parMois['2026-04'] - (avant.parMois['2026-04'] ?? 0), apres.dernierePeriode['lc-kl'].slice(0, 10), apres.recentes.length <= 5], [1, 100.1, '2026-04-30', true]);
+    // Le proforma ne compte ni dans le total ni dans le mois ; la facture de Paris n'est pas dans la synthèse de Lyon.
+    assert.equal(avant.parMois['2026-03'], undefined);
+    assert.equal((await lire('syntheseFactures', {}, admin) as Synthese).dernierePeriode['lc-kp'].slice(0, 10), '2026-02-28');
+    assert.equal(apres.dernierePeriode['lc-kp'], undefined);
+    assert.equal(JSON.stringify(apres).includes('lineItems'), false);
 });
