@@ -1,6 +1,6 @@
 import { roundCents, sumCents } from '@/lib/money';
 import { engagements, type Commande } from '@/lib/commandes';
-import { totalHeures, type SaisieHeures } from '@/lib/heures';
+import { heuresParStatut, type SaisieHeures } from '@/lib/heures';
 import type { ComponentKind } from '@/lib/quotes/types';
 import { NATURES, type BudgetDevis } from './affaire';
 
@@ -8,8 +8,8 @@ import { NATURES, type BudgetDevis } from './affaire';
  * Rentabilité d'une affaire de travaux (logique pure), par nature de dépense :
  * - **prévu** : déboursé des devis de l'affaire ;
  * - **engagé** : commandes validées affectées à l'affaire (les commandes à valider sont à part) ; pour la main-d'œuvre,
- *   les heures saisies (une heure faite est une dépense faite) ;
- * - **réel** : factures des fournisseurs sur ces commandes ; coût des heures saisies ;
+ *   les heures saisies **et validées** par le responsable (les heures à valider sont à part) ;
+ * - **réel** : factures des fournisseurs sur ces commandes ; coût des heures validées ;
  * - **facturé** : ventes HT facturées au client.
  * Le **coût à terminaison** retient, nature par nature, le plus grand du prévu et de l'engagé : tant qu'une nature n'a
  * pas dépassé son budget on suppose qu'il sera consommé ; dès qu'elle le dépasse, le dépassement réduit la marge.
@@ -27,6 +27,8 @@ export type Rentabilite = {
     lignes: LigneRentabilite[];
     total: Omit<LigneRentabilite, 'nature'>;
     heuresPrevues: number; heuresReelles: number;
+    /** Heures saisies en attente de validation par le responsable : non comptées dans l'engagé ni le réel. */
+    heuresAValider: number;
     vente: number; facture: number; resteAFacturer: number;
     margePrevue: number; tauxMargePrevue: number | null;
     coutATerminaison: number; margeATerminaison: number; tauxMargeATerminaison: number | null;
@@ -47,14 +49,16 @@ export function rentabilite(p: {
     budget?: BudgetDevis | null;
     vente?: number;
     commandes: Pick<Commande, 'status' | 'lines' | 'totalHT' | 'factures'>[];
-    heures: Pick<SaisieHeures, 'hours' | 'cost'>[];
+    /** Heures saisies sur l'affaire : seules les validées comptent ; celles à valider sont indiquées à part ; les refusées sont ignorées. */
+    heures: Pick<SaisieHeures, 'hours' | 'cost' | 'statut'>[];
     facture: number;
 }): Rentabilite {
     const achats = engagements(p.commandes, l => l.cible.type === 'affaire' && l.cible.projectId === p.projectId);
-    const mo = totalHeures(p.heures);
+    const parStatut = heuresParStatut(p.heures);
+    const mo = parStatut.validee, moAValider = parStatut.a_valider;
     const lignes: LigneRentabilite[] = NATURES.map(nature => {
         const prevu = p.budget?.parNature?.[nature] ?? 0;
-        const e = nature === 'MAIN_OEUVRE' ? { engage: mo.cout, reel: mo.cout, enValidation: 0 } : achats[nature];
+        const e = nature === 'MAIN_OEUVRE' ? { engage: mo.cout, reel: mo.cout, enValidation: moAValider.cout } : achats[nature];
         const reste = roundCents(prevu - e.engage);
         return { nature, prevu, ...e, reste, depassement: reste < 0 };
     });
@@ -75,7 +79,7 @@ export function rentabilite(p: {
     }
     for (const l of lignes.filter(x => x.reel > x.engage)) alertes.push(`${LIB[l.nature]} : factures fournisseurs (${eur(l.reel)}) supérieures aux commandes (${eur(l.engage)}).`);
     return {
-        lignes, total, heuresPrevues, heuresReelles: mo.heures,
+        lignes, total, heuresPrevues, heuresReelles: mo.heures, heuresAValider: moAValider.heures,
         vente, facture: p.facture, resteAFacturer: roundCents(vente - p.facture),
         margePrevue, tauxMargePrevue: taux(margePrevue, vente),
         coutATerminaison, margeATerminaison, tauxMargeATerminaison: taux(margeATerminaison, vente),

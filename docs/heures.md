@@ -11,9 +11,29 @@ Menu **Travaux › Heures** (`/timesheets`).
 - Date, affectation, durée (au **quart d'heure**), commentaire. Pas d'heures à l'avance ; 24 h au plus par jour et par
   personne.
 - **Qui saisit pour qui** : chacun pour soi ; un **responsable (N+1)** pour son équipe directe ; un **administrateur**
-  pour tous. Mêmes droits pour modifier et supprimer.
+  pour tous.
 - Une affaire **clôturée** ne reçoit plus d'heures, et les siennes ne se modifient plus.
 - Onglets « Mes heures » / « Toutes », période, recherche, filtres par technicien et par affectation, export CSV.
+
+## Validation par le responsable
+
+Les heures ne comptent dans les affaires qu'une fois **validées**.
+
+| Qui enregistre | Statut |
+|---|---|
+| Le technicien, pour lui-même (saisie ou import) | **À valider** |
+| Son responsable (N+1) ou un administrateur, pour lui | **Validée** d'office |
+
+- **Qui valide** : le responsable (N+1) du technicien ; un administrateur pour tous, et pour qui n'a pas de
+  responsable renseigné. **Personne ne valide ses propres heures.**
+- **Onglet « À valider »** : les saisies en attente de mon équipe ; sélection, puis « Valider » ou « Refuser » (motif
+  obligatoire), en lot.
+- **Refus** : le technicien voit le motif, corrige sa saisie, qui repart en validation.
+- **Une fois validée**, une saisie ne se modifie plus ni ne se supprime par le technicien : son responsable (ou un
+  administrateur) la corrige, et elle reste validée.
+- **Dans les affaires** : seules les heures validées entrent dans l'engagé et le réel ; les heures à valider sont
+  affichées à part ; les heures refusées ne comptent pas. Même règle pour le suivi analytique.
+- Les heures saisies avant la mise en place de la validation sont considérées comme validées.
 
 ## Valorisation
 

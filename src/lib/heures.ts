@@ -31,7 +31,51 @@ export type SaisieHeures = {
     createdBy: string;
     updatedAt?: string;
     updatedBy?: string;
+    /** Validation par le responsable (N+1). Absent : saisie antérieure à la validation, considérée validée. */
+    statut?: StatutHeures;
+    valideePar?: string; valideeLe?: string;
+    /** Motif du refus : le technicien corrige et la saisie repart en validation. */
+    motifRefus?: string;
 };
+
+// --- Validation par le responsable ---
+
+export const STATUTS_HEURES = ['a_valider', 'validee', 'refusee'] as const;
+export type StatutHeures = typeof STATUTS_HEURES[number];
+export const LIBELLE_STATUT_HEURES: Record<StatutHeures, string> = { a_valider: 'À valider', validee: 'Validée', refusee: 'Refusée' };
+
+/** Statut d'une saisie (une saisie antérieure à la validation est considérée validée). */
+export const statutHeures = (s: Pick<SaisieHeures, 'statut'>): StatutHeures => s.statut ?? 'validee';
+export const estValidee = (s: Pick<SaisieHeures, 'statut'>) => statutHeures(s) === 'validee';
+
+export type ActeurHeures = { id: string; isAdmin?: boolean };
+/** Technicien dont on saisit les heures : son responsable (N+1). */
+export type TechnicienHeures = { id: string; managerId?: string | null };
+
+/**
+ * Qui valide les heures de quelqu'un : son responsable (N+1) ; un administrateur pour tous (et pour qui n'a pas de
+ * responsable). Personne ne valide ses propres heures.
+ */
+export const peutValiderHeures = (acteur: ActeurHeures, technicien: TechnicienHeures): boolean =>
+    acteur.id !== technicien.id && (technicien.managerId === acteur.id || acteur.isAdmin === true);
+
+/**
+ * Statut d'une saisie selon qui l'enregistre : par celui qui pourrait la valider (responsable ou administrateur, pour
+ * un autre que lui) → validée d'office ; par l'intéressé → à valider.
+ */
+export const statutALaSaisie = (acteur: ActeurHeures, technicien: TechnicienHeures): StatutHeures => (peutValiderHeures(acteur, technicien) ? 'validee' : 'a_valider');
+
+/** L'intéressé ne modifie ni ne supprime une saisie déjà validée : c'est à son responsable de le faire. */
+export function modifiablePar(s: Pick<SaisieHeures, 'statut' | 'userId'>, acteur: ActeurHeures, technicien: TechnicienHeures): string | null {
+    if (peutValiderHeures(acteur, technicien)) return null;
+    if (acteur.id !== s.userId) return 'Ces heures ne sont pas les vôtres.';
+    return estValidee(s) ? 'Heures déjà validées : demandez à votre responsable de les corriger.' : null;
+}
+
+/** Totaux par statut : validées (comptées dans l'affaire), à valider (à part), refusées (hors compte). */
+export function heuresParStatut(saisies: Pick<SaisieHeures, 'hours' | 'cost' | 'statut'>[]): Record<StatutHeures, TotalHeures> {
+    return Object.fromEntries(STATUTS_HEURES.map(st => [st, totalHeures(saisies.filter(s => statutHeures(s) === st))])) as Record<StatutHeures, TotalHeures>;
+}
 
 /** Plus petite unité de saisie : le quart d'heure. */
 export const PAS_HEURES = 0.25;

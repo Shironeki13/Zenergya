@@ -5,8 +5,8 @@ Chaque affaire (P5 ou P6) rapproche, **par nature de dépense** (fournitures, ma
 | | D'où vient le chiffre |
 |---|---|
 | **Prévu** | déboursé des devis de l'affaire (devis initial et devis complémentaires) |
-| **Engagé** | lignes des commandes **validées** (ou passées, reçues, soldées) affectées à l'affaire ; pour la main-d'œuvre, coût des heures saisies. Les commandes en cours de validation sont indiquées à part, non comptées |
-| **Réel** | factures des fournisseurs saisies sur ces commandes (réparties au prorata si la commande sert plusieurs affaires) ; coût des heures saisies |
+| **Engagé** | lignes des commandes **validées** (ou passées, reçues, soldées) affectées à l'affaire ; pour la main-d'œuvre, coût des heures **validées par le responsable** (les heures à valider sont indiquées à part). Les commandes en cours de validation sont indiquées à part, non comptées |
+| **Réel** | factures des fournisseurs saisies sur ces commandes (réparties au prorata si la commande sert plusieurs affaires) ; coût des heures validées |
 | **Facturé** | factures émises au client (situations, ou acompte / solde / totalité des devis), hors annulées et proformas |
 
 ## Marge

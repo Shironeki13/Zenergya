@@ -54,3 +54,9 @@ test('affaire antérieure sans budget : pas de prévu ni d\'alerte de dépasseme
     assert.deepEqual([r.vente, r.total.prevu, r.total.engage, r.coutATerminaison, r.margeATerminaison, r.margePrevue], [5000, 0, 1368, 1368, 3632, 5000]);
     assert.deepEqual(r.alertes, []);
 });
+
+test('heures : seules les validées comptent ; celles à valider sont à part ; les refusées sont ignorées', () => {
+    const r = rentabilite({ projectId: 'A', budget, facture: 0, commandes: [], heures: [{ hours: 10, cost: 400 }, { hours: 5, cost: 200, statut: 'validee' }, { hours: 8, cost: 320, statut: 'a_valider' }, { hours: 20, cost: 800, statut: 'refusee' }] });
+    const mo = r.lignes.find(l => l.nature === 'MAIN_OEUVRE')!;
+    assert.deepEqual([mo.engage, mo.reel, mo.enValidation, r.heuresReelles, r.heuresAValider, r.total.enValidation, r.coutATerminaison], [600, 600, 320, 15, 8, 320, 7000]);
+});

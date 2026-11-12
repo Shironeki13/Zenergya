@@ -2,7 +2,10 @@ import 'server-only';
 import { adminDb } from '@/lib/firebase-admin';
 import type { SessionUser } from '@/lib/auth/server';
 import type { CibleCommande } from '@/lib/commandes';
-import { cleCible, cleDoublon, controleHeures, coutHeures, lireImportHeures, tauxHoraire, type LigneImportHeures, type SaisieHeures } from '@/lib/heures';
+import {
+    cleCible, cleDoublon, controleHeures, coutHeures, lireImportHeures, modifiablePar, peutValiderHeures, statutALaSaisie, statutHeures, tauxHoraire,
+    type LigneImportHeures, type SaisieHeures,
+} from '@/lib/heures';
 import { todayInParis } from '@/lib/services/site-amounts';
 import { analytiqueCible, nomDe } from '@/services/commandes-admin';
 
@@ -76,6 +79,11 @@ export async function saveHeures(input: HeuresInput, user: SessionUser): Promise
     const refus = droitSur(technicien, user);
     if (refus) throw new Error(refus);
     if (existante) await affaireOuverte(existante.cible);
+    const acteur = { id: user.profile.id, isAdmin: user.isAdmin };
+    if (existante) { const blocage = modifiablePar(existante, acteur, technicien); if (blocage) throw new Error(blocage); }
+    // Saisie (ou correction) par l'intéressé : à valider par son responsable. Par son responsable ou un administrateur : validée d'office.
+    const statut = statutALaSaisie(acteur, technicien);
+    const validation = statut === 'validee' ? { statut, valideePar: user.email, valideeLe: now(), motifRefus: '' } : { statut, valideePar: '', valideeLe: '', motifRefus: '' };
     const total = (await dejaSaisi(technicien.id, input.date, input.id)) + Number(input.hours);
     if (total > 24) throw new Error(`Plus de 24 h le ${input.date.split('-').reverse().join('/')} pour ${technicien.name} (${total.toLocaleString('fr-FR')} h avec cette saisie).`);
     const t = now();
@@ -84,21 +92,63 @@ export async function saveHeures(input: HeuresInput, user: SessionUser): Promise
     if (existante) {
         const memeCible = cleCible(existante.cible) === cleCible(input.cible);
         const v = memeCible ? { analytique: existante.analytique, cible: existante.cible, companyId: existante.companyId, rate: existante.rate } : await valorisation(technicien, input.cible);
-        await heures().doc(existante.id).update({ date: input.date, hours, comment, ...v, cost: coutHeures(hours, v.rate), updatedAt: t, updatedBy: user.email });
+        await heures().doc(existante.id).update({ date: input.date, hours, comment, ...v, cost: coutHeures(hours, v.rate), ...validation, updatedAt: t, updatedBy: user.email });
         return lire(existante.id);
     }
     const v = await valorisation(technicien, input.cible);
     const ref = heures().doc();
-    await ref.set({ userId: technicien.id, userName: technicien.name, date: input.date, hours, comment, ...v, cost: coutHeures(hours, v.rate), source: 'saisie', createdAt: t, createdBy: user.email });
+    await ref.set({ userId: technicien.id, userName: technicien.name, date: input.date, hours, comment, ...v, cost: coutHeures(hours, v.rate), ...validation, source: 'saisie', createdAt: t, createdBy: user.email });
     return lire(ref.id);
 }
 
 export async function deleteHeures(id: string, user: SessionUser): Promise<void> {
     const s = await lire(id);
-    const refus = droitSur(await fiche(s.userId).catch(() => ({ id: s.userId, name: s.userName, managerId: null })), user);
+    const technicien = await fiche(s.userId).catch(() => ({ id: s.userId, name: s.userName, managerId: null }));
+    const refus = droitSur(technicien, user);
     if (refus) throw new Error(refus);
+    const blocage = modifiablePar(s, { id: user.profile.id, isAdmin: user.isAdmin }, technicien);
+    if (blocage) throw new Error(blocage);
     await affaireOuverte(s.cible);
     await heures().doc(id).delete();
+}
+
+// --- Validation par le responsable (N+1) ---
+
+async function responsables(): Promise<Map<string, string | null>> {
+    const users = await adminDb.collection('users').select('managerId').get();
+    return new Map(users.docs.map(d => [d.id, (d.get('managerId') as string | undefined) ?? null]));
+}
+
+/** Saisies en attente que l'utilisateur peut valider : celles de son équipe directe ; toutes (sauf les siennes) pour un administrateur. */
+export async function heuresAValider(user: SessionUser): Promise<SaisieHeures[]> {
+    const [attente, chefs] = await Promise.all([heures().where('statut', '==', 'a_valider').get(), responsables()]);
+    const acteur = { id: user.profile.id, isAdmin: user.isAdmin };
+    return attente.docs.map(d => ({ id: d.id, ...d.data() }) as SaisieHeures)
+        .filter(s => peutValiderHeures(acteur, { id: s.userId, managerId: chefs.get(s.userId) ?? null }))
+        .sort((a, b) => a.userName.localeCompare(b.userName, 'fr') || a.date.localeCompare(b.date));
+}
+
+/**
+ * Valide ou refuse (motif obligatoire) des saisies en attente. Tout est contrôlé avant d'écrire : une saisie qui n'est
+ * pas à valider par cet utilisateur fait échouer l'ensemble.
+ */
+export async function deciderHeures(ids: string[], decision: 'validee' | 'refusee', motif: string, user: SessionUser): Promise<number> {
+    const uniques = [...new Set((ids ?? []).filter(Boolean))];
+    if (!uniques.length) throw new Error('Aucune saisie sélectionnée.');
+    if (uniques.length > 400) throw new Error('400 saisies au plus à la fois.');
+    if (decision === 'refusee' && !motif?.trim()) throw new Error('Motif du refus obligatoire.');
+    const [saisies, chefs] = await Promise.all([Promise.all(uniques.map(lire)), responsables()]);
+    const acteur = { id: user.profile.id, isAdmin: user.isAdmin };
+    for (const s of saisies) {
+        if (statutHeures(s) !== 'a_valider') throw new Error(`Heures de ${s.userName} du ${s.date.split('-').reverse().join('/')} : déjà ${statutHeures(s) === 'validee' ? 'validées' : 'refusées'}.`);
+        if (!peutValiderHeures(acteur, { id: s.userId, managerId: chefs.get(s.userId) ?? null })) throw new Error(s.userId === acteur.id ? 'Personne ne valide ses propres heures.' : `Heures de ${s.userName} : à valider par son responsable (N+1) ou un administrateur.`);
+        await affaireOuverte(s.cible);
+    }
+    const t = now();
+    const lot = adminDb.batch();
+    for (const s of saisies) lot.update(heures().doc(s.id), decision === 'validee' ? { statut: 'validee', valideePar: user.email, valideeLe: t, motifRefus: '' } : { statut: 'refusee', valideePar: user.email, valideeLe: t, motifRefus: motif.trim() });
+    await lot.commit();
+    return saisies.length;
 }
 
 async function lire(id: string): Promise<SaisieHeures> {
@@ -176,7 +226,8 @@ export async function importerHeures(table: unknown[][], user: SessionUser, appl
                 if (total > 24) { etat = 'erreur'; messages.push(`plus de 24 h ce jour-là pour ${technicien.name}`); }
                 else {
                     parJour.set(jour, total); connues.add(cleDoublon(saisie));
-                    aEcrire.push({ userId: technicien.id, userName: technicien.name, date: l.date, hours: l.hours, comment: l.comment, ...v, cost: coutHeures(l.hours, v.rate), source: 'import', createdAt: t, createdBy: user.email });
+                    const statut = statutALaSaisie({ id: user.profile.id, isAdmin: user.isAdmin }, technicien);
+                    aEcrire.push({ userId: technicien.id, userName: technicien.name, date: l.date, hours: l.hours, comment: l.comment, ...v, cost: coutHeures(l.hours, v.rate), statut, ...(statut === 'validee' && { valideePar: user.email, valideeLe: t }), source: 'import', createdAt: t, createdBy: user.email });
                 }
             }
         }

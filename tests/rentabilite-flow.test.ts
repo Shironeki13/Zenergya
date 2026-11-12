@@ -4,7 +4,7 @@ import { test, before } from 'node:test';
 import assert from 'node:assert/strict';
 import { adminDb } from '../src/lib/firebase-admin';
 import { ajouterFactureFournisseur, deciderCommande, saveCommande, saveFournisseur, soumettreCommande } from '../src/services/commandes-admin';
-import { saveHeures } from '../src/services/heures-admin';
+import { deciderHeures, saveHeures } from '../src/services/heures-admin';
 import { rentabiliteAffaire, rentabiliteAffaires } from '../src/services/rentabilite-admin';
 import { suiviVentes } from '../src/services/analytique-admin';
 import type { SessionUser } from '../src/lib/auth/server';
@@ -45,8 +45,15 @@ test('affaire : commandes validées (engagé), facture fournisseur (réel), comm
     await cmd([{ label: 'Benne', quantity: 1, unitPrice: 120, nature: 'DIVERS', cible: A }]);                         // autovalidée
     await cmd([{ label: 'Fumisterie', quantity: 1, unitPrice: 1400, nature: 'SOUS_TRAITANCE', cible: A }]);           // à valider
     await saveCommande({ companyId: 'rt-co', supplierId: frn, title: 'Brouillon', date: '2026-01-10', lines: [{ label: 'x', quantity: 1, unitPrice: 9000, nature: 'FOURNITURE', cible: A }] }, tech);
-    await saveHeures({ date: '2026-01-12', hours: 8, cible: A }, tech);
-    await saveHeures({ date: '2026-01-13', hours: 7.5, cible: A }, tech);
+    const h1 = await saveHeures({ date: '2026-01-12', hours: 8, cible: A }, tech);
+    const h2 = await saveHeures({ date: '2026-01-13', hours: 7.5, cible: A }, tech);
+    const refusee = await saveHeures({ date: '2026-01-14', hours: 6, cible: A }, tech);
+    // Heures saisies, pas encore validées par le responsable : à part, hors de l'engagé et du réel.
+    const attente = (await rentabiliteAffaire('rt-aff')).rentabilite;
+    const mo = attente.lignes.find(l => l.nature === 'MAIN_OEUVRE')!;
+    assert.deepEqual([mo.engage, mo.reel, mo.enValidation, attente.heuresReelles, attente.heuresAValider, attente.total.enValidation], [0, 0, 860, 0, 21.5, 2260]);
+    await deciderHeures([h1.id, h2.id], 'validee', '', chef);
+    await deciderHeures([refusee.id], 'refusee', 'Non travaillé', chef);   // refusée : ne compte nulle part
 
     const { rentabilite: r, commandes, heures } = await rentabiliteAffaire('rt-aff');
     assert.deepEqual(r.lignes.map(l => [l.nature, l.prevu, l.engage, l.reel, l.enValidation, l.depassement]), [
@@ -54,7 +61,8 @@ test('affaire : commandes validées (engagé), facture fournisseur (réel), comm
     assert.deepEqual([r.facture, r.resteAFacturer, r.heuresReelles, r.coutATerminaison, r.margeATerminaison, r.ecartMarge, r.resultatADate], [3000, 7000, 15.5, 7400, 2600, -400, -1000]);
     assert.equal(r.alertes.length, 1);
     assert.deepEqual(commandes.map(c => [c.title, c.status, c.montant, c.reel, c.engagee]), [['Achat', 'validee', 3400, 3380, true], ['Achat', 'validee', 120, 0, true], ['Achat', 'a_valider', 1400, 0, false]]);
-    assert.deepEqual(heures, [{ userName: 'Technicien', heures: 15.5, cout: 620, du: '2026-01-12', au: '2026-01-13' }]);
+    assert.deepEqual(heures, [{ userName: 'Technicien', heures: 15.5, cout: 620, du: '2026-01-12', au: '2026-01-13', aValider: 0 }]);
+    assert.equal(r.heuresAValider, 0);
     await assert.rejects(rentabiliteAffaire('inconnue'), /introuvable/);
 });
 

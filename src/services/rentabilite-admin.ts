@@ -1,7 +1,7 @@
 import 'server-only';
 import { adminDb } from '@/lib/firebase-admin';
 import { STATUTS_ENGAGES, factureHT, type Commande, type StatutCommande } from '@/lib/commandes';
-import { heuresPar, type SaisieHeures } from '@/lib/heures';
+import { estValidee, heuresPar, statutHeures, type SaisieHeures } from '@/lib/heures';
 import { roundCents, sumCents } from '@/lib/money';
 import { rentabilite, type Rentabilite } from '@/lib/projects/rentabilite';
 import type { Project } from '@/lib/projects/types';
@@ -22,13 +22,17 @@ function facture(p: Pick<Project, 'billing'>, factures: FactureAffaire[]): numbe
 const surAffaire = (c: Commande, projectId: string) => c.lines.filter(l => l.cible.type === 'affaire' && l.cible.projectId === projectId);
 
 export type CommandeAffaire = { id: string; number?: string; date: string; supplierName: string; title: string; status: StatutCommande; montant: number; reel: number; engagee: boolean };
-export type HeuresTechnicien = { userName: string; heures: number; cout: number; du: string; au: string };
+export type HeuresTechnicien = { userName: string; heures: number; cout: number; du: string; au: string; /** Heures saisies, pas encore validées par le responsable. */ aValider: number };
 export type RentabiliteAffaire = { projectId: string; rentabilite: Rentabilite; commandes: CommandeAffaire[]; heures: HeuresTechnicien[] };
 
 function detail(p: Project, commandes: Commande[], heures: SaisieHeures[], factures: FactureAffaire[]): RentabiliteAffaire {
     const cmds = commandes.filter(c => surAffaire(c, p.id).length > 0);
     const hs = heures.filter(s => s.cible.type === 'affaire' && s.cible.projectId === p.id);
-    const parTech = heuresPar(hs, s => s.userName);
+    // Par technicien : heures validées (comptées dans l'affaire) et heures à valider (à part) ; les refusées sont ignorées.
+    const comptees = hs.filter(s => statutHeures(s) !== 'refusee');
+    const parTech = heuresPar(comptees.filter(estValidee), s => s.userName);
+    const enAttente = heuresPar(comptees.filter(s => !estValidee(s)), s => s.userName);
+    for (const nom of enAttente.keys()) if (!parTech.has(nom)) parTech.set(nom, { heures: 0, cout: 0 });
     return {
         projectId: p.id,
         rentabilite: rentabilite({ projectId: p.id, budget: p.budget, vente: p.totalHT, commandes: cmds, heures: hs, facture: facture(p, factures.filter(f => f.projectId === p.id)) }),
@@ -38,8 +42,8 @@ function detail(p: Project, commandes: Commande[], heures: SaisieHeures[], factu
             return { id: c.id, ...(c.number && { number: c.number }), date: c.date, supplierName: c.supplierName, title: c.title, status: c.status, montant, reel: c.totalHT ? roundCents(factureHT(c) * (montant / c.totalHT)) : 0, engagee: STATUTS_ENGAGES.includes(c.status) };
         }).sort((a, b) => a.date.localeCompare(b.date) || (a.number ?? '').localeCompare(b.number ?? '')),
         heures: [...parTech].map(([userName, t]) => {
-            const jours = hs.filter(s => s.userName === userName).map(s => s.date).sort();
-            return { userName, heures: t.heures, cout: t.cout, du: jours[0], au: jours[jours.length - 1] };
+            const jours = comptees.filter(s => s.userName === userName).map(s => s.date).sort();
+            return { userName, heures: t.heures, cout: t.cout, du: jours[0], au: jours[jours.length - 1], aValider: enAttente.get(userName)?.heures ?? 0 };
         }).sort((a, b) => b.heures - a.heures),
     };
 }

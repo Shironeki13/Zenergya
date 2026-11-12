@@ -36,7 +36,7 @@ export function AffaireRentabilite({ projectId, sansBudget }: { projectId: strin
                 <CardHeader className="pb-3">
                     <CardTitle className="text-base">Rentabilité</CardTitle>
                     <CardDescription>
-                        Prévu : déboursé des devis. Engagé : commandes validées et heures saisies. Réel : factures des fournisseurs et heures.
+                        Prévu : déboursé des devis. Engagé : commandes validées et heures validées par le responsable. Réel : factures des fournisseurs et heures validées.
                         {sansBudget && ' Affaire antérieure : budget des devis non enregistré, pas de prévu.'}
                     </CardDescription>
                 </CardHeader>
@@ -57,7 +57,7 @@ export function AffaireRentabilite({ projectId, sansBudget }: { projectId: strin
                                     <tr key={l.nature} className="border-t text-right">
                                         <td className="py-1.5 text-left">
                                             {LIBELLE_NATURE[l.nature]}
-                                            {l.nature === 'MAIN_OEUVRE' && <span className="text-xs text-muted-foreground"> — {h(r.heuresReelles)} sur {h(r.heuresPrevues)}</span>}
+                                            {l.nature === 'MAIN_OEUVRE' && <span className="text-xs text-muted-foreground"> — {h(r.heuresReelles)} validées sur {h(r.heuresPrevues)}</span>}
                                             {l.enValidation > 0 && <span className="block text-xs text-muted-foreground">+ {formatEur(l.enValidation)} en cours de validation</span>}
                                         </td>
                                         <td className="py-1.5">{formatEur(l.prevu)}</td><td className="py-1.5">{formatEur(l.engage)}</td><td className="py-1.5">{formatEur(l.reel)}</td>
@@ -124,11 +124,11 @@ export function AffaireRentabilite({ projectId, sansBudget }: { projectId: strin
                             <tbody>
                                 {data.heures.map(t => (
                                     <tr key={t.userName} className="border-b">
-                                        <td className="py-1.5">{t.userName}<span className="block text-xs text-muted-foreground">du {jour(t.du)} au {jour(t.au)}</span></td>
+                                        <td className="py-1.5">{t.userName}<span className="block text-xs text-muted-foreground">du {jour(t.du)} au {jour(t.au)}</span>{t.aValider > 0 && <span className="block text-xs text-amber-700">+ {h(t.aValider)} à valider</span>}</td>
                                         <td className="py-1.5 text-right">{h(t.heures)}<span className="block text-xs text-muted-foreground">{formatEur(t.cout)}</span></td>
                                     </tr>
                                 ))}
-                                <tr className="font-medium"><td className="py-1.5">Total</td><td className="py-1.5 text-right">{h(r.heuresReelles)} sur {h(r.heuresPrevues)} prévues</td></tr>
+                                <tr className="font-medium"><td className="py-1.5">Total validé{r.heuresAValider > 0 && <span className="block text-xs font-normal text-amber-700">+ {h(r.heuresAValider)} à valider</span>}</td><td className="py-1.5 text-right">{h(r.heuresReelles)} sur {h(r.heuresPrevues)} prévues</td></tr>
                             </tbody>
                         </table>
                     )}

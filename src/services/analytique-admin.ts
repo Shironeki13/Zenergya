@@ -251,7 +251,7 @@ export async function suiviVentes(debut: string, fin: string): Promise<SuiviVent
         if (!STATUTS_ENGAGES.includes(d.get('status'))) continue;
         for (const l of (d.get('lines') ?? []) as { total?: number; analytique?: AnalytiqueLigne }[]) if (l.total) achats.push({ analytique: l.analytique ?? null, montant: l.total, site: '', document: String(d.get('number') ?? d.id), date: String(d.get('date')) });
     }
-    for (const d of heures.docs) if (d.get('cost')) achats.push({ analytique: (d.get('analytique') as AnalytiqueLigne | undefined) ?? null, montant: Number(d.get('cost')), site: '', document: `Heures — ${d.get('userName') ?? ''}`, date: String(d.get('date')) });
+    for (const d of heures.docs) if (d.get('cost') && (d.get('statut') ?? 'validee') === 'validee') achats.push({ analytique: (d.get('analytique') as AnalytiqueLigne | undefined) ?? null, montant: Number(d.get('cost')), site: '', document: `Heures — ${d.get('userName') ?? ''}`, date: String(d.get('date')) });
     const total = Math.round(lignes.reduce((t, l) => t + l.montant, 0) * 100) / 100;
     return {
         lignes,

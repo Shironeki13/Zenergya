@@ -21,7 +21,7 @@ import { computeQuoteTotals } from '../../src/lib/quotes/pricing';
 import type { Quote, QuoteLine, QuotePricing } from '../../src/lib/quotes/types';
 import { ajouterFactureFournisseur, avancerCommande, deciderCommande, saveCommande, saveFournisseur, soumettreCommande, type CommandeInput } from '../../src/services/commandes-admin';
 import type { SessionUser } from '../../src/lib/auth/server';
-import { saveHeures } from '../../src/services/heures-admin';
+import { deciderHeures, saveHeures } from '../../src/services/heures-admin';
 
 const env = process.env;
 const PROJET = env.FIREBASE_PROJECT_ID ?? env.GCLOUD_PROJECT ?? '';
@@ -651,11 +651,12 @@ async function heuresDemo(affaires: { circulateur: string; chaufferie: string },
         const d = await adminDb.collection('users').doc(id).get();
         return { uid: String(d.get('authUid')), email: String(d.get('email')), isAdmin: false, isContratheque: false, isAcheteur: false, profile: { id: d.id, ...d.data() } as SessionUser['profile'] };
     };
-    const [tech, tech2] = await Promise.all(['demo-u-tech', 'demo-u-tech2'].map(session));
+    const [tech, tech2, resp] = await Promise.all(['demo-u-tech', 'demo-u-tech2', 'demo-u-resp'].map(session));
+    const saisies: { id: string; date: string }[] = [];
     const circ = { type: 'affaire' as const, projectId: affaires.circulateur }, chauf = { type: 'affaire' as const, projectId: affaires.chaufferie };
     const p2 = { type: 'contrat' as const, contractId: contrats[0].id, activityCode: 'P2' };
     let n = 0;
-    const h = async (par: SessionUser, date: string, hours: number, cible: typeof circ | typeof chauf | typeof p2, comment = '') => { await saveHeures({ date, hours, cible, comment }, par); n++; };
+    const h = async (par: SessionUser, date: string, hours: number, cible: typeof circ | typeof chauf | typeof p2, comment = '') => { const x = await saveHeures({ date, hours, cible, comment }, par); saisies.push({ id: x.id, date }); n++; };
     // Affaire « circulateur » : 12 h prévues au devis, 3 h au complément.
     await h(tech, '2026-10-06', 7.5, circ, 'Dépose de l\'ancien circulateur, pose'); await h(tech, '2026-10-07', 5, circ, 'Raccordements, mise en service');
     await h(tech, '2026-11-06', 2, circ, 'Préparation du calorifugeage');
@@ -668,7 +669,13 @@ async function heuresDemo(affaires: { circulateur: string; chaufferie: string },
     }
     // Sur contrat (P2) : interventions d'exploitation.
     await h(tech, '2026-10-14', 2, p2, 'Remplacement des électrodes du brûleur'); await h(tech2, '2026-11-03', 1.5, p2, 'Contrôle de combustion');
-    console.log(`Heures : ${n} saisies de 2 techniciens (affaires circulateur et chaufferie, contrat P2).`);
+    // Validation par la responsable : tout jusqu'au 9 octobre est validé ; une journée est refusée ; le reste attend.
+    const anciennes = saisies.filter(x => x.date <= '2026-10-09');
+    for (let i = 0; i < anciennes.length; i += 300) await deciderHeures(anciennes.slice(i, i + 300).map(x => x.id), 'validee', '', resp);
+    const refusee = saisies.find(x => x.date === '2026-10-12');
+    if (refusee) await deciderHeures([refusee.id], 'refusee', 'Journée de formation : à saisir sur le contrat, pas sur l\'affaire.', resp);
+    const enAttente = saisies.filter(x => x.date > '2026-10-09').length - (refusee ? 1 : 0);
+    console.log(`Heures : ${n} saisies de 2 techniciens (affaires circulateur et chaufferie, contrat P2) : ${anciennes.length} validées, ${enAttente} à valider, ${refusee ? 1 : 0} refusée.`);
 }
 
 (async () => {

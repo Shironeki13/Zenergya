@@ -1,7 +1,7 @@
 // Heures de main-d'œuvre : contrôles de saisie, coût horaire, totaux, lecture d'un import : npm test
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { cleDoublon, controleHeures, coutHeures, heuresPar, jourImport, lireImportHeures, lundiDe, tauxHoraire, totalHeures } from '../src/lib/heures';
+import { cleDoublon, controleHeures, coutHeures, estValidee, heuresPar, heuresParStatut, jourImport, lireImportHeures, lundiDe, modifiablePar, peutValiderHeures, statutALaSaisie, statutHeures, tauxHoraire, totalHeures } from '../src/lib/heures';
 
 const J = '2026-11-10';
 
@@ -46,4 +46,19 @@ test('import : en-têtes reconnus (accents, alias, astérisque), dates et heures
     assert.match(String(lireImportHeures([['Jour', 'Technicien', 'Durée', 'Affaire']], J).erreur), /Aucune ligne/);
     const c = { userId: 'u', date: J, hours: 2 };
     assert.notEqual(cleDoublon({ ...c, cible: { type: 'affaire', projectId: 'p' } }), cleDoublon({ ...c, cible: { type: 'contrat', contractId: 'p', activityCode: 'P2' } }));
+});
+
+test('validation : qui valide, statut à la saisie, saisie antérieure considérée validée, ce que l\'intéressé peut modifier', () => {
+    const tech = { id: 'tech', managerId: 'chef' }, chef = { id: 'chef', managerId: null }, sansChef = { id: 'dir' };
+    // Le responsable valide son équipe ; un administrateur, tout le monde (dont qui n'a pas de responsable) ; jamais soi-même.
+    assert.deepEqual([peutValiderHeures({ id: 'chef' }, tech), peutValiderHeures({ id: 'autre' }, tech), peutValiderHeures({ id: 'adm', isAdmin: true }, tech), peutValiderHeures({ id: 'tech', isAdmin: true }, tech),
+        peutValiderHeures({ id: 'chef' }, chef), peutValiderHeures({ id: 'adm', isAdmin: true }, sansChef), peutValiderHeures({ id: 'chef' }, sansChef)], [true, false, true, false, false, true, false]);
+    assert.deepEqual([statutALaSaisie({ id: 'tech' }, tech), statutALaSaisie({ id: 'chef' }, tech), statutALaSaisie({ id: 'adm', isAdmin: true }, tech), statutALaSaisie({ id: 'adm', isAdmin: true }, { id: 'adm' })], ['a_valider', 'validee', 'validee', 'a_valider']);
+    assert.deepEqual([statutHeures({}), estValidee({}), estValidee({ statut: 'a_valider' }), estValidee({ statut: 'refusee' })], ['validee', true, false, false]);
+    const s = (statut: 'a_valider' | 'validee' | 'refusee') => ({ statut, userId: 'tech' });
+    assert.deepEqual([modifiablePar(s('a_valider'), { id: 'tech' }, tech), modifiablePar(s('refusee'), { id: 'tech' }, tech), modifiablePar(s('validee'), { id: 'chef' }, tech)], [null, null, null]);
+    assert.match(String(modifiablePar(s('validee'), { id: 'tech' }, tech)), /déjà validées/);
+    assert.match(String(modifiablePar(s('a_valider'), { id: 'autre' }, tech)), /pas les vôtres/);
+    assert.deepEqual(heuresParStatut([{ hours: 7, cost: 294 }, { hours: 2, cost: 84, statut: 'a_valider' }, { hours: 3, cost: 126, statut: 'refusee' }, { hours: 1, cost: 42, statut: 'validee' }]),
+        { a_valider: { heures: 2, cout: 84 }, validee: { heures: 8, cout: 336 }, refusee: { heures: 3, cout: 126 } });
 });

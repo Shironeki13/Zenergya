@@ -4,7 +4,7 @@ import { requireUser } from '@/lib/auth/server';
 import { ciblesDuPerimetre, HORS_PERIMETRE } from '@/lib/auth/perimetre-cibles';
 import { adminDb } from '@/lib/firebase-admin';
 import type { SaisieHeures } from '@/lib/heures';
-import { deleteHeures, importerHeures, listHeures, saveHeures, type HeuresInput, type RapportImportHeures } from '@/services/heures-admin';
+import { deciderHeures, deleteHeures, heuresAValider, importerHeures, listHeures, saveHeures, type HeuresInput, type RapportImportHeures } from '@/services/heures-admin';
 
 /** Heures de main-d'œuvre : actions serveur (session requise ; qui saisit pour qui est contrôlé par le service). */
 
@@ -30,3 +30,8 @@ export const saveHeuresAction = async (input: HeuresInput): Promise<Result<Saisi
 });
 export const deleteHeuresAction = async (id: string): Promise<Result<null>> => run(async u => { await deleteHeures(id, u); return null; });
 export const importerHeuresAction = async (table: unknown[][], appliquer: boolean): Promise<Result<RapportImportHeures>> => run(async u => importerHeures(table, u, appliquer, (await ciblesDuPerimetre(u)) ?? undefined));
+
+/** Saisies en attente que l'utilisateur peut valider (son équipe directe ; toutes pour un administrateur). */
+export const heuresAValiderAction = async (): Promise<Result<SaisieHeures[]>> => run(u => heuresAValider(u));
+/** Valide des saisies, ou les refuse avec un motif : par le responsable (N+1) du technicien, ou un administrateur. */
+export const deciderHeuresAction = async (ids: string[], decision: 'validee' | 'refusee', motif = ''): Promise<Result<number>> => run(u => deciderHeures(ids, decision, motif, u));

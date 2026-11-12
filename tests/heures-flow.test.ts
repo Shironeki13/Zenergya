@@ -3,7 +3,7 @@
 import { test, before } from 'node:test';
 import assert from 'node:assert/strict';
 import { adminDb } from '../src/lib/firebase-admin';
-import { deleteHeures, importerHeures, listHeures, saveHeures } from '../src/services/heures-admin';
+import { deciderHeures, deleteHeures, heuresAValider, importerHeures, listHeures, saveHeures } from '../src/services/heures-admin';
 import { totalHeures } from '../src/lib/heures';
 import type { SessionUser } from '../src/lib/auth/server';
 
@@ -57,7 +57,9 @@ test('pour un autre : son responsable ou un administrateur, pas un collègue ; m
     const d = await saveHeures({ id: premiere.id, date: JOUR, hours: 8, cible: { type: 'affaire', projectId: 'hr-aff2' } }, admin);
     assert.deepEqual([d.rate, d.cost, d.analytique.axes.affaire], [44, 352, 'AFF20260002']);   // autre affaire : revalorisée
     await assert.rejects(deleteHeures(s.id, autre), /réservées/);
-    await deleteHeures(s.id, tech);
+    // Saisie faite par le responsable : validée d'office ; l'intéressé ne la supprime plus, son responsable si.
+    await assert.rejects(deleteHeures(s.id, tech), /déjà validées/);
+    await deleteHeures(s.id, chef);
     assert.deepEqual(totalHeures(await listHeures({ userId: 'hr-tech' })), { heures: 8, cout: 352 });
     assert.equal((await listHeures({ projectId: 'hr-aff2' })).length, 1);
 });
@@ -79,4 +81,50 @@ test('import : simulation, lignes en erreur (rien n\'est écrit), puis import et
     assert.deepEqual(lues.map(s => [s.userName, s.hours, s.cost, s.source, s.analytique.code]).sort(), [['Technicien', 7.5, 330, 'import', 'HRS-LYO-LN-CLI07001-AFF20260001'], ['Technicienne', 3, 145.5, 'import', 'HRS-LYO-LN-CLI07001-CTN07001-P2']]);
     const encore = await importerHeures([entetes, ...bon, ['2026-01-14', 'hr-tech@v.fr', 'HRS-AFF2026-0002', '', '', '17', '']], admin, false);
     assert.deepEqual([encore.aCreer, encore.doublons, encore.erreurs], [0, 2, 1]);   // 7,5 + 17 > 24
+});
+
+test('validation : à valider à la saisie par l\'intéressé, validée d\'office par le responsable ; valider, refuser, corriger ; droits', async () => {
+    const J2 = '2026-02-02';
+    const etat = async (id: string) => { const d = await adminDb.collection('heures').doc(id).get(); return [d.get('statut'), d.get('valideePar') || null, d.get('motifRefus') || null]; };
+    const a = await saveHeures({ date: J2, hours: 7, cible: AFF }, tech);                                   // par l'intéressé
+    const b = await saveHeures({ date: '2026-02-03', hours: 6, cible: AFF }, tech);
+    const c = await saveHeures({ userId: 'hr-tech2', date: J2, hours: 5, cible: AFF }, chef);                // par le responsable
+    const d = await saveHeures({ date: J2, hours: 4, cible: AFF }, chef);                                   // le responsable n'a pas de N+1
+    const e = await saveHeures({ userId: 'hr-chef', date: '2026-02-03', hours: 3, cible: AFF }, admin);     // par un administrateur
+    assert.deepEqual([await etat(a.id), await etat(c.id), await etat(d.id), await etat(e.id)], [['a_valider', null, null], ['validee', 'hr-chef@v.fr', null], ['a_valider', null, null], ['validee', 'hr-adm@v.fr', null]]);
+
+    // File du responsable : son équipe ; de l'administrateur : tout ce qui attend (sauf ses propres heures) ; d'un collègue : rien.
+    const file = async (u: typeof chef) => (await heuresAValider(u)).filter(x => [a.id, b.id, d.id].includes(x.id)).map(x => x.id).sort();
+    assert.deepEqual([await file(chef), await file(admin), await file(autre), await file(tech)], [[a.id, b.id].sort(), [a.id, b.id, d.id].sort(), [], []]);
+
+    // Ni l'intéressé, ni un collègue ; le responsable ne valide pas ses propres heures ; un refus exige un motif.
+    await assert.rejects(deciderHeures([a.id], 'validee', '', tech), /Personne ne valide ses propres heures/);
+    await assert.rejects(deciderHeures([a.id], 'validee', '', autre), /à valider par son responsable \(N\+1\) ou un administrateur/);
+    await assert.rejects(deciderHeures([d.id], 'validee', '', chef), /Personne ne valide ses propres heures/);
+    await assert.rejects(deciderHeures([b.id], 'refusee', '  ', chef), /Motif du refus obligatoire/);
+    await assert.rejects(deciderHeures([], 'validee', '', chef), /Aucune saisie/);
+    // Un lot dont une saisie n'est pas à lui : rien n'est validé.
+    await assert.rejects(deciderHeures([a.id, d.id], 'validee', '', chef), /propres heures/);
+    assert.deepEqual((await etat(a.id))[0], 'a_valider');
+
+    assert.equal(await deciderHeures([a.id], 'validee', '', chef), 1);
+    assert.equal(await deciderHeures([b.id], 'refusee', 'Chantier fermé ce jour-là', chef), 1);
+    assert.equal(await deciderHeures([d.id], 'validee', '', admin), 1);                                    // sans N+1 : un administrateur
+    assert.deepEqual([await etat(a.id), await etat(b.id), await etat(d.id)], [['validee', 'hr-chef@v.fr', null], ['refusee', 'hr-chef@v.fr', 'Chantier fermé ce jour-là'], ['validee', 'hr-adm@v.fr', null]]);
+    await assert.rejects(deciderHeures([a.id], 'validee', '', chef), /déjà validées/);
+
+    // Validée : l'intéressé ne la modifie plus. Refusée : il la corrige, elle repart en validation, motif effacé.
+    await assert.rejects(saveHeures({ id: a.id, date: J2, hours: 8, cible: AFF }, tech), /déjà validées : demandez à votre responsable/);
+    const corrigee = await saveHeures({ id: b.id, date: '2026-02-04', hours: 6, cible: AFF }, tech);
+    assert.deepEqual([corrigee.date, await etat(b.id)], ['2026-02-04', ['a_valider', null, null]]);
+    // Le responsable corrige une saisie validée : elle reste validée, à son nom.
+    await saveHeures({ id: a.id, date: J2, hours: 7.5, cible: AFF }, chef);
+    assert.deepEqual([(await adminDb.collection('heures').doc(a.id).get()).get('hours'), await etat(a.id)], [7.5, ['validee', 'hr-chef@v.fr', null]]);
+
+    // Import : par le responsable → validées ; par l'intéressé pour lui-même → à valider.
+    const entetes = ['Date', 'Technicien (email)', 'Affaire', 'Heures'];
+    await importerHeures([entetes, ['05/02/2026', 'hr-tech@v.fr', 'HRS-AFF2026-0001', '2']], chef, true);
+    await importerHeures([entetes, ['06/02/2026', 'hr-tech@v.fr', 'HRS-AFF2026-0001', '2']], tech, true);
+    const importees = (await listHeures({ userId: 'hr-tech', from: '2026-02-05', to: '2026-02-06' })).map(x => [x.date, x.statut, x.valideePar ?? null]).sort();
+    assert.deepEqual(importees, [['2026-02-05', 'validee', 'hr-chef@v.fr'], ['2026-02-06', 'a_valider', null]]);
 });
