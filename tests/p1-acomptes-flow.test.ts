@@ -62,7 +62,7 @@ test('acomptes : quantité × part du mois × prix révisé P1, facture et aper�
 test('régularisation : réel importé − acomptes → avoir ; intéressement → facture ; ni double régularisation ni réel modifié après coup', async () => {
     await set('interests', 'ac-int', { serviceId: 'ac-svc', seasonLabel: '2025 (test)', endDate: '2025-11-30', interestAmount: 300 });
     const missing = await prepareP1Regularisation('ac-k', '2025-10', '2025-11');
-    assert.match(missing.errors[0], /réel P1 du moteur non importé pour 10\/2025, 11\/2025/);
+    assert.match(missing.errors[0], /P1 dû non renseigné pour 10\/2025, 11\/2025/);
 
     const table = [['Site', 'Mois', 'Montant P1 HT'], ['SIT-02201', '10/2025', '11000'], ['SIT-02201', '2025-11', '12 500']];
     const report = await applyImport('p1reel', table, { by: 'import@v.fr' });

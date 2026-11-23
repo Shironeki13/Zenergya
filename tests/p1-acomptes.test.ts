@@ -64,13 +64,13 @@ test('régularisation : réel − acomptes par site, avoir si en faveur du clien
     const r = regularisationP1({ mois: ['2025-10', '2025-11'], sites, reel, documents, interests });
     assert.deepEqual(r.errors, []);
     // Réel 23 500 − acomptes 24 000 = −500 (factures annulées et proformas ignorées) ; intéressement 300.
-    assert.deepEqual(r.detail, [{ siteId: 's', site: 'Chaufferie', usage: 'total', reel: 23500, acomptes: 24000, ecart: -500 }]);
+    assert.deepEqual(r.detail, [{ siteId: 's', site: 'Chaufferie', usage: 'total', reel: 23500, acomptes: 24000, ecart: -500, source: 'importe' }]);
     assert.deepEqual(r.lines.map(l => [l.total, l.vatRate]), [[-500, 5.5], [300, 5.5]]);
     assert.deepEqual(r.acompteInvoiceIds.sort(), ['f1', 'f2']);
 
     // Réel manquant pour un mois facturé en acompte : bloquant.
     const sansReel = regularisationP1({ mois: ['2025-10', '2025-11'], sites, reel: new Map([['s', new Map([['total|2025-10', 1]])]]), documents, interests: [] });
-    assert.match(sansReel.errors[0], /réel P1 du moteur non importé pour 11\/2025/);
+    assert.match(sansReel.errors[0], /P1 dû non renseigné pour 11\/2025/);
     // Une fois régularisés (avoir émis), les mêmes mois et le même intéressement ne repassent pas.
     const regul: RegulDocument = { id: 'av', kind: 'creditNote', status: 'finalized', lineItems: [{ p1Regul: { siteId: 's', mois: ['2025-10', '2025-11'], reel: 23500, acomptes: 24000 } }, { p1Regul: { siteId: 's', interestId: 'i1' } }] };
     const again = regularisationP1({ mois: ['2025-11', '2025-12'], sites, reel, documents: [...documents, regul], interests });
@@ -118,5 +118,5 @@ test('régularisation chauffage + ECS : par usage à sa TVA ; au total seulement
         reel: new Map([['s', new Map([['total|2025-10', 1], ['ecs|2025-10', 1]])]]) });
     assert.match(mixte.errors[0], /à la fois au total et par usage/);
     const sansEcs = regularisationP1({ mois: ['2025-10'], sites: sitesTva, documents: docs, interests: [], reel: new Map([['s', new Map([['chauffage|2025-10', 1]])]]) });
-    assert.match(sansEcs.errors[0], /réel P1 ECS du moteur non importé pour 10\/2025/);
+    assert.match(sansEcs.errors[0], /P1 ECS dû non renseigné pour 10\/2025/);
 });

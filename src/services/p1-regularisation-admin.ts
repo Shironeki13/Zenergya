@@ -21,7 +21,8 @@ import { releveSource } from '@/services/contract-billing-admin';
 import { avecAnalytique, figerAnalytique } from '@/services/analytique-admin';
 
 /**
- * Régularisation P1 d'un contrat (préparation et émission) : réel du moteur importé (`p1Reel`) − acomptes facturés,
+ * Régularisation P1 d'un contrat (préparation et émission) : P1 dû (décompte de saison ou prix annuel calculés, ou
+ * montant importé `p1Reel`) − P1 déjà facturé,
  * plus les intéressements de la période. Lignes positives : une facture ; négatives : un avoir de régularisation.
  */
 

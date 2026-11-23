@@ -39,7 +39,7 @@ export const NAV_GROUPS: NavGroup[] = [
             { href: '/invoices', label: 'Factures', icon: FileText },
             { href: '/credit-notes', label: 'Avoirs', icon: MinusCircle },
             { href: '/billing/rfe', label: 'Facturation électronique', icon: Send, keywords: 'chorus rfe pdp' },
-            { href: '/billing/p1', label: 'Régularisation P1', icon: Scale, keywords: 'acomptes réel moteur' },
+            { href: '/billing/p1', label: 'Régularisation P1', icon: Scale, keywords: 'acomptes réel dû décompte prix annuel régulariser' },
             { href: '/billing/analytique', label: 'Suivi analytique', icon: Network, keywords: 'ventes marge code projet axe société agence secteur' },
             { href: '/billing/indices', label: 'Indices', icon: TrendingUp, keywords: 'révision prix insee' },
         ],

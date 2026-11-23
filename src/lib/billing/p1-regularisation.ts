@@ -5,7 +5,7 @@ import { LIBELLE_PERIODICITE } from './p1-prix-annuel';
 /**
  * Régularisation P1 d'un contrat sur une période (calcul pur).
  *
- * Pour chaque site : réel P1 du moteur (importé, par mois) − acomptes P1 facturés sur ces mois (détail mensuel des
+ * Pour chaque site : P1 dû (par mois) − P1 déjà facturé sur ces mois (détail mensuel des
  * lignes d'acompte des factures non annulées). Le réel s'importe soit **au total** (chauffage, ECS et annexes : une
  * ligne par site, à condition que les acomptes du site aient une seule TVA), soit **par usage** (chauffage, ECS :
  * une ligne par usage, à sa TVA) ; mélanger les deux sur une période est refusé.
@@ -52,7 +52,7 @@ export type RegulSite = {
 export type RegulInput = {
     mois: string[];
     sites: RegulSite[];
-    /** Réel du moteur par site, puis par « usage|mois » (€ HT). */
+    /** P1 dû par site, puis par « usage|mois » (€ HT) : importé, ou calculé (décompte de saison, prix annuel). */
     reel: Map<string, Map<string, number>>;
     documents: RegulDocument[];
     interests: { id: string; siteId: string; seasonLabel: string; endDate: string; amount: number }[];
@@ -63,7 +63,8 @@ export type RegulResult = {
     errors: string[];
     /** Factures d'acompte concernées (référence de l'avoir). */
     acompteInvoiceIds: string[];
-    detail: { siteId: string; site: string; usage: UsageReel; reel: number; acomptes: number; ecart: number }[];
+    /** `source` : d'où vient le P1 dû — décompte de saison ou prix annuel calculés par Zenergya, ou montant importé. */
+    detail: { siteId: string; site: string; usage: UsageReel; reel: number; acomptes: number; ecart: number; source: 'decompte' | 'prix_annuel' | 'importe' }[];
 };
 
 const frMois = (m: string) => `${m.slice(5, 7)}/${m.slice(0, 4)}`;
@@ -136,7 +137,7 @@ export function regularisationP1(input: RegulInput): RegulResult {
         const regulariser = (usage: UsageReel, acompteMois: Map<string, number[]>, vatRate: number | undefined) => {
             const manquants = mois.filter(m => acompteMois.has(m) && !has(usage, m));
             if (manquants.length) {
-                errors.push(`Site ${site.name} : réel ${usage === 'total' ? 'P1' : LIBELLE[usage]} du moteur non importé pour ${manquants.map(frMois).join(', ')}.`);
+                errors.push(`Site ${site.name} : ${usage === 'total' ? 'P1' : LIBELLE[usage]} dû non renseigné pour ${manquants.map(frMois).join(', ')} (import « P1 dû », ou décompte calculé par Zenergya : paramétrage P1 du contrat, « Régularisation des acomptes »).`);
                 return;
             }
             const moisRegul = mois.filter(m => acompteMois.has(m) || has(usage, m));
@@ -145,9 +146,9 @@ export function regularisationP1(input: RegulInput): RegulResult {
             const totalReel = sumCents(moisRegul.map(m => reel.get(`${usage}|${m}`) ?? 0));
             const totalAcomptes = sumCents(moisRegul.flatMap(m => acompteMois.get(m) ?? []));
             const ecart = roundCents(totalReel - totalAcomptes);
-            detail.push({ siteId: site.id, site: site.name, usage, reel: totalReel, acomptes: totalAcomptes, ecart });
             const dec = usage === 'chauffage' && site.decompte?.length ? site.decompte : null;
             const pa = usage === 'chauffage' && site.prixAnnuel?.length ? site.prixAnnuel : null;
+            detail.push({ siteId: site.id, site: site.name, usage, reel: totalReel, acomptes: totalAcomptes, ecart, source: pa ? 'prix_annuel' : dec ? 'decompte' : 'importe' });
             lines.push({
                 description: pa
                     ? `Régularisation P1 chauffage au prix annuel — Site : ${site.name} — ${pa.map(x => `exercice ${x.exercice} : C/C0 annuel ${x.coefficient.toLocaleString('fr-FR', { maximumFractionDigits: 5 })} (${LIBELLE_PERIODICITE[x.periodicite]}), ${eur(x.dju)} DJU`).join(' ; ')}`
@@ -156,7 +157,7 @@ export function regularisationP1(input: RegulInput): RegulResult {
                     ? `Décompte P1 chauffage MTI — Site : ${site.name} — saison ${dec.map(d => d.saison).join(', ')} : ${dec.map(d => `P1₀ ${eur(d.p1Base)} € × C/C0 ${d.coefficient.toLocaleString('fr-FR', { maximumFractionDigits: 5 })} × ${d.dju.toLocaleString('fr-FR')} / ${d.djuReference.toLocaleString('fr-FR')} DJU = ${eur(d.du)} €`).join(' ; ')}`
                         + ` (période du ${frMois(moisRegul[0])} au ${frMois(moisRegul[moisRegul.length - 1])} : ${eur(totalReel)} €) − acomptes ${eur(totalAcomptes)} €`
                     : `Régularisation ${LIBELLE[usage]} — Site : ${site.name} — du ${frMois(moisRegul[0])} au ${frMois(moisRegul[moisRegul.length - 1])} : `
-                    + `réel ${eur(totalReel)} € − acomptes ${eur(totalAcomptes)} €`,
+                    + `dû ${eur(totalReel)} € − acomptes ${eur(totalAcomptes)} €`,
                 quantity: 1, unitPrice: ecart, total: ecart, siteId: site.id, activityCode: site.activityCode, vatRate,
                 periodStartDate: `${moisRegul[0]}-01`, periodEndDate: finMois(moisRegul[moisRegul.length - 1]),
                 p1Regul: { siteId: site.id, usage, mois: moisRegul, reel: totalReel, acomptes: totalAcomptes, ...(dec && { decompte: dec }), ...(pa && { prixAnnuel: pa }) },

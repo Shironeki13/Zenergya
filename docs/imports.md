@@ -2,7 +2,7 @@
 
 Menu **Imports** (administrateurs), par rubrique : **Référentiel** (clients et prospects, contrats, sites, contacts),
 **Facturation** (prestations et montants), **Compteurs et relevés** (compteurs, relevés), **P1** (formules de révision,
-réel du moteur pour la régularisation, paramétrage détaillé avancé ; le paramétrage P1 courant passe par les colonnes
+P1 dû importé pour la régularisation, paramétrage détaillé avancé ; le paramétrage P1 courant passe par les colonnes
 « P1 · … » des imports Sites, Compteurs et Contrats). (Les articles de la bibliothèque de prix ont leur propre import : voir `bibliotheque-prix.md`.)
 
 ## Déroulé
@@ -154,9 +154,9 @@ est inchangée ; une autre valeur à la même date est refusée (la retirer à l
 `parametrage-p1.md`. Barèmes : paramètre « Barème de partage MCI (contrat) » (ou site), valeur « économie 0-10 % 50 % ;
 dépassement 0-100 % 30 % ».
 
-### Réel P1 du moteur
+### P1 dû (importé)
 
-Résultat du moteur P1, pas un paramétrage (affiché sur la fiche du site, Paramétrage P1 › Réel P1 du moteur). Site (code SIT ou réf. externe), mois (AAAA-MM, MM/AAAA ou date), montant P1 HT du mois (table
+Facultatif : P1 dû établi hors de Zenergya, pas un paramétrage (affiché sur la fiche du site, Paramétrage P1 › P1 dû importé) ; sans lui, Zenergya calcule le dû (décompte de saison, prix annuel). Site (code SIT ou réf. externe), mois (AAAA-MM, MM/AAAA ou date), montant P1 HT du mois (table
 `p1_facturation_site` du moteur). Un montant identique est inchangé, un autre remplace le précédent, sauf pour un
 mois déjà régularisé (refusé). Sert à la régularisation des acomptes P1 (voir `facturation.md`).
 

@@ -58,7 +58,7 @@ test('régularisation : les mois facturés au DJU se comparent au dû de l\'exer
     assert.deepEqual(r.errors, []);
     // Pondéré par les DJU, le dû de l'exercice égale ici le facturé : écart nul, aucune ligne émise ; le détail le montre.
     assert.deepEqual([r.lines.length, r.acompteInvoiceIds], [0, ['f1']]);
-    assert.deepEqual(r.detail, [{ siteId: 's', site: 'Mairie', usage: 'chauffage', reel: 5520, acomptes: 5520, ecart: 0 }]);
+    assert.deepEqual(r.detail, [{ siteId: 's', site: 'Mairie', usage: 'chauffage', reel: 5520, acomptes: 5520, ecart: 0, source: 'prix_annuel' }]);
     // Au mois de clôture (C/C0 = 2) : dû 9 600 − facturé 5 520 = 4 080 à facturer.
     const cl = prixAnnuel({ exercice: ex2025, version: version({ periodicite: 'annuel_cloture' }), series, parties });
     assert.ok(typeof cl !== 'string');

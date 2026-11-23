@@ -448,9 +448,9 @@ const BASE: Record<ImportEntityKey, Omit<ImportEntity, 'groupe' | 'resume' | 'us
     },
     p1reel: {
         key: 'p1reel',
-        label: 'Réel P1 du moteur',
-        description: 'Résultat du moteur P1 (pas un paramétrage) : montant P1 HT réellement dû par site et par mois (table p1_facturation_site). '
-            + 'La régularisation le compare aux acomptes P1 facturés (Facturation › P1). Visible sur la fiche du site (Paramétrage P1 › Réel P1 du moteur).',
+        label: 'P1 dû',
+        description: 'Facultatif : montant P1 HT réellement dû par site et par mois, quand il est établi hors de Zenergya (pas un paramétrage). '
+            + 'La régularisation le compare aux acomptes P1 facturés (Facturation › Régularisation P1). Sans cet import, Zenergya calcule le dû lui-même (décompte de saison, prix annuel). Visible sur la fiche du site (Paramétrage P1 › P1 dû importé).',
         matching: 'Site + mois + usage : un montant identique est inchangé ; un autre montant remplace le précédent, sauf si le mois est déjà régularisé (refusé).',
         fields: [
             { key: 'site', label: 'Site', type: 'text', required: 'create', example: 'SIT-00021', aliases: ['code_site'], help: 'Code du site (SIT-…) ou réf. externe.' },
@@ -580,11 +580,11 @@ const GUIDES: Record<ImportEntityKey, Guide> = {
         aides: { nom: 'Nom de la formule dans le contrat (ex. « Gaz — marché 2025 ») : clé avec le contrat.', motif: 'Pourquoi cette version (contrat d\'origine, avenant…).', document: 'Lien vers la pièce (avenant, contrat).' },
     },
     p1reel: {
-        label: 'P1 · Réel du moteur (régularisation)',
-        groupe: 'P1', resume: 'Résultat du moteur P1 (pas un paramétrage) : montant P1 HT réellement dû par site et par mois, comparé aux acomptes pour régulariser.',
+        label: 'P1 · P1 dû importé (régularisation)',
+        groupe: 'P1', resume: 'Facultatif : montant P1 HT réellement dû par site et par mois, établi hors de Zenergya, comparé aux acomptes pour régulariser.',
         usage: [
-            'Chaque mois (ou avant une régularisation), à partir de l\'export du moteur P1 (table p1_facturation_site).',
-            'Un mois déjà régularisé ne change plus. Visible sur la fiche du site (Paramétrage P1 › Réel P1 du moteur).',
+            'Seulement pour les contrats réglés sur « P1 dû importé » (paramétrage P1 du contrat, « Régularisation des acomptes ») : avant une régularisation.',
+            'Un mois déjà régularisé ne change plus. Visible sur la fiche du site (Paramétrage P1 › P1 dû importé).',
         ],
         cles: ['site', 'mois', 'usage'],
     },

@@ -271,7 +271,7 @@ l'élément qui le porte :
 | Contrat | Fiche du contrat › Paramétrage P1 du contrat | Contrats | régime CP, gestion, répartitions, intéressement, barèmes, formules de révision |
 
 - La fiche du site montre en lecture les paramètres de ses compteurs et de son contrat (calculabilité, reste à faire),
-  l'aperçu des prix révisés et le **réel P1 du moteur** importé (base de la régularisation).
+  l'aperçu des prix révisés et le **P1 dû importé** (régularisation des contrats réglés sur un dû établi hors de Zenergya).
 - **Anciennes saisies** : les valeurs P1 des assistants de création de contrat (DJU, station, NB ; depuis un PDF,
   DJU et NB du contrat mono-site) deviennent des versions d'origine **à la validation du contrat** (motif « création
   du contrat CTN-… ») ; un paramètre qui a déjà une version n'est pas touché. Le coefficient de conversion n'est plus

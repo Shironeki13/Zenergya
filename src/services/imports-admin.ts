@@ -1060,7 +1060,7 @@ function moisOf(v: CellValue): string | null {
     return day && +day[1] >= 1 && +day[1] <= 12 ? `${day[2]}-${day[1].padStart(2, '0')}` : null;
 }
 
-/** Réel P1 du moteur : site + mois ; un montant d'un mois déjà régularisé ne change plus. */
+/** P1 dû importé : site + mois ; un montant d'un mois déjà régularisé ne change plus. */
 function planP1Reel(ctx: Context, row: ParsedRow, seen: Map<string, number>): PlanItem {
     const v = row.values;
     const item: PlanItem = { line: row.line, action: 'error', label: `${v.site ?? ''} ${v.mois ?? ''}`.trim(), messages: [...row.errors], warnings: [] };

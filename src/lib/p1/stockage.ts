@@ -47,7 +47,7 @@ export const REPARTITIONS = ['contrat', 'prorata_nb'] as const;
 export type InteressementMarche = { marche: TypeMarche; repartition: typeof REPARTITIONS[number]; plafondPct: number | null; plafonne: boolean };
 
 type Kind = 'enum' | 'positive' | 'nonNegative' | 'text' | 'station' | 'formule' | 'interessement' | 'bareme' | 'repartition';
-export type ParamDef = { label: string; kind: Kind; options?: readonly string[]; unit?: string; help?: string };
+export type ParamDef = { label: string; kind: Kind; options?: readonly string[]; /** Libellé affiché d'une valeur d'énumération (à défaut, la valeur). */ libelles?: Record<string, string>; unit?: string; help?: string };
 
 export const P1_PARAMS: Record<P1Scope, Record<string, ParamDef>> = {
     site: {
@@ -78,7 +78,7 @@ export const P1_PARAMS: Record<P1Scope, Record<string, ParamDef>> = {
         regimeCp: { label: 'Régime du compte de prestation', kind: 'enum', options: REGIMES_CP, help: 'CP / CPI : refacturation, frais de gestion, coefficient, révisé.' },
         coefficientGestion: { label: 'Coefficient de gestion', kind: 'positive', help: 'Régime « coefficient » : HT × coefficient. P1 au compteur : prix × coefficient, pour les prestations « coefficient du contrat ».' },
         fraisGestionAnnuels: { label: 'Frais de gestion annuels', kind: 'nonNegative', unit: '€ HT / an' },
-        regularisation: { label: 'Régularisation des acomptes', kind: 'enum', options: ['reel_moteur', 'decompte_dju'], help: 'reel_moteur : réel P1 du moteur importé − acomptes ; decompte_dju : décompte MTI (P1₀ × C/C0 annuel × DJU de la saison / DJU contractuels) − acomptes.' },
+        regularisation: { label: 'Régularisation des acomptes', kind: 'enum', options: ['reel_moteur', 'decompte_dju'], libelles: { reel_moteur: 'P1 dû importé', decompte_dju: 'Décompte de saison calculé' }, help: 'Décompte de saison calculé : Zenergya calcule le P1 dû en fin de saison (P1₀ × C/C0 annuel × DJU de la saison / DJU contractuels) et le compare aux acomptes. P1 dû importé : le dû est établi hors de Zenergya et importé (import « P1 dû »).' },
         correspondanceTwimm: { label: 'Code contrat TWIMM', kind: 'text' },
         repartitionAcomptes: { label: 'Répartition des acomptes P1', kind: 'repartition', help: 'Chauffage : 12 parts mensuelles en %, de janvier à décembre, sommant à 100 (ex. saison de chauffe).' },
         repartitionAcomptesEcs: { label: 'Répartition des acomptes ECS', kind: 'repartition', help: 'ECS : 12 parts mensuelles en %, sommant à 100 (en général linéaire).' },

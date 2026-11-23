@@ -125,7 +125,7 @@ Facturation → Régularisation P1.
   ne se retire.
   Pas de régularisation de consommation pour l'ECS au relevé (déjà au réel) : sur ces sites, la régularisation ne
   porte que sur le chauffage (réel par usage « chauffage » ; un réel total est refusé).
-- **Réel du moteur** : import « Réel P1 du moteur » (site, mois, montant P1 HT, usage), collection `p1Reel` écrite
+- **P1 dû importé** (facultatif, quand le dû est établi hors de Zenergya) : import « P1 dû » (site, mois, montant P1 HT, usage), collection `p1Reel` écrite
   par le serveur. Usage vide : total du mois (`p1_facturation_site`) ; « chauffage » ou « ECS » : réel par usage
   (`p1_facturation_chauffage`, `p1_facturation_ecs`). Un mois déjà régularisé ne change plus.
 - **Régularisation** (contrat, période) : par site, réel − acomptes facturés (factures non annulées) — au total (une

@@ -101,7 +101,7 @@ export async function getP1Contract(contractId: string): Promise<P1ContractView>
     };
 }
 
-/** Réel P1 du moteur d'un site (import « Réel P1 du moteur »), du plus récent au plus ancien. */
+/** P1 dû importé d'un site (import « P1 dû »), du plus récent au plus ancien. */
 export type P1ReelLigne = { id: string; mois: string; usage: string | null; montantHt: number; importedAt?: string; fileName?: string };
 
 export async function getP1Reel(siteId: string): Promise<P1ReelLigne[]> {

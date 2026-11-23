@@ -57,7 +57,7 @@ function formatValue(scope: P1Scope, key: string, value: unknown): string {
         return (value as InteressementMarche[]).map(i => `${i.marche} (${i.repartition === 'contrat' ? 'au contrat' : 'prorata NB'}${i.plafondPct !== null ? `, plafond ${i.plafondPct} % P2${i.plafonne ? '' : ' non plafonné'}` : ''})`).join(' ; ');
     }
     if (typeof value === 'number') return fmtNum(value, def.unit);
-    return String(value).replace(/_/g, ' ');
+    return def.libelles?.[String(value)] ?? String(value).replace(/_/g, ' ');
 }
 
 type Editing = { target: P1Target; key: string; title: string; meterCodes?: string[] } | null;
@@ -112,7 +112,7 @@ function DateVigueur({ date, onChange }: { date: string; onChange: (d: string) =
 
 /**
  * Paramétrage P1 du site : paramètres du site et postes de consommation (saisis ici) ; compteurs et contrat en
- * lecture, chacun se paramétrant sur sa propre fiche ; aperçu des prix révisés et réel P1 du moteur.
+ * lecture, chacun se paramétrant sur sa propre fiche ; aperçu des prix révisés et P1 dû importé.
  */
 export function P1ParametragePanel({ siteId, defaultOpen = false }: { siteId: string; defaultOpen?: boolean }) {
     const { toast } = useToast();
@@ -322,7 +322,7 @@ export function P1ContratPanel({ contractId }: { contractId: string }) {
     );
 }
 
-/** Réel P1 du moteur du site (import « Réel P1 du moteur ») : montants mensuels, base de la régularisation. */
+/** P1 dû importé du site (import « P1 dû ») : montants mensuels établis hors de Zenergya, pour la régularisation. */
 /**
  * Saisons de chauffe : dates d'allumage et d'arrêt du site, par saison (juillet → juin). Elles bornent les DJU facturés
  * en MTI (première facture à l'allumage, dernière à l'arrêt), le décompte et l'intéressement.
@@ -392,9 +392,9 @@ function ReelP1({ siteId }: { siteId: string }) {
     const affichees = (lignes ?? []).slice(0, tout ? undefined : 12);
     return (
         <div className="space-y-2 pt-2">
-            <h4 className="text-sm font-semibold">Réel P1 du moteur</h4>
-            <p className="text-xs text-muted-foreground">Montant P1 HT réellement dû, calculé par le moteur et importé chaque mois ; la régularisation le compare aux acomptes facturés (Facturation › P1).</p>
-            {lignes === null ? <Loader2 className="h-4 w-4 animate-spin" /> : lignes.length === 0 ? <p className="text-sm text-muted-foreground">Aucun réel importé pour ce site.</p> : (
+            <h4 className="text-sm font-semibold">P1 dû importé</h4>
+            <p className="text-xs text-muted-foreground">Seulement si le P1 dû est établi hors de Zenergya : montant P1 HT du mois, importé, que la régularisation compare aux acomptes facturés (Facturation › Régularisation P1). Sans import, Zenergya calcule le dû lui-même (décompte de saison, prix annuel).</p>
+            {lignes === null ? <Loader2 className="h-4 w-4 animate-spin" /> : lignes.length === 0 ? <p className="text-sm text-muted-foreground">Aucun P1 dû importé pour ce site.</p> : (
                 <>
                     <table className="w-full text-xs">
                         <thead><tr className="text-muted-foreground"><th className="text-left font-normal">Mois</th><th className="text-left font-normal">Usage</th><th className="text-right font-normal">Montant HT</th><th className="text-left font-normal pl-4">Import</th></tr></thead>
@@ -476,7 +476,7 @@ function VersionDialog({ editing, onClose, onSubmit, busy, stations }: {
                         {def.kind === 'enum' || def.kind === 'station' ? (
                             <Select value={value} onValueChange={setValue}>
                                 <SelectTrigger><SelectValue placeholder="Choisir" /></SelectTrigger>
-                                <SelectContent>{(def.kind === 'station' ? stations : def.options!).map(o => <SelectItem key={o} value={o}>{o.replace(/_/g, ' ')}</SelectItem>)}</SelectContent>
+                                <SelectContent>{(def.kind === 'station' ? stations : def.options!).map(o => <SelectItem key={o} value={o}>{def.libelles?.[o] ?? o.replace(/_/g, ' ')}</SelectItem>)}</SelectContent>
                             </Select>
                         ) : def.kind === 'interessement' ? (
                             <div className="space-y-2">

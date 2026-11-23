@@ -16,7 +16,7 @@ import { useData } from '@/context/data-context';
 import { emitP1RegularisationAction, previewP1RegularisationAction, type RegulPreviewView } from '@/lib/billing/p1-actions';
 
 /**
- * Régularisation P1 d'un contrat : réel du moteur (import « Réel P1 du moteur ») − acomptes P1 facturés, plus les
+ * Régularisation P1 d'un contrat : P1 dû (calculé par Zenergya, ou importé) − P1 déjà facturé, plus les
  * intéressements de la période. Lignes positives : une facture ; en faveur du client : un avoir de régularisation.
  */
 
@@ -33,8 +33,8 @@ export default function P1RegularisationPage() {
     const [preview, setPreview] = useState<RegulPreviewView | null>(null);
     const [busy, setBusy] = useState(false);
 
-    // Contrats facturant des acomptes P1.
-    const candidats = useMemo(() => contracts.filter(c => services.some(s => s.contractId === c.id && s.p1Mode === 'acompte')), [contracts, services]);
+    // Contrats à régulariser : en acomptes P1, ou facturés au DJU (prix annuel de l'exercice).
+    const candidats = useMemo(() => contracts.filter(c => services.some(s => s.contractId === c.id && (s.p1Mode === 'acompte' || s.p1Mode === 'dju'))), [contracts, services]);
 
     const load = async () => {
         setBusy(true);
@@ -58,16 +58,25 @@ export default function P1RegularisationPage() {
             <CardHeader>
                 <CardTitle>Régularisation P1</CardTitle>
                 <CardDescription>
-                    Réel P1 calculé par le moteur (<Link className="underline" href="/imports">import « Réel P1 du moteur »</Link>) moins les acomptes P1 facturés,
-                    plus les intéressements de la période. En faveur du client : avoir de régularisation (les factures d&apos;acompte restent valables).
+                    Compare le P1 réellement dû sur la période à ce qui a déjà été facturé, et émet la différence : une facture si le client doit un complément,
+                    un avoir s&apos;il a trop payé (les factures déjà émises restent valables). Les intéressements de la période s&apos;y ajoutent.
                 </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
+                <div className="rounded-md border bg-muted/30 p-3 text-xs text-muted-foreground">
+                    <p className="font-medium text-foreground">D&apos;où vient le P1 dû</p>
+                    <ul className="mt-1 list-disc space-y-0.5 pl-4">
+                        <li><span className="text-foreground">Contrat en acomptes, décompte de saison</span> : calculé par Zenergya en fin de saison (quantité de référence × prix de base × C/C0 de la saison × DJU réels / DJU contractuels).</li>
+                        <li><span className="text-foreground">Site facturé au DJU avec un prix annuel</span> : calculé par Zenergya à la clôture de l&apos;exercice (C/C0 de l&apos;exercice appliqué aux mois facturés).</li>
+                        <li><span className="text-foreground">P1 dû importé</span> : seulement si le contrat est réglé ainsi, quand le dû est établi hors de Zenergya (<Link className="underline" href="/imports">import « P1 dû »</Link>).</li>
+                    </ul>
+                    <p className="mt-1">Le choix entre décompte calculé et dû importé se fait dans le paramétrage P1 du contrat, « Régularisation des acomptes ». L&apos;ECS et le chauffage facturés au compteur sont déjà au réel : ils ne se régularisent pas.</p>
+                </div>
                 <div className="flex flex-wrap items-end gap-3">
                     <div className="space-y-1">
                         <Label>Contrat</Label>
                         <SearchableSelect className="w-80" value={contractId} onValueChange={v => { setContractId(v); setPreview(null); }} disabled={isLoading}
-                            placeholder={candidats.length ? 'Choisir un contrat' : 'Aucun contrat en acomptes P1'} searchPlaceholder="N° de contrat ou client…"
+                            placeholder={candidats.length ? 'Choisir un contrat' : 'Aucun contrat en acomptes P1 ou facturé au DJU'} searchPlaceholder="N° de contrat ou client…"
                             options={candidats.map(c => ({ value: c.id, label: `${c.contractNumber} — ${c.clientName}` }))} />
                     </div>
                     <div className="space-y-1"><Label>Du mois</Label><Input type="month" value={debut} onChange={e => { setDebut(e.target.value); setPreview(null); }} className="w-40" /></div>
@@ -79,11 +88,12 @@ export default function P1RegularisationPage() {
                     <div className="space-y-3">
                         {preview.errors.length > 0 && <div className="rounded-md border border-destructive p-3 text-sm text-destructive">{preview.errors.map(e => <p key={e}>{e}</p>)}</div>}
                         <Table>
-                            <TableHeader><TableRow><TableHead>Site</TableHead><TableHead>Usage</TableHead><TableHead className="text-right">Réel du moteur</TableHead><TableHead className="text-right">Acomptes facturés</TableHead><TableHead className="text-right">Écart HT</TableHead></TableRow></TableHeader>
+                            <TableHeader><TableRow><TableHead>Site</TableHead><TableHead>Usage</TableHead><TableHead>Calcul du dû</TableHead><TableHead className="text-right">P1 dû</TableHead><TableHead className="text-right">Déjà facturé</TableHead><TableHead className="text-right">Écart HT</TableHead></TableRow></TableHeader>
                             <TableBody>
                                 {preview.detail.map(d => (
                                     <TableRow key={`${d.siteId}-${d.usage}`}>
                                         <TableCell>{d.site}</TableCell><TableCell>{({ total: 'total', chauffage: 'chauffage', ecs: 'ECS' })[d.usage]}</TableCell>
+                                        <TableCell className="text-xs text-muted-foreground">{({ decompte: 'Décompte de saison (calculé)', prix_annuel: 'Prix annuel (calculé)', importe: 'Dû importé' })[d.source]}</TableCell>
                                         <TableCell className="text-right">{eur(d.reel)}</TableCell>
                                         <TableCell className="text-right">{eur(d.acomptes)}</TableCell>
                                         <TableCell className={`text-right font-medium ${d.ecart < 0 ? 'text-green-700' : ''}`}>{eur(d.ecart)}</TableCell>
