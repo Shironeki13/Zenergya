@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { conversion, factureAuCompteur, moisCouverts, type CompteurFacture, type ContexteCompteur } from '../src/lib/billing/p1-compteur';
 import { dueInvoiceLines, type BillingInput } from '../src/lib/billing/contract-billing';
-import { controleChangement, correctionChangements, lireChangement } from '../src/lib/releves';
+import { controleChangement, correctionChangements, lireChangement, resoudreDoublons, texteDoublon } from '../src/lib/releves';
 import { texteCompteur } from '../src/lib/billing/p1-compteur';
 
 // Gaz en m³, QE 0,0105 MWh/m³ ; relevés de fin de mois.
@@ -171,4 +171,35 @@ test('changement de compteur : (dépose − relevé précédent) + (index du nou
     assert.deepEqual([lireChangement({ depose: 1, pose: 0 }), lireChangement({ depose: 1 }), lireChangement(undefined)], [{ depose: 1, pose: 0 }, null, null]);
     assert.equal(correctionChangements(change.readings, '2025-09-30', '2025-10-31'), 107980);
     assert.equal(correctionChangements(change.readings, '2025-10-20', '2025-10-31'), 0);
+});
+
+test('relevés en double le même jour : le plus proche du précédent est retenu, signalé dans le détail ; le changement de compteur l\'emporte', () => {
+    const r = (id: string, date: string, value: number, plus: object = {}) => ({ id, date, value, ...plus });
+    // Un index à zéro saisi par erreur le même jour que le bon : écarté.
+    const serie = [r('a', '2025-09-30', 100000), r('z', '2025-10-31', 0), r('b', '2025-10-31', 110000), r('c', '2025-11-30', 125000)];
+    const res = resoudreDoublons(serie);
+    assert.deepEqual([res.retenus.map(x => x.id), res.doublons], [['a', 'b', 'c'], [{ date: '2025-10-31', retenu: 110000, ecartes: [0], motif: res.doublons[0].motif }]]);
+    assert.equal(texteDoublon(res.doublons[0], 'm³').replace(/[\u202f\u00a0]/g, ' '), "Deux relevés le 31/10/2025 : 110 000 et 0 m³. L'index 110 000 est retenu, le plus proche du relevé précédent (100 000).");
+    // En tête de série : le plus proche du relevé suivant ; seul : le plus grand ; même index deux fois : pas une anomalie.
+    assert.deepEqual(resoudreDoublons([r('x', '2025-09-30', 5), r('a', '2025-09-30', 100000), r('b', '2025-10-31', 110000)]).retenus.map(x => x.id), ['a', 'b']);
+    assert.deepEqual(resoudreDoublons([r('x', '2025-09-30', 5), r('a', '2025-09-30', 9)]).retenus.map(x => x.id), ['a']);
+    assert.deepEqual(resoudreDoublons([r('a', '2025-09-30', 9), r('b', '2025-09-30', 9)]).doublons, []);
+    // Trois relevés le même jour.
+    const trois = resoudreDoublons([r('a', '2025-09-30', 100), r('b', '2025-10-31', 150), r('c', '2025-10-31', 900), r('d', '2025-10-31', 0)]);
+    assert.deepEqual([trois.retenus.map(x => x.id), trois.doublons[0].ecartes.sort()], [['a', 'b'], [0, 900]]);
+    assert.match(texteDoublon(trois.doublons[0]), /^3 relevés le 31\/10\/2025 : 150 et /);
+    // Le relevé qui porte le changement de compteur l'emporte, même plus éloigné du précédent.
+    const chg = resoudreDoublons([r('a', '2025-09-30', 100000), r('b', '2025-10-31', 108000), r('c', '2025-10-31', 20, { changement: { depose: 108000, pose: 20 } })]);
+    assert.deepEqual([chg.retenus.map(x => x.id), chg.doublons[0].motif], [['a', 'c'], 'il porte le changement de compteur']);
+
+    // Facturation : octobre sur l'index retenu (110 000), le doublon est cité dans le détail et le texte de la ligne.
+    const f = factureAuCompteur(ctx({ compteurs: () => [{ ...gaz, readings: serie }] }));
+    assert.ok(typeof f !== 'string');
+    const c = f.detail[0].compteurs[0];
+    assert.deepEqual([c.fin.readingId, c.fin.index, c.volume, c.doublons?.map(d => [d.date, d.retenu, d.ecartes])], ['b', 110000, 10000, [['2025-10-31', 110000, [0]]]]);
+    assert.match(texteCompteur(f).replace(/[\u202f\u00a0]/g, ' '), /Deux relevés le 31\/10\/2025 : 110 000 et 0\. L'index 110 000 est retenu/);
+    // Novembre repart du relevé retenu : pas de fausse baisse, et le doublon de l'index de départ reste cité.
+    const nov = factureAuCompteur(ctx({ debut: '2025-11-01', fin: '2025-11-30', compteurs: () => [{ ...gaz, readings: serie }] }));
+    assert.ok(typeof nov !== 'string');
+    assert.deepEqual([nov.detail[0].compteurs[0].debut.index, nov.detail[0].compteurs[0].volume, nov.detail[0].compteurs[0].doublons?.length], [110000, 15000, 1]);
 });

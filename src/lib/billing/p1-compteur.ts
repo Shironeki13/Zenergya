@@ -8,13 +8,15 @@
  *   ECS en m³) ; compteurs signés de la formule de NC du site, ou compteur de la prestation ;
  * - changement de compteur porté par un relevé (index de dépose et de pose) : la consommation ajoute (dépose − pose),
  *   soit (dépose − index précédent) + (index du nouveau compteur − pose) ; un index en baisse sans changement bloque ;
+ * - plusieurs relevés le même jour à des index différents : un seul compte, le plus proche du relevé précédent
+ *   (lib/releves) ; le détail du mois le signale ;
  * - mois partiel (début ou fin de contrat, de prestation) : relevé à la date de coupure s'il existe (méthode
  *   « relevé »), sinon consommation du mois × jours couverts / jours du mois, ou × DJU couverts / DJU du mois ;
  * - montant = quantité × prix du mois (prix révisé P1 ou prix de la prestation révisé) × coefficient de gestion.
  * Chaque mois garde son détail (compteurs, index, prix, coefficients) : c'est l'annexe de la facture.
  */
 
-import { changementsEntre, type ChangementCompteur } from '@/lib/releves';
+import { changementsEntre, resoudreDoublons, texteDoublon, type ChangementCompteur, type Doublon } from '@/lib/releves';
 
 export type UsageCompteur = 'chauffage' | 'ecs';
 /** Mois partiel : relevé à la date de coupure s'il existe, sinon jours ou DJU ; ou toujours jours, toujours DJU. */
@@ -49,6 +51,8 @@ export type CompteurMois = {
     debut: IndexPris; fin: IndexPris; volume: number; quantite: number;
     /** Changements de compteur compris dans la consommation (après l'index de début, jusqu'à celui de fin). */
     changements?: { date: string; depose: number; pose: number }[];
+    /** Relevés en double (même jour, index différents) sur l'index de début ou de fin : celui qui a été retenu. */
+    doublons?: Doublon[];
 };
 export type MoisFacture = {
     mois: string;
@@ -100,6 +104,8 @@ function changements(tri: ReleveCompteur[], d: IndexPris, f: IndexPris) {
     const liste = changementsEntre(tri, d.date, f.date).map(r => ({ date: r.date, depose: r.changement.depose, pose: r.changement.pose }));
     return { liste, correction: liste.reduce((s, x) => s + x.depose - x.pose, 0) };
 }
+/** Doublons qui touchent l'index de début ou de fin pris. */
+const doublonsDe = (doublons: Doublon[], d: IndexPris, f: IndexPris) => doublons.filter(x => x.date === d.date.slice(0, 10) || x.date === f.date.slice(0, 10));
 const baisse = (code: string, d: IndexPris, f: IndexPris, avecChangement: boolean) => avecChangement
     ? `consommation négative du compteur ${code} entre le ${fr(d.date)} (${d.index}) et le ${fr(f.date)} (${f.index}) malgré le changement de compteur : index de dépose et de pose à vérifier`
     : `index du compteur ${code} en baisse (${d.index} → ${f.index}) : changement de compteur à déclarer sur le relevé (index de dépose et de pose), ou index à corriger`;
@@ -148,7 +154,7 @@ export function factureAuCompteur(ctx: ContexteCompteur): DetailCompteur | strin
         for (const c of compteurs) {
             const conv = conversion(c, ctx.usage);
             if (typeof conv === 'string') return conv;
-            const tri = [...c.readings].sort((a, b) => a.date.localeCompare(b.date));
+            const { retenus: tri, doublons } = resoudreDoublons(c.readings);
             const finR = tri.filter(r => r.date.slice(0, 7) === mois).pop();
             const deja = dernier.get(c.id);
             const debutR = deja ?? (() => { const r = tri.filter(x => x.date < debutMois).pop(); return r ? pris(r) : null; })();
@@ -167,7 +173,7 @@ export function factureAuCompteur(ctx: ContexteCompteur): DetailCompteur | strin
             const chg = changements(tri, d, f);
             const volume = r6(f.index - d.index + chg.correction);
             if (volume < 0) return baisse(c.code, d, f, chg.liste.length > 0);
-            lignes.push({ meterId: c.id, code: c.code, ...(c.unit && { unit: c.unit }), signe: c.signe, qe: c.qe, conversion: conv, debut: d, fin: f, volume, quantite: r6(c.signe * volume * conv), ...(chg.liste.length && { changements: chg.liste }), exact });
+            lignes.push({ meterId: c.id, code: c.code, ...(c.unit && { unit: c.unit }), signe: c.signe, qe: c.qe, conversion: conv, debut: d, fin: f, volume, quantite: r6(c.signe * volume * conv), ...(chg.liste.length && { changements: chg.liste }), ...(doublonsDe(doublons, d, f).length && { doublons: doublonsDe(doublons, d, f) }), exact });
         }
 
         // Méthode effective du mois.
@@ -190,7 +196,7 @@ export function factureAuCompteur(ctx: ContexteCompteur): DetailCompteur | strin
                 // Prorata : la consommation du mois complet sert de base (relevés de fin de mois).
                 for (const l of lignes) if (l.exact) {
                     const c = compteurs.find(x => x.id === l.meterId)!;
-                    const tri = [...c.readings].sort((a, b) => a.date.localeCompare(b.date));
+                    const { retenus: tri, doublons } = resoudreDoublons(c.readings);
                     const finR = tri.filter(r => r.date.slice(0, 7) === mois).pop();
                     const debutR = dernier.get(c.id) ?? (() => { const r = tri.filter(x => x.date < debutMois).pop(); return r ? pris(r) : null; })();
                     if (!finR) return `aucun relevé du compteur ${c.code} en ${moisFr(mois)}`;
@@ -198,6 +204,7 @@ export function factureAuCompteur(ctx: ContexteCompteur): DetailCompteur | strin
                     const chg = changements(tri, debutR, pris(finR));
                     l.debut = debutR; l.fin = pris(finR); l.volume = r6(l.fin.index - l.debut.index + chg.correction);
                     if (chg.liste.length) l.changements = chg.liste; else delete l.changements;
+                    if (doublonsDe(doublons, l.debut, l.fin).length) l.doublons = doublonsDe(doublons, l.debut, l.fin); else delete l.doublons;
                     if (l.volume < 0) return baisse(c.code, l.debut, l.fin, chg.liste.length > 0);
                     l.quantite = r6(l.signe * l.volume * l.conversion);
                 }
@@ -230,7 +237,7 @@ export function factureAuCompteur(ctx: ContexteCompteur): DetailCompteur | strin
 export function texteCompteur(d: DetailCompteur): string {
     const n = (x: number, dec = 3) => x.toLocaleString('fr-FR', { maximumFractionDigits: dec });
     return d.detail.map(m => {
-        const compteurs = m.compteurs.map(c => `${c.signe < 0 ? '−' : ''}${c.code} : ${n(c.fin.index)} (${fr(c.fin.date)}${c.fin.type && c.fin.type !== 'REEL' ? `, ${c.fin.type.toLowerCase()}` : ''}) − ${n(c.debut.index)} (${fr(c.debut.date)})${(c.changements ?? []).map(x => ` ; compteur changé le ${fr(x.date)} (dépose ${n(x.depose)}, pose ${n(x.pose)})`).join('')}`).join(' ; ');
+        const compteurs = m.compteurs.map(c => `${c.signe < 0 ? '−' : ''}${c.code} : ${n(c.fin.index)} (${fr(c.fin.date)}${c.fin.type && c.fin.type !== 'REEL' ? `, ${c.fin.type.toLowerCase()}` : ''}) − ${n(c.debut.index)} (${fr(c.debut.date)})${(c.changements ?? []).map(x => ` ; compteur changé le ${fr(x.date)} (dépose ${n(x.depose)}, pose ${n(x.pose)})`).join('')}${(c.doublons ?? []).map(x => ` ; ${texteDoublon(x)}`).join('')}`).join(' ; ');
         const prorata = m.methode === 'jours' ? ` × ${m.jours}/${m.joursMois} j` : m.methode === 'dju' ? ` × ${n(m.dju!.couverts, 1)}/${n(m.dju!.mois, 1)} DJU` : '';
         return `${moisFr(m.mois)} : ${compteurs} → ${n(m.quantiteMois)} ${d.unite}${prorata} × ${n(m.prixApplique, 4)} €/${d.unite} = ${m.montant.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €`;
     }).join(' | ');

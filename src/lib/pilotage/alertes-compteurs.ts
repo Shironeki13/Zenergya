@@ -1,3 +1,4 @@
+import { resoudreDoublons, texteDoublon } from '@/lib/releves';
 import { daysIn } from '@/lib/billing/contract-billing';
 
 /**
@@ -68,18 +69,16 @@ function proche(readings: RelevePilotage[], date: string, tolerance: number): Re
 export function alertesCompteur(m: CompteurSuivi, relevesBruts: RelevePilotage[], today: string, seuils = SEUILS): Alerte[] {
     const base = { meterId: m.id, code: m.code, site: m.site, siteId: m.siteId, client: m.client };
     const out: Alerte[] = [];
-    const readings = [...relevesBruts].sort((a, b) => a.date.localeCompare(b.date) || a.id.localeCompare(b.id));
+    // Relevés en double le même jour : un seul compte pour la suite (et pour la facturation), le plus proche du précédent.
+    const { retenus: readings, doublons } = resoudreDoublons([...relevesBruts].sort((a, b) => a.date.localeCompare(b.date) || a.id.localeCompare(b.id)));
     const unite = m.unit ?? '';
     const enService = m.status !== 'off';
 
     // Anomalies d'index des douze derniers mois (les plus anciennes ont été traitées ou sont sans objet).
     const depuisUnAn = addDays(today, -365);
-    // Relevés contradictoires le même jour.
-    for (let i = 1; i < readings.length; i++) {
-        const [a, b] = [readings[i - 1], readings[i]];
-        if (b.date >= depuisUnAn && a.date === b.date && a.value !== b.value) {
-            out.push({ ...base, type: 'doublon', gravite: 'attention', date: b.date, message: `Deux relevés le ${fr(b.date)} : ${n(a.value)} et ${n(b.value)} ${unite}.` });
-        }
+    // Relevés contradictoires le même jour : l'alerte dit lequel est retenu.
+    for (const d of doublons) if (d.date >= depuisUnAn) {
+        out.push({ ...base, type: 'doublon', gravite: 'attention', date: d.date, message: `${texteDoublon(d, unite)} Corrigez ou supprimez l'autre relevé.` });
     }
     // Index en baisse (sauf relevé « corrigé », ou relevé qui porte un changement de compteur : index de dépose et de pose).
     for (let i = 1; i < readings.length; i++) {

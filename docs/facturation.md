@@ -85,6 +85,12 @@ Facturation → Régularisation P1.
   une facture, un intéressement ou une régularisation garde son index, sa date et son type (commentaire libre, pas
   de suppression) ; un nouveau relevé ne se date pas avant le dernier relevé facturé du compteur. L'écran signale
   les relevés figés et la période facturée.
+- **Relevés en double le même jour** (index différents) : un seul compte, pour la facturation au compteur comme pour
+  les alertes — **le plus proche du relevé précédent** ; en tête de série, du relevé suivant ; sans voisin, le plus
+  grand. Un relevé qui porte un changement de compteur l'emporte. Un index à zéro saisi par erreur le même jour que le
+  bon est ainsi écarté au lieu de créer une consommation fantôme. C'est une règle de vraisemblance : elle choisit pour
+  pouvoir calculer, sans rien corriger ; la ligne de facture, l'annexe et l'alerte « Relevés contradictoires » nomment
+  les index et celui qui est retenu. Le relevé écarté se corrige ou se supprime à la source.
 - **Changement de compteur** : il se déclare sur le relevé du jour (case « Le compteur a été changé ce jour-là » ;
   colonnes « Index de dépose » et « Index de pose » de l'import et de l'API). Le relevé porte l'index de **dépose** de
   l'ancien compteur et l'index de **pose** du nouveau ; son index est celui du nouveau compteur. Consommation depuis
@@ -226,7 +232,7 @@ Calculées à la demande sur tous les relevés (`src/lib/pilotage/alertes-compte
 | Index en baisse | critique | relevé plus bas que le précédent, hors relevé « corrigé » et hors changement de compteur déclaré (12 derniers mois) |
 | Relevé ECS manquant | critique | ECS facturée au relevé sans relevé du dernier mois échu (facture bloquée) |
 | Dérive de consommation | attention | conso/jour du dernier intervalle × > 2 ou < 0,5 par rapport à la même période l'an passé (± 20 jours), sinon à la médiane des 6 derniers intervalles (3 au moins) ; intervalles de 7 jours minimum |
-| Relevés contradictoires | attention | deux index différents le même jour (12 derniers mois) |
+| Relevés contradictoires | attention | plusieurs index différents le même jour (12 derniers mois) ; l'alerte dit lequel est retenu |
 | Sans relevé | attention | compteur en service sans relevé depuis 45 jours, ou jamais relevé |
 | Relevé estimé | info | dernier relevé estimé depuis plus de 30 jours |
 | Consommation nulle | info | compteur ECS à index inchangé depuis 60 jours |
