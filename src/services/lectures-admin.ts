@@ -149,6 +149,31 @@ const syntheseFactures: Lecture = async (_a, garde) => {
     return { totalFactureHT: Math.round(emises.reduce((t, f) => t + n(f.subtotal), 0) * 100) / 100, parMois, dernierePeriode, recentes, nombre: factures.length };
 };
 
+/**
+ * Documents de contrat à suivre (tableau de bord de la contrathèque), dans le périmètre : en attente de validation,
+ * refusés, et résiliations validées (leur date d'effet peut être à venir). Champs utiles seulement.
+ */
+const documentsASuivre: Lecture = async (_a, garde) => {
+    const contrats = await garde.ids('contracts');
+    const jourDe = (v: unknown) => { const x = s(v); return x ? x.slice(0, 10) : null; };
+    const sources: [string, (d: Doc) => string][] = [['amendments', d => (d.nature === 'os' ? 'os' : 'avenant')], ['renewals', () => 'reconduction'], ['terminations', () => 'resiliation'], ['trusteeChanges', () => 'syndic'], ['beChanges', () => 'be']];
+    const out: unknown[] = [];
+    for (const [coll, type] of sources) {
+        const statuts = coll === 'terminations' ? ['pending_validation', 'refused', 'validated'] : ['pending_validation', 'refused'];
+        for (const d of docs(await adminDb.collection(coll).where('validationStatus', 'in', statuts).get())) {
+            if (contrats && !contrats.has(s(d.contractId))) continue;
+            out.push({
+                type: type(d), id: s(d.id), contractId: s(d.contractId),
+                etat: d.validationStatus === 'refused' ? 'refuse' : d.validationStatus === 'validated' ? 'valide' : 'en_attente',
+                deposeLe: jourDe(d.createdAt), deposePar: s(d.createdBy), effet: jourDe(d.effectiveDate ?? d.newEndDate),
+                resume: s(d.description ?? d.reason ?? d.newRepresentative ?? d.newBe ?? d.duration),
+                ...(d.refusalReason ? { motifRefus: s(d.refusalReason) } : {}), decideLe: jourDe(d.validatedAt),
+            });
+        }
+    }
+    return out;
+};
+
 export const LECTURES = {
     client: fiche('clients', d => d.id),
     contrat: fiche('contracts', d => s(d.clientId) || null),
@@ -185,6 +210,7 @@ export const LECTURES = {
     facturesDePeriode, avoirsDePeriode, facturesImpayees, facturesDuClient, numeroDeFacture, rechercheFactures, syntheseFactures,
     /** Listes entières, réduites au périmètre. */
     devisTous: (async (_a, garde) => garde.filtrer(docs(await adminDb.collection('quotes').get()), d => s(d.clientId))) as Lecture,
+    documentsASuivre,
     affaires: (async (_a, garde) => garde.filtrer(docs(await adminDb.collection('projects').get()), d => s(d.clientId))) as Lecture,
 } satisfies Record<string, Lecture>;
 

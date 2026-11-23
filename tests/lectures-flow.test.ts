@@ -64,7 +64,7 @@ test('éléments d\'un objet : ceux du parent demandé, triés ; parent hors pé
     assert.deepEqual((await lire('versionsDuDevis', { id: 'lc-dl' }, lyon) as { id: string }[]).map(x => x.id), ['lc-vl1', 'lc-vl2']);
     assert.deepEqual((await lire('facturesDuDevis', { id: 'lc-dl' }, lyon) as { id: string }[]).map(x => x.id), ['lc-fl2', 'lc-fl']);
     // Toutes les lectures nommées sont couvertes par ce test.
-    assert.deepEqual(Object.keys(LECTURES).sort(), [...Object.keys(PARENTS), ...Object.keys(attendu), 'devisTous', 'affaires', 'facturesDePeriode', 'avoirsDePeriode', 'facturesImpayees', 'numeroDeFacture', 'rechercheFactures', 'syntheseFactures'].sort());
+    assert.deepEqual(Object.keys(LECTURES).sort(), [...Object.keys(PARENTS), ...Object.keys(attendu), 'devisTous', 'affaires', 'documentsASuivre', 'facturesDePeriode', 'avoirsDePeriode', 'facturesImpayees', 'numeroDeFacture', 'rechercheFactures', 'syntheseFactures'].sort());
 });
 
 test('listes entières (devis, affaires) : réduites au périmètre ; lecture inconnue refusée', async () => {
@@ -144,4 +144,18 @@ test('lectures ciblées : numéro d\'une facture, recherche par début de numér
     assert.equal((await lire('syntheseFactures', {}, admin) as Synthese).dernierePeriode['lc-kp'].slice(0, 10), '2026-02-28');
     assert.equal(apres.dernierePeriode['lc-kp'], undefined);
     assert.equal(JSON.stringify(apres).includes('lineItems'), false);
+});
+
+test('documents à suivre (contrathèque) : en attente, refusés et résiliations validées, réduits au périmètre, champs utiles seulement', async () => {
+    // lc-kl : contrat du périmètre de Lyon ; lc-kp : contrat hors périmètre.
+    await set('amendments', 'lc-doc-a', { contractId: 'lc-kl', validationStatus: 'pending_validation', createdAt: '2026-11-10T08:00:00Z', createdBy: 'adv@v.fr', effectiveDate: '2026-12-01', description: 'Ajout d\'un site', documentUrl: 'https://x/secret.pdf' });
+    await set('amendments', 'lc-doc-os', { contractId: 'lc-kl', nature: 'os', validationStatus: 'validated', createdAt: '2026-10-01T08:00:00Z', effectiveDate: '2026-10-05' });   // validé : pas à suivre
+    await set('trusteeChanges', 'lc-doc-s', { contractId: 'lc-kl', validationStatus: 'refused', refusalReason: 'PV manquant', createdAt: '2026-11-01T08:00:00Z', validatedAt: '2026-11-03T08:00:00Z', newRepresentative: 'Nexity', effectiveDate: '2027-01-01' });
+    await set('terminations', 'lc-doc-r', { contractId: 'lc-kl', validationStatus: 'validated', createdAt: '2026-11-02T08:00:00Z', effectiveDate: '2027-03-31', reason: 'Vente' });
+    await set('renewals', 'lc-doc-p', { contractId: 'lc-kp', validationStatus: 'pending_validation', createdAt: '2026-11-05T08:00:00Z', newEndDate: '2028-01-01', duration: '1 an' });
+    const lus = async (user: SessionUser) => (await lire('documentsASuivre', {}, user) as { id: string; type: string; etat: string }[]).filter(d => d.id.startsWith('lc-doc')).map(d => `${d.id}:${d.type}:${d.etat}`).sort();
+    assert.deepEqual(await lus(lyon), ['lc-doc-a:avenant:en_attente', 'lc-doc-r:resiliation:valide', 'lc-doc-s:syndic:refuse']);
+    assert.deepEqual(await lus(admin), ['lc-doc-a:avenant:en_attente', 'lc-doc-p:reconduction:en_attente', 'lc-doc-r:resiliation:valide', 'lc-doc-s:syndic:refuse']);
+    const a = (await lire('documentsASuivre', {}, lyon) as Record<string, unknown>[]).find(d => d.id === 'lc-doc-a')!;
+    assert.deepEqual(a, { type: 'avenant', id: 'lc-doc-a', contractId: 'lc-kl', etat: 'en_attente', deposeLe: '2026-11-10', deposePar: 'adv@v.fr', effet: '2026-12-01', resume: 'Ajout d\'un site', decideLe: null });
 });
