@@ -10,6 +10,8 @@ import {
 import { archiveDocumentSafely } from '@/services/document-archive';
 import type { Contract } from '@/lib/types';
 import { decompteSaison, type DecompteSaison } from '@/lib/billing/p1-decompte';
+import { exerciceDe, prixAnnuel, type PartieFacturee, type PrixAnnuel } from '@/lib/billing/p1-prix-annuel';
+import type { PeriodeReference } from '@/lib/p1/parametrage';
 import { coefficientSaison } from '@/lib/p1/formules';
 import { partieChauffee, saisonDe, type SaisonChauffe } from '@/lib/p1/saisons';
 import { P1_DOC_ID, formuleAu, valeurAu, type P1ContractDoc, type P1MeterDoc, type P1SiteDoc } from '@/lib/p1/stockage';
@@ -70,6 +72,13 @@ export async function prepareP1Regularisation(contractId: string, debut: string,
         for (const k of [...r.keys()]) if (k.startsWith('chauffage|') || k.startsWith('total|')) r.delete(k);
         for (const d of liste) for (const m of d.mois) if (mois.includes(m.mois)) r.set(`chauffage|${m.mois}`, m.montant);
     }
+    // Prix annuel (formule à périodicité annuelle) des sites facturés au DJU : exercice clos, dû au C/C0 de l'exercice.
+    const { prix: prixAnnuels, erreurs: erreursPrix } = await prixAnnuelsDju(contract.id, mois, p1Services, invoices);
+    for (const [siteId, liste] of prixAnnuels) {
+        if (!reel.has(siteId)) reel.set(siteId, new Map());
+        const r = reel.get(siteId)!;
+        for (const x of liste) for (const m of x.mois) { r.delete(`total|${m.mois}`); r.set(`chauffage|${m.mois}`, m.du); }
+    }
     const documents: RegulDocument[] = [
         ...invoices.map(i => ({ id: i.id, kind: 'invoice' as const, status: i.status, cancelledByCreditNoteId: i.cancelledByCreditNoteId, lineItems: i.lineItems ?? [] })),
         ...creditNotes.map(c => ({ id: c.id, kind: 'creditNote' as const, status: c.get('status'), lineItems: c.get('lineItems') ?? [] })),
@@ -96,6 +105,7 @@ export async function prepareP1Regularisation(contractId: string, debut: string,
                 ecsAuReleve: ofSite.some(d => d.get('p1Type') === 'ECS' && d.get('p1Mode') === 'releve'),
                 chauffageAuReleve: ofSite.some(d => d.get('p1Type') === 'CHAUFFAGE' && d.get('p1Mode') === 'releve'),
                 ...(decomptes.has(site.id) && { decompte: decomptes.get(site.id) }),
+                ...(prixAnnuels.has(site.id) && { prixAnnuel: prixAnnuels.get(site.id) }),
             };
         }),
         reel, documents,
@@ -104,7 +114,7 @@ export async function prepareP1Regularisation(contractId: string, debut: string,
             return { id: i.id, siteId: String(svc?.get('siteId') ?? ''), seasonLabel: String(i.get('seasonLabel') ?? ''), endDate: toDay(i.get('endDate')) ?? '', amount: Number(i.get('interestAmount') ?? 0) };
         }),
     });
-    return { ...result, errors: [...erreursDecompte, ...result.errors], contract, billingVersion: Number(versionSnap.get('billingVersion') ?? 0) };
+    return { ...result, errors: [...erreursDecompte, ...erreursPrix, ...result.errors], contract, billingVersion: Number(versionSnap.get('billingVersion') ?? 0) };
 }
 
 /**
@@ -169,6 +179,64 @@ async function decomptesMti(contractId: string, siteIds: string[], mois: string[
         if (liste.length) decomptes.set(siteId, liste);
     }
     return { decomptes, erreurs };
+}
+
+/**
+ * Prix annuel des sites facturés « MTI au DJU » dont la formule P1 chauffage est à périodicité annuelle : pour chaque
+ * exercice (année civile ou saison de chauffe, selon la période de référence du site) **entièrement compris** dans la
+ * période et clos, le P1 dû au C/C0 de l'exercice, à comparer aux mois facturés au prix du mois. Un exercice que la
+ * période ne fait que commencer est laissé (il n'est pas clos) ; un exercice dont elle ne couvre que la fin est refusé.
+ */
+async function prixAnnuelsDju(contractId: string, mois: string[], p1Services: FirebaseFirestore.QueryDocumentSnapshot[], invoices: Awaited<ReturnType<typeof getInvoicesByContract>>):
+    Promise<{ prix: Map<string, PrixAnnuel[]>; erreurs: string[] }> {
+    const prix = new Map<string, PrixAnnuel[]>();
+    const erreurs: string[] = [];
+    const sitesDju = [...new Set(p1Services.filter(d => d.get('p1Mode') === 'dju' && d.get('p1Type') !== 'ECS').map(d => String(d.get('siteId'))))];
+    if (!sitesDju.length) return { prix, erreurs };
+    const contractDoc = (await adminDb.collection('p1Parametrage').doc(P1_DOC_ID.contract(contractId)).get()).data() as P1ContractDoc | undefined;
+    // Rien à lire de plus si aucune formule chauffage du contrat n'est à prix annuel.
+    const annuelle = Object.values(contractDoc?.formules ?? {}).some(f => !f.retireLe && f.usage === 'chauffage' && Object.values(f.versions ?? {}).some(v => (v as { valeur?: { periodicite?: string } }).valeur?.periodicite?.startsWith('annuel')));
+    if (!annuelle) return { prix, erreurs };
+    const [siteSnaps, meters, { series }, noms] = await Promise.all([
+        adminDb.getAll(...sitesDju.map(id => adminDb.collection('p1Parametrage').doc(P1_DOC_ID.site(id)))),
+        Promise.all(chunks(sitesDju).map(c => adminDb.collection('meters').where('siteId', 'in', c).get())).then(x => x.flatMap(y => y.docs)),
+        loadSeries(),
+        Promise.all(chunks(sitesDju).map(c => adminDb.collection('sites').where(FieldPath.documentId(), 'in', c).get())).then(x => new Map(x.flatMap(y => y.docs).map(d => [d.id, String(d.get('name') ?? d.id)]))),
+    ]);
+    const meterDocs = meters.length ? new Map((await adminDb.getAll(...meters.map(m => adminDb.collection('p1Parametrage').doc(P1_DOC_ID.meter(m.id))))).filter(d => d.exists).map(d => [d.id, d.data() as P1MeterDoc])) : new Map<string, P1MeterDoc>();
+    const frMois = (m: string) => `${m.slice(5)}/${m.slice(0, 4)}`;
+    const courant = toDay(new Date())!.slice(0, 7);
+    const debut = mois[0], fin = mois[mois.length - 1];
+    for (const siteId of sitesDju) {
+        const nom = noms.get(siteId) ?? siteId;
+        const site = siteSnaps.find(d => d.id === P1_DOC_ID.site(siteId))?.data() as P1SiteDoc | undefined;
+        // Parties facturées au DJU (factures valides), tous exercices confondus.
+        const parties: PartieFacturee[] = [];
+        for (const i of invoices) {
+            if (i.status === 'cancelled' || i.status === 'proforma' || i.cancelledByCreditNoteId) continue;
+            for (const l of i.lineItems ?? []) if (l.p1Dju?.siteId === siteId) for (const m of l.p1Dju.mois) parties.push({ mois: m.mois, debut: m.debut, fin: m.fin, dju: m.dju, base: l.p1Dju.base, djuReference: l.p1Dju.djuReference, montant: m.montant });
+        }
+        const liste: PrixAnnuel[] = [];
+        const vus = new Set<string>();
+        for (const p of parties.filter(x => x.mois >= debut && x.mois <= fin).sort((a, b) => a.mois.localeCompare(b.mois))) {
+            const jour = `${p.mois}-01`;
+            const ex = exerciceDe(p.mois, valeurAu<PeriodeReference>(site?.params, 'periodeReference', jour) ?? 'saison_de_chauffe');
+            if (vus.has(ex.libelle)) continue;
+            vus.add(ex.libelle);
+            const duSite = parties.filter(x => x.mois >= ex.debut && x.mois <= ex.fin).sort((a, b) => a.mois.localeCompare(b.mois));
+            const energies = [...new Set(meters.filter(m => m.get('siteId') === siteId).map(m => valeurAu<Energie>(meterDocs.get(P1_DOC_ID.meter(m.id))?.params, 'energie', jour)).filter((e): e is Energie => !!e))];
+            const f = formuleAu(contractDoc ?? null, siteId, energies, 'chauffage', `${duSite[0].mois}-01`);
+            if (!f || f.version.prixFixe || f.version.periodicite === 'mensuel') continue;
+            if (fin < ex.fin) continue;   // exercice non clos sur cette période : rien à régulariser encore
+            if (debut > duSite[0].mois) { erreurs.push(`Site ${nom} : prix annuel de l'exercice ${ex.libelle}, régularisez l'exercice entier (de ${frMois(ex.debut)} à ${frMois(ex.fin)}).`); continue; }
+            if (ex.fin >= courant) { erreurs.push(`Site ${nom} : exercice ${ex.libelle} en cours, le prix annuel se calcule après sa clôture (${frMois(ex.fin)}).`); continue; }
+            const r = prixAnnuel({ exercice: ex, version: f.version, series, parties: duSite });
+            if (typeof r === 'string') { erreurs.push(`Site ${nom} : prix annuel de l'exercice ${ex.libelle} : ${r}.`); continue; }
+            liste.push(r);
+        }
+        if (liste.length) prix.set(siteId, liste);
+    }
+    return { prix, erreurs };
 }
 
 /** Émet la régularisation : avoir (lignes négatives) puis facture (lignes positives). */

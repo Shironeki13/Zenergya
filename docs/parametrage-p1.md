@@ -319,6 +319,15 @@ Règles métier : [p1-regles-metier.md](p1-regles-metier.md). Code : `src/lib/bi
   prestation est le P1 annuel de base du site. Chaque mois : partie chauffée (allumage → arrêt), DJU de la station du
   site sur cette partie (arrondis au centième), montant = arrondi(P1 annuel × C/C0 du mois / DJU contractuels × DJU, 2).
   DJU contractuels : DJU de référence du poste de consommation. Hors saison : pas de ligne.
+- **MTI au DJU avec une formule à prix annuel** (périodicité `annuel_dju`, `annuel_temps` ou `annuel_cloture`) : le
+  prix de l'exercice n'est connu qu'à sa clôture. En cours d'exercice, chaque mois est donc facturé au C/C0 du mois.
+  L'exercice clos (année civile ou saison de chauffe, selon la « Période de référence » du site), la régularisation
+  P1 lancée **sur l'exercice entier** recalcule le dû au C/C0 de l'exercice — moyenne des C/C0 mensuels pondérée par
+  les DJU facturés, ou par les jours facturés, ou C/C0 du dernier mois de l'exercice — et le compare aux mois
+  facturés : ligne « Régularisation P1 chauffage au prix annuel » (`p1Regul.prixAnnuel`), facture ou avoir. Pondéré
+  par les DJU, le total de l'exercice est le même qu'au prix du mois (seule la répartition par mois change) : l'écart
+  se limite aux arrondis. Une période qui ne fait que commencer l'exercice ne régularise rien ; une période qui n'en
+  couvre que la fin est refusée ; un exercice en cours aussi.
 - **Acomptes puis décompte** (prestation en acomptes ; paramètre du contrat « Régularisation des acomptes » =
   `decompte_dju`) : la régularisation calcule, par saison terminée (arrêt saisi), P1 dû = arrondi(quantité de
   référence × prix de base × C/C0 annuel × DJU de la saison / DJU contractuels, 2), C/C0 annuel = moyenne des

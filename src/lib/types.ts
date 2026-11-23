@@ -666,8 +666,8 @@ export type InvoiceLineItem = {
     };
     /** Analytique figée à l'émission : code effectif, codes généré et externe, axes (lib/analytique). */
     analytique?: import('@/lib/analytique').AnalytiqueLigne;
-    /** Régularisation P1 : site et mois régularisés (réel du moteur − acomptes), ou intéressement facturé. */
-    p1Regul?: { siteId: string; usage?: 'chauffage' | 'ecs' | 'total'; mois: string[]; reel: number; acomptes: number; decompte?: import('@/lib/billing/p1-decompte').DecompteSaison[] } | { siteId: string; interestId: string };
+    /** Régularisation P1 : site et mois régularisés (réel − acomptes, décompte MTI, ou prix annuel de l'exercice), ou intéressement facturé. */
+    p1Regul?: { siteId: string; usage?: 'chauffage' | 'ecs' | 'total'; mois: string[]; reel: number; acomptes: number; decompte?: import('@/lib/billing/p1-decompte').DecompteSaison[]; prixAnnuel?: import('@/lib/billing/p1-prix-annuel').PrixAnnuel[] } | { siteId: string; interestId: string };
     revision?: { date: string; coefficient: number; rule: string; indices: { code: string; periods: string[]; value: number; base: number; basePeriod: string }[] };
 };
 

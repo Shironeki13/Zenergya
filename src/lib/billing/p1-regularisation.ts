@@ -1,5 +1,6 @@
 import { roundCents, sumCents } from '@/lib/money';
 import type { InvoiceLineItem } from '@/lib/types';
+import { LIBELLE_PERIODICITE } from './p1-prix-annuel';
 
 /**
  * Régularisation P1 d'un contrat sur une période (calcul pur).
@@ -8,6 +9,8 @@ import type { InvoiceLineItem } from '@/lib/types';
  * lignes d'acompte des factures non annulées). Le réel s'importe soit **au total** (chauffage, ECS et annexes : une
  * ligne par site, à condition que les acomptes du site aient une seule TVA), soit **par usage** (chauffage, ECS :
  * une ligne par usage, à sa TVA) ; mélanger les deux sur une période est refusé.
+ * Site facturé au DJU avec une formule à prix annuel : l'exercice clos, le dû est recalculé au C/C0 de l'exercice et
+ * comparé aux mois facturés au prix du mois (lib/billing/p1-prix-annuel).
  * Un mois déjà régularisé (facture ou avoir de régularisation) ne se régularise pas une seconde fois ; un mois
  * facturé en acompte sans réel importé bloque (rien de supposé). S'y ajoutent les intéressements calculés (écran
  * d'intéressement) dont la saison finit dans la période et qui n'ont pas encore été facturés.
@@ -24,7 +27,7 @@ export type RegulDocument = {
     kind: 'invoice' | 'creditNote';
     status?: string;
     cancelledByCreditNoteId?: string;
-    lineItems: Pick<InvoiceLineItem, 'p1Acompte' | 'p1Regul' | 'vatRate'>[];
+    lineItems: Pick<InvoiceLineItem, 'p1Acompte' | 'p1Dju' | 'p1Regul' | 'vatRate'>[];
 };
 
 export type RegulSite = {
@@ -39,6 +42,11 @@ export type RegulSite = {
     chauffageAuReleve?: boolean;
     /** Décompte MTI : le réel chauffage est le P1 dû de la saison (détail repris dans la ligne). */
     decompte?: import('./p1-decompte').DecompteSaison[];
+    /**
+     * Prix annuel (formule à périodicité annuelle, site facturé au DJU) : le réel chauffage est le P1 dû au C/C0 de
+     * l'exercice ; il se compare aux mois facturés au DJU, au prix du mois.
+     */
+    prixAnnuel?: import('./p1-prix-annuel').PrixAnnuel[];
 };
 
 export type RegulInput = {
@@ -99,6 +107,17 @@ export function regularisationP1(input: RegulInput): RegulResult {
                 if (l.vatRate !== undefined) tva[usage] = l.vatRate;
             }
         }
+        // Prix annuel : les mois facturés au DJU (au prix du mois) tiennent lieu d'acomptes.
+        const moisPrixAnnuel = new Set((site.prixAnnuel ?? []).flatMap(x => x.mois.map(m => m.mois)));
+        if (moisPrixAnnuel.size) for (const d of valid.filter(x => x.kind === 'invoice')) for (const l of d.lineItems) {
+            if (l.p1Dju?.siteId !== site.id) continue;
+            for (const dm of l.p1Dju.mois) {
+                if (dm.mois < debut || dm.mois > fin || !moisPrixAnnuel.has(dm.mois)) continue;
+                acomptes.chauffage.set(dm.mois, [...(acomptes.chauffage.get(dm.mois) ?? []), dm.montant]);
+                acompteInvoiceIds.add(d.id);
+                if (l.vatRate !== undefined) tva.chauffage = l.vatRate;
+            }
+        }
         const reel = input.reel.get(site.id) ?? new Map<string, number>();
         const has = (usage: UsageReel, m: string) => reel.has(`${usage}|${m}`);
         const parUsage = mois.some(m => has('chauffage', m) || has('ecs', m));
@@ -128,15 +147,19 @@ export function regularisationP1(input: RegulInput): RegulResult {
             const ecart = roundCents(totalReel - totalAcomptes);
             detail.push({ siteId: site.id, site: site.name, usage, reel: totalReel, acomptes: totalAcomptes, ecart });
             const dec = usage === 'chauffage' && site.decompte?.length ? site.decompte : null;
+            const pa = usage === 'chauffage' && site.prixAnnuel?.length ? site.prixAnnuel : null;
             lines.push({
-                description: dec
+                description: pa
+                    ? `Régularisation P1 chauffage au prix annuel — Site : ${site.name} — ${pa.map(x => `exercice ${x.exercice} : C/C0 annuel ${x.coefficient.toLocaleString('fr-FR', { maximumFractionDigits: 5 })} (${LIBELLE_PERIODICITE[x.periodicite]}), ${eur(x.dju)} DJU`).join(' ; ')}`
+                        + ` : dû ${eur(totalReel)} € − facturé au prix du mois ${eur(totalAcomptes)} €`
+                    : dec
                     ? `Décompte P1 chauffage MTI — Site : ${site.name} — saison ${dec.map(d => d.saison).join(', ')} : ${dec.map(d => `P1₀ ${eur(d.p1Base)} € × C/C0 ${d.coefficient.toLocaleString('fr-FR', { maximumFractionDigits: 5 })} × ${d.dju.toLocaleString('fr-FR')} / ${d.djuReference.toLocaleString('fr-FR')} DJU = ${eur(d.du)} €`).join(' ; ')}`
                         + ` (période du ${frMois(moisRegul[0])} au ${frMois(moisRegul[moisRegul.length - 1])} : ${eur(totalReel)} €) − acomptes ${eur(totalAcomptes)} €`
                     : `Régularisation ${LIBELLE[usage]} — Site : ${site.name} — du ${frMois(moisRegul[0])} au ${frMois(moisRegul[moisRegul.length - 1])} : `
                     + `réel ${eur(totalReel)} € − acomptes ${eur(totalAcomptes)} €`,
                 quantity: 1, unitPrice: ecart, total: ecart, siteId: site.id, activityCode: site.activityCode, vatRate,
                 periodStartDate: `${moisRegul[0]}-01`, periodEndDate: finMois(moisRegul[moisRegul.length - 1]),
-                p1Regul: { siteId: site.id, usage, mois: moisRegul, reel: totalReel, acomptes: totalAcomptes, ...(dec && { decompte: dec }) },
+                p1Regul: { siteId: site.id, usage, mois: moisRegul, reel: totalReel, acomptes: totalAcomptes, ...(dec && { decompte: dec }), ...(pa && { prixAnnuel: pa }) },
             });
         };
 
