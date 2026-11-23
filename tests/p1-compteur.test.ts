@@ -292,3 +292,41 @@ test('moteur, mois calendaire : octobre puis novembre sur deux factures ; tous l
     const dec = dueInvoiceLines(input(svc, src), [facture, { id: 'f2', status: 'due', lineItems: nov.lines } as never], '2026-01-02');
     assert.match(dec.errors.join(' '), /ECS au compteur impossible : site Chaufferie, relevé du compteur CPT-ECS postérieur au 31\/12\/2025 attendu/);
 });
+
+test('mois calendaire, chauffage : dans la saison de chauffe aux DJU, hors saison aux jours ; compteur d\'ECS et DJU manquants aux jours', () => {
+    // Gaz : 1 000 le 21/09, 4 000 le 21/10 (30 jours). Allumage le 01/10 : 10 jours hors saison (21 → 30/09), 20 jours dans la saison (01 → 20/10).
+    // DJU : 2 par jour du 01 au 10/10, 6 par jour ensuite.
+    const cpt: CompteurFacture = { id: 'h', code: 'CPT-CH', unit: 'MWh', signe: 1, qe: null, readings: [{ id: 'h1', date: '2025-09-21', value: 1000 }, { id: 'h2', date: '2025-10-21', value: 4000 }, { id: 'h3', date: '2025-11-05', value: 5500 }] };
+    const djuJour = (j: string) => (j >= '2025-10-01' ? (j <= '2025-10-10' ? 2 : 6) : 0);
+    const dansSaison = (j: string) => j >= '2025-10-01';
+    const f = (p: Partial<ContexteCompteur> = {}) => factureAuCompteur(ctx({ repartition: 'calendaire', compteurs: () => [cpt], prix: () => ({ prix: 10, base: 10, coefficient: 1, source: 'p1' }), djuJour, dansSaison, ...p }));
+    // Septembre (21 → 30) : 10 jours hors saison sur 30 → 1/3 de 3 000 = 1 000, aux jours.
+    const sep = f({ debut: '2025-09-21', fin: '2025-09-30' });
+    assert.ok(typeof sep !== 'string');
+    assert.deepEqual([sep.quantite, sep.detail[0].compteurs[0].segments![0].dju], [1000, { pris: 0, total: 80 }]);
+    // Octobre : la part dans la saison (20/30 = 2 000) revient entièrement à octobre (80 DJU sur 80), plus l'intervalle suivant
+    // (21/10 → 05/11, 1 500 sur 15 jours à 6 DJU) : 11 jours d'octobre sur 15 → 1 100. Total 3 100.
+    const oct = f();
+    assert.ok(typeof oct !== 'string');
+    const s = oct.detail[0].compteurs[0].segments!;
+    assert.deepEqual([oct.quantite, s[0].base, s[0].dju, +s[0].part!.toFixed(6), s[1].dju], [3100, 'dju', { pris: 80, total: 80 }, 0.666667, { pris: 66, total: 90 }]);
+    assert.match(texteCompteur(oct).replace(/[\u202f\u00a0]/g, ' '), /3 000 du 21\/09\/2025 au 21\/10\/2025 × 66,67 % \(80\/80 DJU\)/);
+    // Mois coupé au 10/10 dans la saison : 20 DJU sur 80 de la part en saison → 2 000 × 20/80 = 500 (aux jours, ce serait 1 000).
+    const coupe = f({ fin: '2025-10-10' });
+    assert.ok(typeof coupe !== 'string');
+    assert.equal(coupe.quantite, 500);
+    // Sans DJU pour un jour, ou compteur d'ECS, ou sans saison : tout l'intervalle aux jours.
+    const sansDju = f({ fin: '2025-10-10', djuJour: j => (j === '2025-10-05' ? null : djuJour(j)) });
+    assert.ok(typeof sansDju !== 'string');
+    assert.deepEqual([sansDju.quantite, sansDju.detail[0].compteurs[0].segments![0].base], [1000, undefined]);
+    const ecsDeduit = f({ fin: '2025-10-10', compteurs: () => [{ ...cpt, ecs: true }] });
+    assert.ok(typeof ecsDeduit !== 'string');
+    assert.equal(ecsDeduit.quantite, 1000);
+    const sansSaison = f({ fin: '2025-10-10', dansSaison: () => false });
+    assert.ok(typeof sansSaison !== 'string');
+    assert.equal(sansSaison.quantite, 1000);
+    // Rien de perdu : septembre + octobre + début novembre = toute la consommation.
+    const nov = f({ debut: '2025-11-01', fin: '2025-11-04' });
+    assert.ok(typeof nov !== 'string');
+    assert.equal(+(sep.quantite + oct.quantite + nov.quantite).toFixed(6), 4500);
+});

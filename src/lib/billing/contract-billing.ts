@@ -1,5 +1,5 @@
 import { roundCents, sumCents } from '@/lib/money';
-import { partieChauffee, type SaisonChauffe } from '@/lib/p1/saisons';
+import { partieChauffee, saisonDe, type SaisonChauffe } from '@/lib/p1/saisons';
 import { toDay } from '@/lib/services/site-amounts';
 import { type RepartitionCompteur,
     factureAuCompteur, texteCompteur, type CompteurFacture, type IndexPris, type MethodeProrata, type PrixDuMois, type SourceCoefGestion, type UsageCompteur,
@@ -115,6 +115,9 @@ export type P1ReleveSource = {
     coefContrat?: (mois: string) => number | null;
     /** DJU de la station du site entre deux dates incluses ; message si indisponibles. */
     dju?: (siteId: string, debut: string, fin: string) => number | string;
+    /** DJU d'un jour de la station du site (null : inconnu) et saisons de chauffe du site : répartition calendaire du chauffage. */
+    djuJour?: (siteId: string, jour: string) => number | null;
+    saisons?: (siteId: string) => SaisonChauffe[];
 };
 
 export type UsageP1 = 'chauffage' | 'ecs';
@@ -591,6 +594,13 @@ function releveCompteur(e: Echeance, input: BillingInput, lastIndex: Map<string,
         ...(src.dju && { dju: (d: string, f: string) => src.dju!(e.item.site.id, d, f) }),
         dejaFacture: new Map([...lastIndex].filter(([k]) => k.startsWith(`${e.item.key}|`)).map(([k, v]) => [k.slice(e.item.key.length + 1), v])),
         repartition: cfg.repartition,
+        ...(cfg.repartition === 'calendaire' && cfg.usage === 'chauffage' && src.djuJour && src.saisons && (() => {
+            const saisons = src.saisons!(e.item.site.id);
+            return {
+                djuJour: (j: string) => src.djuJour!(e.item.site.id, j),
+                dansSaison: (j: string) => { const s = saisons.find(x => x.saison === saisonDe(j)); return !!s && s.allumage <= j && (s.arret === null || j <= s.arret); },
+            };
+        })()),
         dejaCalendaire: new Map([...lastCalendaire].filter(([k]) => k.startsWith(`${e.item.key}|`)).map(([k, v]) => [k.slice(e.item.key.length + 1), v])),
     });
     if (typeof r === 'string') return r;

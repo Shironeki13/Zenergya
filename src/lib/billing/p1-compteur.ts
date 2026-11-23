@@ -18,8 +18,10 @@
  * Chaque mois garde son détail (compteurs, index, prix, coefficients) : c'est l'annexe de la facture.
  *
  * **Répartition « mois calendaire »** (option de la prestation) : la consommation entre deux relevés consécutifs est
- * étalée uniformément sur ses jours (du jour du premier relevé à la veille du second), et chaque mois prend la part de
- * ses jours. Un mois sans relevé se facture donc, mais seulement quand un relevé **postérieur à sa fin** est connu ;
+ * étalée sur ses jours (du jour du premier relevé à la veille du second), et chaque mois prend la part de ses jours.
+ * ECS (et compteurs d'ECS déduits) : uniformément, on ne consomme pas plus d'eau chaude en janvier. Chauffage : la
+ * part de l'intervalle située **dans la saison de chauffe** (allumage et arrêt compris) se répartit aux **DJU** de
+ * chaque jour, celle hors saison aux jours ; sans DJU ou sans saison saisie, tout l'intervalle se répartit aux jours. Un mois sans relevé se facture donc, mais seulement quand un relevé **postérieur à sa fin** est connu ;
  * les mois partiels se traitent jour par jour, sans méthode de prorata. Le premier mois facturé ainsi repart du dernier
  * relevé déjà facturé au relevé à relevé (rien n'est facturé deux fois, rien n'est perdu) ; le retour au relevé à
  * relevé après un mois calendaire est refusé.
@@ -37,13 +39,15 @@ export const METHODES_PRORATA: Record<MethodeProrata, string> = {
 export type SourceCoefGestion = 'aucun' | 'prestation' | 'contrat';
 /** Consommation d'un mois : d'un relevé au suivant, ou répartie par mois calendaire au prorata des jours. */
 export type RepartitionCompteur = 'releve' | 'calendaire';
-export const REPARTITIONS_COMPTEUR: Record<RepartitionCompteur, string> = { releve: 'Relevé à relevé', calendaire: 'Mois calendaire (au prorata des jours)' };
+export const REPARTITIONS_COMPTEUR: Record<RepartitionCompteur, string> = { releve: 'Relevé à relevé', calendaire: 'Mois calendaire (ECS aux jours, chauffage aux DJU)' };
 
 export type ReleveCompteur = { id: string; date: string; value: number; type?: string; changement?: ChangementCompteur };
 export type CompteurFacture = {
     id: string; code: string; unit?: string; signe: 1 | -1;
     /** Coefficient de conversion index → MWh (chauffage) ; null : inconnu (jamais 1 par défaut). */
     qe: number | null;
+    /** Compteur d'ECS (déduit d'une formule de NC) : toujours réparti aux jours. */
+    ecs?: boolean;
     /** Capacité déclarée (index maximal avant retour à zéro) ; absente : un index en baisse bloque. */
     capacite?: number | null;
     readings: ReleveCompteur[];
@@ -72,7 +76,11 @@ export type CompteurMois = {
     /** Répartition calendaire : intervalles entre relevés dont le mois prend une part (jours pris sur jours de l'intervalle). */
     segments?: SegmentMois[];
 };
-export type SegmentMois = { debut: IndexPris; fin: IndexPris; jours: number; joursPris: number; volume: number; volumePris: number };
+export type SegmentMois = {
+    debut: IndexPris; fin: IndexPris; jours: number; joursPris: number; volume: number; volumePris: number;
+    /** Base de la répartition (absente : jours) ; aux DJU : part du mois, DJU pris sur DJU de l'intervalle dans la saison de chauffe. */
+    base?: 'jours' | 'dju'; part?: number; dju?: { pris: number; total: number };
+};
 export type MoisFacture = {
     mois: string;
     debut: string; fin: string; jours: number; joursMois: number;
@@ -111,6 +119,9 @@ export type ContexteCompteur = {
     repartition?: RepartitionCompteur;
     /** Dernier jour déjà facturé au mois calendaire, par compteur. */
     dejaCalendaire?: Map<string, string>;
+    /** Mois calendaire, chauffage : DJU d'un jour (null : inconnu) et appartenance du jour à la saison de chauffe. */
+    djuJour?: (jour: string) => number | null;
+    dansSaison?: (jour: string) => boolean;
 };
 
 const r6 = (x: number) => Math.round(x * 1e6) / 1e6;
@@ -282,6 +293,28 @@ export function factureAuCompteur(ctx: ContexteCompteur): DetailCompteur | strin
 }
 
 /**
+ * Part d'un intervalle entre deux relevés [da, db[ qui revient aux jours [d0, d1]. Aux jours ; en chauffage (hors
+ * compteur d'ECS), la part de l'intervalle dans la saison de chauffe (au prorata des jours) se répartit aux DJU, celle
+ * hors saison aux jours. DJU d'un jour inconnu, ou aucun DJU dans la saison : tout l'intervalle aux jours.
+ */
+function partDuMois(ctx: ContexteCompteur, c: CompteurFacture, da: string, db: string, d0: string, d1: string): { part: number; dju?: { pris: number; total: number } } {
+    const n = nbJours(da, db) - 1;
+    const auxJours = { part: nbJours(d0, d1) / n };
+    if (ctx.usage !== 'chauffage' || c.ecs || !ctx.djuJour || !ctx.dansSaison) return auxJours;
+    let dans = 0, total = 0, pris_ = 0, horsPris = 0;
+    for (let j = da; j < db; j = jour(j, 1)) {
+        const saison = ctx.dansSaison(j), duMois = j >= d0 && j <= d1;
+        if (!saison) { if (duMois) horsPris++; continue; }
+        const d = ctx.djuJour(j);
+        if (d === null) return auxJours;
+        dans++; total += d;
+        if (duMois) pris_ += d;
+    }
+    if (!(total > 0)) return auxJours;
+    return { part: (dans / n) * (pris_ / total) + horsPris / n, dju: { pris: Math.round(pris_ * 100) / 100, total: Math.round(total * 100) / 100 } };
+}
+
+/**
  * Un mois en répartition calendaire : chaque intervalle entre deux relevés consécutifs donne au mois la part de ses
  * jours (du jour du premier relevé à la veille du second). Tous les jours à facturer doivent être couverts.
  */
@@ -309,8 +342,9 @@ function moisCalendaire(ctx: ContexteCompteur, mois: string, debut: string, fin:
             const v = volumeEntre(c, tri, pris(a), pris(b));
             if (typeof v === 'string') return v;
             const jours = nbJours(da, db) - 1, joursPris = nbJours(d0, d1);
-            const volumePris = (v.volume * joursPris) / jours;
-            segments.push({ debut: pris(a), fin: pris(b), jours, joursPris, volume: v.volume, volumePris: r6(volumePris) });
+            const p = partDuMois(ctx, c, da, db, d0, d1);
+            const volumePris = v.volume * p.part;
+            segments.push({ debut: pris(a), fin: pris(b), jours, joursPris, volume: v.volume, volumePris: r6(volumePris), ...(p.dju && { base: 'dju' as const, part: r6(p.part), dju: p.dju }) });
             chg.push(...v.chg.liste);
             if (v.passageZero) passageZero = v.passageZero;
             pris_ += joursPris;
@@ -349,7 +383,7 @@ export function texteCompteur(d: DetailCompteur): string {
     const n = (x: number, dec = 3) => x.toLocaleString('fr-FR', { maximumFractionDigits: dec });
     return d.detail.map(m => {
         const compteurs = m.compteurs.map(c => c.segments
-            ? `${c.signe < 0 ? '−' : ''}${c.code} : ${c.segments.map(x => `${n(x.volume)} du ${fr(x.debut.date)} au ${fr(x.fin.date)} × ${x.joursPris}/${x.jours} j`).join(' + ')}${(c.changements ?? []).map(x => ` ; compteur changé le ${fr(x.date)} (dépose ${n(x.depose)}, pose ${n(x.pose)})`).join('')}${(c.doublons ?? []).map(x => ` ; ${texteDoublon(x)}`).join('')}${c.passageZero ? ` ; passage par zéro (capacité ${n(c.passageZero.capacite)})` : ''}`
+            ? `${c.signe < 0 ? '−' : ''}${c.code} : ${c.segments.map(x => `${n(x.volume)} du ${fr(x.debut.date)} au ${fr(x.fin.date)} × ${x.base === 'dju' ? `${n((x.part ?? 0) * 100, 2)} % (${n(x.dju!.pris, 1)}/${n(x.dju!.total, 1)} DJU)` : `${x.joursPris}/${x.jours} j`}`).join(' + ')}${(c.changements ?? []).map(x => ` ; compteur changé le ${fr(x.date)} (dépose ${n(x.depose)}, pose ${n(x.pose)})`).join('')}${(c.doublons ?? []).map(x => ` ; ${texteDoublon(x)}`).join('')}${c.passageZero ? ` ; passage par zéro (capacité ${n(c.passageZero.capacite)})` : ''}`
             : `${c.signe < 0 ? '−' : ''}${c.code} : ${n(c.fin.index)} (${fr(c.fin.date)}${c.fin.type && c.fin.type !== 'REEL' ? `, ${c.fin.type.toLowerCase()}` : ''}) − ${n(c.debut.index)} (${fr(c.debut.date)})${(c.changements ?? []).map(x => ` ; compteur changé le ${fr(x.date)} (dépose ${n(x.depose)}, pose ${n(x.pose)})`).join('')}${(c.doublons ?? []).map(x => ` ; ${texteDoublon(x)}`).join('')}${c.passageZero ? ` ; passage par zéro (capacité ${n(c.passageZero.capacite)})` : ''}`).join(' ; ');
         const prorata = m.methode === 'jours' ? ` × ${m.jours}/${m.joursMois} j` : m.methode === 'dju' ? ` × ${n(m.dju!.couverts, 1)}/${n(m.dju!.mois, 1)} DJU` : '';
         return `${moisFr(m.mois)} : ${compteurs} → ${n(m.quantiteMois)} ${d.unite}${prorata} × ${n(m.prixApplique, 4)} €/${d.unite} = ${m.montant.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €`;

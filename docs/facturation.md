@@ -95,8 +95,12 @@ Facturation → Régularisation P1.
   utilisés (dates, index, jours pris sur jours de l'intervalle, volume). Tous les relevés qui ont servi sont figés, y
   compris celui d'après la fin du mois, et aucun relevé ne s'ajoute dans un intervalle déjà réparti. Le premier mois
   facturé ainsi repart du dernier relevé déjà facturé au relevé à relevé ; le retour au relevé à relevé est ensuite
-  refusé. Défaut : relevé à relevé (rien ne change pour les prestations existantes). C'est la méthode du moteur P1
-  pour l'ECS.
+  refusé. Défaut : relevé à relevé (rien ne change pour les prestations existantes). C'est la méthode du moteur P1.
+  **Chauffage** : la part de l'intervalle située dans la **saison de chauffe** du site (allumage et arrêt compris) se
+  répartit aux **DJU** de chaque jour (un intervalle d'octobre à janvier ne consomme pas autant en octobre qu'en
+  décembre), celle hors saison aux jours ; un compteur d'ECS déduit de la formule de NC reste aux jours. Sans DJU pour
+  un jour de l'intervalle, sans DJU dans la saison ou sans saison saisie, tout l'intervalle se répartit aux jours ;
+  l'annexe dit la base retenue (jours, ou DJU pris sur DJU de l'intervalle).
 - **Relevés en double le même jour** (index différents) : un seul compte, pour la facturation au compteur comme pour
   les alertes — **le plus proche du relevé précédent** ; en tête de série, du relevé suivant ; sans voisin, le plus
   grand. Un relevé qui porte un changement de compteur l'emporte. Un index à zéro saisi par erreur le même jour que le

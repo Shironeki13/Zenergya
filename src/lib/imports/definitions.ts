@@ -307,7 +307,7 @@ const BASE: Record<ImportEntityKey, Omit<ImportEntity, 'groupe' | 'resume' | 'us
             {
                 key: 'p1Repartition', label: 'Répartition de la consommation', type: 'enum',
                 options: [{ value: 'releve', label: 'Relevé à relevé', aliases: ['releve a releve', 'relevé'] }, { value: 'calendaire', label: 'Mois calendaire', aliases: ['calendaire', 'mois calendaire'] }],
-                help: 'Au compteur : consommation d\'un relevé au suivant, ou répartie par mois calendaire au prorata des jours (un mois se facture alors quand un relevé postérieur à sa fin est connu). Vide : relevé à relevé.',
+                help: 'Au compteur : consommation d\'un relevé au suivant, ou répartie par mois calendaire (ECS aux jours ; chauffage aux DJU dans la saison de chauffe ; un mois se facture alors quand un relevé postérieur à sa fin est connu). Vide : relevé à relevé.',
             },
             {
                 key: 'p1Prorata', label: 'Prorata (mois partiel)', type: 'enum',

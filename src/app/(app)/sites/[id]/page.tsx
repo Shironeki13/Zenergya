@@ -1585,7 +1585,7 @@ export default function SiteDetailsPage() {
                                                     {(Object.entries(REPARTITIONS_COMPTEUR) as [RepartitionCompteur, string][]).map(([k, l]) => <SelectItem key={k} value={k}>{l}</SelectItem>)}
                                                 </SelectContent>
                                             </Select>
-                                            {p1Repartition === 'calendaire' && <p className="text-xs text-muted-foreground">La consommation entre deux relevés est répartie sur ses jours ; chaque mois prend sa part. Un mois se facture quand un relevé postérieur à sa fin est connu. Le retour au relevé à relevé n&apos;est plus possible ensuite.</p>}
+                                            {p1Repartition === 'calendaire' && <p className="text-xs text-muted-foreground">La consommation entre deux relevés est répartie sur ses jours ; chaque mois prend sa part (ECS : uniformément ; chauffage : aux DJU dans la saison de chauffe, aux jours en dehors). Un mois se facture quand un relevé postérieur à sa fin est connu. Le retour au relevé à relevé n&apos;est plus possible ensuite.</p>}
                                         </div>
                                         <div className={cn("space-y-1 col-span-2", p1Repartition === 'calendaire' && 'hidden')}>
                                             <Label className="text-xs">Mois couvert en partie (début ou fin de contrat)</Label>

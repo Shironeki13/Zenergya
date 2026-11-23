@@ -98,6 +98,7 @@ export async function releveSource(siteIds: string[], contractId?: string): Prom
         qe: (valeurAu<string>(meterDoc(m.id)?.params, 'usage', jour) === 'ecs' ? valeurAu<number>(meterDoc(m.id)?.params, 'qecs', jour) : null)
             ?? valeurAu<number>(meterDoc(m.id)?.params, 'qe', jour),
         capacite: valeurAu<number>(meterDoc(m.id)?.params, 'capacite', jour) ?? null,
+        ...(valeurAu<string>(meterDoc(m.id)?.params, 'usage', jour) === 'ecs' && { ecs: true }),
         readings: byMeter.get(m.id) ?? [],
     });
 
@@ -114,7 +115,14 @@ export async function releveSource(siteIds: string[], contractId?: string): Prom
         }
     }
     const contractDoc = contractId ? p1Docs.get(P1_DOC_ID.contract(contractId)) as P1ContractDoc | undefined : undefined;
+    // Saisons de chauffe des sites : répartition calendaire du chauffage (DJU dans la saison, jours en dehors).
+    const saisonsSites = (await Promise.all(chunk(siteIds).map(c => adminDb.collection('saisonsChauffe').where('siteId', 'in', c).get()))).flatMap(x => x.docs.map(d => ({ id: d.id, ...d.data() }) as SaisonChauffe));
     return {
+        saisons: siteId => saisonsSites.filter(x => x.siteId === siteId),
+        djuJour: (siteId, jour) => {
+            const station = valeurAu<string>(siteDoc(siteId)?.params, 'stationMeteo', jour);
+            return (station ? djuParStation.get(station)?.get(jour) : undefined) ?? null;
+        },
         meters: (siteId, serviceMeterId, mois, usage: UsageCompteur = 'ecs') => {
             const jour = `${mois}-01`;
             if (serviceMeterId) {
