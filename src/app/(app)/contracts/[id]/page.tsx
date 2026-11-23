@@ -1,6 +1,7 @@
 'use client';
 
 import { AccesRefuse, useHorsPerimetre } from '@/components/perimetre/acces';
+import { VieContrat } from '@/components/contracts/vie-contrat';
 import { EtatValidation, LienPiece } from "@/components/contracts/events/etat-document";
 import { AFaire, Indicateur, eur0, CompteurAFaire, useOngletUrl, type PointAFaire } from "@/components/fiches/fiche";
 import { CarteContacts, TableauFactures, TableauSites, etatSite } from "@/components/fiches/tableaux";
@@ -100,6 +101,7 @@ export default function ContractDetailPage() {
   const [activities, setActivities] = useState<Activity[]>([]);
 
   // Contract Events State
+  const [ongletDocuments, setOngletDocuments] = useState('amendments');
   const [amendments, setAmendments] = useState<Amendment[]>([]);
   const [terminations, setTerminations] = useState<Termination[]>([]);
   const [renewals, setRenewals] = useState<Renewal[]>([]);
@@ -444,7 +446,7 @@ export default function ContractDetailPage() {
           <TabsTrigger value="factures">Factures ({invoices.length})</TabsTrigger>
           <TabsTrigger value="rfe">Facturation électronique</TabsTrigger>
           {aDuP1 && <TabsTrigger value="p1">Paramétrage P1</TabsTrigger>}
-          <TabsTrigger value="historique">Historique ({nbEvenements})</TabsTrigger>
+          <TabsTrigger value="historique">Vie du contrat ({nbEvenements})</TabsTrigger>
         </TabsList>
 
         <TabsContent value="synthese" className="mt-4 space-y-6">
@@ -553,6 +555,10 @@ export default function ContractDetailPage() {
         )}
 
         <TabsContent value="historique" className="mt-4">
+          <div className="mb-4">
+            <VieContrat contract={contract} documents={{ amendments, terminations, renewals, trusteeChanges, beChanges }}
+              onVoirDocuments={onglet => { setOngletDocuments(onglet); document.getElementById('documents-contrat')?.scrollIntoView({ behavior: 'smooth', block: 'start' }); }} />
+          </div>
           {(contract.modificationsValidees?.length ?? 0) > 0 && (
             <Card className="mb-4">
               <CardHeader className="pb-3">
@@ -578,7 +584,7 @@ export default function ContractDetailPage() {
               </CardContent>
             </Card>
           )}
-      <Tabs defaultValue="amendments" className="w-full">
+      <Tabs value={ongletDocuments} onValueChange={setOngletDocuments} className="w-full scroll-mt-20" id="documents-contrat">
         <TabsList>
           <TabsTrigger value="amendments">Avenants ({amendments.length})</TabsTrigger>
           <TabsTrigger value="terminations">Résiliations ({terminations.length})</TabsTrigger>

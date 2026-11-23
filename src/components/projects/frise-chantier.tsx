@@ -5,10 +5,10 @@ import Link from 'next/link';
 import { AlertTriangle, Check, CircleDashed, ClipboardCheck, FileText, Flag, Hammer, Lock, Receipt, ShieldCheck, X } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { Frise, TON_POINT, type PointFrise } from '@/components/frise/frise';
 import { cn } from '@/lib/utils';
 import { formatEur } from '@/components/quotes/format';
-import { friseChantier, LIBELLE_ETAT_FACTURE, type EtapeFrise, type EtatEtape, type LotAvancement } from '@/lib/projects/frise';
+import { friseChantier, LIBELLE_ETAT_FACTURE, type EtapeFrise, type LotAvancement } from '@/lib/projects/frise';
 import type { Project, ProjectSituation } from '@/lib/projects/types';
 import type { Invoice } from '@/lib/types';
 
@@ -24,13 +24,7 @@ const pct = (x: number) => `${x.toLocaleString('fr-FR', { maximumFractionDigits:
 const ICONE: Record<EtapeFrise['type'], typeof Flag> = {
     ouverture: Flag, devis: FileText, situation: Hammer, facture: Receipt, preparation: CircleDashed, reception: ClipboardCheck, retenue: ShieldCheck, cloture: Lock, reste: Receipt,
 };
-const TON: Record<EtatEtape, { point: string; trait: string; texte: string; libelle: string }> = {
-    fait: { point: 'border-emerald-600 bg-emerald-600 text-white', trait: 'bg-emerald-500', texte: 'text-emerald-700', libelle: 'Fait' },
-    en_cours: { point: 'border-blue-600 bg-white text-blue-700', trait: 'bg-blue-300', texte: 'text-blue-700', libelle: 'En cours' },
-    alerte: { point: 'border-red-600 bg-red-600 text-white', trait: 'bg-red-300', texte: 'text-red-700', libelle: 'À traiter' },
-    a_venir: { point: 'border-dashed border-slate-400 bg-white text-slate-500', trait: 'bg-slate-200', texte: 'text-slate-500', libelle: 'À venir' },
-    annule: { point: 'border-slate-300 bg-slate-100 text-slate-400', trait: 'bg-slate-200', texte: 'text-slate-400 line-through', libelle: 'Annulé' },
-};
+const TON = TON_POINT;
 
 function Jauge({ libelle, valeur, montant, couleur }: { libelle: string; valeur: number; montant: string; couleur: string }) {
     return (
@@ -112,6 +106,20 @@ export function FriseChantier({ project, situations, invoices }: { project: Proj
     const parSituations = (project.billing ?? 'situations') === 'situations';
     const choisie = frise.etapes.find(e => e.id + (e.date ?? '') === ouvert) ?? null;
     const { jauges, montants } = frise;
+    const points: PointFrise[] = frise.etapes.map(e => ({
+        cle: e.id + (e.date ?? ''), date: e.date, etat: e.etat, icone: e.etat === 'fait' && (e.type === 'situation' || e.type === 'facture') ? Check : ICONE[e.type], titre: e.titre,
+        lignes: <>
+            {e.avancement !== undefined && <span className="text-xs font-semibold text-emerald-700">{pct(e.avancement)}</span>}
+            {e.montantHT !== undefined && <span className="text-xs tabular-nums text-muted-foreground">{formatEur(e.montantHT)}</span>}
+            {e.facture && <span className={cn('text-xs', e.facture.etat === 'payee' ? 'text-emerald-700' : e.facture.etat === 'en_retard' ? 'font-medium text-red-700' : 'text-muted-foreground')}>{e.facture.numero} · {LIBELLE_ETAT_FACTURE[e.facture.etat].toLowerCase()}</span>}
+            {!e.facture && e.resume && e.type !== 'situation' && <span className="text-xs text-muted-foreground">{e.resume}</span>}
+        </>,
+        infobulle: <>
+            {e.resume && <p>{e.resume}</p>}
+            {e.montantHT !== undefined && <p>{formatEur(e.montantHT)} HT</p>}
+            {e.facture && <p>Facture {e.facture.numero} — {LIBELLE_ETAT_FACTURE[e.facture.etat].toLowerCase()}</p>}
+        </>,
+    }));
 
     return (
         <Card>
@@ -129,44 +137,7 @@ export function FriseChantier({ project, situations, invoices }: { project: Proj
                     <p className="flex items-center gap-2 text-sm text-amber-700"><AlertTriangle className="h-4 w-4 shrink-0" />{pct(Math.round((jauges.avancement - jauges.facture) * 10) / 10)} du chantier sont réalisés mais pas encore facturés.</p>
                 )}
 
-                <TooltipProvider delayDuration={150}>
-                    <div className="overflow-x-auto pb-1">
-                        <ol className="flex min-w-max items-start" aria-label="Frise chronologique du chantier">
-                            {frise.etapes.map((e, i) => {
-                                const ton = TON[e.etat];
-                                const Icone = e.etat === 'fait' && (e.type === 'situation' || e.type === 'facture') ? Check : ICONE[e.type];
-                                const cle = e.id + (e.date ?? '');
-                                const actif = ouvert === cle;
-                                return (
-                                    <li key={cle} className="relative flex w-36 shrink-0 flex-col items-center px-1 text-center">
-                                        {i > 0 && <span aria-hidden className={cn('absolute right-1/2 top-[2.35rem] w-full', e.etat === 'a_venir' ? 'h-0 border-t-2 border-dashed border-slate-300' : cn('h-0.5', ton.trait))} />}
-                                        <span className="mb-1 h-4 text-xs tabular-nums text-muted-foreground">{fr(e.date)}</span>
-                                        <Tooltip>
-                                            <TooltipTrigger asChild>
-                                                <button type="button" onClick={() => setOuvert(actif ? null : cle)} aria-pressed={actif} aria-label={`${e.titre}, ${fr(e.date)} : afficher le détail`}
-                                                    className={cn('relative z-10 flex h-9 w-9 items-center justify-center rounded-full border-2 transition-shadow focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2', ton.point, actif && 'ring-2 ring-ring ring-offset-2')}>
-                                                    <Icone className="h-4 w-4" />
-                                                </button>
-                                            </TooltipTrigger>
-                                            <TooltipContent className="max-w-xs text-left">
-                                                <p className="font-medium">{e.titre}</p>
-                                                {e.resume && <p>{e.resume}</p>}
-                                                {e.montantHT !== undefined && <p>{formatEur(e.montantHT)} HT</p>}
-                                                {e.facture && <p>Facture {e.facture.numero} — {LIBELLE_ETAT_FACTURE[e.facture.etat].toLowerCase()}</p>}
-                                                <p className="mt-1 opacity-70">Cliquez pour le détail</p>
-                                            </TooltipContent>
-                                        </Tooltip>
-                                        <span className={cn('mt-1.5 text-sm font-medium leading-tight', e.etat === 'annule' && 'text-muted-foreground line-through')}>{e.titre}</span>
-                                        {e.avancement !== undefined && <span className="text-xs font-semibold text-emerald-700">{pct(e.avancement)}</span>}
-                                        {e.montantHT !== undefined && <span className="text-xs tabular-nums text-muted-foreground">{formatEur(e.montantHT)}</span>}
-                                        {e.facture && <span className={cn('text-xs', e.facture.etat === 'payee' ? 'text-emerald-700' : e.facture.etat === 'en_retard' ? 'font-medium text-red-700' : 'text-muted-foreground')}>{e.facture.numero} · {LIBELLE_ETAT_FACTURE[e.facture.etat].toLowerCase()}</span>}
-                                        {!e.facture && e.resume && e.type !== 'situation' && <span className="text-xs text-muted-foreground">{e.resume}</span>}
-                                    </li>
-                                );
-                            })}
-                        </ol>
-                    </div>
-                </TooltipProvider>
+                <Frise points={points} ouvert={ouvert} onOuvrir={setOuvert} label="Frise chronologique du chantier" />
 
                 {choisie && <Detail e={choisie} onClose={() => setOuvert(null)} />}
 
