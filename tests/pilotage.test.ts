@@ -39,6 +39,8 @@ test('alertes : index en baisse (sauf relevé corrigé), relevés contradictoire
     const today = '2026-03-10';
     assert.deepEqual(types(alertesCompteur(m(), [r('2026-01-31', 100), r('2026-02-28', 90)], today)), ['index_baisse']);
     assert.deepEqual(alertesCompteur(m(), [r('2026-01-31', 100), r('2026-02-28', 5, 'CORRIGE')], today), []);
+    // Capacité du compteur déclarée : la baisse est un passage par zéro.
+    assert.deepEqual(alertesCompteur(m({ capacite: 1000 }), [r('2026-01-31', 990), r('2026-02-28', 20)], today), []);
     // Changement de compteur déclaré sur le relevé (index de dépose et de pose) : la baisse est expliquée.
     assert.deepEqual(alertesCompteur(m(), [r('2026-01-31', 100), { ...r('2026-02-28', 5), changement: { depose: 130, pose: 0 } }], today), []);
     const doublon = alertesCompteur(m(), [r('2026-02-28', 100), r('2026-02-28', 104)], today);

@@ -91,6 +91,10 @@ Facturation → Régularisation P1.
   bon est ainsi écarté au lieu de créer une consommation fantôme. C'est une règle de vraisemblance : elle choisit pour
   pouvoir calculer, sans rien corriger ; la ligne de facture, l'annexe et l'alerte « Relevés contradictoires » nomment
   les index et celui qui est retenu. Le relevé écarté se corrige ou se supprime à la source.
+- **Passage par zéro** : si la **capacité** du compteur est déclarée (paramétrage P1 du compteur : index maximal avant
+  retour à zéro), un index en baisse sans changement de compteur est facturé « index + capacité − index précédent » ;
+  la ligne et l'annexe le disent, et l'alerte « index en baisse » ne se déclenche pas. Sans capacité déclarée, la
+  facturation bloque. Un index précédent supérieur à la capacité est refusé (capacité à corriger).
 - **Changement de compteur** : il se déclare sur le relevé du jour (case « Le compteur a été changé ce jour-là » ;
   colonnes « Index de dépose » et « Index de pose » de l'import et de l'API). Le relevé porte l'index de **dépose** de
   l'ancien compteur et l'index de **pose** du nouveau ; son index est celui du nouveau compteur. Consommation depuis

@@ -203,3 +203,19 @@ test('relevés en double le même jour : le plus proche du précédent est reten
     assert.ok(typeof nov !== 'string');
     assert.deepEqual([nov.detail[0].compteurs[0].debut.index, nov.detail[0].compteurs[0].volume, nov.detail[0].compteurs[0].doublons?.length], [110000, 15000, 1]);
 });
+
+test('passage par zéro : facturé si la capacité du compteur est déclarée (index + capacité − index précédent), sinon bloqué', () => {
+    // Compteur à 6 chiffres : 999 400 fin septembre, 600 fin octobre → 1 200 m³.
+    const lectures = [{ id: 'a', date: '2025-09-30', value: 999400 }, { id: 'b', date: '2025-10-31', value: 600 }];
+    const sans = factureAuCompteur(ctx({ compteurs: () => [{ ...gaz, readings: lectures }] }));
+    assert.match(String(sans), /en baisse \(999400 → 600\) : changement de compteur à déclarer .* capacité du compteur à renseigner s'il est repassé par zéro/);
+    const avec = factureAuCompteur(ctx({ compteurs: () => [{ ...gaz, capacite: 1000000, readings: lectures }] }));
+    assert.ok(typeof avec !== 'string');
+    assert.deepEqual([avec.detail[0].compteurs[0].volume, avec.detail[0].compteurs[0].passageZero, avec.quantite], [1200, { capacite: 1000000 }, 12.6]);
+    assert.match(texteCompteur(avec).replace(/[\u202f\u00a0]/g, ' '), /passage par zéro \(capacité 1 000 000\)/);
+    // Capacité incohérente (index précédent au-dessus) : refus. Sans baisse, la capacité ne joue pas.
+    assert.match(String(factureAuCompteur(ctx({ compteurs: () => [{ ...gaz, capacite: 100000, readings: lectures }] }))), /supérieur à sa capacité déclarée \(100000\)/);
+    const normal = factureAuCompteur(ctx({ compteurs: () => [{ ...gaz, capacite: 1000000 }] }));
+    assert.ok(typeof normal !== 'string');
+    assert.equal(normal.detail[0].compteurs[0].passageZero, undefined);
+});

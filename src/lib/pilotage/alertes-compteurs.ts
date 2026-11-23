@@ -24,6 +24,8 @@ export type CompteurSuivi = {
     usage?: string | null;
     /** Compteur facturé au compteur (P1 au relevé : ECS ou chauffage). */
     ecsAuReleve?: boolean;
+    /** Capacité déclarée du compteur (index maximal avant retour à zéro). */
+    capacite?: number | null;
 };
 export type RelevePilotage = { id: string; date: string; value: number; type?: string; changement?: import('@/lib/releves').ChangementCompteur };
 
@@ -80,10 +82,10 @@ export function alertesCompteur(m: CompteurSuivi, relevesBruts: RelevePilotage[]
     for (const d of doublons) if (d.date >= depuisUnAn) {
         out.push({ ...base, type: 'doublon', gravite: 'attention', date: d.date, message: `${texteDoublon(d, unite)} Corrigez ou supprimez l'autre relevé.` });
     }
-    // Index en baisse (sauf relevé « corrigé », ou relevé qui porte un changement de compteur : index de dépose et de pose).
+    // Index en baisse (sauf relevé « corrigé », changement de compteur déclaré, ou passage par zéro d'un compteur dont la capacité est déclarée).
     for (let i = 1; i < readings.length; i++) {
         const [a, b] = [readings[i - 1], readings[i]];
-        if (b.date >= depuisUnAn && a.date !== b.date && b.value < a.value && b.type !== 'CORRIGE' && !b.changement) {
+        if (b.date >= depuisUnAn && a.date !== b.date && b.value < a.value && b.type !== 'CORRIGE' && !b.changement && !(m.capacite && a.value <= m.capacite)) {
             out.push({ ...base, type: 'index_baisse', gravite: 'critique', date: b.date, message: `Index en baisse : ${n(a.value)} le ${fr(a.date)} puis ${n(b.value)} le ${fr(b.date)} (compteur changé, remis à zéro, ou erreur de saisie ?).` });
         }
     }

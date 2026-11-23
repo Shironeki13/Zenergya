@@ -226,6 +226,7 @@ export async function alertesCompteurs(): Promise<{ today: string; alertes: Aler
     ]);
     const siteById = new Map(sites.docs.map(d => [d.id, d.data()]));
     const usageOf = new Map(p1.docs.map(d => [d.id, valeurAu<string>((d.data() as P1MeterDoc).params, 'usage', today)]));
+    const capaciteOf = new Map(p1.docs.map(d => [d.id, valeurAu<number>((d.data() as P1MeterDoc).params, 'capacite', today)]));
     // Compteurs facturés au compteur (ECS, chauffage) : celui de la prestation, sinon ceux du site (ECS : d'usage ECS ;
     // chauffage : les autres).
     const actives = services.docs.filter(d => d.get('isActive') !== false);
@@ -246,7 +247,7 @@ export async function alertesCompteurs(): Promise<{ today: string; alertes: Aler
         const compteur: CompteurSuivi = {
             id: m.id, code: String(m.get('code') ?? m.id), name: String(m.get('name') ?? ''), siteId: String(m.get('siteId') ?? ''),
             site: String(site?.name ?? m.get('siteName') ?? '—'), client: String(site?.clientName ?? m.get('clientName') ?? '—'),
-            unit: m.get('unit') ?? undefined, status: m.get('status') ?? undefined, usage,
+            unit: m.get('unit') ?? undefined, status: m.get('status') ?? undefined, usage, capacite: capaciteOf.get(P1_DOC_ID.meter(m.id)) ?? null,
             ecsAuReleve: releveMeters.has(m.id) || (releveSites.has(String(m.get('siteId'))) && usage === 'ecs')
                 || (chauffageSites.has(String(m.get('siteId'))) && usage !== 'ecs'),
         };

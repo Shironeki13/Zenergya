@@ -97,6 +97,7 @@ export async function releveSource(siteIds: string[], contractId?: string): Prom
         // Compteur d'ECS (m³) déduit d'une formule de NC : qECS (MWh PCS / m³), à défaut son QE.
         qe: (valeurAu<string>(meterDoc(m.id)?.params, 'usage', jour) === 'ecs' ? valeurAu<number>(meterDoc(m.id)?.params, 'qecs', jour) : null)
             ?? valeurAu<number>(meterDoc(m.id)?.params, 'qe', jour),
+        capacite: valeurAu<number>(meterDoc(m.id)?.params, 'capacite', jour) ?? null,
         readings: byMeter.get(m.id) ?? [],
     });
 

@@ -71,6 +71,7 @@ export const P1_PARAMS: Record<P1Scope, Record<string, ParamDef>> = {
         energie: { label: 'Énergie', kind: 'enum', options: ENERGIES },
         qe: { label: 'Coefficient de conversion (QE)', kind: 'positive', unit: 'MWh / unité', help: 'Index → MWh. Jamais 1 par défaut : vide tant qu\'il n\'est pas connu.' },
         qecs: { label: 'qECS', kind: 'positive', help: 'Compteurs d\'ECS volumétriques.' },
+        capacite: { label: 'Capacité du compteur', kind: 'positive', unit: 'unité du compteur', help: 'Index maximal avant retour à zéro (ex. 100000 pour un compteur à 5 chiffres). Renseignée, un index qui repasse par zéro est facturé : index + capacité − index précédent. Vide : un index en baisse bloque.' },
         correspondanceTwimm: { label: 'Code compteur TWIMM', kind: 'text', help: 'Change si le compteur est remplacé : nouvelle version datée.' },
     },
     contract: {
