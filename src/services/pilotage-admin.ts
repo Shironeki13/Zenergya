@@ -63,7 +63,7 @@ export async function suiviFacturation(horizonJours = 60): Promise<SuiviFacturat
         const contract = await getContract(c.id);
         if (!contract) continue;
         const dims = dimsContrat(c.data());
-        const head = { contractId: contract.id, contractNumber: contract.contractNumber ?? contract.id, clientId: contract.clientId ?? contract.clientName, clientName: contract.clientName };
+        const head = { contractId: contract.id, contractNumber: contract.contractNumber || contract.id, clientId: contract.clientId ?? contract.clientName, clientName: contract.clientName || String(clients.get(String(contract.clientId ?? ''))?.name ?? '') || 'Client non renseigné' };
         try {
             const [input, invoices] = await Promise.all([loadBillingInput(contract), getInvoicesByContract(contract.id)]);
             const suivi = suiviContrat({ id: head.contractId, contractNumber: head.contractNumber, clientId: head.clientId, clientName: head.clientName, dims }, input, invoices, today, horizon);

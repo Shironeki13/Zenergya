@@ -3,7 +3,8 @@ import { test, before } from 'node:test';
 import assert from 'node:assert/strict';
 import { Timestamp } from 'firebase-admin/firestore';
 import { adminDb } from '../src/lib/firebase-admin';
-import { prepareContractInvoice } from '../src/services/contract-billing-admin';
+import { prepareContractInvoice, previewBatchBilling } from '../src/services/contract-billing-admin';
+import { suiviFacturation } from '../src/services/pilotage-admin';
 import { createInvoice, convertProformaToInvoice, getInvoice } from '../src/services/firestore-admin';
 import { dueDateFor } from '../src/lib/billing/contract-billing';
 import { toDay } from '../src/lib/services/site-amounts';
@@ -93,4 +94,21 @@ test('proforma : occupe ses échéances ; converti, échéance recalculée à la
     await convertProformaToInvoice(id);
     const converted = (await getInvoice(id))!;
     assert.equal(toDay(converted.dueDate), dueDateFor(toDay(new Date())!, { days: 45, endOfMonth: true }));
+});
+
+test('contrats actifs incomplets (sans numéro, sans nom de client) : en erreur sur leur ligne, la facturation groupée et le suivi continuent', async () => {
+    await set('contracts', 'fb-vide', { status: 'Actif' });
+    await set('contracts', 'fb-sansnom', { clientId: 'fb-cli', status: 'Actif' });
+    try {
+        const lignes = await previewBatchBilling('2026-03-05');
+        const de = (id: string) => lignes.find(r => r.contractId === id)!;
+        assert.deepEqual([de('fb-vide').contractNumber, de('fb-vide').clientName], ['fb-vide', 'Client non renseigné']);
+        assert.deepEqual([de('fb-sansnom').contractNumber, de('fb-sansnom').clientName], ['fb-sansnom', 'Copropriété Facturée']);   // nom repris de la fiche du client
+        assert.match(String(de('fb-vide').error), /Dates de début et de fin du contrat obligatoires/);
+        assert.ok(de('fb-k'), 'le contrat complet reste proposé');
+        const suivi = await suiviFacturation(30);
+        assert.deepEqual(suivi.contratsEnErreur.filter(c => c.contractId.startsWith('fb-')).map(c => [c.contractId, c.clientName]).sort(), [['fb-sansnom', 'Copropriété Facturée'], ['fb-vide', 'Client non renseigné']]);
+    } finally {
+        await Promise.all(['fb-vide', 'fb-sansnom'].map(id => adminDb.collection('contracts').doc(id).delete()));
+    }
 });

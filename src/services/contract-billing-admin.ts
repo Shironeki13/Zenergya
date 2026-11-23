@@ -296,7 +296,9 @@ export async function previewBatchBilling(until: string): Promise<BatchRow[]> {
     for (const c of snap.docs) {
         const contract = await getContract(c.id);
         if (!contract) continue;
-        const base = { contractId: contract.id, contractNumber: contract.contractNumber ?? contract.id, clientName: contract.clientName };
+        // Contrat incomplet (sans numéro, sans nom de client) : il sort en erreur sur sa ligne, sans arrêter les autres.
+        const clientName = contract.clientName || (contract.clientId ? (await getClient(contract.clientId))?.name : '') || 'Client non renseigné';
+        const base = { contractId: contract.id, contractNumber: contract.contractNumber || contract.id, clientName };
         try {
             const [input, invoices] = await Promise.all([loadBillingInput(contract), getInvoicesByContract(contract.id)]);
             const due = dueInvoiceLines(input, invoices, day);
@@ -312,5 +314,5 @@ export async function previewBatchBilling(until: string): Promise<BatchRow[]> {
             rows.push({ ...base, periodStart: '', periodEnd: '', echeances: 0, subtotal: 0, tax: 0, warnings: [], error: (e as Error).message });
         }
     }
-    return rows.sort((a, b) => a.clientName.localeCompare(b.clientName));
+    return rows.sort((a, b) => a.clientName.localeCompare(b.clientName, 'fr') || a.contractNumber.localeCompare(b.contractNumber));
 }
