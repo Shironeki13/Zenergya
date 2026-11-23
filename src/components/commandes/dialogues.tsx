@@ -86,7 +86,7 @@ export function SeuilsDialog({ open, onOpenChange }: { open: boolean; onOpenChan
             <DialogContent>
                 <DialogHeader>
                     <DialogTitle>Seuils de validation des commandes</DialogTitle>
-                    <DialogDescription>Selon le total HT de la commande. Ils s&apos;appliquent aux commandes soumises ensuite ; les responsables (N+1) se règlent dans Utilisateurs, le droit « Achats » sur les rôles.</DialogDescription>
+                    <DialogDescription>Valeurs par défaut de la société. Le montant d&apos;autovalidation et le plafond de validation de chacun se règlent sur sa fiche (Utilisateurs), comme son responsable (N+1) ; le droit « Achats », sur les rôles. Les commandes déjà soumises gardent leur circuit.</DialogDescription>
                 </DialogHeader>
                 <div className="space-y-3">
                     {companies.length > 1 && (
@@ -94,9 +94,9 @@ export function SeuilsDialog({ open, onOpenChange }: { open: boolean; onOpenChan
                             <Select value={companyId} onValueChange={setCompanyId}><SelectTrigger id="seuil-societe"><SelectValue /></SelectTrigger>
                                 <SelectContent>{companies.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}</SelectContent></Select></div>
                     )}
-                    {champ('auto', 'Autovalidation jusqu\'à (€ HT)', 'Jusqu\'à ce montant, la commande est validée à sa soumission. Au-delà : validation du responsable (N+1).')}
-                    {champ('n2', 'N+2 au-delà de (€ HT)', 'Au-delà, le responsable du N+1 valide aussi.')}
-                    {champ('achats', 'Achats au-delà de (€ HT)', 'Au-delà, un acheteur (rôle « Achats ») valide en dernier.')}
+                    {champ('auto', 'Autovalidation par défaut (€ HT)', 'Montant jusqu\'auquel un utilisateur valide lui-même sa commande, s\'il n\'a pas son propre montant. Au-delà : son responsable (N+1) valide toujours.')}
+                    {champ('n2', 'Plafond de validation par défaut (€ HT)', 'Montant jusqu\'auquel un valideur valide, s\'il n\'a pas son propre plafond. Si le plafond du N+1 ne couvre pas la commande, elle monte au N+2, et ainsi de suite.')}
+                    {champ('achats', 'Achats au-delà de (€ HT)', 'Seuil global : au-delà, un acheteur (rôle « Achats ») valide en dernier, quel que soit le reste du circuit.')}
                     {erreur && <p className="text-sm text-destructive">{erreur}</p>}
                 </div>
                 <DialogFooter>

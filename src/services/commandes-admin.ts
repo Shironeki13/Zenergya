@@ -157,7 +157,10 @@ export async function soumettreCommande(id: string, user: SessionUser, importee 
     const [seuils, societe, users] = await Promise.all([seuilsDe(c0.companyId), adminDb.collection('companies').doc(c0.companyId).get(), adminDb.collection('users').get()]);
     const code = String(societe.get('code') ?? '').trim();
     if (!code) throw new Error('Code de la société manquant (numérotation des commandes).');
-    const hierarchie = users.docs.map(d => ({ id: d.id, name: nomDe(d.data()), managerId: d.get('managerId') as string | null | undefined }));
+    const hierarchie = users.docs.map(d => ({
+        id: d.id, name: nomDe(d.data()), managerId: d.get('managerId') as string | null | undefined,
+        autoValidationLimit: d.get('autoValidationLimit') as number | null | undefined, validationLimit: d.get('validationLimit') as number | null | undefined,
+    }));
     const demandeur = hierarchie.find(u => u.id === c0.requesterId) ?? { id: c0.requesterId, name: c0.requesterName };
     const etapes = importee ? [] : etapesPour(c0.totalHT, seuils, demandeur, hierarchie);
     if (typeof etapes === 'string') throw new Error(etapes);

@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { CheckCircle2, ChevronLeft, Circle, Loader2, Plus, Send, Trash2, XCircle } from 'lucide-react';
@@ -17,7 +17,7 @@ import { FournisseursDialog } from '@/components/commandes/dialogues';
 import { useData } from '@/context/data-context';
 import { useToast } from '@/hooks/use-toast';
 import {
-    LIBELLE_ETAPE, LIBELLE_NATURE_ACHAT, LIBELLE_STATUT, NATURES_ACHAT, SEUILS_DEFAUT, SUITE, annulable, etapeEnCours, factureHT, modifiable, peutDecider, rolesRequis,
+    LIBELLE_NATURE_ACHAT, LIBELLE_STATUT, NATURES_ACHAT, SEUILS_DEFAUT, SUITE, annulable, etapeEnCours, factureHT, modifiable, peutDecider, autovalidationDe, etapesPour, libelleEtape,
     totalCommande, type CibleCommande, type Commande, type NatureAchat, type SeuilsValidation,
 } from '@/lib/commandes';
 import {
@@ -46,7 +46,7 @@ export default function CommandePage() {
     const { toast } = useToast();
     const confirmer = useConfirm();
     const demander = usePrompt();
-    const { companies, currentUser, authUser, isAdmin, isAcheteur } = useData();
+    const { companies, users, currentUser, authUser, isAdmin, isAcheteur } = useData();
     const moi = (authUser ?? currentUser)?.id ?? '';
 
     const [commande, setCommande] = useState<Commande | null>(null);
@@ -85,7 +85,10 @@ export default function CommandePage() {
     const cibles = useCiblesAnalytiques(companyId);
 
     const total = totalCommande(lignes.map(l => ({ quantity: num(l.quantity) || 0, unitPrice: num(l.unitPrice) || 0 })));
-    const etapesPrevues = rolesRequis(total, seuils);
+    // Circuit prévu : d'après le montant d'autovalidation du demandeur et les plafonds de sa hiérarchie (même calcul qu'à la soumission).
+    const hierarchie = useMemo(() => users.map(u => ({ id: u.id, name: (u.firstName && u.name?.toLowerCase().startsWith(u.firstName.toLowerCase()) ? u.name : [u.firstName, u.name].filter(Boolean).join(' ')) || u.email, managerId: u.managerId, autoValidationLimit: u.autoValidationLimit, validationLimit: u.validationLimit })), [users]);
+    const demandeur = hierarchie.find(u => u.id === (commande?.requesterId ?? moi));
+    const etapesPrevues = demandeur ? etapesPour(total, seuils, demandeur, hierarchie) : [];
     const editable = nouvelle || (!!commande && modifiable(commande.status) && (commande.requesterId === moi || isAdmin));
     const majLigne = (i: number, p: Partial<LigneSaisie>) => setLignes(ls => ls.map((l, j) => (j === i ? { ...l, ...p } : l)));
 
@@ -241,12 +244,16 @@ export default function CommandePage() {
                 <CardHeader className="pb-3">
                     <CardTitle className="text-base">Validation</CardTitle>
                     <CardDescription>
-                        Seuils de la société : autovalidation jusqu&apos;à {eur(seuils.auto)}, N+2 au-delà de {eur(seuils.n2)}, achats au-delà de {eur(seuils.achats)}.
+                        {demandeur ? `${demandeur.name} valide lui-même jusqu'à ${eur(autovalidationDe(demandeur, seuils))}. ` : ''}Au-delà, son responsable valide, puis la commande monte tant que le plafond du valideur ne la couvre pas ; achats au-delà de {eur(seuils.achats)}.
                     </CardDescription>
                 </CardHeader>
                 <CardContent className="text-sm">
                     {editable || !commande ? (
-                        <p>{etapesPrevues.length === 0 ? `Total de ${eur(total)} : la commande sera validée à la soumission (autovalidation).` : `Total de ${eur(total)} : à la soumission, validation par ${etapesPrevues.map(r => LIBELLE_ETAPE[r]).join(', puis ')}.`}</p>
+                        typeof etapesPrevues === 'string'
+                            ? <p className="text-destructive">Total de {eur(total)} : {etapesPrevues}</p>
+                            : etapesPrevues.length === 0
+                                ? <p>Total de {eur(total)} : la commande sera validée à la soumission (autovalidation).</p>
+                                : <p>Total de {eur(total)} : à la soumission, validation par {etapesPrevues.map(e => `${libelleEtape(e.role)}${e.approverName ? ` (${e.approverName}${typeof e.plafond === 'number' ? `, jusqu'à ${eur(e.plafond)}` : ''})` : ''}`).join(', puis ')}.</p>
                     ) : commande.importee ? (
                         <p className="flex items-center gap-2"><CheckCircle2 className="h-4 w-4 text-green-700" />Commande importée (référence {commande.externalRef}), validée hors Zenergya ; entrée le {jour(commande.validatedAt)} par {commande.importedBy}.</p>
                     ) : commande.autoValidee ? (
@@ -257,7 +264,7 @@ export default function CommandePage() {
                                 <li key={i} className="flex items-start gap-2">
                                     {e.decision === 'validee' ? <CheckCircle2 className="mt-0.5 h-4 w-4 text-green-700" /> : e.decision === 'refusee' ? <XCircle className="mt-0.5 h-4 w-4 text-destructive" /> : <Circle className={`mt-0.5 h-4 w-4 ${e === enCours ? 'text-primary' : 'text-muted-foreground'}`} />}
                                     <div>
-                                        <p className="font-medium">{LIBELLE_ETAPE[e.role]}{e.approverName ? ` : ${e.approverName}` : ''}{e === enCours ? ' — en attente' : ''}</p>
+                                        <p className="font-medium">{libelleEtape(e.role)}{e.approverName ? ` : ${e.approverName}` : ''}{e === enCours ? ' — en attente' : ''}</p>
                                         {e.decision && <p className="text-xs text-muted-foreground">{e.decision === 'validee' ? 'Validée' : 'Refusée'} le {jour(e.decideLe)}{e.decideParNom ? ` par ${e.decideParNom}` : ''}{e.secours ? ' (administrateur, en secours)' : ''}{e.commentaire ? ` — ${e.commentaire}` : ''}</p>}
                                     </div>
                                 </li>

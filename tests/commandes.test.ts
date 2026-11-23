@@ -2,28 +2,51 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-    controleSeuils, decider, engagements, etapeEnCours, etapesPour, peutDecider, rolesRequis, totalCommande, type Commande, type EtapeValidation, type LigneCommande,
+    autovalidationDe, controleSeuils, decider, engagements, etapeEnCours, etapesPour, libelleEtape, peutDecider, plafondDe, totalCommande, type Commande, type EtapeValidation, type Hierarchie, type LigneCommande,
 } from '../src/lib/commandes';
 
 const S = { auto: 500, n2: 5000, achats: 10000 };
-const U = [{ id: 'tech', name: 'Technicien', managerId: 'chef' }, { id: 'chef', name: 'Chef de secteur', managerId: 'dir' }, { id: 'dir', name: 'Directrice', managerId: null }, { id: 'ach', name: 'Acheteuse' }];
+// La directrice, en haut de la hiérarchie, a un plafond de validation élevé ; les autres ont ceux de la société.
+const U: Hierarchie[] = [{ id: 'tech', name: 'Technicien', managerId: 'chef' }, { id: 'chef', name: 'Chef de secteur', managerId: 'dir' }, { id: 'dir', name: 'Directrice', managerId: null, validationLimit: 50000 }, { id: 'ach', name: 'Acheteuse' }];
+const circuit = (total: number, demandeur = U[0], utilisateurs = U, seuils = S) => { const e = etapesPour(total, seuils, demandeur, utilisateurs); return typeof e === 'string' ? e : e.map(x => `${x.role}:${x.approverId ?? '*'}`).join(' '); };
+const texte = (x: string) => x.replace(/[\u202f\u00a0]/g, ' ');
 
-test('seuils : autovalidation, N+1, N+2, achats ; contrôle des seuils', () => {
-    assert.deepEqual([rolesRequis(500, S), rolesRequis(500.01, S), rolesRequis(5000, S), rolesRequis(5000.01, S), rolesRequis(10000.01, S)], [[], ['n1'], ['n1'], ['n1', 'n2'], ['n1', 'n2', 'achats']]);
-    // Seuil achats inférieur au seuil N+2 : achats sans N+2.
-    assert.deepEqual(rolesRequis(3000, { auto: 500, n2: 5000, achats: 2000 }), ['n1', 'achats']);
+test('valeurs par défaut de la société : autovalidation, N+1 toujours, montée au N+2 si le plafond du N+1 ne suffit pas, achats', () => {
+    assert.deepEqual([circuit(500), circuit(500.01), circuit(5000), circuit(5000.01), circuit(10000.01)], ['', 'n1:chef', 'n1:chef', 'n1:chef n2:dir', 'n1:chef n2:dir achats:*']);
+    // Le plafond de chaque valideur est gardé sur l'étape.
+    const e = etapesPour(8000, S, U[0], U);
+    assert.ok(typeof e !== 'string');
+    assert.deepEqual(e.map(x => [x.role, x.approverName, x.plafond]), [['n1', 'Chef de secteur', 5000], ['n2', 'Directrice', 50000]]);
+    assert.deepEqual([libelleEtape('n1'), libelleEtape('n2'), libelleEtape('n3'), libelleEtape('achats')], ['Responsable (N+1)', 'Responsable N+2', 'Responsable N+3', 'Achats']);
     assert.equal(controleSeuils(S), null);
-    assert.match(String(controleSeuils({ auto: 1000, n2: 500, achats: 0 })), /N\+2/);
+    assert.match(String(controleSeuils({ auto: 1000, n2: 500, achats: 0 })), /plafond de validation par défaut/);
     assert.equal(totalCommande([{ quantity: 3, unitPrice: 19.99 }, { quantity: 1, unitPrice: 0.335 }]), 60.31);
 });
 
-test('étapes : valideurs d\'après la hiérarchie ; responsable manquant signalé', () => {
-    const e = etapesPour(12000, S, U[0], U);
-    assert.ok(typeof e !== 'string');
-    assert.deepEqual(e.map(x => [x.role, x.approverId ?? null]), [['n1', 'chef'], ['n2', 'dir'], ['achats', null]]);
-    assert.deepEqual(etapesPour(100, S, U[0], U), []);
-    assert.match(String(etapesPour(800, S, { id: 'x', name: 'Sans chef' }, U)), /Responsable \(N\+1\) de Sans chef non renseigné/);
-    assert.match(String(etapesPour(8000, S, U[1], U)), /Responsable N\+2 non renseigné/);   // la directrice n'a pas de responsable
+test('par utilisateur : montant d\'autovalidation et plafond de validation propres ; zéro est une vraie valeur', () => {
+    const avec = (id: string, plus: object) => U.map(u => (u.id === id ? { ...u, ...plus } : u));
+    // Autovalidation propre au demandeur : plus haute, plus basse, nulle.
+    assert.deepEqual([circuit(1500, { ...U[0], autoValidationLimit: 2000 }), circuit(2000.01, { ...U[0], autoValidationLimit: 2000 }), circuit(300, { ...U[0], autoValidationLimit: 100 }), circuit(10, { ...U[0], autoValidationLimit: 0 })], ['', 'n1:chef', 'n1:chef', 'n1:chef']);
+    assert.deepEqual([autovalidationDe({ autoValidationLimit: 2000 }, S), autovalidationDe({}, S), autovalidationDe({ autoValidationLimit: null }, S), plafondDe({ validationLimit: 0 }, S), plafondDe({}, S)], [2000, 500, 500, 0, 5000]);
+    // Plafond du N+1 relevé : il suffit seul. Abaissé à zéro : il valide quand même, puis la commande monte.
+    assert.deepEqual([circuit(8000, U[0], avec('chef', { validationLimit: 20000 })), circuit(600, U[0], avec('chef', { validationLimit: 0 }))], ['n1:chef', 'n1:chef n2:dir']);
+    // Trois niveaux : la commande monte jusqu'au premier plafond suffisant.
+    const trois = [...avec('dir', { validationLimit: 8000, managerId: 'pdg' }), { id: 'pdg', name: 'Présidente', validationLimit: 1000000 }];
+    assert.deepEqual([circuit(7000, U[0], trois), circuit(9000, U[0], trois), circuit(60000, U[0], trois)], ['n1:chef n2:dir', 'n1:chef n2:dir n3:pdg', 'n1:chef n2:dir n3:pdg achats:*']);
+    // Seuil global des achats : il s'applique même à une commande que la hiérarchie n'a pas à valider.
+    assert.equal(circuit(15000, { ...U[0], autoValidationLimit: 20000 }), 'achats:*');
+    assert.equal(circuit(3000, U[0], U, { auto: 500, n2: 5000, achats: 2000 }), 'n1:chef achats:*');
+});
+
+test('hiérarchie incomplète : responsable manquant, personne avec un plafond suffisant, boucle — la soumission est refusée avec un message', () => {
+    assert.match(circuit(800, { id: 'x', name: 'Sans chef' }), /Responsable \(N\+1\) de Sans chef non renseigné/);
+    // La directrice valide jusqu'à 50 000 € et n'a pas de responsable.
+    assert.match(texte(circuit(60000)), /Aucun valideur n'a un plafond suffisant pour 60 000,00 € : Directrice, en haut de la hiérarchie, valide jusqu'à 50 000,00 €/);
+    // Commande du chef : sa responsable est la directrice (N+1), seule.
+    assert.deepEqual([circuit(8000, U[1]), /Aucun valideur/.test(circuit(80000, U[1]))], ['n1:dir', true]);
+    // Hiérarchie en boucle (A → B → A) : pas de boucle sans fin.
+    const boucle = [{ id: 'a', name: 'A', managerId: 'b' }, { id: 'b', name: 'B', managerId: 'a' }];
+    assert.match(circuit(9000, boucle[0], boucle), /Aucun valideur n'a un plafond suffisant/);
 });
 
 const cmd = (etapes: EtapeValidation[]): Pick<Commande, 'status' | 'etapes' | 'requesterId'> => ({ status: 'a_valider', requesterId: 'tech', etapes });

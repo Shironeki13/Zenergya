@@ -927,6 +927,10 @@ export type User = {
     managerId?: string | null;
     /** Coût horaire interne (€ / h) pour valoriser ses heures ; à défaut, celui de la société (paramètres des devis). */
     hourlyCost?: number | null;
+    /** Commandes : montant (€ HT) jusqu'auquel il valide lui-même ses commandes ; à défaut, celui de la société. */
+    autoValidationLimit?: number | null;
+    /** Commandes : plafond (€ HT) jusqu'auquel il valide les commandes de son équipe ; à défaut, celui de la société. */
+    validationLimit?: number | null;
 }
 
 // Genkit Flow Schemas

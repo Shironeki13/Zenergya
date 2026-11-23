@@ -12,7 +12,7 @@ import { FournisseursDialog, SeuilsDialog } from '@/components/commandes/dialogu
 import { ImportCommandesDialog } from '@/components/commandes/import-dialog';
 import { useData } from '@/context/data-context';
 import { useToast } from '@/hooks/use-toast';
-import { LIBELLE_ETAPE, LIBELLE_STATUT, etapeEnCours, factureHT, peutDecider, type Commande, type StatutCommande } from '@/lib/commandes';
+import { LIBELLE_STATUT, libelleEtape, etapeEnCours, factureHT, peutDecider, type Commande, type StatutCommande } from '@/lib/commandes';
 import { listCommandesAction } from '@/lib/commandes-actions';
 
 /**
@@ -60,7 +60,7 @@ export default function CommandesPage() {
         { id: 'statut', label: 'État', tri: r => r.status, exporter: r => LIBELLE_STATUT[r.status], cell: r => {
             const e = etapeEnCours(r);
             return <span className="inline-flex flex-col gap-0.5"><Badge variant={VARIANTE[r.status]} className="w-fit whitespace-nowrap">{LIBELLE_STATUT[r.status]}</Badge>
-                {e && <span className="text-xs text-muted-foreground">{LIBELLE_ETAPE[e.role]}{e.approverName ? ` : ${e.approverName}` : ''}</span>}</span>;
+                {e && <span className="text-xs text-muted-foreground">{libelleEtape(e.role)}{e.approverName ? ` : ${e.approverName}` : ''}</span>}</span>;
         } },
         { id: 'total', label: 'Total HT', align: 'right', tri: r => r.totalHT, exporter: r => r.totalHT, cell: r => <span className="font-medium">{eur(r.totalHT)}</span> },
         { id: 'facture', label: 'Facturé fournisseur', align: 'right', masquee: true, tri: r => factureHT(r), exporter: r => factureHT(r), cell: r => (factureHT(r) ? eur(factureHT(r)) : '—') },

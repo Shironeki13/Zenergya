@@ -144,12 +144,12 @@ const COMPTES = [
     { id: 'demo-u-ctq', email: 'contratheque@example.com', name: 'Sophie Bernard (contrathèque)', firstName: 'Sophie', roleId: 'demo-r-ctq', modules: ['contracts', 'billing'] },
     { id: 'demo-u-admin', email: 'admin@example.com', name: 'Marc Leroy (administrateur)', firstName: 'Marc', roleId: 'demo-r-admin' },
     // Achats : le technicien commande ; son responsable (N+1) puis le directeur d'agence (N+2) valident ; les achats au-delà de leur seuil.
-    { id: 'demo-u-dir', email: 'directeur@example.com', name: 'Paul Garnier (directeur d\'agence)', firstName: 'Paul', roleId: 'demo-r-expl', modules: ['works', 'purchases'], agence: 'demo-ag-lyon' },
+    { id: 'demo-u-dir', email: 'directeur@example.com', name: 'Paul Garnier (directeur d\'agence)', firstName: 'Paul', roleId: 'demo-r-expl', modules: ['works', 'purchases'], agence: 'demo-ag-lyon', validationLimit: 100000 },
     { id: 'demo-u-resp', email: 'responsable@example.com', name: 'Nadia Roche (responsable d\'exploitation)', firstName: 'Nadia', roleId: 'demo-r-expl', managerId: 'demo-u-dir', modules: ['works', 'purchases'], agence: 'demo-ag-lyon' },
     { id: 'demo-u-tech', email: 'technicien@example.com', name: 'Lucas Morel (technicien)', firstName: 'Lucas', roleId: 'demo-r-expl', managerId: 'demo-u-resp', modules: ['works', 'purchases'], agence: 'demo-ag-lyon' },
-    { id: 'demo-u-tech2', email: 'technicienne@example.com', name: 'Inès Colin (technicienne)', firstName: 'Inès', roleId: 'demo-r-expl', managerId: 'demo-u-resp', hourlyCost: 46, modules: ['works', 'purchases'], agence: 'demo-ag-lyon' },
+    { id: 'demo-u-tech2', email: 'technicienne@example.com', name: 'Inès Colin (technicienne)', firstName: 'Inès', roleId: 'demo-r-expl', managerId: 'demo-u-resp', hourlyCost: 46, modules: ['works', 'purchases'], agence: 'demo-ag-lyon', autoValidationLimit: 1000 },
     { id: 'demo-u-achats', email: 'achats@example.com', name: 'Élise Faure (achats)', firstName: 'Élise', roleId: 'demo-r-achats', modules: ['works', 'purchases'] },
-] as { id: string; email: string; name: string; firstName: string; roleId: string; managerId?: string; hourlyCost?: number; modules?: string[]; agence?: string }[];
+] as { id: string; email: string; name: string; firstName: string; roleId: string; managerId?: string; hourlyCost?: number; modules?: string[]; agence?: string; autoValidationLimit?: number; validationLimit?: number }[];
 
 async function comptes() {
     await set('roles', 'demo-r-adv', { name: 'ADV', isAdmin: false });
@@ -160,7 +160,7 @@ async function comptes() {
     for (const c of COMPTES) {
         const u = await adminAuth.createUser({ email: c.email, password: MOT_DE_PASSE, displayName: c.name });
         await set('users', c.id, {
-            name: c.name, firstName: c.firstName, email: c.email, roleId: c.roleId, authUid: u.uid, ...(c.managerId && { managerId: c.managerId }), ...(c.hourlyCost && { hourlyCost: c.hourlyCost }),
+            name: c.name, firstName: c.firstName, email: c.email, roleId: c.roleId, authUid: u.uid, ...(c.managerId && { managerId: c.managerId }), ...(c.hourlyCost && { hourlyCost: c.hourlyCost }), ...(c.autoValidationLimit !== undefined && { autoValidationLimit: c.autoValidationLimit }), ...(c.validationLimit !== undefined && { validationLimit: c.validationLimit }),
             // Modules (menu et pages) et périmètre : tout par défaut ; certains comptes sont limités à une agence.
             modules: c.modules ?? ['contracts', 'billing', 'works', 'purchases', 'settings'], scope: { companyIds: ['*'], agencyIds: c.agence ? [c.agence] : ['*'], sectorIds: ['*'] },
         });
@@ -592,7 +592,8 @@ async function travaux(codesClients: string[], contrats: { id: string }[]) {
     return { circulateur: q1.projectId as string, chaufferie: affaire.id };
 }
 
-// --- Achats : fournisseurs, commandes à chaque état du circuit (seuils par défaut : 500 / 5 000 / 10 000 € HT) ---
+// --- Achats : fournisseurs, commandes à chaque état du circuit. Société : autovalidation 500 €, plafond de validation
+// 5 000 €, achats au-delà de 10 000 € HT ; le directeur valide jusqu'à 100 000 €, la technicienne s'autovalide jusqu'à 1 000 €. ---
 
 async function achats(affaires: { circulateur: string; chaufferie: string }, contrats: { id: string }[]) {
     const session = async (id: string): Promise<SessionUser> => {

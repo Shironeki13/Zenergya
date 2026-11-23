@@ -8,24 +8,43 @@ Menu **Achats › Commandes** (`/purchases`).
 
 ## Circuit de validation
 
-Le total HT de la commande détermine les validations, d'après les **seuils de la société** (bouton « Seuils », réservé
-à l'administrateur ; par défaut 500 / 5 000 / 10 000 € HT) :
+Le circuit dépend du total HT de la commande, du **demandeur** et des **plafonds de sa hiérarchie** :
 
-| Total HT | Validation |
+1. **Autovalidation** : jusqu'à son montant d'autovalidation, le demandeur valide lui-même (la commande est validée à
+   la soumission).
+2. **Au-delà**, son responsable (**N+1**) valide **toujours**. Si le plafond de validation du N+1 ne couvre pas le
+   total, la commande monte ensuite au **N+2**, puis au N+3…, jusqu'à un valideur dont le plafond suffit.
+3. **Achats** : au-delà du seuil global, un utilisateur dont le rôle a le droit **Achats** valide en dernier, quel que
+   soit le reste du circuit (même pour une commande que le demandeur valide lui-même).
+
+Exemple — technicien (autovalidation 500 €), responsable (plafond 5 000 €), directeur (plafond 100 000 €) :
+
+| Total HT | Circuit |
 |---|---|
-| jusqu'au seuil d'autovalidation | aucune : la commande est validée à la soumission |
-| au-delà | **N+1** : le responsable du demandeur |
-| au-delà du seuil N+2 | N+1, puis **N+2** : le responsable du N+1 |
-| au-delà du seuil achats | en plus, et en dernier : un utilisateur dont le rôle a le droit **Achats** |
+| 400 € | autovalidée |
+| 3 000 € | N+1 |
+| 8 000 € | N+1, puis N+2 |
+| 45 000 € | N+1, puis N+2, puis achats |
 
-- Le N+1 de chacun se renseigne dans **Utilisateurs** (« Responsable (N+1) ») ; le droit Achats, sur le **rôle**.
-  Si un responsable manque, la soumission est refusée avec un message qui dit quoi compléter.
+**Où se règlent les montants**
+
+- **Par utilisateur** (Utilisateurs › fiche) : « Commandes : autovalidation jusqu'à » et « Commandes : valide jusqu'à »,
+  avec son **responsable (N+1)**. Les deux montants sont facultatifs ; zéro est une vraie valeur (aucune autovalidation,
+  ou un valideur qui fait toujours monter la commande après l'avoir validée).
+- **Par société** (bouton « Seuils », administrateur) : les **valeurs par défaut** pour qui n'a pas ses propres montants
+  (500 € et 5 000 € HT d'origine), et le **seuil global des achats** (10 000 € HT). Seules les exceptions sont donc à
+  renseigner sur les fiches.
+
+**Règles**
+
+- Si le responsable du demandeur manque, ou si **personne en haut de la hiérarchie n'a un plafond suffisant**, la
+  soumission est refusée avec un message qui dit quel plafond relever ; la commande reste en brouillon.
 - Les étapes se suivent dans l'ordre. Un **refus** (motif obligatoire) renvoie la commande au demandeur, qui la corrige
-  et la soumet à nouveau : le circuit repart du début.
+  et la soumet à nouveau : le circuit est recalculé.
 - Personne ne valide **sa propre** commande. Un **administrateur** peut valider une étape à la place du valideur
   absent : la décision est marquée « en secours ».
-- Les seuils appliqués sont **figés sur la commande** à la soumission : les changer ensuite ne modifie pas les
-  commandes en cours.
+- Le circuit, les plafonds des valideurs et les seuils de la société sont **figés sur la commande** à la soumission :
+  les changer ensuite ne modifie pas les commandes en cours.
 
 ## Vie d'une commande
 

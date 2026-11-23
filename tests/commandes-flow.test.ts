@@ -26,7 +26,7 @@ before(async () => {
     await set('projects', 'cm-aff', { code: 'CMD-AFF2026-0001', companyId: 'cm-co', clientId: 'cm-cli', clientName: 'Client commandes', title: 'Rénovation', status: 'en_cours', mode: 'P5', billing: 'direct', lines: [], quoteId: 'q' });
     await set('users', 'cm-tech', { name: 'Technicien', email: 'cm-tech@v.fr', managerId: 'cm-chef' });
     await set('users', 'cm-chef', { name: 'Chef', email: 'cm-chef@v.fr', managerId: 'cm-dir' });
-    await set('users', 'cm-dir', { name: 'Directrice', email: 'cm-dir@v.fr' });
+    await set('users', 'cm-dir', { name: 'Directrice', email: 'cm-dir@v.fr', validationLimit: 100000 });   // en haut de la hiérarchie : plafond élevé
     await set('users', 'cm-ach', { name: 'Acheteuse', email: 'cm-ach@v.fr' });
     await setSeuils('cm-co', { auto: 500, n2: 5000, achats: 10000 });
 });
@@ -38,7 +38,7 @@ test('fournisseurs : code attribué, doublon refusé ; seuils de la société', 
     await assert.rejects(saveFournisseur({ name: 'chauffage pro' }, 'a@v.fr'), /déjà enregistré/);
     await assert.rejects(saveFournisseur({ name: 'X', siret: '123' }, 'a@v.fr'), /14 chiffres/);
     assert.deepEqual(await seuilsDe('cm-co'), { auto: 500, n2: 5000, achats: 10000 });
-    await assert.rejects(setSeuils('cm-co', { auto: 1000, n2: 10, achats: 0 }), /N\+2/);
+    await assert.rejects(setSeuils('cm-co', { auto: 1000, n2: 10, achats: 0 }), /plafond de validation par défaut/);
 });
 
 test('sous le seuil : autovalidée à la soumission, numéro, analytique de l\'affaire figée sur la ligne ; contrôles de saisie', async () => {
@@ -99,4 +99,29 @@ test('responsable manquant : soumission refusée ; engagé, réel et en validati
     // Validées : 241 (auto) + 15 000 (soldée, facturée 14 500) ; annulée et brouillon exclus ; 1 800 en validation.
     assert.deepEqual(e.total, { engage: 15241, reel: 14500, enValidation: 1800 });
     assert.deepEqual([e.FOURNITURE.engage, e.SOUS_TRAITANCE.engage, e.SOUS_TRAITANCE.reel], [12241, 3000, 2900]);
+});
+
+test('seuils par utilisateur : autovalidation et plafond propres ; personne avec un plafond suffisant : soumission refusée, le brouillon reste', async () => {
+    const circuit = async (lignes: ReturnType<typeof ligne>[], par = tech) => { const c = await soumettreCommande((await brouillon(lignes, par)).id, par); return [c.status, c.etapes.map(e => `${e.role}:${e.approverId ?? '*'}:${e.plafond ?? ''}`).join(' ')]; };
+    const users = adminDb.collection('users');
+    // Le technicien valide lui-même jusqu'à 2 000 € ; le chef valide jusqu'à 20 000 €.
+    await users.doc('cm-tech').update({ autoValidationLimit: 2000 });
+    await users.doc('cm-chef').update({ validationLimit: 20000 });
+    assert.deepEqual(await circuit([ligne('Vannes', 1, 1500)]), ['validee', '']);
+    assert.deepEqual(await circuit([ligne('Pompe', 1, 8000)]), ['a_valider', 'n1:cm-chef:20000']);                       // le N+1 suffit
+    assert.deepEqual(await circuit([ligne('Chaudière', 1, 15000)]), ['a_valider', 'n1:cm-chef:20000 achats:*:']);        // seuil global des achats
+    assert.deepEqual(await circuit([ligne('Chaufferie', 1, 30000)]), ['a_valider', 'n1:cm-chef:20000 n2:cm-dir:100000 achats:*:']);
+    // Le chef n'a pas de montant propre : celui de la société (500 €).
+    assert.deepEqual(await circuit([ligne('Outillage', 1, 800)], chef), ['a_valider', 'n1:cm-dir:100000']);
+    // Au-delà du plafond de la directrice, qui n'a pas de responsable : refus, avec le plafond à relever ; le brouillon reste.
+    const trop = await brouillon([ligne('Réseau de chaleur', 1, 250000)]);
+    await assert.rejects(soumettreCommande(trop.id, tech), /Aucun valideur n'a un plafond suffisant.*Directrice, en haut de la hiérarchie/);
+    const reste = (await adminDb.collection('commandes').doc(trop.id).get());
+    assert.deepEqual([reste.get('status'), reste.get('number') ?? null], ['brouillon', null]);
+    // Plafond relevé : la même commande part en validation.
+    await users.doc('cm-dir').update({ validationLimit: 300000 });
+    assert.equal((await soumettreCommande(trop.id, tech)).etapes.map(e => e.role).join(), 'n1,n2,achats');
+    await users.doc('cm-tech').update({ autoValidationLimit: null });
+    await users.doc('cm-chef').update({ validationLimit: null });
+    await users.doc('cm-dir').update({ validationLimit: 100000 });
 });

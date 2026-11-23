@@ -191,6 +191,8 @@ const UsersSection = () => {
     const [roleId, setRoleId] = useState('');
     const [managerId, setManagerId] = useState('');
     const [hourlyCost, setHourlyCost] = useState('');
+    const [autoValidation, setAutoValidation] = useState('');
+    const [plafond, setPlafond] = useState('');
 
     // Permissions
     const [selectedModules, setSelectedModules] = useState<string[]>([]);
@@ -208,6 +210,8 @@ const UsersSection = () => {
         setRoleId('');
         setManagerId('');
         setHourlyCost('');
+        setAutoValidation('');
+        setPlafond('');
         setSelectedModules([]);
         setSelectedCompanyIds([]);
         setSelectedAgencyIds([]);
@@ -224,6 +228,8 @@ const UsersSection = () => {
             setRoleId(user.roleId);
             setManagerId(user.managerId ?? '');
             setHourlyCost(user.hourlyCost ? String(user.hourlyCost).replace('.', ',') : '');
+            setAutoValidation(typeof user.autoValidationLimit === 'number' ? String(user.autoValidationLimit).replace('.', ',') : '');
+            setPlafond(typeof user.validationLimit === 'number' ? String(user.validationLimit).replace('.', ',') : '');
             setSelectedModules(user.modules || []);
             setSelectedCompanyIds(user.scope?.companyIds || []);
             setSelectedAgencyIds(user.scope?.agencyIds || []);
@@ -250,6 +256,9 @@ const UsersSection = () => {
                 roleId,
                 managerId: managerId || null,
                 hourlyCost: Number(hourlyCost.replace(',', '.')) > 0 ? Number(hourlyCost.replace(',', '.')) : null,
+                // Vide : valeur par défaut de la société. Zéro est une vraie valeur (aucune autovalidation, ou ne valide rien).
+                autoValidationLimit: montantOuNul(autoValidation),
+                validationLimit: montantOuNul(plafond),
                 modules: selectedModules,
                 scope: {
                     companyIds: selectedCompanyIds,
@@ -409,6 +418,18 @@ const UsersSection = () => {
                                     </SelectContent>
                                 </Select>
                                 <p className="text-xs text-muted-foreground">Valide les commandes d&apos;achat de cet utilisateur au-delà du seuil d&apos;autovalidation ; son propre responsable est le N+2.</p>
+                            </div>
+                            <div className="grid gap-3 sm:grid-cols-2">
+                                <div className="space-y-2">
+                                    <Label htmlFor="auto-validation">Commandes : autovalidation jusqu&apos;à (€ HT)</Label>
+                                    <Input id="auto-validation" inputMode="decimal" value={autoValidation} onChange={e => setAutoValidation(e.target.value)} placeholder="Celui de la société" />
+                                    <p className="text-xs text-muted-foreground">Jusqu&apos;à ce montant, il valide lui-même ses commandes. Vide : montant par défaut de la société.</p>
+                                </div>
+                                <div className="space-y-2">
+                                    <Label htmlFor="plafond-validation">Commandes : valide jusqu&apos;à (€ HT)</Label>
+                                    <Input id="plafond-validation" inputMode="decimal" value={plafond} onChange={e => setPlafond(e.target.value)} placeholder="Celui de la société" />
+                                    <p className="text-xs text-muted-foreground">Plafond pour valider les commandes de son équipe ; au-delà, la commande monte à son propre responsable. Vide : plafond par défaut de la société.</p>
+                                </div>
                             </div>
                             <div className="space-y-2">
                                 <Label htmlFor="hourly-cost">Coût horaire interne (€ / h)</Label>
@@ -593,6 +614,9 @@ const UsersSection = () => {
     );
 };
 
+
+/** Montant saisi (virgule ou point) ; vide ou illisible : null (valeur par défaut de la société). */
+const montantOuNul = (v: string): number | null => { const t = v.trim().replace(/\s/g, '').replace(',', '.'); const n = Number(t); return t !== '' && Number.isFinite(n) && n >= 0 ? n : null; };
 
 export default function UsersPage() {
     const { isAdmin } = useData();
