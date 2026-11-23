@@ -1,4 +1,5 @@
 import 'server-only';
+import { notifierDocument } from '@/services/notifications-contrats';
 import { Timestamp } from 'firebase-admin/firestore';
 import { adminDb } from '@/lib/firebase-admin';
 import { ETAPES, LIBELLES_ETAPES, brouillonFinal, erreursBrouillon, montantNombre, type Brouillon } from '@/lib/contracts/assistant';
@@ -127,5 +128,6 @@ export async function creerContratAssistant(brouillon: Brouillon, user: SessionU
     await batch.commit();
     // Montants des sites calculés à partir de leurs prestations (source unique de la facturation).
     if (sitesAvecPrestation.size) await recomputeSiteAmounts([...sitesAvecPrestation]);
+    await notifierDocument('document_depose', 'contrat', contractRef.id);   // la contrathèque est prévenue ; jamais bloquant
     return { contractId: contractRef.id, contractNumber, clientId, siteIds };
 }

@@ -1,4 +1,6 @@
 import 'server-only';
+import { notifierDocument } from '@/services/notifications-contrats';
+import type { NatureDocument } from '@/lib/notifications/modeles';
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { CHAMPS_VALIDATION, valeursDocument } from '@/lib/validations';
 import { adminBucket } from '@/lib/firebase-admin';
@@ -606,6 +608,8 @@ async function updateClientAndContract(contractId: string, clientId: string, dat
         // contractuels ne changent que par la contrathèque, contrôlé dans updateContract).
         ...(dejaValide ? {} : { validationStatus: 'pending_validation', refusalReason: '' }),
     });
+    // Contrat refusé, corrigé : il repart en validation, la contrathèque en est prévenue (pas à chaque retouche d'un contrat en attente).
+    if (etat === 'refused') await notifierDocument('document_depose', 'contrat', contractId);
 }
 
 async function createSettlement(data: Omit<ServiceSettlement, 'id'>): Promise<any> {
@@ -708,13 +712,18 @@ const champDe = async (coll: string, id: string, champ: string): Promise<string>
 const NOUVEAU_CLIENT = 'Ce client (société, agence, secteur choisis)';
 
 /** Document de contrat (avenant, OS, reconduction, résiliation, syndic, BE) : créé « en attente de validation », avec sa pièce. */
-const evenement = (creer: (data: any) => Promise<unknown>): Ecriture => ({
+const evenement = (creer: (data: any) => Promise<unknown>, nature: (data: any) => NatureDocument): Ecriture => ({
     avant: async ([data], c) => {
         if (data?.validationStatus !== 'pending_validation') throw new Error('Un document de contrat se crée « en attente de validation » : la validation est réservée à la contrathèque.');
         if (typeof data?.documentUrl !== 'string' || !data.documentUrl) throw new Error('Pièce justificative obligatoire.');
         await c.garde.exiger('contrat', String(data?.contractId ?? ''));
     },
-    faire: ([data]) => creer(data),
+    // Dépôt notifié à la contrathèque (règle « document déposé ») ; une notification ne bloque jamais le dépôt.
+    faire: async ([data]) => {
+        const cree = await creer(data) as { id?: string };
+        if (cree?.id) await notifierDocument('document_depose', nature(data), cree.id);
+        return cree;
+    },
 });
 /** Intéressement ou régularisation d'une prestation : la prestation doit être dans le périmètre. */
 const dePrestation = (coll: string, creer: (d: any) => Promise<unknown>, modifier: (id: string, d: any) => Promise<unknown>, supprimer: (id: string) => Promise<unknown>): [Ecriture, Ecriture, Ecriture] => [
@@ -769,8 +778,8 @@ export const ECRITURES = {
     },
     updateService: { avant: sur('prestation'), faire: ([id, data]) => updateService(id, data) },
     deleteService: { avant: sur('prestation'), faire: ([id]) => deleteService(id) },
-    createAmendment: evenement(createAmendment), createTermination: evenement(createTermination), createRenewal: evenement(createRenewal),
-    createTrusteeChange: evenement(createTrusteeChange), createBeChange: evenement(createBeChange),
+    createAmendment: evenement(createAmendment, d => (d?.nature === 'os' ? 'os' : 'avenant')), createTermination: evenement(createTermination, () => 'resiliation'), createRenewal: evenement(createRenewal, () => 'reconduction'),
+    createTrusteeChange: evenement(createTrusteeChange, () => 'syndic'), createBeChange: evenement(createBeChange, () => 'be'),
     createInterest: creerInteret, updateInterest: modifierInteret, deleteInterest: supprimerInteret,
     createSettlement: creerReglement, updateSettlement: modifierReglement, deleteSettlement: supprimerReglement,
     createQuote: { avant: ([input], c) => c.garde.exiger('client', String(input?.clientId ?? '')), faire: ([input, company]) => createQuote(input, company) },

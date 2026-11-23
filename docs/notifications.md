@@ -107,7 +107,20 @@ retenus et écartés, statut, mail complet).
   `notifications`).
 - Tests : `tests/notifications.test.ts`, `tests/notifications-flow.test.ts`.
 
+## Déclenchement
+
+| Moment | Événement |
+|---|---|
+| Dépôt d'un avenant, d'un ordre de service, d'une reconduction, d'une résiliation, d'un changement de syndic ou de bureau d'études | document déposé |
+| Création d'un contrat par l'assistant ; contrat refusé puis corrigé | document déposé (type « contrat ») |
+| Validation par la contrathèque | document validé ; pour une résiliation, en plus : résiliation validée |
+| Refus par la contrathèque | document refusé, avec le motif |
+
+Le mail reprend les valeurs du document et du contrat au moment de l'événement (objet, déposant, date d'effet,
+impacts et montants par prestation). Un document refusé puis redéposé est notifié de nouveau. La retouche d'un contrat
+encore en attente ne renvoie pas de mail. Code : `src/services/notifications-contrats.ts`.
+
 ## À venir
 
-Déclenchement par les dépôts et validations, rappels quotidiens (préavis, échéances, documents en attente), envoi
-réel par la messagerie Google, trace des mails sur la frise du contrat.
+Rappels quotidiens (préavis, échéances, documents en attente), envoi réel par la messagerie Google, trace des mails
+sur la frise du contrat.

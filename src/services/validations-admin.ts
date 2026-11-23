@@ -6,6 +6,7 @@ import {
     valeursDocument, type ElementAValider, type TypeValidation, type ValeurChamp,
 } from '@/lib/validations';
 import { repriseP1Contrat } from '@/services/p1-reprise-admin';
+import { notifierDocument } from '@/services/notifications-contrats';
 import type { SessionUser } from '@/lib/auth/server';
 
 /**
@@ -148,4 +149,7 @@ export async function traiterValidation(type: TypeValidation, id: string, choix:
     });
     // Contrat validé : valeurs P1 de la création reprises dans le paramétrage daté de ses sites.
     if (contratValide) await repriseP1Contrat(contratValide, user.email);
+    // Décision notifiée (déposant, responsable de facturation…) ; une résiliation validée a aussi sa propre alerte.
+    await notifierDocument(choix.decision === 'refuser' ? 'document_refuse' : 'document_valide', type, String(id));
+    if (type === 'resiliation' && choix.decision === 'valider') await notifierDocument('resiliation_validee', type, String(id));
 }
