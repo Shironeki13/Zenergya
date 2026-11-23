@@ -682,7 +682,7 @@ function FormuleVersionDialog({ formule, date, onClose, onSubmit, busy }: {
                     <div className="space-y-1">
                         <Label>Termes</Label>
                         <Input value={termes} onChange={e => setTermes(e.target.value)} className="font-mono text-xs" placeholder="p0=0,15 ; Kmol=0,60*PEGMA@25,30 ; TVD=0,25*ATRD_T2@3,10" />
-                        <p className="text-xs text-muted-foreground">code=coefficient*INDICE@base M0 ; « ! » base contractuelle ; « ~ » terme inactif ; panier : *(1*IND1+0,8*IND2+0,5*#2,1). Séparés par « ; ».</p>
+                        <p className="text-xs text-muted-foreground">code=coefficient*INDICE@base M0 ; « ! » base contractuelle ; « ~ » terme inactif ; panier : *(1*IND1+0,8*IND2+0,5*#2,1) ; indice composite (indices qui se multiplient) : *(1*IND1*K+1*IND2*K*K2). Séparés par « ; ».</p>
                         {typeof parsed === 'string' && <p className="text-xs text-destructive">{parsed}</p>}
                     </div>
                     <div className="grid grid-cols-3 gap-3">

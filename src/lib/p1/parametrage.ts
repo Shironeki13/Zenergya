@@ -234,6 +234,11 @@ export type ElementPanier = {
     serie: string | null;                        // code de l'indice
     valeurFixe: number | null;
     coefficient: number;
+    /**
+     * Indices qui multiplient l'élément (indice composite : un coefficient est lui-même un indice publié). Ex. CEE =
+     * K × (CEE classique + K précarité × CEE précarité) : deux éléments, « CL × K » et « PR × K × K précarité ».
+     */
+    facteurs?: string[];
 };
 
 export type TermeRevision = {

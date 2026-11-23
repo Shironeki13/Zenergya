@@ -137,7 +137,7 @@ sur un seul compteur.
 | Forme | **A** : somme des rapports d'indices ; **B** : rapport des sommes |
 | Mode, base énergétique | `standard` / `derogatoire` ; `PCS` / `PCI` |
 | Prix de base K0, unité, date M0 | la date M0 peut manquer : le dire plutôt que la supposer |
-| **Termes** | code (p0, Kmol, TVD, Accise, CEE, CPB, Infra), coefficient, indice, valeur de base, valeur contractuelle ou non. Un terme peut être un **panier** d'indices |
+| **Termes** | code (p0, Kmol, TVD, Accise, CEE, CPB, Infra), coefficient, indice, valeur de base, valeur contractuelle ou non. Un terme peut être un **panier** d'indices, ou un **indice composite** : des indices qui se multiplient, quand un coefficient est lui-même publié. Ex. CEE = K × (CEE classique + K précarité × CEE précarité) s'écrit `CEE=1*(1*CEE_CL*K+1*CEE_PR*K*KPRECA)@base` |
 | Prix de la molécule | variable, ou fixe avec son prix négocié |
 | Prix non révisable | oui / non |
 | **Périodicité** | `mensuel` (indice du mois), `annuel_dju` (moyenne pondérée DJU), `annuel_temps` (moyenne au prorata des jours), `annuel_cloture` (indice connu à la clôture) |

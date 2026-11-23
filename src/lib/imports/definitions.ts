@@ -420,7 +420,7 @@ const BASE: Record<ImportEntityKey, Omit<ImportEntity, 'groupe' | 'resume' | 'us
             { key: 'motif', label: 'Motif', type: 'text', required: 'create', example: 'marché d\'origine' },
             { key: 'forme', label: 'Forme', type: 'enum', required: 'create', example: 'A', options: [{ value: 'A', label: 'A', aliases: ['somme de rapports'] }, { value: 'B', label: 'B', aliases: ['rapport des sommes'] }] },
             { key: 'periodicite', label: 'Périodicité de révision', type: 'enum', required: 'create', example: 'mensuel', options: PERIODICITES_REVISION.map(p => ({ value: p, label: p.replace(/_/g, ' ') })) },
-            { key: 'termes', label: 'Termes', type: 'text', required: 'create', example: 'p0=0,15 ; Kmol=0,60*PEGMA@25,30 ; TVD=0,25*ATRD_T2@3,10', help: 'code=coefficient*INDICE@base M0 ; « ! » base contractuelle ; « ~ » inactif ; panier *(1*IND1+0,8*#2,1).' },
+            { key: 'termes', label: 'Termes', type: 'text', required: 'create', example: 'p0=0,15 ; Kmol=0,60*PEGMA@25,30 ; TVD=0,25*ATRD_T2@3,10', help: 'code=coefficient*INDICE@base M0 ; « ! » base contractuelle ; « ~ » inactif ; panier *(1*IND1+0,8*#2,1) ; indice composite (indices qui se multiplient) *(1*IND1*K+1*IND2*K*K2).' },
             { key: 'dateM0', label: 'Mois M0', type: 'text', example: '2025-01', help: 'AAAA-MM. Vide : renseigner « M0 manquante ».' },
             { key: 'm0Manquante', label: 'M0 manquante', type: 'text', help: 'Ce qui manque quand M0 n\'est pas connue.' },
             { key: 'unitePrix', label: 'Unité du prix', type: 'enum', example: 'EUR/MWh', options: UNITES_PRIX.map(u => ({ value: u, label: u })), help: 'Vide : EUR/MWh.' },

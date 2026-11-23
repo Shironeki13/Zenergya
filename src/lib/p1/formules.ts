@@ -56,6 +56,8 @@ const n = (s: string) => Number(s.replace(/\s/g, '').replace(',', '.'));
  * « p0=0,15 ; Kmol=0,60*PEGMA@25,30 ; CEE=0,05*(1*C2E_CL+0,8*C2E_PR+0,5*#2,1)@4,5! ; ~CPB=0,1*CPB@3 »
  * code=coefficient[*INDICE | *(panier)][@valeur de base M0][!] ; « ! » : base contractuelle ; « ~ » : terme inactif ;
  * panier : coefficient*INDICE ou coefficient*#valeur fixe, séparés par « + ».
+ * Indice composite (un coefficient est lui-même un indice) : coefficient*INDICE*INDICE…, les indices se multiplient.
+ * Ex. CEE = K × (CL + Kpréca × PR) : « CEE=1*(1*CEE_CL*K+1*CEE_PR*K*KPRECA)@6,27 ».
  */
 export function parseTermes(text: string): TermeRevision[] | string {
     const out: TermeRevision[] = [];
@@ -67,9 +69,10 @@ export function parseTermes(text: string): TermeRevision[] | string {
         if (m[4]?.startsWith('(')) {
             panier = [];
             for (const el of m[4].slice(1, -1).split('+').map(e => e.trim()).filter(Boolean)) {
-                const e = /^([\d.,\s]+)\*\s*(#([\d.,\s]+)|[A-Za-z][\w.-]*)$/.exec(el);
-                if (!e) return `élément de panier « ${el} » illisible : coefficient*INDICE ou coefficient*#valeur.`;
-                panier.push({ coefficient: n(e[1]), serie: e[3] ? null : e[2], valeurFixe: e[3] ? n(e[3]) : null });
+                const e = /^([\d.,\s]+)\*\s*(#([\d.,\s]+)|[A-Za-z][\w.-]*(?:\s*\*\s*[A-Za-z][\w.-]*)*)$/.exec(el);
+                if (!e) return `élément de panier « ${el} » illisible : coefficient*INDICE, coefficient*INDICE*INDICE ou coefficient*#valeur.`;
+                const [serieEl, ...facteurs] = e[3] ? [] : e[2].split('*').map(x => x.trim());
+                panier.push({ coefficient: n(e[1]), serie: e[3] ? null : serieEl, valeurFixe: e[3] ? n(e[3]) : null, ...(facteurs.length && { facteurs }) });
             }
         } else if (m[4]) serie = m[4];
         out.push({
@@ -82,7 +85,7 @@ export function parseTermes(text: string): TermeRevision[] | string {
 
 const num = (x: number) => String(x).replace('.', ',');
 export const formatTermes = (termes: TermeRevision[]) => termes.map(t => {
-    const ind = t.panier ? `*(${t.panier.map(e => `${num(e.coefficient)}*${e.serie ?? `#${num(e.valeurFixe ?? 0)}`}`).join('+')})` : t.serie ? `*${t.serie}` : '';
+    const ind = t.panier ? `*(${t.panier.map(e => `${num(e.coefficient)}*${e.serie ? [e.serie, ...(e.facteurs ?? [])].join('*') : `#${num(e.valeurFixe ?? 0)}`}`).join('+')})` : t.serie ? `*${t.serie}` : '';
     return `${t.actif ? '' : '~'}${t.code}=${num(t.coefficient)}${ind}${t.valeurBaseM0 !== null ? `@${num(t.valeurBaseM0)}` : ''}${t.baseContractuelle ? '!' : ''}`;
 }).join(' ; ');
 
@@ -109,10 +112,13 @@ export function validateFormule(v: FormuleVersion, indexCodes: string[]): { erro
         if (!Number.isFinite(t.coefficient)) errors.push(`Terme ${t.code} : coefficient invalide.`);
         const kmolFixe = t.code === 'Kmol' && v.regimeKmol === 'fixe';
         if (t.code !== 'p0' && !kmolFixe && !t.serie && !t.panier?.length) errors.push(`Terme ${t.code} : indice ou panier obligatoire.`);
-        for (const s of [t.serie, ...(t.panier ?? []).map(e => e.serie)].filter((x): x is string => !!x)) {
+        for (const s of [t.serie, ...(t.panier ?? []).flatMap(e => [e.serie, ...(e.facteurs ?? [])])].filter((x): x is string => !!x)) {
             if (!known.has(s.toUpperCase())) errors.push(`Terme ${t.code} : indice « ${s} » inconnu (paramétrage des indices).`);
         }
-        for (const e of t.panier ?? []) if (e.serie === null && e.valeurFixe === null) errors.push(`Terme ${t.code} : élément de panier sans indice ni valeur.`);
+        for (const e of t.panier ?? []) {
+            if (e.serie === null && e.valeurFixe === null) errors.push(`Terme ${t.code} : élément de panier sans indice ni valeur.`);
+            if (e.serie === null && e.facteurs?.length) errors.push(`Terme ${t.code} : une valeur fixe ne se multiplie pas par un indice.`);
+        }
         if (t.code !== 'p0' && v.dateM0 !== null && t.valeurBaseM0 === null) errors.push(`Terme ${t.code} : valeur de base M0 obligatoire.`);
         if (t.valeurBaseM0 !== null && !(t.valeurBaseM0 > 0)) errors.push(`Terme ${t.code} : valeur de base M0 strictement positive.`);
     }
@@ -158,12 +164,22 @@ function valeurTerme(t: TermeRevision, v: FormuleVersion, series: SerieValues, m
         if (e.serie === null) { total += e.coefficient * (e.valeurFixe ?? 0); continue; }
         const at = serieAt(series, e.serie, mois);
         if (!at) { causes.push(`aucune valeur de l'indice ${e.serie} jusqu'à ${mois}`); continue; }
-        total += e.coefficient * at.value;
+        // Indice composite : les indices multiplicateurs de l'élément, au même mois.
+        let produit = e.coefficient * at.value;
+        let complet = true;
         report = Math.max(report, at.reportMois);
         periods.push(at.period);
+        for (const f of e.facteurs ?? []) {
+            const k = serieAt(series, f, mois);
+            if (!k) { causes.push(`aucune valeur de l'indice ${f} jusqu'à ${mois}`); complet = false; continue; }
+            produit *= k.value;
+            report = Math.max(report, k.reportMois);
+            periods.push(k.period);
+        }
+        if (complet) total += produit;
     }
     const period = periods.length ? periods.sort()[0] : null;
-    const indice = t.panier?.length ? `Σ(${t.panier.map(e => e.serie ?? 'fixe').join(' + ')})` : t.serie;
+    const indice = t.panier?.length ? `Σ(${t.panier.map(e => (e.serie ? [e.serie, ...(e.facteurs ?? [])].join(' × ') : 'fixe')).join(' + ')})` : t.serie;
     return causes.length ? { value: null, period, report, causes, indice } : { value: total, period, report, causes, indice };
 }
 

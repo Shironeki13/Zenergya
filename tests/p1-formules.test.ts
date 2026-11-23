@@ -145,3 +145,31 @@ test('révision : facteur fixe d\'avenant, arrondi à 5 décimales, coefficient 
     assert.deepEqual(s.mois.map(m => m.mois), ['2026-01', '2026-02']);
     assert.match(validateFormule({ ...v, facteur: 0 }, ['MOL', 'ATRD2', 'TICGN']).errors.join(), /Facteur fixe/);
 });
+
+test('indice composite : des indices qui se multiplient (CEE = K × (CL + Kpréca × PR)), seul ou dans un panier', () => {
+    const s: SerieValues = new Map([
+        ['CEE_CL', [{ period: '2025-01', value: 8 }, { period: '2025-03', value: 9 }]], ['CEE_PR', [{ period: '2025-01', value: 10 }, { period: '2025-03', value: 12 }]],
+        ['K', [{ period: '2025-01', value: 0.5 }, { period: '2025-03', value: 0.6 }]], ['KPRECA', [{ period: '2025-01', value: 0.25 }]],
+    ]);
+    const texte = 'CEE=1*(1*CEE_CL*K+1*CEE_PR*K*KPRECA)@5,25';
+    const termes = parseTermes(texte) as TermeRevision[];
+    assert.deepEqual(termes[0].panier, [{ coefficient: 1, serie: 'CEE_CL', valeurFixe: null, facteurs: ['K'] }, { coefficient: 1, serie: 'CEE_PR', valeurFixe: null, facteurs: ['K', 'KPRECA'] }]);
+    assert.equal(formatTermes(termes), texte);
+    const v = (t: string) => ({ forme: 'B', mode: 'standard', baseEnergetique: 'PCS', unitePrix: 'EUR/MWh', dateM0: '2025-01', m0Manquante: null, regimeKmol: 'variable', prixMoleculeNegocie: null, prixFixe: false, periodicite: 'mensuel', termes: parseTermes(t) as TermeRevision[] }) as never;
+    // Janvier (M0) : 0,5 × (8 + 0,25 × 10) = 5,25 → coefficient 1. Mars : 0,6 × (9 + 0,25 × 12) = 7,2 → 7,2 / 5,25 (Kpréca reporté de janvier : provisoire).
+    const m0 = coefficientRevision(v(texte), '2025-01', s), mars = coefficientRevision(v(texte), '2025-03', s);
+    assert.ok('coefficient' in m0 && 'coefficient' in mars);
+    assert.deepEqual([+m0.coefficient.toFixed(10), +mars.coefficient.toFixed(10), m0.provisoire, mars.provisoire], [1, +(7.2 / 5.25).toFixed(10), false, true]);
+    assert.equal(mars.lignes[0].indice, 'Σ(CEE_CL × K + CEE_PR × K × KPRECA)');
+    // Dans un panier, avec une valeur fixe : 0,9 × (60 + composite) ; base 0,9 × 65,25 au dénominateur.
+    const mixte = coefficientRevision(v('GAZ=0,9*(1*#60+1*CEE_CL*K+1*CEE_PR*K*KPRECA)@65,25'), '2025-03', s);
+    assert.ok('coefficient' in mixte);
+    assert.equal(+mixte.coefficient.toFixed(10), +(67.2 / 65.25).toFixed(10));
+    // Contrôles : indice multiplicateur inconnu, absent pour le mois, valeur fixe multipliée.
+    assert.match(validateFormule(v(texte), ['CEE_CL', 'CEE_PR', 'K']).errors[0], /indice « KPRECA » inconnu/);
+    assert.deepEqual(validateFormule(v(texte), ['CEE_CL', 'CEE_PR', 'K', 'KPRECA']).errors, []);
+    const avant = coefficientRevision(v(texte), '2024-12', s);
+    assert.ok('causes' in avant);
+    assert.match(avant.causes.join(' '), /aucune valeur de l'indice CEE_CL/);
+    assert.match(parseTermes('CEE=1*(1*#5*K)@5') as string, /illisible/);
+});
