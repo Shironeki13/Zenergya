@@ -16,6 +16,13 @@
  *   « relevé »), sinon consommation du mois × jours couverts / jours du mois, ou × DJU couverts / DJU du mois ;
  * - montant = quantité × prix du mois (prix révisé P1 ou prix de la prestation révisé) × coefficient de gestion.
  * Chaque mois garde son détail (compteurs, index, prix, coefficients) : c'est l'annexe de la facture.
+ *
+ * **Répartition « mois calendaire »** (option de la prestation) : la consommation entre deux relevés consécutifs est
+ * étalée uniformément sur ses jours (du jour du premier relevé à la veille du second), et chaque mois prend la part de
+ * ses jours. Un mois sans relevé se facture donc, mais seulement quand un relevé **postérieur à sa fin** est connu ;
+ * les mois partiels se traitent jour par jour, sans méthode de prorata. Le premier mois facturé ainsi repart du dernier
+ * relevé déjà facturé au relevé à relevé (rien n'est facturé deux fois, rien n'est perdu) ; le retour au relevé à
+ * relevé après un mois calendaire est refusé.
  */
 
 import { changementsEntre, resoudreDoublons, texteDoublon, type ChangementCompteur, type Doublon } from '@/lib/releves';
@@ -28,6 +35,9 @@ export const METHODES_PRORATA: Record<MethodeProrata, string> = {
 };
 /** Coefficient de gestion : aucun, celui de la prestation, celui du contrat (paramétrage P1 daté). */
 export type SourceCoefGestion = 'aucun' | 'prestation' | 'contrat';
+/** Consommation d'un mois : d'un relevé au suivant, ou répartie par mois calendaire au prorata des jours. */
+export type RepartitionCompteur = 'releve' | 'calendaire';
+export const REPARTITIONS_COMPTEUR: Record<RepartitionCompteur, string> = { releve: 'Relevé à relevé', calendaire: 'Mois calendaire (au prorata des jours)' };
 
 export type ReleveCompteur = { id: string; date: string; value: number; type?: string; changement?: ChangementCompteur };
 export type CompteurFacture = {
@@ -59,12 +69,15 @@ export type CompteurMois = {
     doublons?: Doublon[];
     /** Passage par zéro traité avec la capacité déclarée du compteur. */
     passageZero?: { capacite: number };
+    /** Répartition calendaire : intervalles entre relevés dont le mois prend une part (jours pris sur jours de l'intervalle). */
+    segments?: SegmentMois[];
 };
+export type SegmentMois = { debut: IndexPris; fin: IndexPris; jours: number; joursPris: number; volume: number; volumePris: number };
 export type MoisFacture = {
     mois: string;
     debut: string; fin: string; jours: number; joursMois: number;
     /** Méthode effective : mois complet, relevés à la date, ou prorata (jours, DJU). */
-    methode: 'complet' | 'releve' | 'jours' | 'dju';
+    methode: 'complet' | 'releve' | 'jours' | 'dju' | 'calendaire';
     ratio: number;
     dju?: { couverts: number; mois: number };
     compteurs: CompteurMois[];
@@ -92,8 +105,12 @@ export type ContexteCompteur = {
     coefGestion: (mois: string) => number | null | string;
     /** DJU de la station du site entre deux dates incluses ; message si indisponibles. */
     dju?: (debut: string, fin: string) => number | string;
-    /** Dernier relevé déjà facturé de chaque compteur. */
+    /** Dernier relevé déjà facturé de chaque compteur (au relevé à relevé). */
     dejaFacture: Map<string, IndexPris>;
+    /** Répartition de la consommation ; absente : relevé à relevé. */
+    repartition?: RepartitionCompteur;
+    /** Dernier jour déjà facturé au mois calendaire, par compteur. */
+    dejaCalendaire?: Map<string, string>;
 };
 
 const r6 = (x: number) => Math.round(x * 1e6) / 1e6;
@@ -159,6 +176,7 @@ export function conversion(c: Pick<CompteurFacture, 'code' | 'unit' | 'qe'>, usa
 export function factureAuCompteur(ctx: ContexteCompteur): DetailCompteur | string {
     const unite = ctx.usage === 'ecs' ? 'm³' as const : 'MWh' as const;
     const dernier = new Map(ctx.dejaFacture);
+    const calendaire = new Map(ctx.dejaCalendaire ?? []);
     const detail: MoisFacture[] = [];
     for (const mois of moisCouverts(ctx.debut, ctx.fin)) {
         const debutMois = `${mois}-01`, finMois = finDuMois(mois);
@@ -168,6 +186,14 @@ export function factureAuCompteur(ctx: ContexteCompteur): DetailCompteur | strin
         const compteurs = ctx.compteurs(mois);
         if (typeof compteurs === 'string') return compteurs;
         if (compteurs.length === 0) return `aucun compteur pour ${moisFr(mois)}`;
+        if (ctx.repartition === 'calendaire') {
+            const m = moisCalendaire(ctx, mois, debut, fin, compteurs, dernier, calendaire);
+            if (typeof m === 'string') return m;
+            detail.push(m);
+            continue;
+        }
+        const dejaCal = compteurs.map(c => [c, calendaire.get(c.id)] as const).find(([, j]) => j);
+        if (dejaCal) return `compteur ${dejaCal[0].code} déjà facturé au mois calendaire jusqu'au ${fr(dejaCal[1]!)} : le retour au relevé à relevé n'est pas possible (garder « mois calendaire » sur la prestation)`;
 
         // Index de départ et de fin de chaque compteur (mois complet), et relevés aux dates de coupure.
         const lignes: (CompteurMois & { exact?: { debut: IndexPris; fin: IndexPris } })[] = [];
@@ -255,11 +281,76 @@ export function factureAuCompteur(ctx: ContexteCompteur): DetailCompteur | strin
     };
 }
 
+/**
+ * Un mois en répartition calendaire : chaque intervalle entre deux relevés consécutifs donne au mois la part de ses
+ * jours (du jour du premier relevé à la veille du second). Tous les jours à facturer doivent être couverts.
+ */
+function moisCalendaire(ctx: ContexteCompteur, mois: string, debut: string, fin: string, compteurs: CompteurFacture[], dernier: Map<string, IndexPris>, calendaire: Map<string, string>): MoisFacture | string {
+    const lignes: CompteurMois[] = [];
+    for (const c of compteurs) {
+        const conv = conversion(c, ctx.usage);
+        if (typeof conv === 'string') return conv;
+        const { retenus: tri, doublons } = resoudreDoublons(c.readings);
+        // Premier jour à prendre : lendemain du dernier jour facturé au mois calendaire ; à défaut, jour du dernier
+        // relevé facturé au relevé à relevé (même antérieur au mois : sa suite n'a pas encore été facturée).
+        const cal = calendaire.get(c.id), releve = dernier.get(c.id);
+        const premier = cal ? (jour(cal, 1) > debut ? jour(cal, 1) : debut) : releve ? releve.date.slice(0, 10) : debut;
+        if (premier > fin) return `compteur ${c.code} déjà facturé jusqu'au ${fr(cal ?? releve!.date.slice(0, 10))}`;
+        const aPrendre = nbJours(premier, fin);
+        const segments: SegmentMois[] = [];
+        const chg: NonNullable<CompteurMois['changements']> = [];
+        let passageZero: CompteurMois['passageZero'];
+        let pris_ = 0, volume = 0;
+        for (let i = 1; i < tri.length; i++) {
+            const a = tri[i - 1], b = tri[i];
+            const da = a.date.slice(0, 10), db = b.date.slice(0, 10);
+            const d0 = da > premier ? da : premier, d1 = jour(db, -1) < fin ? jour(db, -1) : fin;
+            if (d0 > d1) continue;
+            const v = volumeEntre(c, tri, pris(a), pris(b));
+            if (typeof v === 'string') return v;
+            const jours = nbJours(da, db) - 1, joursPris = nbJours(d0, d1);
+            const volumePris = (v.volume * joursPris) / jours;
+            segments.push({ debut: pris(a), fin: pris(b), jours, joursPris, volume: v.volume, volumePris: r6(volumePris) });
+            chg.push(...v.chg.liste);
+            if (v.passageZero) passageZero = v.passageZero;
+            pris_ += joursPris;
+            volume += volumePris;
+        }
+        if (pris_ < aPrendre) {
+            const premierReleve = tri[0]?.date.slice(0, 10);
+            if (!premierReleve || premierReleve > premier) return `aucun relevé du compteur ${c.code} le ${fr(premier)} ou avant (index de départ)`;
+            return `relevé du compteur ${c.code} postérieur au ${fr(fin)} attendu : au mois calendaire, ${moisFr(mois)} se facture quand l'index suivant est connu (dernier relevé le ${fr(tri[tri.length - 1].date.slice(0, 10))})`;
+        }
+        const d = segments[0].debut, f = segments[segments.length - 1].fin;
+        const utilises = new Set(segments.flatMap(x => [x.debut.date.slice(0, 10), x.fin.date.slice(0, 10)]));
+        const dbl = doublons.filter(x => utilises.has(x.date));
+        lignes.push({
+            meterId: c.id, code: c.code, ...(c.unit && { unit: c.unit }), signe: c.signe, qe: c.qe, conversion: conv, debut: d, fin: f,
+            volume: r6(volume), quantite: r6(c.signe * volume * conv), segments,
+            ...(chg.length && { changements: chg }), ...(dbl.length && { doublons: dbl }), ...(passageZero && { passageZero }),
+        });
+    }
+    const quantite = r6(lignes.reduce((s, l) => s + l.quantite, 0));
+    if (quantite < 0) return `quantité négative en ${moisFr(mois)} (déductions supérieures aux entrées) : formule de NC à vérifier`;
+    const prix = ctx.prix(mois);
+    if (typeof prix === 'string') return `prix ${moisFr(mois)} : ${prix}`;
+    const coef = ctx.coefGestion(mois);
+    if (typeof coef === 'string') return coef;
+    const prixApplique = r6(prix.prix * (coef ?? 1));
+    for (const l of lignes) calendaire.set(l.meterId, fin);
+    return {
+        mois, debut, fin, jours: nbJours(debut, fin), joursMois: nbJours(`${mois}-01`, finDuMois(mois)), methode: 'calendaire', ratio: 1,
+        compteurs: lignes, quantiteMois: quantite, quantite, prix, coefGestion: coef, prixApplique, montant: cents(quantite * prixApplique),
+    };
+}
+
 /** Texte court d'une ligne de facture (le détail complet est dans l'annexe). */
 export function texteCompteur(d: DetailCompteur): string {
     const n = (x: number, dec = 3) => x.toLocaleString('fr-FR', { maximumFractionDigits: dec });
     return d.detail.map(m => {
-        const compteurs = m.compteurs.map(c => `${c.signe < 0 ? '−' : ''}${c.code} : ${n(c.fin.index)} (${fr(c.fin.date)}${c.fin.type && c.fin.type !== 'REEL' ? `, ${c.fin.type.toLowerCase()}` : ''}) − ${n(c.debut.index)} (${fr(c.debut.date)})${(c.changements ?? []).map(x => ` ; compteur changé le ${fr(x.date)} (dépose ${n(x.depose)}, pose ${n(x.pose)})`).join('')}${(c.doublons ?? []).map(x => ` ; ${texteDoublon(x)}`).join('')}${c.passageZero ? ` ; passage par zéro (capacité ${n(c.passageZero.capacite)})` : ''}`).join(' ; ');
+        const compteurs = m.compteurs.map(c => c.segments
+            ? `${c.signe < 0 ? '−' : ''}${c.code} : ${c.segments.map(x => `${n(x.volume)} du ${fr(x.debut.date)} au ${fr(x.fin.date)} × ${x.joursPris}/${x.jours} j`).join(' + ')}${(c.changements ?? []).map(x => ` ; compteur changé le ${fr(x.date)} (dépose ${n(x.depose)}, pose ${n(x.pose)})`).join('')}${(c.doublons ?? []).map(x => ` ; ${texteDoublon(x)}`).join('')}${c.passageZero ? ` ; passage par zéro (capacité ${n(c.passageZero.capacite)})` : ''}`
+            : `${c.signe < 0 ? '−' : ''}${c.code} : ${n(c.fin.index)} (${fr(c.fin.date)}${c.fin.type && c.fin.type !== 'REEL' ? `, ${c.fin.type.toLowerCase()}` : ''}) − ${n(c.debut.index)} (${fr(c.debut.date)})${(c.changements ?? []).map(x => ` ; compteur changé le ${fr(x.date)} (dépose ${n(x.depose)}, pose ${n(x.pose)})`).join('')}${(c.doublons ?? []).map(x => ` ; ${texteDoublon(x)}`).join('')}${c.passageZero ? ` ; passage par zéro (capacité ${n(c.passageZero.capacite)})` : ''}`).join(' ; ');
         const prorata = m.methode === 'jours' ? ` × ${m.jours}/${m.joursMois} j` : m.methode === 'dju' ? ` × ${n(m.dju!.couverts, 1)}/${n(m.dju!.mois, 1)} DJU` : '';
         return `${moisFr(m.mois)} : ${compteurs} → ${n(m.quantiteMois)} ${d.unite}${prorata} × ${n(m.prixApplique, 4)} €/${d.unite} = ${m.montant.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €`;
     }).join(' | ');

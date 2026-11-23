@@ -181,10 +181,10 @@ async function loadReadings(ctx: Context, meterIds: string[]): Promise<void> {
         const invoices = await adminDb.collection('invoices').where('contractId', 'in', contractIds.slice(i, i + 30)).get();
         for (const inv of invoices.docs) {
             if (inv.get('status') === 'cancelled' || inv.get('cancelledByCreditNoteId')) continue;
-            for (const l of (inv.get('lineItems') ?? []) as { p1Releve?: { compteurs: { meterId: string; debut: { readingId: string }; fin: { readingId: string; date: string } }[] } }[]) {
+            for (const l of (inv.get('lineItems') ?? []) as { p1Releve?: { compteurs: { meterId: string; debut: { readingId: string }; fin: { readingId: string; date: string }; releves?: string[] }[] } }[]) {
                 for (const c of l.p1Releve?.compteurs ?? []) {
                     const invoice = String(inv.get('invoiceNumber') ?? inv.id);
-                    for (const id of [c.debut.readingId, c.fin.readingId]) ctx.lockedReadings.set(id, `la facture ${invoice} (ECS au relevé)`);
+                    for (const id of [c.debut.readingId, c.fin.readingId, ...(c.releves ?? [])]) ctx.lockedReadings.set(id, `la facture ${invoice} (ECS au relevé)`);
                     const cur = ctx.lastBilledReading.get(c.meterId);
                     if (!cur || c.fin.date > cur.date) ctx.lastBilledReading.set(c.meterId, { date: c.fin.date, invoice });
                 }
@@ -809,7 +809,7 @@ function planService(ctx: Context, row: ParsedRow, pending: Map<string, { line: 
     const taken = refTakenBy(ctx.services, v.externalRef, existing?.id);
     if (taken) item.messages.push(`Réf. externe ${v.externalRef} déjà portée par une autre prestation.`);
 
-    const data = plain(v, ['externalRef', 'analyticExternal', 'label', 'price', 'p1Type', 'energyType', 'unitPrice', 'unit', 'isActive', 'comment', 'p1Mode', 'p1PrixSource', 'coefficientPrix', 'p1Prorata', 'p1CoefGestion']);
+    const data = plain(v, ['externalRef', 'analyticExternal', 'label', 'price', 'p1Type', 'energyType', 'unitPrice', 'unit', 'isActive', 'comment', 'p1Mode', 'p1PrixSource', 'coefficientPrix', 'p1Prorata', 'p1Repartition', 'p1CoefGestion']);
     if ((v.p1Mode === 'acompte' || v.p1Mode === 'releve') && activity.type !== 'P1') item.messages.push('Acomptes ou compteur : prestation P1 seulement.');
     if (v.p1Mode === 'releve' && !['ECS', 'CHAUFFAGE'].includes(String(v.p1Type ?? existing?.p1Type ?? ''))) item.messages.push('Au compteur : prestation P1 de type chauffage ou ECS.');
     if (v.p1Mode === 'dju' && (activity.type !== 'P1' || String(v.p1Type ?? existing?.p1Type ?? 'CHAUFFAGE') !== 'CHAUFFAGE')) item.messages.push('MTI au DJU : prestation P1 de type chauffage.');

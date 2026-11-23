@@ -219,3 +219,76 @@ test('passage par zéro : facturé si la capacité du compteur est déclarée (i
     assert.ok(typeof normal !== 'string');
     assert.equal(normal.detail[0].compteurs[0].passageZero, undefined);
 });
+
+// --- Répartition par mois calendaire ---
+// Compteur ECS : 1 000 le 20/09, 1 100 le 10/10 (20 jours, 5 m³/j), 1 400 le 09/11 (30 jours, 10 m³/j), 1 610 le 30/11 (21 jours, 10 m³/j), 1 700 le 03/12 (3 jours, 30 m³/j).
+const eau: CompteurFacture = { id: 'w', code: 'CPT-ECS', unit: 'm3', signe: 1, qe: null, readings: [
+    { id: 'w1', date: '2025-09-20', value: 1000 }, { id: 'w2', date: '2025-10-10', value: 1100 }, { id: 'w3', date: '2025-11-09', value: 1400 },
+    { id: 'w4', date: '2025-11-30', value: 1610 }, { id: 'w5', date: '2025-12-03', value: 1700 },
+] };
+const cal = (p: Partial<ContexteCompteur> = {}) => factureAuCompteur(ctx({ usage: 'ecs', repartition: 'calendaire', compteurs: () => [eau], prix: () => ({ prix: 6, base: 6, coefficient: 1, source: 'p1' }), ...p }));
+
+test('mois calendaire : chaque intervalle entre relevés donne au mois la part de ses jours ; un mois sans relevé se facture', () => {
+    // Octobre : 9 jours du 01 au 09 sur l'intervalle 20/09 → 10/10 (5 m³/j = 45) + 22 jours du 10 au 31 sur 10/10 → 09/11 (10 m³/j = 220) = 265 m³.
+    const oct = cal();
+    assert.ok(typeof oct !== 'string');
+    const c = oct.detail[0].compteurs[0];
+    assert.deepEqual([oct.detail[0].methode, oct.quantite, oct.montant, c.debut.readingId, c.fin.readingId], ['calendaire', 265, 1590, 'w1', 'w3']);
+    assert.deepEqual(c.segments!.map(s => [s.debut.readingId, s.fin.readingId, s.jours, s.joursPris, s.volume, s.volumePris]), [['w1', 'w2', 20, 9, 100, 45], ['w2', 'w3', 30, 22, 300, 220]]);
+    assert.match(texteCompteur(oct).replace(/[  ]/g, ' '), /10\/2025 : CPT-ECS : 100 du 20\/09\/2025 au 10\/10\/2025 × 9\/20 j \+ 300 du 10\/10\/2025 au 09\/11\/2025 × 22\/30 j → 265 m³/);
+    // Novembre : 8 jours (80) + 21 jours (210) + le 30 novembre sur l'intervalle 30/11 → 03/12 (30) = 320 m³. Le trimestre enchaîne les mois.
+    const trim = cal({ fin: '2025-11-30' });
+    assert.ok(typeof trim !== 'string');
+    assert.deepEqual(trim.detail.map(m => [m.mois, m.quantite]), [['2025-10', 265], ['2025-11', 320]]);
+    // Total octobre + novembre + 2 jours de décembre (60) = toute la consommation depuis le 01/10 : rien de perdu, rien en double.
+    assert.equal(265 + 320 + 60 + 55, 1700 - 1000);   // 55 m³ avant le 01/10 (11 jours de septembre)
+    // Un mois sans aucun relevé se facture dès que les relevés l'encadrent.
+    const sansReleve = cal({ debut: '2025-10-01', fin: '2025-10-31', compteurs: () => [{ ...eau, readings: [eau.readings[0], eau.readings[3]] }] });
+    assert.ok(typeof sansReleve !== 'string');
+    assert.equal(sansReleve.quantite, +((610 * 31) / 71).toFixed(6));
+    // Mois partiel (prestation à partir du 16/10) : jour par jour, sans méthode de prorata.
+    const partiel = cal({ debut: '2025-10-16' });
+    assert.ok(typeof partiel !== 'string');
+    assert.deepEqual([partiel.quantite, partiel.detail[0].jours], [160, 16]);
+});
+
+test('mois calendaire : attend le relevé suivant ; index de départ exigé ; changement de compteur réparti ; passage depuis le relevé à relevé', () => {
+    // Décembre : dernier relevé le 03/12, le mois n'est pas encore couvert.
+    assert.match(String(cal({ debut: '2025-12-01', fin: '2025-12-31' })), /relevé du compteur CPT-ECS postérieur au 31\/12\/2025 attendu : au mois calendaire, 12\/2025 se facture quand l'index suivant est connu \(dernier relevé le 03\/12\/2025\)/);
+    // Novembre sans le relevé de décembre : le 30/11 n'est couvert par aucun intervalle.
+    assert.match(String(cal({ debut: '2025-11-01', fin: '2025-11-30', compteurs: () => [{ ...eau, readings: eau.readings.slice(0, 4) }] })), /postérieur au 30\/11\/2025 attendu/);
+    // Pas de relevé au début de la période.
+    assert.match(String(cal({ debut: '2025-09-01', fin: '2025-09-30' })), /aucun relevé du compteur CPT-ECS le 01\/09\/2025 ou avant \(index de départ\)/);
+    // Changement de compteur le 09/11 (ancien déposé à 1 400, nouveau posé à 0) : l'intervalle garde 300 m³, répartis comme avant.
+    const change = { ...eau, readings: [eau.readings[0], eau.readings[1], { id: 'w3', date: '2025-11-09', value: 0, changement: { depose: 1400, pose: 0 } }, { id: 'w4', date: '2025-11-30', value: 210 }, { id: 'w5', date: '2025-12-03', value: 300 }] };
+    const avecChangement = cal({ fin: '2025-11-30', compteurs: () => [change] });
+    assert.ok(typeof avecChangement !== 'string');
+    assert.deepEqual(avecChangement.detail.map(m => m.quantite), [265, 320]);
+    assert.deepEqual(avecChangement.detail[0].compteurs[0].changements, [{ date: '2025-11-09', depose: 1400, pose: 0 }]);
+    // Passage au mois calendaire après un octobre facturé au relevé à relevé jusqu'au relevé du 10/10 : novembre reprend à partir du 10/10.
+    const passage = cal({ debut: '2025-11-01', fin: '2025-11-30', dejaFacture: new Map([['w', { readingId: 'w2', date: '2025-10-10', index: 1100 }]]) });
+    assert.ok(typeof passage !== 'string');
+    assert.equal(passage.quantite, 220 + 320);   // 10 → 31 octobre (220), puis novembre (320)
+    // Déjà facturé au mois calendaire jusqu'au 31/10 : novembre seul ; le retour au relevé à relevé est refusé.
+    const suite = cal({ debut: '2025-11-01', fin: '2025-11-30', dejaCalendaire: new Map([['w', '2025-10-31']]) });
+    assert.ok(typeof suite !== 'string');
+    assert.equal(suite.quantite, 320);
+    assert.match(String(cal({ repartition: 'releve', debut: '2025-11-01', fin: '2025-11-30', dejaCalendaire: new Map([['w', '2025-10-31']]) })), /déjà facturé au mois calendaire jusqu'au 31\/10\/2025 : le retour au relevé à relevé n'est pas possible/);
+});
+
+test('moteur, mois calendaire : octobre puis novembre sur deux factures ; tous les relevés utilisés sont tracés pour être figés', () => {
+    const svc = { p1Type: 'ECS', scheduleId: 'mens', p1Repartition: 'calendaire' };
+    const src = { releves: { meters: () => [eau], coefContrat: () => 1 }, p1: { quantite: () => 0, repartition: () => [], prix: () => 6, prixDetail: () => ({ prix: 6, base: 6, coefficient: 1, source: 'p1' as const }) } };
+    const oct = dueInvoiceLines(input(svc, src), [], '2025-11-01');
+    assert.deepEqual(oct.errors, []);
+    const l = oct.lines[0];
+    assert.deepEqual([l.periodStartDate, l.p1Releve!.volume, l.total, l.p1Releve!.compteurs[0].calendaire, l.p1Releve!.compteurs[0].releves], ['2025-10-01', 265, 1590, true, ['w1', 'w2', 'w3']]);
+    // Novembre, octobre étant facturé : il repart du 1er novembre, sans reprendre octobre.
+    const facture = { id: 'f1', status: 'due', lineItems: oct.lines } as never;
+    const nov = dueInvoiceLines(input(svc, src), [facture], '2025-12-04');
+    assert.deepEqual(nov.errors, []);
+    assert.deepEqual([nov.lines[0].periodStartDate, nov.lines[0].p1Releve!.volume, nov.lines[0].p1Releve!.compteurs[0].releves], ['2025-11-01', 320, ['w2', 'w3', 'w4', 'w5']]);
+    // Décembre attend son relevé suivant : la facture le dit.
+    const dec = dueInvoiceLines(input(svc, src), [facture, { id: 'f2', status: 'due', lineItems: nov.lines } as never], '2026-01-02');
+    assert.match(dec.errors.join(' '), /ECS au compteur impossible : site Chaufferie, relevé du compteur CPT-ECS postérieur au 31\/12\/2025 attendu/);
+});

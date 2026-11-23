@@ -1,7 +1,7 @@
 import { roundCents, sumCents } from '@/lib/money';
 import { partieChauffee, type SaisonChauffe } from '@/lib/p1/saisons';
 import { toDay } from '@/lib/services/site-amounts';
-import {
+import { type RepartitionCompteur,
     factureAuCompteur, texteCompteur, type CompteurFacture, type IndexPris, type MethodeProrata, type PrixDuMois, type SourceCoefGestion, type UsageCompteur,
 } from './p1-compteur';
 import type { Index, IndexValue, InvoiceLineItem, RevisionRule, ServiceInitialIndexValue, VatBreakdown } from '@/lib/types';
@@ -96,6 +96,7 @@ export type BillingService = {
     meterId?: string;
     /** Au compteur : méthode du prorata d'un mois partiel (défaut : relevé à la date, sinon jours). */
     p1Prorata?: MethodeProrata;
+    p1Repartition?: RepartitionCompteur;
     /** Au compteur : coefficient de gestion (défaut : celui de la prestation s'il est renseigné, sinon aucun). */
     p1CoefGestion?: SourceCoefGestion;
 };
@@ -193,7 +194,7 @@ export type BillingItem = {
     p1Dju?: boolean;
     p1Releve?: {
         meterId?: string; usage: UsageCompteur; prixSource: 'p1' | 'prestation'; unitPrice: number | null;
-        coefficient: number | null; coefGestion: SourceCoefGestion; prorata: MethodeProrata;
+        coefficient: number | null; coefGestion: SourceCoefGestion; prorata: MethodeProrata; repartition: RepartitionCompteur;
     };
 };
 
@@ -283,7 +284,7 @@ export function billingItems(input: BillingInput): { items: BillingItem[]; error
                             unitPrice: typeof s.unitPrice === 'number' && s.unitPrice > 0 ? s.unitPrice : null,
                             coefficient: typeof s.coefficientPrix === 'number' && s.coefficientPrix > 0 ? s.coefficientPrix : null,
                             coefGestion: s.p1CoefGestion ?? (typeof s.coefficientPrix === 'number' && s.coefficientPrix > 0 ? 'prestation' : 'aucun'),
-                            prorata: s.p1Prorata ?? 'releve_jours',
+                            prorata: s.p1Prorata ?? 'releve_jours', repartition: s.p1Repartition ?? 'releve',
                         },
                     }),
                     key: `svc:${s.id}`, serviceId: s.id, site, activity: a, label: s.label, annual: Number(s.price),
@@ -405,11 +406,14 @@ export function dueInvoiceLines(input: BillingInput, invoices: BilledInvoice[], 
     type Piece = { e: Echeance; start: string; end: string; days: number; base: number; amount: number; revision?: RevisionSnapshot; p1?: P1Mois[]; releve?: NonNullable<InvoiceLineItem['p1Releve']>; dju?: NonNullable<InvoiceLineItem['p1Dju']> };
     const pieces: Piece[] = [];
     const lastIndex = dernierIndexFacture(invoices);
+    const lastCalendaire = dernierJourCalendaire(invoices);
     for (const e of echeances) {
         if (e.item.p1Releve) {
-            const r = releveCompteur(e, input, lastIndex, frozen);
+            const r = releveCompteur(e, input, lastIndex, lastCalendaire, frozen);
             if (typeof r === 'string') { lineErrors.push(`${e.item.p1Releve.usage === 'ecs' ? 'ECS' : 'Chauffage'} au compteur impossible : site ${e.item.site.name}, ${r}.`); continue; }
-            for (const c of r.detail.compteurs) lastIndex.set(`${e.item.key}|${c.meterId}`, c.fin);   // échéances suivantes du même appel
+            // Échéances suivantes du même appel : dernier relevé facturé, ou dernier jour facturé au mois calendaire.
+            for (const c of r.detail.compteurs) if (!c.calendaire) lastIndex.set(`${e.item.key}|${c.meterId}`, c.fin);
+            for (const m of r.detail.detail ?? []) if (m.methode === 'calendaire') for (const c of m.compteurs) lastCalendaire.set(`${e.item.key}|${c.meterId}`, m.fin);
             pieces.push({ e, start: e.start, end: e.end, days: e.days, base: r.detail.montant, amount: r.detail.montant, releve: r.detail, ...(r.revision && { revision: r.revision }) });
             continue;
         }
@@ -517,10 +521,27 @@ export function dernierIndexFacture(invoices: BilledInvoice[]): Map<string, Inde
     for (const inv of invoices) {
         if (inv.status === 'cancelled' || inv.cancelledByCreditNoteId) continue;
         for (const l of inv.lineItems ?? []) for (const c of l.p1Releve?.compteurs ?? []) {
+            if (c.calendaire) continue;   // mois calendaire : l'état est un jour facturé, pas un relevé (dernierJourCalendaire)
             for (const key of lineItemKeys(l)) {
                 const k = `${key}|${c.meterId}`;
                 const cur = out.get(k);
                 if (!cur || c.fin.date > cur.date) out.set(k, { readingId: c.fin.readingId, date: c.fin.date, index: c.fin.index });
+            }
+        }
+    }
+    return out;
+}
+
+/** Dernier jour facturé au mois calendaire de chaque compteur, par élément facturé (`clé|compteur`). */
+export function dernierJourCalendaire(invoices: BilledInvoice[]): Map<string, string> {
+    const out = new Map<string, string>();
+    for (const inv of invoices) {
+        if (inv.status === 'cancelled' || inv.cancelledByCreditNoteId) continue;
+        for (const l of inv.lineItems ?? []) for (const m of l.p1Releve?.detail ?? []) {
+            if (m.methode !== 'calendaire') continue;
+            for (const c of m.compteurs) for (const key of lineItemKeys(l)) {
+                const k = `${key}|${c.meterId}`;
+                if (!out.get(k) || m.fin > out.get(k)!) out.set(k, m.fin);
             }
         }
     }
@@ -532,7 +553,7 @@ export function dernierIndexFacture(invoices: BilledInvoice[]): Map<string, Inde
  * paramétrage P1 (prix de base × formule de révision P1) ou prix unitaire de la prestation × sa révision ; coefficient de
  * gestion de la prestation, du contrat (daté) ou aucun.
  */
-function releveCompteur(e: Echeance, input: BillingInput, lastIndex: Map<string, IndexFacture>, frozen: Map<string, RevisionSnapshot>):
+function releveCompteur(e: Echeance, input: BillingInput, lastIndex: Map<string, IndexFacture>, lastCalendaire: Map<string, string>, frozen: Map<string, RevisionSnapshot>):
     { detail: NonNullable<InvoiceLineItem['p1Releve']>; revision?: RevisionSnapshot } | string {
     const cfg = e.item.p1Releve!;
     const src = input.releves;
@@ -569,9 +590,14 @@ function releveCompteur(e: Echeance, input: BillingInput, lastIndex: Map<string,
         prix, coefGestion,
         ...(src.dju && { dju: (d: string, f: string) => src.dju!(e.item.site.id, d, f) }),
         dejaFacture: new Map([...lastIndex].filter(([k]) => k.startsWith(`${e.item.key}|`)).map(([k, v]) => [k.slice(e.item.key.length + 1), v])),
+        repartition: cfg.repartition,
+        dejaCalendaire: new Map([...lastCalendaire].filter(([k]) => k.startsWith(`${e.item.key}|`)).map(([k, v]) => [k.slice(e.item.key.length + 1), v])),
     });
     if (typeof r === 'string') return r;
-    const compteurs = r.detail.flatMap(m => m.compteurs.map(c => ({ meterId: c.meterId, code: c.code, debut: c.debut, fin: c.fin, volume: c.volume })));
+    const compteurs = r.detail.flatMap(m => m.compteurs.map(c => ({
+        meterId: c.meterId, code: c.code, debut: c.debut, fin: c.fin, volume: c.volume,
+        ...(c.segments && { calendaire: true, releves: [...new Set(c.segments.flatMap(x => [x.debut.readingId, x.fin.readingId]))] }),
+    })));
     return {
         detail: {
             siteId: r.siteId, mois: r.detail[0]?.mois ?? e.start.slice(0, 7), volume: r.quantite,

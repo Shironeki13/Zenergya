@@ -80,3 +80,26 @@ test('changement de compteur : index de dépose et de pose obligatoires, enregis
     assert.deepEqual([plan.items[1].action, (plan.items[1].data as { changement?: unknown }).changement, plan.items[1].warnings], ['create', { depose: 1180, pose: 5 }, []]);
     assert.match(plan.items[2].warnings.join(' '), /Index inférieur au relevé précédent/);
 });
+
+test('mois calendaire : tous les relevés qui ont servi au mois facturé sont figés, y compris celui d\'après la fin du mois', async () => {
+    await adminDb.collection('meters').doc('lk-cal').set({ code: 'CPT-07072', name: 'ECS calendaire', siteId: 'lk-s', unit: 'm3' });
+    const r: Record<string, string> = {};
+    for (const [k, date, value] of [['a', '2026-02-20T10:00:00Z', 100], ['b', '2026-03-10T10:00:00Z', 140], ['c', '2026-04-03T10:00:00Z', 200], ['d', '2026-04-20T10:00:00Z', 240]] as const) {
+        r[k] = await saveReading({ meterId: 'lk-cal', date, value, type: 'REEL' }, 'a@v.fr');
+    }
+    // Mars facturé au mois calendaire : intervalles a → b et b → c (c est postérieur à la fin du mois).
+    await adminDb.collection('invoices').doc('lk-inv-cal').set({
+        contractId: 'lk-k', status: 'due', invoiceNumber: 'LOCK-2604-0002', lineItems: [{
+            p1Releve: { siteId: 'lk-s', mois: '2026-03', volume: 70, prix: 7, montant: 490, compteurs: [{
+                meterId: 'lk-cal', code: 'CPT-07072', volume: 70, calendaire: true, releves: [r.a, r.b, r.c],
+                debut: { readingId: r.a, date: '2026-02-20', index: 100 }, fin: { readingId: r.c, date: '2026-04-03', index: 200 },
+            }] },
+        }],
+    });
+    const locks = await readingLocks('lk-cal');
+    assert.deepEqual([locks.locked[r.a], locks.locked[r.b], locks.locked[r.c], locks.locked[r.d] ?? null, locks.lastBilled?.date], ['la facture LOCK-2604-0002', 'la facture LOCK-2604-0002', 'la facture LOCK-2604-0002', null, '2026-04-03']);
+    await assert.rejects(saveReading({ id: r.b, meterId: 'lk-cal', date: '2026-03-10T10:00:00Z', value: 150, type: 'REEL' }, 'b@v.fr'), /Relevé repris dans la facture LOCK-2604-0002/);
+    // Un relevé ajouté dans un intervalle déjà réparti changerait le mois facturé : refusé.
+    await assert.rejects(saveReading({ meterId: 'lk-cal', date: '2026-03-25T10:00:00Z', value: 180, type: 'REEL' }, 'b@v.fr'), /Période déjà facturée jusqu'au 03\/04\/2026/);
+    await saveReading({ id: r.d, meterId: 'lk-cal', date: '2026-04-20T10:00:00Z', value: 245, type: 'REEL' }, 'b@v.fr');   // relevé libre
+});

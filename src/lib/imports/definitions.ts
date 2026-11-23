@@ -305,6 +305,11 @@ const BASE: Record<ImportEntityKey, Omit<ImportEntity, 'groupe' | 'resume' | 'us
                 help: 'Au compteur : aucun, celui de la prestation (coefficient de prix) ou celui du contrat (paramétrage P1 daté). Vide : prestation s\'il est renseigné, sinon aucun.',
             },
             {
+                key: 'p1Repartition', label: 'Répartition de la consommation', type: 'enum',
+                options: [{ value: 'releve', label: 'Relevé à relevé', aliases: ['releve a releve', 'relevé'] }, { value: 'calendaire', label: 'Mois calendaire', aliases: ['calendaire', 'mois calendaire'] }],
+                help: 'Au compteur : consommation d\'un relevé au suivant, ou répartie par mois calendaire au prorata des jours (un mois se facture alors quand un relevé postérieur à sa fin est connu). Vide : relevé à relevé.',
+            },
+            {
                 key: 'p1Prorata', label: 'Prorata (mois partiel)', type: 'enum',
                 options: [
                     { value: 'releve_jours', label: 'Relevé sinon jours', aliases: ['releve jours', 'relevé à la date sinon jours'] },

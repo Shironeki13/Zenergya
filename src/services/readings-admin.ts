@@ -42,10 +42,10 @@ export async function readingLocks(meterId: string): Promise<ReadingLocks> {
     for (const inv of invoices) {
         if (inv.get('status') === 'cancelled' || inv.get('cancelledByCreditNoteId')) continue;
         const number = String(inv.get('invoiceNumber') ?? (inv.get('status') === 'proforma' ? 'proforma' : inv.id));
-        for (const l of (inv.get('lineItems') ?? []) as { p1Releve?: { compteurs: { meterId: string; debut: { readingId: string }; fin: { readingId: string; date: string } }[] } }[]) {
+        for (const l of (inv.get('lineItems') ?? []) as { p1Releve?: { compteurs: { meterId: string; debut: { readingId: string }; fin: { readingId: string; date: string }; releves?: string[] }[] } }[]) {
             for (const c of l.p1Releve?.compteurs ?? []) {
                 if (c.meterId !== meterId) continue;
-                locked[c.debut.readingId] = locked[c.fin.readingId] = `la facture ${number}`;
+                for (const id of [c.debut.readingId, c.fin.readingId, ...(c.releves ?? [])]) locked[id] = `la facture ${number}`;
                 if (!lastBilled || c.fin.date > lastBilled.date) lastBilled = { date: c.fin.date, readingId: c.fin.readingId, invoice: number };
             }
         }

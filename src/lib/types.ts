@@ -657,7 +657,7 @@ export type InvoiceLineItem = {
      */
     p1Releve?: {
         siteId: string; mois: string; volume: number; prix: number; montant: number;
-        compteurs: { meterId: string; code: string; debut: { readingId: string; date: string; index: number }; fin: { readingId: string; date: string; index: number; type?: string }; volume: number }[];
+        compteurs: { meterId: string; code: string; debut: { readingId: string; date: string; index: number }; fin: { readingId: string; date: string; index: number; type?: string }; volume: number; /** Répartition par mois calendaire : tous les relevés qui ont servi au calcul (figés). */ calendaire?: boolean; releves?: string[] }[];
         usage?: 'chauffage' | 'ecs'; unite?: 'MWh' | 'm³';
         detail?: import('@/lib/billing/p1-compteur').MoisFacture[];
     };
@@ -1058,6 +1058,8 @@ export type Service = {
     coefficientPrix?: number;
     /** P1 au compteur : méthode du prorata d'un mois partiel. */
     p1Prorata?: 'releve_jours' | 'releve_dju' | 'jours' | 'dju';
+    /** P1 au compteur : consommation d'un relevé au suivant (défaut), ou répartie par mois calendaire au prorata des jours. */
+    p1Repartition?: 'releve' | 'calendaire';
     /** P1 au compteur : coefficient de gestion (aucun, celui de la prestation, celui du contrat). */
     p1CoefGestion?: 'aucun' | 'prestation' | 'contrat';
 

@@ -85,6 +85,18 @@ Facturation → Régularisation P1.
   une facture, un intéressement ou une régularisation garde son index, sa date et son type (commentaire libre, pas
   de suppression) ; un nouveau relevé ne se date pas avant le dernier relevé facturé du compteur. L'écran signale
   les relevés figés et la période facturée.
+- **Répartition « mois calendaire »** (option de la prestation au compteur, « Consommation du mois » ; colonne
+  « Répartition de la consommation » de l'import) : au lieu de prendre toute la consommation entre le dernier relevé
+  facturé et le dernier relevé du mois, la consommation entre deux relevés consécutifs est **étalée uniformément sur
+  ses jours** (du jour du premier relevé à la veille du second) et chaque mois prend la part de ses jours, au prix du
+  mois. Conséquences : un mois sans relevé se facture ; un mois ne se facture que lorsqu'un relevé **postérieur à sa
+  fin** est connu (le blocage dit lequel est attendu) ; un index au premier jour facturé ou avant est exigé ; les mois
+  partiels se traitent jour par jour, sans méthode de prorata. L'annexe liste, pour chaque mois, les intervalles
+  utilisés (dates, index, jours pris sur jours de l'intervalle, volume). Tous les relevés qui ont servi sont figés, y
+  compris celui d'après la fin du mois, et aucun relevé ne s'ajoute dans un intervalle déjà réparti. Le premier mois
+  facturé ainsi repart du dernier relevé déjà facturé au relevé à relevé ; le retour au relevé à relevé est ensuite
+  refusé. Défaut : relevé à relevé (rien ne change pour les prestations existantes). C'est la méthode du moteur P1
+  pour l'ECS.
 - **Relevés en double le même jour** (index différents) : un seul compte, pour la facturation au compteur comme pour
   les alertes — **le plus proche du relevé précédent** ; en tête de série, du relevé suivant ; sans voisin, le plus
   grand. Un relevé qui porte un changement de compteur l'emporte. Un index à zéro saisi par erreur le même jour que le

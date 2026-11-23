@@ -127,7 +127,11 @@ export function annexesP1(lineItems: InvoiceLineItem[], sites?: Record<string, s
             for (const c of m.compteurs) if (c.passageZero) notes.add(`Compteur ${c.code} repassé par zéro : consommation = index M + capacité du compteur (${c.passageZero.capacite.toLocaleString('fr-FR')}) − index M-1.`);
             for (const c of m.compteurs) for (const x of c.doublons ?? []) notes.add(`Compteur ${c.code} : ${texteDoublon(x, c.unit)}`);
             if (multi) for (const c of m.compteurs) lignes.push({ detail: true, valeurs: { ...tete, ...cpt(c) } });
-            const pr = m.methode === 'releve' ? `relevés du ${m.debut.split('-').reverse().join('/')} au ${m.fin.split('-').reverse().join('/')}`
+            if (m.methode === 'calendaire') {
+                notes.add('Mois calendaire : la consommation entre deux relevés est répartie uniformément sur ses jours (du jour du premier relevé à la veille du second) ; le mois prend la part de ses jours.');
+                for (const c of m.compteurs) for (const x of c.segments ?? []) notes.add(`${moisFr(m.mois)}, compteur ${c.code} : ${x.volume.toLocaleString('fr-FR', { maximumFractionDigits: 3 })} du ${date(x.debut)} (${x.debut.index.toLocaleString('fr-FR')}) au ${date(x.fin)} (${x.fin.index.toLocaleString('fr-FR')}), ${x.joursPris} jour(s) sur ${x.jours} → ${x.volumePris.toLocaleString('fr-FR', { maximumFractionDigits: 3 })}.`);
+            }
+            const pr = m.methode === 'calendaire' ? 'mois calendaire' : m.methode === 'releve' ? `relevés du ${m.debut.split('-').reverse().join('/')} au ${m.fin.split('-').reverse().join('/')}`
                 : m.methode === 'jours' ? `${m.jours}/${m.joursMois} jours` : m.methode === 'dju' ? `${m.dju!.couverts.toLocaleString('fr-FR')}/${m.dju!.mois.toLocaleString('fr-FR')} DJU` : '';
             lignes.push({
                 valeurs: {
