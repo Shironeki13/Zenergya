@@ -11,17 +11,19 @@ import { accesRoute } from '@/lib/perimetre';
  */
 
 export type NavItem = { href: string; label: string; icon: LucideIcon; admin?: boolean; /** Réservée à la contrathèque. */ contratheque?: boolean; keywords?: string };
-export type NavGroup = { id: string; label: string; icon: LucideIcon; items: NavItem[] };
+/** Couleur d'un thème du menu : pastille de la rubrique, filet de ses entrées, entrée de la page courante. */
+export type NavTon = 'rose' | 'blue' | 'emerald' | 'amber' | 'orange' | 'violet' | 'slate';
+export type NavGroup = { id: string; label: string; icon: LucideIcon; ton: NavTon; items: NavItem[] };
 
 export const NAV_GROUPS: NavGroup[] = [
     {
-        id: 'pilotage', label: 'Pilotage', icon: LayoutDashboard, items: [
+        id: 'pilotage', label: 'Pilotage', icon: LayoutDashboard, ton: 'rose', items: [
             { href: '/dashboard', label: 'Tableau de bord', icon: LayoutDashboard, keywords: 'accueil kpi chiffre affaires' },
             { href: '/billing/suivi', label: 'Suivi facturation', icon: ListChecks, keywords: 'retard échéances à facturer blocages adv impayés' },
         ],
     },
     {
-        id: 'clients', label: 'Clients et contrats', icon: Building, items: [
+        id: 'clients', label: 'Clients et contrats', icon: Building, ton: 'blue', items: [
             { href: '/clients', label: 'Clients', icon: Building, keywords: 'prospects fiches' },
             { href: '/contracts', label: 'Contrats', icon: FileSignature },
             { href: '/sites', label: 'Sites', icon: MapPin },
@@ -31,7 +33,7 @@ export const NAV_GROUPS: NavGroup[] = [
         ],
     },
     {
-        id: 'facturation', label: 'Facturation', icon: CircleDollarSign, items: [
+        id: 'facturation', label: 'Facturation', icon: CircleDollarSign, ton: 'emerald', items: [
             { href: '/billing', label: 'Facturation manuelle', icon: CircleDollarSign, keywords: 'émettre facture contrat' },
             { href: '/billing/batch', label: 'Facturation groupée', icon: Copy, keywords: 'lot masse' },
             { href: '/invoices', label: 'Factures', icon: FileText },
@@ -43,13 +45,13 @@ export const NAV_GROUPS: NavGroup[] = [
         ],
     },
     {
-        id: 'compteurs', label: 'Compteurs et énergie', icon: Gauge, items: [
+        id: 'compteurs', label: 'Compteurs et énergie', icon: Gauge, ton: 'amber', items: [
             { href: '/meters', label: 'Compteurs', icon: Gauge, keywords: 'relevés index pdl pce' },
             { href: '/meters/alertes', label: 'Alertes compteurs', icon: AlertTriangle, keywords: 'dérive index baisse relevé manquant' },
         ],
     },
     {
-        id: 'travaux', label: 'Travaux', icon: Calculator, items: [
+        id: 'travaux', label: 'Travaux', icon: Calculator, ton: 'orange', items: [
             { href: '/works', label: 'Accueil travaux', icon: Home },
             { href: '/quotes', label: 'Devis', icon: MessageSquareQuote },
             { href: '/projects', label: 'Affaires', icon: Calculator, keywords: 'travaux p5 p6 chantier budget marge rentabilité' },
@@ -58,12 +60,12 @@ export const NAV_GROUPS: NavGroup[] = [
         ],
     },
     {
-        id: 'achats', label: 'Achats', icon: ShoppingCart, items: [
+        id: 'achats', label: 'Achats', icon: ShoppingCart, ton: 'violet', items: [
             { href: '/purchases', label: 'Commandes', icon: ShoppingCart, keywords: 'achat fournisseur validation engagé bon de commande' },
         ],
     },
     {
-        id: 'admin', label: 'Administration', icon: Settings, items: [
+        id: 'admin', label: 'Administration', icon: Settings, ton: 'slate', items: [
             { href: '/settings', label: 'Paramétrage', icon: Settings, keywords: 'sociétés agences activités tva échéanciers stations' },
             { href: '/imports', label: 'Imports', icon: Upload, admin: true, keywords: 'excel csv modèles' },
             { href: '/users', label: 'Utilisateurs', icon: Users, admin: true, keywords: 'droits rôles' },
