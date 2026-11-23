@@ -101,7 +101,7 @@ export type BillingService = {
 };
 
 /** Relevé d'un compteur (date AAAA-MM-JJ, heure de Paris). */
-export type ReleveReading = { id: string; date: string; value: number; type?: string };
+export type ReleveReading = { id: string; date: string; value: number; type?: string; changement?: import('@/lib/releves').ChangementCompteur };
 
 /** P1 au compteur : compteurs facturés d'une prestation et leurs relevés, coefficient du contrat, DJU (calculé au serveur). */
 export type P1ReleveSource = {

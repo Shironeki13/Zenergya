@@ -16,6 +16,7 @@ import type { SaisonChauffe } from '@/lib/p1/saisons';
 import type { Energie, TermeNc } from '@/lib/p1/parametrage';
 import { loadSeries } from '@/services/p1-admin';
 import { analytiqueContrat, avecAnalytique, figerAnalytique } from '@/services/analytique-admin';
+import { lireChangement } from '@/lib/releves';
 import type { P1AcompteSource, P1DjuSource, P1ReleveSource, ReleveReading } from '@/lib/billing/contract-billing';
 import type { CompteurFacture, UsageCompteur } from '@/lib/billing/p1-compteur';
 
@@ -86,7 +87,8 @@ export async function releveSource(siteIds: string[], contractId?: string): Prom
     for (const r of readings) {
         const meterId = String(r.get('meterId'));
         if (!byMeter.has(meterId)) byMeter.set(meterId, []);
-        byMeter.get(meterId)!.push({ id: r.id, date: toDay(r.get('date'))!, value: Number(r.get('value')), type: r.get('type') ?? undefined });
+        const changement = lireChangement(r.get('changement'));
+        byMeter.get(meterId)!.push({ id: r.id, date: toDay(r.get('date'))!, value: Number(r.get('value')), type: r.get('type') ?? undefined, ...(changement && { changement }) });
     }
     const meterDoc = (id: string) => p1Docs.get(P1_DOC_ID.meter(id)) as P1MeterDoc | undefined;
     const siteDoc = (id: string) => p1Docs.get(P1_DOC_ID.site(id)) as P1SiteDoc | undefined;

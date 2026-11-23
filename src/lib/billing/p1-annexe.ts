@@ -122,6 +122,7 @@ export function annexesP1(lineItems: InvoiceLineItem[], sites?: Record<string, s
                 compteur: `${c.signe < 0 ? '− ' : ''}${c.code}`, indexDebut: c.debut.index, dateDebut: date(c.debut), indexFin: c.fin.index, dateFin: date(c.fin),
                 conso: c.volume, conversion: c.conversion, quantiteCompteur: c.quantite,
             });
+            for (const c of m.compteurs) for (const x of c.changements ?? []) notes.add(`Compteur ${c.code} changé le ${x.date.split('-').reverse().join('/')} : index de dépose ${x.depose.toLocaleString('fr-FR')}, index de pose ${x.pose.toLocaleString('fr-FR')} ; consommation = (dépose − index M-1) + (index M − pose).`);
             if (multi) for (const c of m.compteurs) lignes.push({ detail: true, valeurs: { ...tete, ...cpt(c) } });
             const pr = m.methode === 'releve' ? `relevés du ${m.debut.split('-').reverse().join('/')} au ${m.fin.split('-').reverse().join('/')}`
                 : m.methode === 'jours' ? `${m.jours}/${m.joursMois} jours` : m.methode === 'dju' ? `${m.dju!.couverts.toLocaleString('fr-FR')}/${m.dju!.mois.toLocaleString('fr-FR')} DJU` : '';

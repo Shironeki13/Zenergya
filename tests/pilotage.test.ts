@@ -39,6 +39,8 @@ test('alertes : index en baisse (sauf relevé corrigé), relevés contradictoire
     const today = '2026-03-10';
     assert.deepEqual(types(alertesCompteur(m(), [r('2026-01-31', 100), r('2026-02-28', 90)], today)), ['index_baisse']);
     assert.deepEqual(alertesCompteur(m(), [r('2026-01-31', 100), r('2026-02-28', 5, 'CORRIGE')], today), []);
+    // Changement de compteur déclaré sur le relevé (index de dépose et de pose) : la baisse est expliquée.
+    assert.deepEqual(alertesCompteur(m(), [r('2026-01-31', 100), { ...r('2026-02-28', 5), changement: { depose: 130, pose: 0 } }], today), []);
     const doublon = alertesCompteur(m(), [r('2026-02-28', 100), r('2026-02-28', 104)], today);
     assert.match(doublon[0].message, /Deux relevés le 28\/02\/2026 : 100 et 104 MWh/);
     assert.match(alertesCompteur(m(), [r('2026-01-10', 100)], today).find(a => a.type === 'sans_releve')!.message, /depuis 59 jours/);

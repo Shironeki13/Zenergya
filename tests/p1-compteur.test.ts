@@ -3,6 +3,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { conversion, factureAuCompteur, moisCouverts, type CompteurFacture, type ContexteCompteur } from '../src/lib/billing/p1-compteur';
 import { dueInvoiceLines, type BillingInput } from '../src/lib/billing/contract-billing';
+import { controleChangement, correctionChangements, lireChangement } from '../src/lib/releves';
+import { texteCompteur } from '../src/lib/billing/p1-compteur';
 
 // Gaz en m³, QE 0,0105 MWh/m³ ; relevés de fin de mois.
 const gaz: CompteurFacture = {
@@ -136,4 +138,37 @@ test('moteur : même compteur dans deux prestations (ECS facturée et déduite d
     const mi = dueInvoiceLines(input({ scheduleId: 'mens', startDate: '2025-09-15' }, { contract: { id: 'k', siteIds: ['s'], activityIds: ['p1'], startDate: '2025-09-15', endDate: '2026-09-30' }, releves: { meters: () => [gaz] } }), [], '2025-11-01');
     assert.deepEqual(mi.errors, []);
     assert.deepEqual(mi.lines.map(l => [l.periodStartDate, l.periodEndDate, l.p1Releve!.detail![0].methode]), [['2025-09-15', '2025-09-30', 'jours'], ['2025-10-01', '2025-10-31', 'complet']]);
+});
+
+test('changement de compteur : (dépose − relevé précédent) + (index du nouveau − pose) ; index en baisse sans changement toujours refusé', () => {
+    // Fin septembre 100 000 ; compteur changé le 20/10 (ancien déposé à 108 000, nouveau posé à 20) ; fin octobre 500 sur le nouveau.
+    const base = [{ id: 'a', date: '2025-09-30', value: 100000 }];
+    const change = { ...gaz, readings: [...base, { id: 'c', date: '2025-10-20', value: 20, changement: { depose: 108000, pose: 20 } }, { id: 'b', date: '2025-10-31', value: 500 }] };
+    const r = factureAuCompteur(ctx({ compteurs: () => [change] }));
+    assert.ok(typeof r !== 'string');
+    const c = r.detail[0].compteurs[0];
+    assert.deepEqual([c.debut.index, c.fin.index, c.volume, c.changements], [100000, 500, 8480, [{ date: '2025-10-20', depose: 108000, pose: 20 }]]);
+    assert.equal(r.quantite, 89.04);   // 8 480 m³ × 0,0105
+    assert.match(texteCompteur(r).replace(/[\u202f\u00a0]/g, ' '), /compteur changé le 20\/10\/2025 \(dépose 108 000, pose 20\)/);
+    // Le relevé de fin de mois porte lui-même le changement.
+    const fin = { ...gaz, readings: [...base, { id: 'b', date: '2025-10-31', value: 500, changement: { depose: 108000, pose: 20 } }] };
+    const rf = factureAuCompteur(ctx({ compteurs: () => [fin] }));
+    assert.ok(typeof rf !== 'string');
+    assert.equal(rf.detail[0].compteurs[0].volume, 8480);
+    // Le mois suivant repart du nouveau compteur, sans reprendre le changement (il précède l'index de départ).
+    const nov = factureAuCompteur(ctx({ debut: '2025-11-01', fin: '2025-11-30', compteurs: () => [{ ...change, readings: [...change.readings, { id: 'n', date: '2025-11-30', value: 1500 }] }], dejaFacture: new Map([['g', { readingId: 'b', date: '2025-10-31', index: 500 }]]) }));
+    assert.ok(typeof nov !== 'string');
+    assert.deepEqual([nov.detail[0].compteurs[0].volume, nov.detail[0].compteurs[0].changements], [1000, undefined]);
+    // Sans changement déclaré, la baisse bloque et dit quoi faire ; index de dépose incohérent : refus aussi.
+    assert.match(String(factureAuCompteur(ctx({ compteurs: () => [{ ...gaz, readings: [...base, { id: 'b', date: '2025-10-31', value: 500 }] }] }))), /en baisse \(100000 → 500\) : changement de compteur à déclarer sur le relevé/);
+    assert.match(String(factureAuCompteur(ctx({ compteurs: () => [{ ...gaz, readings: [...base, { id: 'b', date: '2025-10-31', value: 500, changement: { depose: 90000, pose: 20 } }] }] }))), /consommation négative du compteur CPT-GAZ .* malgré le changement de compteur/);
+    // Contrôles de saisie.
+    assert.equal(controleChangement(null, 10), null);
+    assert.equal(controleChangement({ depose: 108000, pose: 20 }, 500), null);
+    assert.match(String(controleChangement({ depose: 108000 }, 500)), /index de pose du nouveau compteur obligatoire/);
+    assert.match(String(controleChangement({ pose: 20 }, 500)), /index de dépose de l'ancien compteur obligatoire/);
+    assert.match(String(controleChangement({ depose: 108000, pose: 600 }, 500)), /ne peut pas être inférieur à son index de pose/);
+    assert.deepEqual([lireChangement({ depose: 1, pose: 0 }), lireChangement({ depose: 1 }), lireChangement(undefined)], [{ depose: 1, pose: 0 }, null, null]);
+    assert.equal(correctionChangements(change.readings, '2025-09-30', '2025-10-31'), 107980);
+    assert.equal(correctionChangements(change.readings, '2025-10-20', '2025-10-31'), 0);
 });

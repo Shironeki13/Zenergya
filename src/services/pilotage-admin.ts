@@ -1,4 +1,5 @@
 import 'server-only';
+import { lireChangement } from '@/lib/releves';
 import { adminDb } from '@/lib/firebase-admin';
 import { suiviContrat, type EcheanceSuivi } from '@/lib/pilotage/suivi-facturation';
 import { alertesCompteur, trierAlertes, type Alerte, type CompteurSuivi, type RelevePilotage } from '@/lib/pilotage/alertes-compteurs';
@@ -235,7 +236,8 @@ export async function alertesCompteurs(): Promise<{ today: string; alertes: Aler
     for (const r of readings.docs) {
         const id = String(r.get('meterId'));
         if (!byMeter.has(id)) byMeter.set(id, []);
-        byMeter.get(id)!.push({ id: r.id, date: toDay(r.get('date'))!, value: Number(r.get('value')), type: r.get('type') ?? undefined });
+        const changement = lireChangement(r.get('changement'));
+        byMeter.get(id)!.push({ id: r.id, date: toDay(r.get('date'))!, value: Number(r.get('value')), type: r.get('type') ?? undefined, ...(changement && { changement }) });
     }
     const alertes: Alerte[] = [];
     for (const m of meters.docs) {

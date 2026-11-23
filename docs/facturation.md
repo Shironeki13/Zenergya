@@ -85,6 +85,13 @@ Facturation → Régularisation P1.
   une facture, un intéressement ou une régularisation garde son index, sa date et son type (commentaire libre, pas
   de suppression) ; un nouveau relevé ne se date pas avant le dernier relevé facturé du compteur. L'écran signale
   les relevés figés et la période facturée.
+- **Changement de compteur** : il se déclare sur le relevé du jour (case « Le compteur a été changé ce jour-là » ;
+  colonnes « Index de dépose » et « Index de pose » de l'import et de l'API). Le relevé porte l'index de **dépose** de
+  l'ancien compteur et l'index de **pose** du nouveau ; son index est celui du nouveau compteur. Consommation depuis
+  le relevé précédent = (dépose − relevé précédent) + (index − pose). Les deux index sont obligatoires, jamais
+  supposés. La facture et son annexe citent le changement. Un index en baisse **sans** changement déclaré bloque
+  toujours la facturation au compteur. Dans une période déjà facturée, un changement ne se déclare, ne se modifie ni
+  ne se retire.
   Pas de régularisation de consommation pour l'ECS au relevé (déjà au réel) : sur ces sites, la régularisation ne
   porte que sur le chauffage (réel par usage « chauffage » ; un réel total est refusé).
 - **Réel du moteur** : import « Réel P1 du moteur » (site, mois, montant P1 HT, usage), collection `p1Reel` écrite
@@ -216,7 +223,7 @@ Calculées à la demande sur tous les relevés (`src/lib/pilotage/alertes-compte
 
 | Alerte | Gravité | Règle |
 |---|---|---|
-| Index en baisse | critique | relevé plus bas que le précédent, hors relevé « corrigé » (12 derniers mois) |
+| Index en baisse | critique | relevé plus bas que le précédent, hors relevé « corrigé » et hors changement de compteur déclaré (12 derniers mois) |
 | Relevé ECS manquant | critique | ECS facturée au relevé sans relevé du dernier mois échu (facture bloquée) |
 | Dérive de consommation | attention | conso/jour du dernier intervalle × > 2 ou < 0,5 par rapport à la même période l'an passé (± 20 jours), sinon à la médiane des 6 derniers intervalles (3 au moins) ; intervalles de 7 jours minimum |
 | Relevés contradictoires | attention | deux index différents le même jour (12 derniers mois) |

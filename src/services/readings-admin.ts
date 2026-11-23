@@ -1,14 +1,16 @@
 import 'server-only';
-import { Timestamp } from 'firebase-admin/firestore';
+import { FieldValue, Timestamp } from 'firebase-admin/firestore';
 import { adminDb } from '@/lib/firebase-admin';
 import { toDay } from '@/lib/services/site-amounts';
+import { controleChangement, lireChangement, type ChangementCompteur } from '@/lib/releves';
 import type { MeterReading } from '@/lib/types';
 
 /**
  * Relevés de compteurs écrits par le serveur seulement (écran de saisie, import, API) : un relevé repris dans une
  * facture (ECS au relevé), un intéressement ou une régularisation est **figé** (index, date et type ; le commentaire
  * reste modifiable, la suppression est refusée) ; un nouveau relevé ne se date pas avant le dernier relevé facturé
- * du compteur (période déjà facturée).
+ * du compteur (période déjà facturée). Un **changement de compteur** (index de dépose et de pose) se déclare sur le
+ * relevé du jour ; il ne s'ajoute, ne se modifie ni ne se retire dans une période déjà facturée.
  */
 
 export type ReadingLocks = {
@@ -51,7 +53,7 @@ export async function readingLocks(meterId: string): Promise<ReadingLocks> {
     return { locked, lastBilled };
 }
 
-export type ReadingInput = { id?: string; meterId: string; date: string; value: number; type: MeterReading['type']; comment?: string };
+export type ReadingInput = { id?: string; meterId: string; date: string; value: number; type: MeterReading['type']; comment?: string; /** Changement de compteur ce jour-là ; null ou absent : relevé ordinaire. */ changement?: ChangementCompteur | null };
 
 const TYPES: MeterReading['type'][] = ['REEL', 'ESTIME', 'CORRIGE', 'AUTO'];
 const fr = (d: string) => d.split('-').reverse().join('/');
@@ -89,6 +91,9 @@ export async function saveReading(input: ReadingInput, by: string): Promise<stri
     if (at.getTime() > Date.now() + 3600_000) throw new Error('Date du relevé dans le futur.');
     if (!Number.isFinite(input.value) || input.value < 0) throw new Error('Index : nombre positif ou nul.');
     if (!TYPES.includes(input.type)) throw new Error('Type de relevé inconnu.');
+    const erreurChangement = controleChangement(input.changement, input.value);
+    if (erreurChangement) throw new Error(erreurChangement);
+    const changement = input.changement ? { depose: input.changement.depose, pose: input.changement.pose } : null;
     const meter = await adminDb.collection('meters').doc(input.meterId).get();
     if (!meter.exists) throw new Error('Compteur introuvable.');
     const { locked, lastBilled } = await readingLocks(input.meterId);
@@ -100,10 +105,13 @@ export async function saveReading(input: ReadingInput, by: string): Promise<stri
         const snap = await ref.get();
         if (!snap.exists || snap.get('meterId') !== input.meterId) throw new Error('Relevé introuvable.');
         const sameDate = toDay(snap.get('date')) === day;
-        const changes = !sameDate || Number(snap.get('value')) !== input.value || snap.get('type') !== input.type;
+        const avant = lireChangement(snap.get('changement'));
+        const changementModifie = (avant?.depose ?? null) !== (changement?.depose ?? null) || (avant?.pose ?? null) !== (changement?.pose ?? null);
+        const changes = !sameDate || Number(snap.get('value')) !== input.value || snap.get('type') !== input.type || changementModifie;
         if (locked[input.id] && changes) throw new Error(`Relevé repris dans ${locked[input.id]} : index, date et type ne se modifient plus (le commentaire, si). Une correction passe par un avoir.`);
         if (!sameDate && lastBilled && day <= lastBilled.date) throw new Error(`Période déjà facturée jusqu'au ${fr(lastBilled.date)} (facture ${lastBilled.invoice}) : ce relevé ne peut pas y être déplacé.`);
-        await ref.update({ date: Timestamp.fromDate(at), value: input.value, type: input.type, comment, modifiedBy: by, modifiedAt: new Date().toISOString() });
+        if (changementModifie && lastBilled && day <= lastBilled.date) throw new Error(`Période déjà facturée jusqu'au ${fr(lastBilled.date)} (facture ${lastBilled.invoice}) : un changement de compteur ne s'y déclare, ne s'y modifie ni ne s'y retire.`);
+        await ref.update({ date: Timestamp.fromDate(at), value: input.value, type: input.type, comment, changement: changement ?? FieldValue.delete(), modifiedBy: by, modifiedAt: new Date().toISOString() });
         await majDerniersReleves([input.meterId]);
         return input.id;
     }
@@ -113,7 +121,7 @@ export async function saveReading(input: ReadingInput, by: string): Promise<stri
     let contractId: string | null = site?.get('contractId') || null;
     if (!contractId && siteId) contractId = (await adminDb.collection('contracts').where('siteIds', 'array-contains', siteId).limit(1).get()).docs[0]?.id ?? null;
     const ref = await adminDb.collection('meterReadings').add({
-        meterId: input.meterId, date: Timestamp.fromDate(at), value: input.value, type: input.type, source: 'MANUEL', comment,
+        meterId: input.meterId, date: Timestamp.fromDate(at), value: input.value, type: input.type, source: 'MANUEL', comment, ...(changement && { changement }),
         unit: meter.get('unit') ?? null, ...(contractId && { contractId }), createdBy: by, createdAt: new Date().toISOString(),
     });
     await majDerniersReleves([input.meterId]);
@@ -124,8 +132,10 @@ export async function saveReading(input: ReadingInput, by: string): Promise<stri
 export async function deleteReading(id: string): Promise<void> {
     const snap = await adminDb.collection('meterReadings').doc(id).get();
     if (!snap.exists) throw new Error('Relevé introuvable.');
-    const { locked } = await readingLocks(String(snap.get('meterId')));
+    const verrous = await readingLocks(String(snap.get('meterId')));
+    const { locked, lastBilled } = verrous;
     if (locked[id]) throw new Error(`Relevé repris dans ${locked[id]} : il ne se supprime pas.`);
+    if (lireChangement(snap.get('changement')) && lastBilled && toDay(snap.get('date'))! <= lastBilled.date) throw new Error(`Ce relevé porte un changement de compteur dans une période déjà facturée (jusqu'au ${fr(lastBilled.date)}, facture ${lastBilled.invoice}) : il ne se supprime pas.`);
     await snap.ref.delete();
     await majDerniersReleves([String(snap.get('meterId'))]);
 }

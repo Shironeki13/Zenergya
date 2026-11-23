@@ -59,3 +59,24 @@ test('import et API : relevé antérieur à la période facturée refusé, index
     assert.match(plan.items[0].messages[0], /Période déjà facturée jusqu'au 31\/10\/2025 \(facture LOCK-2511-0001\)/);
     assert.match(plan.items[1].messages[0], /Relevé repris dans la facture LOCK-2511-0001 \(ECS au relevé\) : index non modifiable/);
 });
+
+test('changement de compteur : index de dépose et de pose obligatoires, enregistrés, retirés ; protégé en période facturée ; import', async () => {
+    const lire = async (id: string) => (await adminDb.collection('meterReadings').doc(id).get()).get('changement') ?? null;
+    await assert.rejects(saveReading({ meterId: 'lk-m', date: '2026-01-20T10:00:00Z', value: 30, type: 'REEL', changement: { depose: 1180 } as never }, 'b@v.fr'), /index de pose du nouveau compteur obligatoire/);
+    await assert.rejects(saveReading({ meterId: 'lk-m', date: '2026-01-20T10:00:00Z', value: 3, type: 'REEL', changement: { depose: 1180, pose: 5 } }, 'b@v.fr'), /ne peut pas être inférieur à son index de pose/);
+    const id = await saveReading({ meterId: 'lk-m', date: '2026-01-20T10:00:00Z', value: 30, type: 'REEL', changement: { depose: 1180, pose: 5 } }, 'b@v.fr');
+    assert.deepEqual(await lire(id), { depose: 1180, pose: 5 });
+    await saveReading({ id, meterId: 'lk-m', date: '2026-01-20T10:00:00Z', value: 30, type: 'REEL', changement: { depose: 1185, pose: 5 } }, 'b@v.fr');
+    assert.deepEqual(await lire(id), { depose: 1185, pose: 5 });
+    await saveReading({ id, meterId: 'lk-m', date: '2026-01-20T10:00:00Z', value: 30, type: 'REEL', changement: null }, 'b@v.fr');
+    assert.equal(await lire(id), null);
+    await deleteReading(id);
+    // Période facturée (jusqu'au 31/10/2025) : pas de changement déclaré après coup sur un relevé figé.
+    await assert.rejects(saveReading({ id: ids.oct, meterId: 'lk-m', date: '2025-10-31T10:00:00Z', value: 1040, type: 'REEL', changement: { depose: 2000, pose: 0 } }, 'b@v.fr'), /Relevé repris dans la facture LOCK-2511-0001/);
+    // Import : les deux colonnes vont ensemble ; la baisse d'index n'est plus signalée quand le changement est déclaré.
+    const plan = await planImport('readings', [['Compteur', 'Date du relevé', 'Index', 'Index de dépose', 'Index de pose'],
+        ['CPT-07071', '20/01/2026', '30', '1180', ''], ['CPT-07071', '21/01/2026', '30', '1180', '5'], ['CPT-07071', '22/01/2026', '10', '', '']]);
+    assert.match(plan.items[0].messages[0], /index de pose du nouveau compteur obligatoire/);
+    assert.deepEqual([plan.items[1].action, (plan.items[1].data as { changement?: unknown }).changement, plan.items[1].warnings], ['create', { depose: 1180, pose: 5 }, []]);
+    assert.match(plan.items[2].warnings.join(' '), /Index inférieur au relevé précédent/);
+});

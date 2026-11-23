@@ -1,5 +1,6 @@
 import 'server-only';
 import { majDerniersReleves } from '@/services/readings-admin';
+import { controleChangement } from '@/lib/releves';
 import { FieldValue, Timestamp } from 'firebase-admin/firestore';
 import { adminDb } from '@/lib/firebase-admin';
 import { IMPORT_ENTITIES, type ImportEntityKey } from '@/lib/imports/definitions';
@@ -680,9 +681,19 @@ function planReading(ctx: Context, row: ParsedRow, seen: Map<string, number>, pe
     item.label = `${meter.code} — ${frDate(at)}`;
     const data = plain(v, ['value', 'type', 'comment']);
     if (!existing && v.value === null) item.messages.push('Index obligatoire pour créer un relevé.');
+    // Changement de compteur : index de dépose et de pose, ensemble.
+    const avecChangement = v.depose !== null && v.depose !== undefined || v.pose !== null && v.pose !== undefined;
+    if (avecChangement) {
+        const erreur = controleChangement({ depose: v.depose, pose: v.pose }, (v.value ?? existing?.value ?? 0) as number);
+        if (erreur) item.messages.push(erreur);
+        else data.changement = { depose: v.depose as number, pose: v.pose as number };
+    }
     const billed = ctx.lastBilledReading.get(meter.id);
     if (!existing && billed && isoDay(at) <= billed.date) {
         item.messages.push(`Période déjà facturée jusqu'au ${billed.date.split('-').reverse().join('/')} (facture ${billed.invoice}) : un relevé antérieur ne s'ajoute plus.`);
+    }
+    if (existing && data.changement && billed && isoDay(at) <= billed.date && !sameValue((existing as unknown as { changement?: unknown }).changement, data.changement)) {
+        item.messages.push(`Période déjà facturée jusqu'au ${billed.date.split('-').reverse().join('/')} (facture ${billed.invoice}) : un changement de compteur ne s'y déclare ni ne s'y modifie.`);
     }
     const locked = existing && ctx.lockedReadings.get(existing.id);
     if (locked && v.value !== null && v.value !== existing.value) {
@@ -697,7 +708,7 @@ function planReading(ctx: Context, row: ParsedRow, seen: Map<string, number>, pe
     const others = [...history.filter(r => r !== existing).map(r => ({ at: r.at, value: r.value })), ...(pending.get(meter.id) ?? [])];
     const before = others.filter(r => r.at < at).sort((a, b) => b.at - a.at)[0];
     const after = others.filter(r => r.at > at).sort((a, b) => a.at - b.at)[0];
-    if (before && value < before.value) item.warnings.push(`Index inférieur au relevé précédent (${before.value} le ${frDate(before.at)}).`);
+    if (before && value < before.value && !data.changement) item.warnings.push(`Index inférieur au relevé précédent (${before.value} le ${frDate(before.at)}).`);
     if (after && value > after.value) item.warnings.push(`Index supérieur au relevé suivant (${after.value} le ${frDate(after.at)}).`);
     if (!pending.has(meter.id)) pending.set(meter.id, []);
     pending.get(meter.id)!.push({ at, value });

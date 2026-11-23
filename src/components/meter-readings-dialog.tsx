@@ -9,7 +9,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { PlusCircle, Trash2, Edit, Loader2, Lock, Calendar as CalendarIcon } from "lucide-react";
+import { PlusCircle, Trash2, Edit, Loader2, Lock, Repeat, Calendar as CalendarIcon } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
 import { format } from "date-fns";
 import { fr } from "date-fns/locale";
@@ -44,6 +45,10 @@ export function MeterReadingsDialog({ meter, trigger }: MeterReadingsDialogProps
     const [value, setValue] = useState('');
     const [type, setType] = useState<MeterReading['type']>('REEL');
     const [comment, setComment] = useState('');
+    // Changement de compteur ce jour-là : index de dépose de l'ancien, index de pose du nouveau.
+    const [changement, setChangement] = useState(false);
+    const [depose, setDepose] = useState('');
+    const [pose, setPose] = useState('');
 
     const readings = useMemo(() => {
         return meterReadings
@@ -63,6 +68,7 @@ export function MeterReadingsDialog({ meter, trigger }: MeterReadingsDialogProps
         setValue('');
         setType('REEL');
         setComment('');
+        setChangement(false); setDepose(''); setPose('');
         setEditingId(null);
         setIsFormOpen(false);
     };
@@ -73,6 +79,9 @@ export function MeterReadingsDialog({ meter, trigger }: MeterReadingsDialogProps
         setValue(reading.value.toString());
         setType(reading.type);
         setComment(reading.comment || '');
+        setChangement(!!reading.changement);
+        setDepose(reading.changement ? String(reading.changement.depose) : '');
+        setPose(reading.changement ? String(reading.changement.pose) : '');
         setIsFormOpen(true);
     };
 
@@ -88,9 +97,10 @@ export function MeterReadingsDialog({ meter, trigger }: MeterReadingsDialogProps
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!date || value === '') return;
+        if (changement && (depose === '' || pose === '')) { toast({ title: "Changement de compteur", description: "Les index de dépose et de pose sont obligatoires.", variant: "destructive" }); return; }
         setIsSubmitting(true);
         // Écrit par le serveur : contrôles (index, date), relevés figés, période déjà facturée.
-        const r = await saveReadingAction({ ...(editingId && { id: editingId }), meterId: meter.id, date: date.toISOString(), value: Number(value), type, comment });
+        const r = await saveReadingAction({ ...(editingId && { id: editingId }), meterId: meter.id, date: date.toISOString(), value: Number(value), type, comment, changement: changement ? { depose: Number(depose), pose: Number(pose) } : null });
         setIsSubmitting(false);
         if (!r.success) { toast({ title: "Enregistrement refusé", description: r.error, variant: "destructive" }); return; }
         toast({ title: "Succès", description: editingId ? "Relevé mis à jour." : "Relevé ajouté." });
@@ -139,7 +149,7 @@ export function MeterReadingsDialog({ meter, trigger }: MeterReadingsDialogProps
                                     </Popover>
                                 </div>
                                 <div className="space-y-2">
-                                    <Label>Index ({meter.unit})</Label>
+                                    <Label>{changement ? `Index du nouveau compteur (${meter.unit})` : `Index (${meter.unit})`}</Label>
                                     <Input type="number" step="any" min={0} value={value} onChange={e => setValue(e.target.value)} required disabled={!!editingLocked} />
                                 </div>
                                 <div className="space-y-2">
@@ -154,6 +164,27 @@ export function MeterReadingsDialog({ meter, trigger }: MeterReadingsDialogProps
                                         </SelectContent>
                                     </Select>
                                 </div>
+                            </div>
+                            <div className="space-y-3 rounded-md border bg-background p-3">
+                                <div className="flex items-center gap-2">
+                                    <Checkbox id="releve-changement" checked={changement} onCheckedChange={v => setChangement(v === true)} disabled={!!editingLocked} />
+                                    <Label htmlFor="releve-changement" className="font-normal">Le compteur a été changé ce jour-là</Label>
+                                </div>
+                                {changement && (
+                                    <>
+                                        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                                            <div className="space-y-2">
+                                                <Label htmlFor="releve-depose">Index de dépose de l&apos;ancien compteur ({meter.unit})</Label>
+                                                <Input id="releve-depose" type="number" step="any" min={0} value={depose} onChange={e => setDepose(e.target.value)} disabled={!!editingLocked} />
+                                            </div>
+                                            <div className="space-y-2">
+                                                <Label htmlFor="releve-pose">Index de pose du nouveau compteur ({meter.unit})</Label>
+                                                <Input id="releve-pose" type="number" step="any" min={0} value={pose} onChange={e => setPose(e.target.value)} disabled={!!editingLocked} />
+                                            </div>
+                                        </div>
+                                        <p className="text-xs text-muted-foreground">Consommation depuis le relevé précédent = (index de dépose − relevé précédent) + (index du nouveau compteur − index de pose). Les deux index se saisissent, ils ne se supposent pas.</p>
+                                    </>
+                                )}
                             </div>
                             <div className="space-y-2">
                                 <Label>Commentaire</Label>
@@ -196,7 +227,10 @@ export function MeterReadingsDialog({ meter, trigger }: MeterReadingsDialogProps
                                     readings.map(reading => (
                                         <TableRow key={reading.id}>
                                             <TableCell>{format(new Date(reading.date), 'dd/MM/yyyy')}</TableCell>
-                                            <TableCell className="font-mono font-medium">{reading.value} {reading.unit}</TableCell>
+                                            <TableCell className="font-mono font-medium">
+                                                {reading.value} {reading.unit}
+                                                {reading.changement && <Badge variant="outline" className="ml-2 gap-1 font-sans text-[10px]" title={`Compteur changé : index de dépose ${reading.changement.depose}, index de pose ${reading.changement.pose}`}><Repeat className="h-3 w-3" />Compteur changé</Badge>}
+                                            </TableCell>
                                             <TableCell className="text-xs">{reading.type}</TableCell>
                                             <TableCell className="text-xs text-muted-foreground">{reading.source}</TableCell>
                                             <TableCell className="text-xs text-muted-foreground max-w-[150px] truncate">{reading.comment}</TableCell>

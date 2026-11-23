@@ -381,6 +381,8 @@ const BASE: Record<ImportEntityKey, Omit<ImportEntity, 'groupe' | 'resume' | 'us
                 ],
                 help: 'Vide à la création : Réel. Automatique : télérelève.',
             },
+            { key: 'depose', label: 'Index de dépose', type: 'number', allowZero: true, example: '', aliases: ['depose', 'index depose', 'index ancien compteur'], help: 'Changement de compteur ce jour-là : dernier index de l\'ancien compteur. À renseigner avec l\'index de pose ; vide : relevé ordinaire.' },
+            { key: 'pose', label: 'Index de pose', type: 'number', allowZero: true, example: '', aliases: ['pose', 'index pose', 'index nouveau compteur'], help: 'Changement de compteur : index du nouveau compteur à sa pose. L\'index du relevé est alors celui du nouveau compteur.' },
             { key: 'comment', label: 'Commentaire', type: 'text', example: '', aliases: ['remarque'] },
         ],
     },
@@ -552,6 +554,7 @@ const GUIDES: Record<ImportEntityKey, Guide> = {
         usage: [
             'Après les compteurs. Un relevé déjà facturé ou repris dans un intéressement ne se modifie plus.',
             'L\'ECS facturée au relevé se calcule par différence d\'index entre deux relevés mensuels.',
+            'Compteur changé : sur le relevé du jour, index de dépose (ancien compteur) et index de pose (nouveau) ; consommation = (dépose − relevé précédent) + (index − pose).',
         ],
         cles: ['meter', 'date'],
         aides: { comment: 'Note libre (ex. compteur changé, relevé contrôlé).' },

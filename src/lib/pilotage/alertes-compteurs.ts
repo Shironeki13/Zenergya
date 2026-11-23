@@ -24,7 +24,7 @@ export type CompteurSuivi = {
     /** Compteur facturé au compteur (P1 au relevé : ECS ou chauffage). */
     ecsAuReleve?: boolean;
 };
-export type RelevePilotage = { id: string; date: string; value: number; type?: string };
+export type RelevePilotage = { id: string; date: string; value: number; type?: string; changement?: import('@/lib/releves').ChangementCompteur };
 
 export type Alerte = {
     meterId: string; code: string; site: string; siteId: string; client: string;
@@ -48,8 +48,10 @@ const addDays = (day: string, k: number) => new Date(Date.parse(day) + k * 86_40
 /** Consommation journalière entre deux relevés (null si l'intervalle est trop court ou l'index baisse). */
 function rythme(a: RelevePilotage, b: RelevePilotage, minJours: number): number | null {
     const jours = daysIn(a.date, b.date) - 1;
-    if (jours < minJours || b.value < a.value) return null;
-    return (b.value - a.value) / jours;
+    // Changement de compteur porté par le second relevé : (dépose − précédent) + (index − pose).
+    const conso = b.value - a.value + (b.changement ? b.changement.depose - b.changement.pose : 0);
+    if (jours < minJours || conso < 0) return null;
+    return conso / jours;
 }
 
 /** Relevé le plus proche d'une date, à la tolérance près. */
@@ -79,10 +81,10 @@ export function alertesCompteur(m: CompteurSuivi, relevesBruts: RelevePilotage[]
             out.push({ ...base, type: 'doublon', gravite: 'attention', date: b.date, message: `Deux relevés le ${fr(b.date)} : ${n(a.value)} et ${n(b.value)} ${unite}.` });
         }
     }
-    // Index en baisse (un relevé « corrigé » peut légitimement baisser : changement ou remise à zéro tracés).
+    // Index en baisse (sauf relevé « corrigé », ou relevé qui porte un changement de compteur : index de dépose et de pose).
     for (let i = 1; i < readings.length; i++) {
         const [a, b] = [readings[i - 1], readings[i]];
-        if (b.date >= depuisUnAn && a.date !== b.date && b.value < a.value && b.type !== 'CORRIGE') {
+        if (b.date >= depuisUnAn && a.date !== b.date && b.value < a.value && b.type !== 'CORRIGE' && !b.changement) {
             out.push({ ...base, type: 'index_baisse', gravite: 'critique', date: b.date, message: `Index en baisse : ${n(a.value)} le ${fr(a.date)} puis ${n(b.value)} le ${fr(b.date)} (compteur changé, remis à zéro, ou erreur de saisie ?).` });
         }
     }

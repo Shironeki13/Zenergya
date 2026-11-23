@@ -312,6 +312,8 @@ export type MeterReading = {
     date: string; // ISO String date
     value: number;
     type: 'REEL' | 'ESTIME' | 'CORRIGE' | 'AUTO';
+    /** Changement de compteur ce jour-là : index de dépose de l'ancien et de pose du nouveau (lib/releves) ; `value` est l'index du nouveau. */
+    changement?: import('@/lib/releves').ChangementCompteur;
     source: 'MANUEL' | 'IMPORT' | 'API';
     comment?: string;
     unit?: string; // Copied from meter for convenience

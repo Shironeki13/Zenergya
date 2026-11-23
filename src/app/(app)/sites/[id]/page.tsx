@@ -690,7 +690,8 @@ export default function SiteDetailsPage() {
     // Consommation = écart entre les deux derniers relevés réels du compteur
     const lastReal = lastMeterReadings.find(r => r.type === 'REEL' || r.type === 'CORRIGE');
     const prevReal = lastMeterReadings.find(r => (r.type === 'REEL' || r.type === 'CORRIGE') && r.id !== lastReal?.id);
-    const consumption = (lastReal && prevReal) ? lastReal.value - prevReal.value : null;
+    // (un changement de compteur porté par le dernier relevé ajoute dépose − pose)
+    const consumption = (lastReal && prevReal) ? lastReal.value - prevReal.value + (lastReal.changement ? lastReal.changement.depose - lastReal.changement.pose : 0) : null;
 
     // Montant estimé HT
     const estimatedAmount = (consumption != null && revisedUnitPrice != null)
