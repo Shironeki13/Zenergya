@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import React, { useState, useEffect } from 'react';
-import { Loader2, Menu } from 'lucide-react';
+import { Loader2, Menu, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 
@@ -15,6 +15,7 @@ import { accesRoute } from '@/lib/perimetre';
 import { AccesRefuse } from '@/components/perimetre/acces';
 import { EVENEMENT_HORS_PERIMETRE } from '@/services/lecture';
 import { AppSidebar } from '@/components/navigation/app-sidebar';
+import { cn } from '@/lib/utils';
 import { Breadcrumbs } from '@/components/navigation/breadcrumbs';
 import { GlobalSearch } from '@/components/navigation/global-search';
 import { ConfirmProvider } from '@/components/confirm-provider';
@@ -25,6 +26,15 @@ function MainAppLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
   const [menuMobile, setMenuMobile] = useState(false);
+  // Menu latéral masqué à la demande (grand écran), pour laisser toute la largeur à la page ; choix mémorisé (navigateur).
+  const [menuMasque, setMenuMasque] = useState(false);
+  useEffect(() => {
+    try { setMenuMasque(localStorage.getItem('zenergya.menu.masque') === '1'); } catch { /* stockage indisponible */ }
+  }, []);
+  const basculerMenu = () => setMenuMasque(m => {
+    try { localStorage.setItem('zenergya.menu.masque', m ? '0' : '1'); } catch { /* stockage indisponible */ }
+    return !m;
+  });
   // Le serveur a refusé une lecture de cette page (objet hors du périmètre) : la page est remplacée par le refus.
   const [refus, setRefus] = useState<string | null>(null);
   useEffect(() => {
@@ -53,8 +63,8 @@ function MainAppLayout({ children }: { children: React.ReactNode }) {
 
   return (
     <ConfirmProvider>
-      <div className="grid min-h-screen w-full md:grid-cols-[240px_1fr] lg:grid-cols-[264px_1fr]">
-        <aside className="hidden border-r bg-muted/40 md:block">
+      <div className={cn('grid min-h-screen w-full', !menuMasque && 'md:grid-cols-[240px_1fr] lg:grid-cols-[264px_1fr]')}>
+        <aside className={cn('hidden border-r bg-muted/40', !menuMasque && 'md:block')}>
           <div className="sticky top-0 flex h-screen flex-col">
             <div className="flex h-16 shrink-0 items-center border-b px-6">
               <Link href="/dashboard" className="flex items-center gap-2 font-semibold" aria-label="Accueil">
@@ -83,6 +93,11 @@ function MainAppLayout({ children }: { children: React.ReactNode }) {
                 <AppSidebar isAdmin={toutVoir} isContratheque={isContratheque} modules={modules} onNavigate={() => setMenuMobile(false)} />
               </SheetContent>
             </Sheet>
+            <Button variant="ghost" size="icon" className="hidden shrink-0 md:inline-flex" onClick={basculerMenu} aria-pressed={menuMasque}
+              title={menuMasque ? 'Afficher le menu' : 'Masquer le menu'}>
+              {menuMasque ? <PanelLeftOpen className="h-5 w-5" /> : <PanelLeftClose className="h-5 w-5" />}
+              <span className="sr-only">{menuMasque ? 'Afficher le menu' : 'Masquer le menu'}</span>
+            </Button>
             <div className="min-w-0 flex-1"><Breadcrumbs /></div>
             <div className="hidden w-80 shrink-0 sm:block"><GlobalSearch /></div>
             <UserNav />
