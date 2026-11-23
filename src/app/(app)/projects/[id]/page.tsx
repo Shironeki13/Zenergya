@@ -11,7 +11,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Progress as ProgressBar } from '@/components/ui/progress';
+import { FriseChantier } from '@/components/projects/frise-chantier';
 import { useToast } from '@/hooks/use-toast';
 import { NumberField } from '@/components/quotes/number-field';
 import { formatEur } from '@/components/quotes/format';
@@ -121,7 +121,7 @@ export default function ProjectPage() {
                         sub={project.retentionBond ? 'remplacée par une caution bancaire' : `${project.retentionPct} % — ${project.retentionReleasedAt ? `libérée le ${frDate(project.retentionReleasedAt)}` : 'retenue'}`} />
                     : <Kpi title="Marge prévue" value={project.budget ? formatEur(project.budget.marge) : '—'} sub={project.budget?.tauxMarge != null ? `${(project.budget.tauxMarge * 100).toLocaleString('fr-FR', { maximumFractionDigits: 1 })} % du prix de vente` : 'budget des devis'} />}
             </div>
-            <ProgressBar value={Math.min(100, billedPct)} />
+            <FriseChantier project={project} situations={situations} invoices={invoices} />
 
             <AffaireRentabilite projectId={project.id} sansBudget={!project.budget} />
 
