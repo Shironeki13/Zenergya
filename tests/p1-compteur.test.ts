@@ -330,3 +330,39 @@ test('mois calendaire, chauffage : dans la saison de chauffe aux DJU, hors saiso
     assert.ok(typeof nov !== 'string');
     assert.equal(+(sep.quantite + oct.quantite + nov.quantite).toFixed(6), 4500);
 });
+
+test('mois calendaire, chauffage, hors saison non facturée : la part avant l\'allumage ou après l\'arrêt est écartée (autres usages) et tracée', () => {
+    // Même compteur : 3 000 du 21/09 au 21/10, allumage le 01/10 → 1 000 hors saison (10 jours sur 30), 2 000 en saison.
+    const cpt: CompteurFacture = { id: 'h', code: 'CPT-CH', unit: 'MWh', signe: 1, qe: null, readings: [{ id: 'h1', date: '2025-09-21', value: 1000 }, { id: 'h2', date: '2025-10-21', value: 4000 }, { id: 'h3', date: '2025-11-05', value: 5500 }] };
+    const djuJour = (j: string) => (j >= '2025-10-01' ? (j <= '2025-10-10' ? 2 : 6) : 0);
+    const f = (p: Partial<ContexteCompteur> = {}) => factureAuCompteur(ctx({ repartition: 'calendaire', horsSaison: 'exclu', compteurs: () => [cpt], prix: () => ({ prix: 10, base: 10, coefficient: 1, source: 'p1' }), djuJour, dansSaison: j => j >= '2025-10-01', ...p }));
+    // Septembre : rien de facturé, 1 000 écartés.
+    const sep = f({ debut: '2025-09-21', fin: '2025-09-30' });
+    assert.ok(typeof sep !== 'string');
+    assert.deepEqual([sep.quantite, sep.montant, sep.detail[0].compteurs[0].segments![0].horsSaison], [0, 0, 1000]);
+    assert.match(texteCompteur(sep).replace(/[\u202f\u00a0]/g, ' '), /hors saison de chauffe : 1 000 non facturé/);
+    // Octobre : inchangé (tout octobre est en saison) : 2 000 + 1 100.
+    const oct = f();
+    assert.ok(typeof oct !== 'string');
+    assert.deepEqual([oct.quantite, oct.detail[0].compteurs[0].segments![0].horsSaison], [3100, undefined]);
+    // Sans DJU : la part en saison aux jours, la part hors saison toujours écartée. Arrêt le 05/10 : 5 jours en saison sur 30.
+    const sansDju = f({ djuJour: undefined, dansSaison: j => j <= '2025-10-05' && j >= '2025-10-01' });
+    assert.ok(typeof sansDju !== 'string');
+    assert.deepEqual([sansDju.quantite, sansDju.detail[0].compteurs[0].segments!.map(x => x.horsSaison)], [500, [1500, 1100]]);
+    // Option « facturée » (défaut) : rien n'est écarté.
+    const facture = f({ horsSaison: 'facture', debut: '2025-09-21', fin: '2025-09-30' });
+    assert.ok(typeof facture !== 'string');
+    assert.equal(facture.quantite, 1000);
+});
+
+test('moteur, hors saison non facturée : dates d\'allumage et d\'arrêt exigées', () => {
+    const cpt: CompteurFacture = { id: 'h', code: 'CPT-CH', unit: 'MWh', signe: 1, qe: null, readings: [{ id: 'h1', date: '2025-09-21', value: 1000 }, { id: 'h2', date: '2025-10-21', value: 4000 }, { id: 'h3', date: '2025-11-05', value: 5500 }] };
+    const svc = { scheduleId: 'mens', p1Repartition: 'calendaire', p1HorsSaison: 'exclu' };
+    const src = (saisons: object[]) => ({ releves: { meters: () => [cpt], coefContrat: () => 1, djuJour: () => 5, saisons: () => saisons as never } });
+    assert.match(dueInvoiceLines(input(svc, src([])), [], '2025-11-06').errors.join(' '), /Chauffage au compteur impossible : site Chaufferie, dates d'allumage et d'arrêt de la saison 2025-2026 non renseignées/);
+    // Saison saisie, allumage le 15/10 : octobre ne facture que la part en saison.
+    const ok = dueInvoiceLines(input(svc, src([{ id: 'x', siteId: 's', saison: '2025-2026', allumage: '2025-10-15', arret: null }])), [], '2025-11-06');
+    assert.deepEqual(ok.errors, []);
+    // Intervalle 21/09 → 21/10 (3 000) : 6 jours en saison (15 → 20/10) sur 30 = 600, tous en octobre ; puis 11 jours sur 15 de 1 500 = 1 100.
+    assert.equal(ok.lines[0].p1Releve!.volume, 1700);
+});

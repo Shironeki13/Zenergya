@@ -1060,6 +1060,8 @@ export type Service = {
     p1Prorata?: 'releve_jours' | 'releve_dju' | 'jours' | 'dju';
     /** P1 au compteur : consommation d'un relevé au suivant (défaut), ou répartie par mois calendaire au prorata des jours. */
     p1Repartition?: 'releve' | 'calendaire';
+    /** Chauffage au compteur en mois calendaire : consommation hors saison de chauffe facturée (défaut) ou écartée. */
+    p1HorsSaison?: 'facture' | 'exclu';
     /** P1 au compteur : coefficient de gestion (aucun, celui de la prestation, celui du contrat). */
     p1CoefGestion?: 'aucun' | 'prestation' | 'contrat';
 

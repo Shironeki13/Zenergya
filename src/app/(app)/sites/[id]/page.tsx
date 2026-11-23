@@ -40,7 +40,7 @@ import { cn } from '@/lib/utils';
 import { calculateIndexValue } from '@/lib/calculations';
 import { parseAnchor, revisionAt, revisionConfig, revisionDatesWithin, revisionInForce } from '@/lib/billing/revision';
 import { InterestManager } from '@/components/interest-manager';
-import { METHODES_PRORATA, REPARTITIONS_COMPTEUR, type MethodeProrata, type RepartitionCompteur, type SourceCoefGestion } from '@/lib/billing/p1-compteur';
+import { HORS_SAISON, METHODES_PRORATA, REPARTITIONS_COMPTEUR, type HorsSaison, type MethodeProrata, type RepartitionCompteur, type SourceCoefGestion } from '@/lib/billing/p1-compteur';
 import { SettlementManager } from '@/components/settlement-manager';
 
 export default function SiteDetailsPage() {
@@ -88,6 +88,7 @@ export default function SiteDetailsPage() {
     const [coefficientPrix, setCoefficientPrix] = useState<string>('');
     const [p1Prorata, setP1Prorata] = useState<MethodeProrata>('releve_jours');
     const [p1Repartition, setP1Repartition] = useState<RepartitionCompteur>('releve');
+    const [p1HorsSaison, setP1HorsSaison] = useState<HorsSaison>('facture');
     const [p1CoefGestion, setP1CoefGestion] = useState<SourceCoefGestion>('aucun');
     const [price, setPrice] = useState<number>(0);
     const [meterId, setMeterId] = useState<string>('');
@@ -234,7 +235,7 @@ export default function SiteDetailsPage() {
         setP1Mode('forfait');
         setP1PrixSource('p1');
         setCoefficientPrix('');
-        setP1Prorata('releve_jours'); setP1Repartition('releve');
+        setP1Prorata('releve_jours'); setP1Repartition('releve'); setP1HorsSaison('facture');
         setP1CoefGestion('aucun');
         setPrice(0);
         setMeterId('');
@@ -338,6 +339,7 @@ export default function SiteDetailsPage() {
         setCoefficientPrix(service.coefficientPrix ? String(service.coefficientPrix) : '');
         setP1Prorata(service.p1Prorata ?? 'releve_jours');
         setP1Repartition(service.p1Repartition ?? 'releve');
+        setP1HorsSaison(service.p1HorsSaison ?? 'facture');
         setP1CoefGestion(service.p1CoefGestion ?? (service.coefficientPrix ? 'prestation' : 'aucun'));
         setPrice(service.price || 0);
         setMeterId(service.meterId || '');
@@ -398,7 +400,7 @@ export default function SiteDetailsPage() {
             revisionRuleId,
             ...(selectedType === 'P1' && { p1Mode }),
             ...(selectedType === 'P1' && p1Mode === 'releve' && {
-                p1PrixSource, p1Prorata, p1Repartition, p1CoefGestion,
+                p1PrixSource, p1Prorata, p1Repartition, p1HorsSaison, p1CoefGestion,
                 ...(p1CoefGestion === 'prestation' && Number(coefficientPrix.replace(',', '.')) > 0 ? { coefficientPrix: Number(coefficientPrix.replace(',', '.')) } : {}),
             }),
             // Calendrier de révision (lib/billing/revision) : seulement avec une règle ; sans règle, prix ferme.
@@ -1587,6 +1589,18 @@ export default function SiteDetailsPage() {
                                             </Select>
                                             {p1Repartition === 'calendaire' && <p className="text-xs text-muted-foreground">La consommation entre deux relevés est répartie sur ses jours ; chaque mois prend sa part (ECS : uniformément ; chauffage : aux DJU dans la saison de chauffe, aux jours en dehors). Un mois se facture quand un relevé postérieur à sa fin est connu. Le retour au relevé à relevé n&apos;est plus possible ensuite.</p>}
                                         </div>
+                                        {p1Repartition === 'calendaire' && p1Type !== 'ECS' && (
+                                            <div className="space-y-1 col-span-2">
+                                                <Label className="text-xs">Consommation hors saison de chauffe</Label>
+                                                <Select value={p1HorsSaison} onValueChange={v => setP1HorsSaison(v as HorsSaison)}>
+                                                    <SelectTrigger aria-label="Consommation hors saison de chauffe"><SelectValue /></SelectTrigger>
+                                                    <SelectContent>
+                                                        {(Object.entries(HORS_SAISON) as [HorsSaison, string][]).map(([k, l]) => <SelectItem key={k} value={k}>{l}</SelectItem>)}
+                                                    </SelectContent>
+                                                </Select>
+                                                {p1HorsSaison === 'exclu' && <p className="text-xs text-muted-foreground">Ce que le compteur mesure avant l&apos;allumage et après l&apos;arrêt n&apos;est pas facturé (autres usages) ; l&apos;annexe l&apos;indique. Les dates d&apos;allumage et d&apos;arrêt de la saison sont alors obligatoires.</p>}
+                                            </div>
+                                        )}
                                         <div className={cn("space-y-1 col-span-2", p1Repartition === 'calendaire' && 'hidden')}>
                                             <Label className="text-xs">Mois couvert en partie (début ou fin de contrat)</Label>
                                             <Select value={p1Prorata} onValueChange={v => setP1Prorata(v as MethodeProrata)}>

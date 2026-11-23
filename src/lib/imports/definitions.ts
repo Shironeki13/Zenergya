@@ -310,6 +310,11 @@ const BASE: Record<ImportEntityKey, Omit<ImportEntity, 'groupe' | 'resume' | 'us
                 help: 'Au compteur : consommation d\'un relevé au suivant, ou répartie par mois calendaire (ECS aux jours ; chauffage aux DJU dans la saison de chauffe ; un mois se facture alors quand un relevé postérieur à sa fin est connu). Vide : relevé à relevé.',
             },
             {
+                key: 'p1HorsSaison', label: 'Hors saison de chauffe', type: 'enum',
+                options: [{ value: 'facture', label: 'Facturée', aliases: ['facture', 'facturé'] }, { value: 'exclu', label: 'Non facturée', aliases: ['exclu', 'non facture', 'autres usages'] }],
+                help: 'Chauffage au compteur en mois calendaire : la consommation mesurée hors saison de chauffe (avant l\'allumage, après l\'arrêt) est facturée, ou écartée comme « autres usages ». Vide : facturée.',
+            },
+            {
                 key: 'p1Prorata', label: 'Prorata (mois partiel)', type: 'enum',
                 options: [
                     { value: 'releve_jours', label: 'Relevé sinon jours', aliases: ['releve jours', 'relevé à la date sinon jours'] },

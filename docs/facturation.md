@@ -101,6 +101,11 @@ Facturation → Régularisation P1.
   décembre), celle hors saison aux jours ; un compteur d'ECS déduit de la formule de NC reste aux jours. Sans DJU pour
   un jour de l'intervalle, sans DJU dans la saison ou sans saison saisie, tout l'intervalle se répartit aux jours ;
   l'annexe dit la base retenue (jours, ou DJU pris sur DJU de l'intervalle).
+  **Hors saison de chauffe** (option de la prestation, « Consommation hors saison de chauffe ») : facturée (défaut),
+  ou **non facturée** — ce que le compteur mesure avant l'allumage et après l'arrêt est alors écarté comme « autres
+  usages », pour tous les compteurs de la prestation ; la ligne et l'annexe donnent le volume écarté. C'est la règle
+  du moteur P1 (seule la consommation de la saison de chauffe est du chauffage). Les dates d'allumage et d'arrêt de
+  la saison sont alors obligatoires : sans elles, la facture bloque.
 - **Relevés en double le même jour** (index différents) : un seul compte, pour la facturation au compteur comme pour
   les alertes — **le plus proche du relevé précédent** ; en tête de série, du relevé suivant ; sans voisin, le plus
   grand. Un relevé qui porte un changement de compteur l'emporte. Un index à zéro saisi par erreur le même jour que le

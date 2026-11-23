@@ -1,7 +1,7 @@
 import { roundCents, sumCents } from '@/lib/money';
 import { partieChauffee, saisonDe, type SaisonChauffe } from '@/lib/p1/saisons';
 import { toDay } from '@/lib/services/site-amounts';
-import { type RepartitionCompteur,
+import { type HorsSaison, type RepartitionCompteur,
     factureAuCompteur, texteCompteur, type CompteurFacture, type IndexPris, type MethodeProrata, type PrixDuMois, type SourceCoefGestion, type UsageCompteur,
 } from './p1-compteur';
 import type { Index, IndexValue, InvoiceLineItem, RevisionRule, ServiceInitialIndexValue, VatBreakdown } from '@/lib/types';
@@ -97,6 +97,7 @@ export type BillingService = {
     /** Au compteur : méthode du prorata d'un mois partiel (défaut : relevé à la date, sinon jours). */
     p1Prorata?: MethodeProrata;
     p1Repartition?: RepartitionCompteur;
+    p1HorsSaison?: HorsSaison;
     /** Au compteur : coefficient de gestion (défaut : celui de la prestation s'il est renseigné, sinon aucun). */
     p1CoefGestion?: SourceCoefGestion;
 };
@@ -197,7 +198,7 @@ export type BillingItem = {
     p1Dju?: boolean;
     p1Releve?: {
         meterId?: string; usage: UsageCompteur; prixSource: 'p1' | 'prestation'; unitPrice: number | null;
-        coefficient: number | null; coefGestion: SourceCoefGestion; prorata: MethodeProrata; repartition: RepartitionCompteur;
+        coefficient: number | null; coefGestion: SourceCoefGestion; prorata: MethodeProrata; repartition: RepartitionCompteur; horsSaison: HorsSaison;
     };
 };
 
@@ -287,7 +288,7 @@ export function billingItems(input: BillingInput): { items: BillingItem[]; error
                             unitPrice: typeof s.unitPrice === 'number' && s.unitPrice > 0 ? s.unitPrice : null,
                             coefficient: typeof s.coefficientPrix === 'number' && s.coefficientPrix > 0 ? s.coefficientPrix : null,
                             coefGestion: s.p1CoefGestion ?? (typeof s.coefficientPrix === 'number' && s.coefficientPrix > 0 ? 'prestation' : 'aucun'),
-                            prorata: s.p1Prorata ?? 'releve_jours', repartition: s.p1Repartition ?? 'releve',
+                            prorata: s.p1Prorata ?? 'releve_jours', repartition: s.p1Repartition ?? 'releve', horsSaison: s.p1HorsSaison ?? 'facture',
                         },
                     }),
                     key: `svc:${s.id}`, serviceId: s.id, site, activity: a, label: s.label, annual: Number(s.price),
@@ -587,6 +588,16 @@ function releveCompteur(e: Echeance, input: BillingInput, lastIndex: Map<string,
         if (cfg.coefGestion === 'prestation') return cfg.coefficient ?? 'coefficient de gestion de la prestation non renseigné';
         return src.coefContrat?.(mois) ?? `coefficient de gestion du contrat non renseigné en ${mois.slice(5, 7)}/${mois.slice(0, 4)} (paramétrage P1 du contrat)`;
     };
+    // Hors saison non facturée : les dates d'allumage et d'arrêt sont indispensables (rien n'est supposé).
+    const exclu = cfg.repartition === 'calendaire' && cfg.usage === 'chauffage' && cfg.horsSaison === 'exclu';
+    if (exclu) {
+        if (!src.saisons) return 'saisons de chauffe indisponibles pour ce calcul';
+        const saisons = src.saisons(e.item.site.id);
+        for (let m = e.start.slice(0, 7); m <= e.end.slice(0, 7); m = addMonths(`${m}-01`, 1).slice(0, 7)) {
+            const p = partieChauffee(saisons, `${m}-01`, addDays(addMonths(`${m}-01`, 1), -1));
+            if (typeof p === 'string') return p;
+        }
+    }
     const r = factureAuCompteur({
         siteId: e.item.site.id, usage: cfg.usage, debut: e.start, fin: e.end, methode: cfg.prorata,
         compteurs: mois => src.meters(e.item.site.id, cfg.meterId, mois, cfg.usage),
@@ -594,6 +605,7 @@ function releveCompteur(e: Echeance, input: BillingInput, lastIndex: Map<string,
         ...(src.dju && { dju: (d: string, f: string) => src.dju!(e.item.site.id, d, f) }),
         dejaFacture: new Map([...lastIndex].filter(([k]) => k.startsWith(`${e.item.key}|`)).map(([k, v]) => [k.slice(e.item.key.length + 1), v])),
         repartition: cfg.repartition,
+        ...(exclu && { horsSaison: 'exclu' as const }),
         ...(cfg.repartition === 'calendaire' && cfg.usage === 'chauffage' && src.djuJour && src.saisons && (() => {
             const saisons = src.saisons!(e.item.site.id);
             return {
