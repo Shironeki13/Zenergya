@@ -71,7 +71,7 @@ export type ModuleId = typeof MODULES[number]['id'];
 /** Module requis par une adresse de l'application ; null : accessible à tous (tableau de bord, pilotage). */
 export function moduleDeRoute(pathname: string): ModuleId | 'admin' | null {
     const debut = (...p: string[]) => p.some(x => pathname === x || pathname.startsWith(`${x}/`));
-    if (debut('/users', '/api-keys')) return 'admin';
+    if (debut('/users', '/api-keys', '/admin/notifications')) return 'admin';
     if (debut('/settings', '/imports')) return 'settings';
     if (debut('/purchases')) return 'purchases';
     if (debut('/works', '/quotes', '/projects', '/timesheets', '/library')) return 'works';

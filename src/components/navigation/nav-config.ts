@@ -1,7 +1,7 @@
 import {
     AlertTriangle, Building, Calculator, CircleDollarSign, Copy, FileSignature, FileText, Gauge, Home, KeyRound, LayoutDashboard,
     Library, ListChecks, MapPin, MessageSquareQuote, MinusCircle, Scale, Send, Settings, ShieldCheck, Store, TrendingUp, Upload, Users,
-    Network, ShoppingCart, Clock, type LucideIcon,
+    Network, ShoppingCart, Clock, BellRing, type LucideIcon,
 } from 'lucide-react';
 
 import { accesRoute } from '@/lib/perimetre';
@@ -69,6 +69,7 @@ export const NAV_GROUPS: NavGroup[] = [
             { href: '/settings', label: 'Paramétrage', icon: Settings, keywords: 'sociétés agences activités tva échéanciers stations' },
             { href: '/imports', label: 'Imports', icon: Upload, admin: true, keywords: 'excel csv modèles' },
             { href: '/users', label: 'Utilisateurs', icon: Users, admin: true, keywords: 'droits rôles' },
+            { href: '/admin/notifications', label: 'Notifications', icon: BellRing, admin: true, keywords: 'mail courriel alerte envoi journal destinataires' },
             { href: '/api-keys', label: 'Accès API', icon: KeyRound, admin: true },
         ],
     },
