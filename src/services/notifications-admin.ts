@@ -6,6 +6,7 @@ import {
     type Annuaire, type ContexteMail, type Evenement, type Mail, type ModeEnvoi, type ModelesPropres, type Regle, type ReglagesNotifications,
 } from '@/lib/notifications/modeles';
 import { NATURES, controlerModele, type ModeleMail } from '@/lib/notifications/balises';
+import { RAPPELS_DEFAUT, controleRappels, type ReglagesRappels } from '@/lib/notifications/rappels';
 
 /**
  * Notifications par mail, côté serveur. `notifier` compose le mail d'un événement, calcule ses destinataires
@@ -52,6 +53,7 @@ export async function reglagesNotifications(): Promise<ReglagesNotifications> {
         urlApplication: enregistres.urlApplication || env('NOTIFICATIONS_URL_APPLICATION'),
         regles: enregistres.regles ?? {},
         modeles: enregistres.modeles ?? {},
+        rappels: { ...RAPPELS_DEFAUT, ...(enregistres.rappels ?? {}) },
     };
 }
 
@@ -63,14 +65,15 @@ const emailDe = async (userId?: string | null) => {
 
 /** Qui tient quel rôle pour un contrat : déposant, contrathèque, responsable de facturation et son N+1, administrateurs. */
 export async function annuaireContrat(contractId: string, deposant?: string | null): Promise<Annuaire> {
-    const [contrat, roles] = await Promise.all([adminDb.collection('contracts').doc(contractId).get(), adminDb.collection('roles').get()]);
+    // Sans contrat (mail récapitulatif) : seuls les rôles qui ne dépendent pas d'un contrat ont des titulaires.
+    const [contrat, roles] = await Promise.all([contractId ? adminDb.collection('contracts').doc(contractId).get() : null, adminDb.collection('roles').get()]);
     const idsRoles = (champ: 'isContratheque' | 'isAdmin') => roles.docs.filter(r => r.get(champ) === true).map(r => r.id);
     const emailsDesRoles = async (ids: string[]) => {
         const out: string[] = [];
         for (let i = 0; i < ids.length; i += 30) for (const u of (await adminDb.collection('users').where('roleId', 'in', ids.slice(i, i + 30)).get()).docs) out.push(String(u.get('email') ?? ''));
         return out.filter(Boolean);
     };
-    const responsable = await emailDe(contrat.get('billingManagerId') as string | undefined);
+    const responsable = await emailDe(contrat?.get('billingManagerId') as string | undefined);
     const n1 = await emailDe(responsable?.managerId);
     const [contratheque, administrateurs] = await Promise.all([emailsDesRoles(idsRoles('isContratheque')), emailsDesRoles(idsRoles('isAdmin'))]);
     return {
@@ -101,7 +104,7 @@ export async function notifier(d: DemandeNotification): Promise<Notification | n
     const { retenus, ecartes } = destinataires(regle, annuaire, reglages.domaines);
     const mail: Mail = composer(d.evenement, { ...d.contexte, urlApplication: reglages.urlApplication }, reglages.modeles);
     const n: Notification = {
-        id, evenement: d.evenement, cle: d.cle, contractId: d.contexte.contrat.id, contrat: `${d.contexte.contrat.numero} — ${d.contexte.contrat.client}`,
+        id, evenement: d.evenement, cle: d.cle, contractId: d.contexte.contrat.id, contrat: d.contexte.contrat.id ? `${d.contexte.contrat.numero} — ${d.contexte.contrat.client}` : 'Tous les contrats',
         destinataires: retenus, ecartes, expediteur: reglages.expediteur, ...mail,
         statut: retenus.length === 0 ? 'sans_destinataire' : reglages.mode === 'simulation' ? 'simule' : 'a_envoyer', mode: reglages.mode, creeLe: new Date().toISOString(),
     };
@@ -128,6 +131,8 @@ export type ModificationReglages = {
     expediteur?: string;
     domaines?: string[];
     urlApplication?: string;
+    /** Paliers et intervalles des rappels programmés. */
+    rappels?: ReglagesRappels;
     /** Règle d'un événement : remplace la règle enregistrée ; null : retour à la règle d'origine. */
     regle?: { evenement: Evenement; regle: Regle | null };
     /** Modèle d'un événement, pour tous les documents (`nature` absente) ou un type ; null : retour au modèle hérité. */
@@ -160,6 +165,13 @@ export async function modifierReglagesNotifications(m: ModificationReglages, par
         const u = m.urlApplication.trim().replace(/\/+$/, '');
         if (u && !/^https?:\/\/[^\s]+$/.test(u)) throw new Error('Adresse de l\'application : elle commence par https://');
         maj.urlApplication = u;
+    }
+    if (m.rappels !== undefined) {
+        const tri = (l: number[]) => [...new Set(l)].sort((a, b) => b - a);
+        const r: ReglagesRappels = { preavis: tri(m.rappels.preavis ?? []), echeance: tri(m.rappels.echeance ?? []), attenteJours: m.rappels.attenteJours, depasseeJours: m.rappels.depasseeJours };
+        const erreur = controleRappels(r);
+        if (erreur) throw new Error(erreur);
+        maj.rappels = r;
     }
     if (m.regle) {
         const { evenement, regle } = m.regle;

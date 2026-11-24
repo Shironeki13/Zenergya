@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AlertTriangle, CheckCircle2, Loader2, MailWarning, RefreshCw, RotateCcw, Save, TestTube2 } from 'lucide-react';
+import { AlertTriangle, AlarmClock, CheckCircle2, Loader2, MailWarning, Play, RefreshCw, RotateCcw, Save, TestTube2 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -14,7 +14,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
-import { etatNotificationsAction, modifierNotificationsAction, type EtatNotifications } from '@/lib/notifications/actions';
+import { etatNotificationsAction, lancerRappelsAction, modifierNotificationsAction, type EtatNotifications } from '@/lib/notifications/actions';
 import { BALISES, GROUPES_BALISE, LIBELLE_NATURE_DOCUMENT, NATURES, controlerModele, rendre, type ModeleMail, type NatureDocument } from '@/lib/notifications/balises';
 import { EVENEMENTS_DOCUMENT, LIBELLE_EVENEMENT, LIBELLE_ROLE, ROLES_DESTINATAIRE, contexteExemple, modeleDe, type Evenement, type ModeEnvoi, type RoleDestinataire } from '@/lib/notifications/modeles';
 import type { Notification, StatutNotification } from '@/services/notifications-admin';
@@ -238,6 +238,63 @@ function ReglagesGeneraux({ etat, onEnregistre }: { etat: EtatNotifications; onE
     );
 }
 
+/** Rappels programmés : paliers, dernier passage, lancement à la demande. */
+function Rappels({ etat, onEnregistre }: { etat: EtatNotifications; onEnregistre: () => Promise<void> }) {
+    const { toast } = useToast();
+    const r = etat.reglages.rappels;
+    const [preavis, setPreavis] = useState(r.preavis.join(', '));
+    const [echeance, setEcheance] = useState(r.echeance.join(', '));
+    const [attente, setAttente] = useState(String(r.attenteJours));
+    const [depassee, setDepassee] = useState(String(r.depasseeJours));
+    const [busy, setBusy] = useState<'enregistrer' | 'lancer' | null>(null);
+    useEffect(() => { setPreavis(r.preavis.join(', ')); setEcheance(r.echeance.join(', ')); setAttente(String(r.attenteJours)); setDepassee(String(r.depasseeJours)); }, [r]);
+    const liste = (t: string) => t.split(/[\s,;]+/).filter(Boolean).map(Number);
+    const modifie = liste(preavis).join() !== r.preavis.join() || liste(echeance).join() !== r.echeance.join() || Number(attente) !== r.attenteJours || Number(depassee) !== r.depasseeJours;
+    const enregistrer = async () => {
+        setBusy('enregistrer');
+        const x = await modifierNotificationsAction({ rappels: { preavis: liste(preavis), echeance: liste(echeance), attenteJours: Number(attente), depasseeJours: Number(depassee) } });
+        setBusy(null);
+        if (!x.success) { toast({ title: 'Rappels refusés', description: x.error, variant: 'destructive' }); return; }
+        toast({ title: 'Rappels enregistrés' });
+        await onEnregistre();
+    };
+    const lancer = async () => {
+        setBusy('lancer');
+        const x = await lancerRappelsAction();
+        setBusy(null);
+        if (!x.success) { toast({ title: 'Passage impossible', description: x.error, variant: 'destructive' }); return; }
+        toast({ title: 'Rappels lancés', description: `${x.data.composes} mail(s) composé(s) sur ${x.data.dus} rappel(s) dû(s).` });
+        await onEnregistre();
+    };
+    const p = etat.dernierPassage;
+    return (
+        <div className="space-y-4">
+            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+                <div className="space-y-1"><Label htmlFor="rappel-preavis">Préavis : jours avant la date limite</Label><Input id="rappel-preavis" value={preavis} onChange={e => setPreavis(e.target.value)} placeholder="90, 60, 30" /></div>
+                <div className="space-y-1"><Label htmlFor="rappel-echeance">Échéance : jours avant</Label><Input id="rappel-echeance" value={echeance} onChange={e => setEcheance(e.target.value)} placeholder="180, 90, 30" /></div>
+                <div className="space-y-1"><Label htmlFor="rappel-attente">Document en attente : tous les (jours)</Label><Input id="rappel-attente" inputMode="numeric" value={attente} onChange={e => setAttente(e.target.value)} /></div>
+                <div className="space-y-1"><Label htmlFor="rappel-depassee">Échéance dépassée : tous les (jours)</Label><Input id="rappel-depassee" inputMode="numeric" value={depassee} onChange={e => setDepassee(e.target.value)} /></div>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+                <Button disabled={busy !== null || !modifie} onClick={enregistrer}>{busy === 'enregistrer' ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}Enregistrer les rappels</Button>
+                <Button variant="outline" disabled={busy !== null || modifie} onClick={lancer}>{busy === 'lancer' ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Play className="mr-2 h-4 w-4" />}Lancer les rappels maintenant</Button>
+            </div>
+            <div className="flex items-start gap-2 rounded-md border bg-muted/30 p-3 text-sm">
+                <AlarmClock className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+                {p ? (
+                    <p>
+                        <span className="font-medium">Dernier passage le {quand(p.le)}</span> ({p.declencheur === 'planifie' ? 'tâche quotidienne' : 'lancé à la main'}, mode {MODE[p.mode as ModeEnvoi]?.libelle.toLowerCase() ?? p.mode}) :
+                        {' '}{p.contrats} contrat(s) actif(s) et {p.enAttente} document(s) en attente examinés, {p.dus} rappel(s) dû(s), <span className="font-medium">{p.composes} mail(s) composé(s)</span>
+                        {p.dus - p.composes > 0 ? ` (${p.dus - p.composes} déjà faits ou désactivés)` : ''}
+                        {p.sansDestinataire > 0 && <span className="text-red-700"> ; {p.sansDestinataire} sans destinataire</span>}
+                        {p.erreurs.length > 0 && <span className="text-red-700"> ; {p.erreurs.length} erreur(s)</span>}.
+                    </p>
+                ) : <p className="text-muted-foreground">Les rappels n&apos;ont encore jamais été lancés. Une tâche quotidienne les lancera une fois déployée ; vous pouvez aussi les lancer à la main.</p>}
+            </div>
+        </div>
+    );
+}
+
 export default function NotificationsPage() {
     const [etat, setEtat] = useState<EtatNotifications | null>(null);
     const [erreur, setErreur] = useState<string | null>(null);
@@ -279,6 +336,14 @@ export default function NotificationsPage() {
                     </div>
                     <ReglagesGeneraux etat={etat} onEnregistre={charger} />
                 </CardContent>
+            </Card>
+
+            <Card>
+                <CardHeader className="pb-3">
+                    <CardTitle className="text-base">Rappels programmés</CardTitle>
+                    <CardDescription>Préavis et échéances qui approchent, échéances dépassées, documents qui attendent leur validation. Chaque palier n&apos;est rappelé qu&apos;une fois ; le texte et les destinataires se règlent plus bas, événement par événement.</CardDescription>
+                </CardHeader>
+                <CardContent><Rappels etat={etat} onEnregistre={charger} /></CardContent>
             </Card>
 
             <Card>

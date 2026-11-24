@@ -6,13 +6,14 @@
  */
 
 import { rendre, type ContexteMail, type Mail, type ModeleMail, type NatureDocument } from './balises';
+import { RAPPELS_DEFAUT, type ReglagesRappels } from './rappels';
 
 export type { ContexteMail, Mail, ModeleMail, NatureDocument } from './balises';
 
 export type Evenement = 'document_depose' | 'document_valide' | 'document_refuse' | 'document_en_attente' | 'preavis' | 'echeance' | 'echeance_depassee' | 'resiliation_validee';
 export const EVENEMENTS: Evenement[] = ['document_depose', 'document_valide', 'document_refuse', 'document_en_attente', 'preavis', 'echeance', 'echeance_depassee', 'resiliation_validee'];
 export const LIBELLE_EVENEMENT: Record<Evenement, string> = {
-    document_depose: 'Document déposé', document_valide: 'Document validé', document_refuse: 'Document refusé', document_en_attente: 'Document en attente depuis trop longtemps',
+    document_depose: 'Document déposé', document_valide: 'Document validé', document_refuse: 'Document refusé', document_en_attente: 'Documents en attente (récapitulatif)',
     preavis: 'Date limite de préavis qui approche', echeance: 'Échéance qui approche', echeance_depassee: 'Échéance dépassée', resiliation_validee: 'Résiliation validée',
 };
 
@@ -48,9 +49,11 @@ export type ReglagesNotifications = {
     regles: Partial<Record<Evenement, Partial<Regle>>>;
     /** Modèles de mail propres : par événement, pour tous les documents (`defaut`) et par type de document. */
     modeles?: ModelesPropres;
+    /** Paliers et intervalles des rappels programmés. */
+    rappels: ReglagesRappels;
 };
 export type ModelesPropres = Partial<Record<Evenement, { defaut?: ModeleMail; parNature?: Partial<Record<NatureDocument, ModeleMail>> }>>;
-export const REGLAGES_DEFAUT: ReglagesNotifications = { mode: 'simulation', expediteur: '', domaines: [], urlApplication: '', regles: {}, modeles: {} };
+export const REGLAGES_DEFAUT: ReglagesNotifications = { mode: 'simulation', expediteur: '', domaines: [], urlApplication: '', regles: {}, modeles: {}, rappels: RAPPELS_DEFAUT };
 
 export const regleDe = (r: Pick<ReglagesNotifications, 'regles'>, e: Evenement): Regle => ({ ...REGLES_DEFAUT[e], ...(r.regles?.[e] ?? {}) });
 
@@ -84,7 +87,7 @@ export function destinataires(regle: Regle, annuaire: Annuaire, domaines: string
 // --- Modèles des mails ---
 
 /** Événements qui portent sur un document (leur modèle peut différer par type de document). */
-export const EVENEMENTS_DOCUMENT: Evenement[] = ['document_depose', 'document_valide', 'document_refuse', 'document_en_attente'];
+export const EVENEMENTS_DOCUMENT: Evenement[] = ['document_depose', 'document_valide', 'document_refuse'];
 
 const PIED = 'Vie du contrat : <<Lien vers le contrat>>\n\nMessage automatique de Zenergya, réservé à un usage interne. Ne pas répondre.';
 const K = '<<Numéro du contrat>> — <<Client>>';
@@ -104,8 +107,8 @@ export const MODELES_DEFAUT: Record<Evenement, ModeleMail> = {
         corps: `Bonjour,\n\n<<Le document>> du contrat ${K} a été refusé<<e>> par <<Décidé par>>.\nMotif : <<Motif du refus>>\nObjet : <<Objet du document>>\n\nCorrigez puis déposez à nouveau le document.\n\n${PIED}`,
     },
     document_en_attente: {
-        objet: `[Contrathèque] <<Un document>> attend depuis <<Nombre de jours>> jours — ${K}`,
-        corps: `Bonjour,\n\n<<Le document>> déposé<<e>> par <<Déposé par>> le <<Date de dépôt>> sur le contrat ${K} attend sa validation depuis <<Nombre de jours>> jours.\nObjet : <<Objet du document>>\n\nMerci de le traiter : validation ou refus motivé.\n\n${PIED}`,
+        objet: '[Contrathèque] <<Nombre de documents>> document(s) en attente de validation',
+        corps: `Bonjour,\n\n<<Nombre de documents>> document(s) attendent leur validation, le plus ancien depuis <<Nombre de jours>> jours :\n\n<<Liste des documents>>\n\nMerci de les traiter : validation ou refus motivé.\n\nContrathèque : <<Lien vers la contrathèque>>\n\nMessage automatique de Zenergya, réservé à un usage interne. Ne pas répondre.`,
     },
     preavis: {
         objet: `[Contrats] Préavis dans <<Nombre de jours>> jours — ${K}`,
@@ -148,7 +151,14 @@ export function contexteExemple(e: Evenement, urlApplication = 'https://zenergya
     if (e === 'document_depose') return { ...base, document: doc };
     if (e === 'document_valide') return { ...base, document: { ...doc, decidePar: 'contratheque@exemple.fr' } };
     if (e === 'document_refuse') return { ...base, document: { ...doc, decidePar: 'contratheque@exemple.fr', motifRefus: 'Document non signé par le client : joindre la version signée.' } };
-    if (e === 'document_en_attente') return { ...base, document: doc, jours: 9 };
+    if (e === 'document_en_attente') return {
+        contrat: { id: '', numero: '', client: '' }, urlApplication, aujourdhui: '2026-11-23', jours: 21,
+        liste: [
+            { numero: 'CTN-00007', client: 'Copropriété Square Voltaire', nature: 'reconduction', jours: 21, deposeLe: '2026-11-02', deposePar: 'adv@exemple.fr', resume: '1 an' },
+            { numero: 'CTN-00003', client: 'SDC Le Belvédère', nature: 'avenant', jours: 20, deposeLe: '2026-11-03', deposePar: 'adv@exemple.fr', resume: 'Avenant n°1 : prolongation après rénovation de la chaufferie' },
+            { numero: 'CTN-00011', client: 'Copropriété Le Clos Fleuri', nature: 'contrat', jours: 8, deposeLe: '2026-11-15', deposePar: 'adv2@exemple.fr' },
+        ],
+    };
     if (e === 'preavis') return { ...base, jours: 60, date: '2027-06-29', echeance: '2027-09-29', preavis: '3 mois', reconduction: 'sans dénonciation, reconduction tacite de 1 an' };
     if (e === 'echeance') return { ...base, jours: 180, date: '2027-09-29', reconduction: 'reconduction tacite de 1 an' };
     if (e === 'echeance_depassee') return { ...base, jours: 12, date: '2026-11-11' };

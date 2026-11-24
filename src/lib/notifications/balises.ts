@@ -27,6 +27,9 @@ export type Prestation = 'p1' | 'p2' | 'p3' | 'p3r';
 export const PRESTATIONS: Prestation[] = ['p1', 'p2', 'p3', 'p3r'];
 const NOM_PRESTATION: Record<Prestation, string> = { p1: 'P1', p2: 'P2', p3: 'P3', p3r: 'P3R' };
 
+/** Ligne du récapitulatif des documents en attente. */
+export type DocumentEnAttente = { numero: string; client: string; nature: NatureDocument; jours: number; deposeLe?: string | null; deposePar?: string; resume?: string };
+
 export type ContexteMail = {
     /** `montants` : montants annuels HT du contrat par prestation (base marché). */
     contrat: { id: string; numero: string; client: string; montants?: MontantsPrestation };
@@ -39,13 +42,15 @@ export type ContexteMail = {
     echeance?: string | null;
     preavis?: string;
     reconduction?: string;
+    /** Récapitulatif : documents en attente de validation, du plus ancien au plus récent. */
+    liste?: DocumentEnAttente[];
     urlApplication: string;
     /** Jour de composition (AAAA-MM-JJ) ; à défaut, aujourd'hui. */
     aujourdhui?: string;
 };
 
-export type GroupeBalise = 'Contrat' | 'Document' | 'Montants' | 'Dates et délais';
-export const GROUPES_BALISE: GroupeBalise[] = ['Contrat', 'Document', 'Montants', 'Dates et délais'];
+export type GroupeBalise = 'Contrat' | 'Document' | 'Montants' | 'Dates et délais' | 'Récapitulatif';
+export const GROUPES_BALISE: GroupeBalise[] = ['Contrat', 'Document', 'Montants', 'Dates et délais', 'Récapitulatif'];
 
 const nombre = (x: number) => Math.abs(x).toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 /** « 12 400,00 € » ; vide si absent ou nul. */
@@ -86,6 +91,12 @@ export const BALISES: Balise[] = [
     { nom: 'Échéance du contrat', groupe: 'Dates et délais', aide: 'JJ/MM/AAAA', valeur: c => fr(c.echeance ?? c.date) },
     { nom: 'Durée du préavis', groupe: 'Dates et délais', aide: 'Telle qu\'elle est écrite sur le contrat (« 3 mois »)', valeur: c => c.preavis ?? '' },
     { nom: 'Reconduction', groupe: 'Dates et délais', aide: '« reconduction tacite de 1 an », « sans reconduction »…', valeur: c => c.reconduction ?? '' },
+    { nom: 'Nombre de documents', groupe: 'Récapitulatif', aide: 'Nombre de documents en attente listés dans le récapitulatif', valeur: c => (c.liste ? String(c.liste.length) : '') },
+    {
+        nom: 'Liste des documents', groupe: 'Récapitulatif', aide: 'Une ligne par document en attente : contrat, client, type, dépôt, jours d\'attente, objet',
+        valeur: c => (c.liste ?? []).map(d => `- ${d.numero} — ${d.client} : ${NATURE[d.nature].nom}${d.deposeLe ? ` déposé${NATURE[d.nature].e} le ${fr(d.deposeLe)}` : ''}${d.deposePar ? ` par ${d.deposePar}` : ''}, ${d.jours} jour${d.jours > 1 ? 's' : ''} d'attente${sansFin(d.resume) ? ` — ${sansFin(d.resume)}` : ''}`).join('\n'),
+    },
+    { nom: 'Lien vers la contrathèque', groupe: 'Récapitulatif', aide: 'Adresse du tableau de bord de la contrathèque (cliquable dans le mail)', valeur: c => (c.urlApplication ? `${c.urlApplication.replace(/\/+$/, '')}/contracts/library` : '') },
     { nom: 'Date du jour', groupe: 'Dates et délais', aide: 'Jour d\'envoi du mail, JJ/MM/AAAA', valeur: c => fr(c.aujourdhui ?? new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/Paris' })) },
 ];
 

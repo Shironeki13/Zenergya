@@ -10,7 +10,7 @@ adresses des domaines autorisés en reçoivent.
 | Document déposé (contrat, avenant, ordre de service, reconduction, résiliation, changement de syndic ou de bureau d'études) | la contrathèque |
 | Document validé | le déposant, le responsable de facturation du contrat |
 | Document refusé (avec le motif) | le déposant |
-| Document en attente depuis trop longtemps | la contrathèque |
+| Documents en attente (récapitulatif) | la contrathèque |
 | Date limite de préavis qui approche | le responsable de facturation, son N+1 |
 | Échéance qui approche, échéance dépassée | le responsable de facturation, la contrathèque |
 | Résiliation validée | le responsable de facturation, son N+1 |
@@ -40,7 +40,7 @@ Motif : <<Objet du document>>
 
 - Les balises se choisissent dans une liste et s'insèrent d'un clic à l'endroit du curseur ; l'aperçu se met à jour
   pendant la saisie, sur un exemple.
-- **Par type de document** : pour les événements qui portent sur un document (déposé, validé, refusé, en attente), un
+- **Par type de document** : pour les événements qui portent sur un document (déposé, validé, refusé), un
   modèle peut être propre à un type (contrat, avenant, ordre de service, reconduction, résiliation, changement de
   syndic, changement de bureau d'études). Le modèle en vigueur est celui du type s'il existe, sinon celui de
   l'événement (« Tous les documents »), sinon le modèle d'origine. On revient au modèle hérité d'un clic.
@@ -54,6 +54,7 @@ Motif : <<Objet du document>>
 | Contrat | Numéro du contrat, Client, Lien vers le contrat |
 | Document | Type de document, Un document, Le document, e (accord), Objet du document, Déposé par, Date de dépôt, Décidé par, Motif du refus, Date d'effet |
 | Montants | Montant P1 / P2 / P3 / P3R du contrat, Montant total du contrat, Montants du contrat (une ligne par prestation), Impact P1 / P2 / P3 / P3R, Impact total, Impacts par prestation (une ligne par prestation touchée) |
+| Récapitulatif | Nombre de documents, Liste des documents (une ligne par document en attente), Lien vers la contrathèque |
 | Dates et délais | Nombre de jours, Date limite, Échéance du contrat, Durée du préavis, Reconduction, Date du jour |
 
 Les montants sont en € HT par an. Une prestation sans montant, ou un document sans impact, donne une balise vide :
@@ -120,7 +121,42 @@ Le mail reprend les valeurs du document et du contrat au moment de l'événement
 impacts et montants par prestation). Un document refusé puis redéposé est notifié de nouveau. La retouche d'un contrat
 encore en attente ne renvoie pas de mail. Code : `src/services/notifications-contrats.ts`.
 
+## Rappels programmés
+
+Une fois par jour, Zenergya relit les contrats actifs et les documents en attente, et compose les rappels dus :
+
+| Rappel | Quand (réglable) | Événement |
+|---|---|---|
+| Date limite de préavis | 90, 60 et 30 jours avant | préavis qui approche |
+| Échéance | 180, 90 et 30 jours avant | échéance qui approche |
+| Échéance dépassée, contrat toujours actif | dès le dépassement, puis tous les 30 jours | échéance dépassée |
+| Documents et contrats en attente de validation | quand l'un d'eux atteint 7, 14, 21… jours d'attente | documents en attente (récapitulatif) |
+
+- **Un seul mail pour les documents en attente** : le récapitulatif liste tous les documents qui attendent depuis 7
+  jours ou plus (contrat, client, type, dépôt, jours d'attente, objet), du plus ancien au plus récent, avec un lien
+  vers la contrathèque. Il part au plus une fois par jour, et seulement le jour où un document franchit un nouveau
+  seuil : pas de mail quand rien n'a bougé.
+- **Une fois par palier** : le palier « 60 jours » d'une date limite donnée n'est rappelé qu'une fois, même si la tâche
+  tourne plusieurs fois. Si l'échéance du contrat change (reconduction), ses paliers repartent.
+- **Pas de rafale** : si la tâche est restée arrêtée, seul le palier courant est rappelé, pas ceux qu'elle a manqués.
+- Le préavis se calcule à partir de la durée écrite sur le contrat (« 3 mois ») ; illisible ou absente, il n'y a pas
+  de rappel de préavis (l'échéance, elle, est rappelée), et rien n'est inventé.
+- Contrats résiliés, terminés, en brouillon ou non validés : aucun rappel.
+- Chaque passage est tracé (collection `notificationsPassages`) : contrats et documents examinés, rappels dus, mails
+  composés, rappels sans destinataire, erreurs. L'écran montre le dernier.
+
+Les paliers se règlent dans Administration › Notifications › « Rappels programmés », où un bouton lance aussi les
+rappels à la demande. Le texte et les destinataires de chaque rappel se règlent comme les autres événements.
+
+**Tâche quotidienne** : fonction planifiée `notifications-rappels` (`functions/notifications-rappels`, construite par
+`npm run functions:build`), appelée chaque jour par Cloud Scheduler. Elle n'envoie rien par elle-même : elle compose
+les rappels, qui suivent le mode réglé dans l'application. Déploiement : `scripts/notifications-deployer.sh`
+(`--essai` pour voir les commandes), à lancer à la main après accord — il crée la fonction, deux comptes de service
+et le déclencheur dans le projet GCP.
+
+Code : `src/lib/notifications/rappels.ts` (pur), `src/services/notifications-rappels.ts`.
+
 ## À venir
 
-Rappels quotidiens (préavis, échéances, documents en attente), envoi réel par la messagerie Google, trace des mails
-sur la frise du contrat.
+Envoi réel par la messagerie Google, trace des mails sur la frise du contrat, mêmes notifications pour les commandes
+et les heures à valider.

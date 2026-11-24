@@ -62,7 +62,7 @@ test('règles enregistrées : événement désactivé, adresses fixes ; mode mes
     await reglages({ mode: 'simulation', domaines: [] });
     const rien = await notifier({ evenement: 'document_depose', cle: 'amendments/nt-a4', contexte });
     assert.deepEqual([rien!.statut, rien!.destinataires.length, rien!.ecartes.every(e => e.motif === 'aucun domaine interne paramétré')], ['sans_destinataire', 0, true]);
-    await notifierSansBloquer({ evenement: 'document_depose', cle: 'x', contexte: { contrat: { id: '', numero: '', client: '' } } as never });   // identifiant de contrat vide : erreur interne absorbée
+    await notifierSansBloquer({ evenement: 'document_depose', cle: 'x', contexte: null as never });   // demande incohérente : erreur interne absorbée, l'appelant n'échoue pas
     await adminDb.collection('notificationsReglages').doc('reglages').delete();
 });
 

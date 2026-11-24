@@ -12,7 +12,7 @@ const env = await initializeTestEnvironment({
 // Collections lues et écrites par le serveur seulement.
 const SERVEUR = ['clients', 'contracts', 'sites', 'services', 'meters', 'meterReadings', 'invoices', 'creditNotes', 'contacts',
   'amendments', 'terminations', 'renewals', 'trusteeChanges', 'beChanges', 'interests', 'service_settlements',
-  'quotes', 'quoteVersions', 'projects', 'projectSituations', 'commandes', 'fournisseurs', 'heures', 'notifications', 'notificationsReglages',
+  'quotes', 'quoteVersions', 'projects', 'projectSituations', 'commandes', 'fournisseurs', 'heures', 'notifications', 'notificationsReglages', 'notificationsPassages',
   'p1Parametrage', 'p1Reel', 'saisonsChauffe', 'suiviCommentaires', 'counters', 'apiKeys', 'apiUsage', 'apiIdempotency', 'apiLogs',
   'collectionInconnue'];
 const REFERENTIELS = ['companies', 'agencies', 'sectors', 'activities', 'schedules', 'terms', 'typologies', 'vatRates', 'revisionFormulas',

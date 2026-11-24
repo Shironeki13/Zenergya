@@ -1,0 +1,11 @@
+{
+  "name": "notifications-rappels",
+  "private": true,
+  "description": "Fonction planifiée : rappels quotidiens de la contrathèque (préavis, échéances, documents en attente).",
+  "main": "dist/index.js",
+  "engines": { "node": "22" },
+  "dependencies": {
+    "@google-cloud/functions-framework": "^3.4.0",
+    "firebase-admin": "^13.10.0"
+  }
+}
