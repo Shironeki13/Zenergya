@@ -156,7 +156,18 @@ et le déclencheur dans le projet GCP.
 
 Code : `src/lib/notifications/rappels.ts` (pur), `src/services/notifications-rappels.ts`.
 
+## Trace sur la vie du contrat
+
+Sur la fiche d'un contrat, onglet « Vie du contrat », chaque étape de la frise porte les mails qui la concernent : une
+enveloppe et leur nombre sous le point, et dans le détail la liste — date, événement, destinataires, objet, et si le
+mail est parti (simulé, à envoyer, envoyé, échec, sans destinataire). Un mail de dépôt, de validation ou de refus se
+rattache à son document ; un rappel de préavis à la date limite de préavis ; un rappel d'échéance à l'échéance. Un
+lien « Voir tous les mails de ce contrat » en donne la liste complète. Le corps des mails n'est pas affiché ici (il
+est dans le journal de l'administrateur) ; le récapitulatif des documents en attente, qui porte sur tous les contrats,
+n'y figure pas. La lecture respecte le périmètre de l'utilisateur.
+
+Code : `src/lib/notifications/trace.ts`, lecture `notificationsDuContrat`.
+
 ## À venir
 
-Envoi réel par la messagerie Google, trace des mails sur la frise du contrat, mêmes notifications pour les commandes
-et les heures à valider.
+Envoi réel par la messagerie Google, mêmes notifications pour les commandes et les heures à valider.

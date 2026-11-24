@@ -64,7 +64,7 @@ test('éléments d\'un objet : ceux du parent demandé, triés ; parent hors pé
     assert.deepEqual((await lire('versionsDuDevis', { id: 'lc-dl' }, lyon) as { id: string }[]).map(x => x.id), ['lc-vl1', 'lc-vl2']);
     assert.deepEqual((await lire('facturesDuDevis', { id: 'lc-dl' }, lyon) as { id: string }[]).map(x => x.id), ['lc-fl2', 'lc-fl']);
     // Toutes les lectures nommées sont couvertes par ce test.
-    assert.deepEqual(Object.keys(LECTURES).sort(), [...Object.keys(PARENTS), ...Object.keys(attendu), 'devisTous', 'affaires', 'documentsASuivre', 'facturesDePeriode', 'avoirsDePeriode', 'facturesImpayees', 'numeroDeFacture', 'rechercheFactures', 'syntheseFactures'].sort());
+    assert.deepEqual(Object.keys(LECTURES).sort(), [...Object.keys(PARENTS), ...Object.keys(attendu), 'devisTous', 'affaires', 'documentsASuivre', 'notificationsDuContrat', 'facturesDePeriode', 'avoirsDePeriode', 'facturesImpayees', 'numeroDeFacture', 'rechercheFactures', 'syntheseFactures'].sort());
 });
 
 test('listes entières (devis, affaires) : réduites au périmètre ; lecture inconnue refusée', async () => {
@@ -158,4 +158,15 @@ test('documents à suivre (contrathèque) : en attente, refusés et résiliation
     assert.deepEqual(await lus(admin), ['lc-doc-a:avenant:en_attente', 'lc-doc-p:reconduction:en_attente', 'lc-doc-r:resiliation:valide', 'lc-doc-s:syndic:refuse']);
     const a = (await lire('documentsASuivre', {}, lyon) as Record<string, unknown>[]).find(d => d.id === 'lc-doc-a')!;
     assert.deepEqual(a, { type: 'avenant', id: 'lc-doc-a', contractId: 'lc-kl', etat: 'en_attente', deposeLe: '2026-11-10', deposePar: 'adv@v.fr', effet: '2026-12-01', resume: 'Ajout d\'un site', decideLe: null });
+});
+
+test('mails d\'un contrat : ceux du contrat demandé, sans leur corps ; contrat hors périmètre : refus', async () => {
+    const n = (id: string, contractId: string, creeLe: string) => set('notifications', id, { id, evenement: 'document_depose', cle: `amendments/${id}#initial`, contractId, contrat: 'x', destinataires: ['ctq@v.fr'], ecartes: [{ adresse: 'x@ext.fr', motif: 'hors domaine' }], expediteur: 'e@v.fr', sujet: `Sujet ${id}`, texte: 'Corps secret', html: '<p>Corps secret</p>', statut: 'simule', mode: 'simulation', creeLe });
+    await n('lc-n2', 'lc-kl', '2026-11-21T08:00:00Z'); await n('lc-n1', 'lc-kl', '2026-11-20T08:00:00Z'); await n('lc-np', 'lc-kp', '2026-11-20T08:00:00Z');
+    const lus = await lire('notificationsDuContrat', { id: 'lc-kl' }, lyon) as Record<string, unknown>[];
+    assert.deepEqual(lus.map(m => m.id), ['lc-n1', 'lc-n2']);
+    assert.deepEqual(lus[0], { id: 'lc-n1', evenement: 'document_depose', cle: 'amendments/lc-n1#initial', creeLe: '2026-11-20T08:00:00Z', destinataires: ['ctq@v.fr'], nbEcartes: 1, statut: 'simule', sujet: 'Sujet lc-n1' });
+    await assert.rejects(lire('notificationsDuContrat', { id: 'lc-kp' }, lyon), PerimetreError);
+    assert.deepEqual((await lire('notificationsDuContrat', { id: 'lc-kp' }, admin) as { id: string }[]).map(m => m.id), ['lc-np']);
+    assert.deepEqual(await lire('notificationsDuContrat', { id: 'lc-inconnu' }, lyon), []);
 });

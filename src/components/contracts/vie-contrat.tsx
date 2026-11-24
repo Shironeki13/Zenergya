@@ -1,13 +1,15 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { AlertTriangle, BellRing, Building2, CalendarClock, CalendarX, ClipboardList, FileCheck2, FilePlus2, FileSignature, Flag, Paperclip, PenLine, RefreshCw, ShieldCheck, Upload, X } from 'lucide-react';
+import { AlertTriangle, Mail, BellRing, Building2, CalendarClock, CalendarX, ClipboardList, FileCheck2, FilePlus2, FileSignature, Flag, Paperclip, PenLine, RefreshCw, ShieldCheck, Upload, X } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Frise, TON_POINT, dateFr, type PointFrise } from '@/components/frise/frise';
 import { cn } from '@/lib/utils';
 import { vieContrat, type DocumentsContrat, type EtapeVie, type TypeVie } from '@/lib/contrats/frise';
+import { LIBELLE_EVENEMENT } from '@/lib/notifications/modeles';
+import { LIBELLE_STATUT_MAIL, mailsParEtape, type MailContrat } from '@/lib/notifications/trace';
 import type { Contract } from '@/lib/types';
 
 /**
@@ -23,7 +25,28 @@ const ICONE: Record<TypeVie, LucideIcon> = {
 const VALIDATION = { en_attente: 'En attente de validation', valide: 'Validé', refuse: 'Refusé' } as const;
 const fr = (d?: string | null) => (d ? d.split('-').reverse().join('/') : '—');
 
-function Detail({ e, onClose, onVoirDocuments }: { e: EtapeVie; onClose: () => void; onVoirDocuments?: (onglet: NonNullable<EtapeVie['onglet']>) => void }) {
+const quand = (iso: string) => new Date(iso).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' });
+
+/** Mails composés par Zenergya : quand, pour quoi, à qui, et s'ils sont partis. */
+function Mails({ mails, titre }: { mails: MailContrat[]; titre: string }) {
+    if (!mails.length) return null;
+    return (
+        <div>
+            <p className="mb-2 flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-muted-foreground"><Mail className="h-3.5 w-3.5" />{titre}</p>
+            <ul className="space-y-1.5 text-sm">
+                {mails.map(m => (
+                    <li key={m.id} className="rounded-md border bg-background px-3 py-2">
+                        <p><span className="tabular-nums text-muted-foreground">{quand(m.creeLe)}</span> — <span className="font-medium">{LIBELLE_EVENEMENT[m.evenement] ?? m.evenement}</span> <span className={cn('text-xs', m.statut === 'envoye' ? 'text-emerald-700' : m.statut === 'echec' || m.statut === 'sans_destinataire' ? 'text-red-700' : 'text-amber-700')}>({LIBELLE_STATUT_MAIL[m.statut] ?? m.statut})</span></p>
+                        <p className="text-xs text-muted-foreground">À : {m.destinataires.length ? m.destinataires.join(', ') : 'personne'}{m.nbEcartes > 0 ? ` · ${m.nbEcartes} adresse(s) écartée(s)` : ''}</p>
+                        <p className="truncate text-xs text-muted-foreground" title={m.sujet}>Objet : {m.sujet}</p>
+                    </li>
+                ))}
+            </ul>
+        </div>
+    );
+}
+
+function Detail({ e, mails, onClose, onVoirDocuments }: { e: EtapeVie; mails: MailContrat[]; onClose: () => void; onVoirDocuments?: (onglet: NonNullable<EtapeVie['onglet']>) => void }) {
     const ton = TON_POINT[e.etat];
     const ligne = (libelle: string, valeur: React.ReactNode) => <div className="flex justify-between gap-4"><dt className="text-muted-foreground">{libelle}</dt><dd className="text-right font-medium">{valeur}</dd></div>;
     const v = e.validation;
@@ -69,26 +92,31 @@ function Detail({ e, onClose, onVoirDocuments }: { e: EtapeVie; onClose: () => v
                     </div>
                 )}
             </div>
+            {mails.length > 0 && <div className="mt-4"><Mails mails={mails} titre="Mails de cette étape" /></div>}
         </div>
     );
 }
 
-export function VieContrat({ contract, documents, onVoirDocuments }: { contract: Contract; documents: DocumentsContrat; onVoirDocuments?: (onglet: NonNullable<EtapeVie['onglet']>) => void }) {
+export function VieContrat({ contract, documents, mails = [], onVoirDocuments }: { contract: Contract; documents: DocumentsContrat; /** Mails composés pour ce contrat (journal des notifications). */ mails?: MailContrat[]; onVoirDocuments?: (onglet: NonNullable<EtapeVie['onglet']>) => void }) {
     const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/Paris' });
     const vie = useMemo(() => vieContrat(contract, documents, today), [contract, documents, today]);
     const [ouvert, setOuvert] = useState<string | null>(null);
     const choisie = vie.etapes.find(e => e.id === ouvert) ?? null;
+    const trace = useMemo(() => mailsParEtape(mails, vie.etapes), [mails, vie.etapes]);
+    const [tousMails, setTousMails] = useState(false);
 
     const points: PointFrise[] = vie.etapes.map(e => ({
         cle: e.id, date: e.date, etat: e.etat, icone: e.type === 'validation' && e.etat === 'fait' ? FileCheck2 : ICONE[e.type], titre: e.titre, repere: e.type === 'aujourdhui',
         lignes: e.type === 'aujourdhui' ? null : <>
             {e.resume && <span className="line-clamp-2 text-xs text-muted-foreground" title={e.resume}>{e.resume}</span>}
             {e.validation && e.validation.etat !== 'valide' && <span className={cn('text-xs font-medium', e.validation.etat === 'refuse' ? 'text-red-700' : 'text-blue-700')}>{VALIDATION[e.validation.etat].toLowerCase()}</span>}
+            {(trace.parEtape.get(e.id)?.length ?? 0) > 0 && <span className="mt-0.5 inline-flex items-center gap-1 text-xs text-muted-foreground" title="Mails composés pour cette étape"><Mail className="h-3 w-3" />{trace.parEtape.get(e.id)!.length}</span>}
         </>,
         infobulle: <>
             {e.resume && <p>{e.resume}</p>}
             {e.validation && <p>{VALIDATION[e.validation.etat]}{e.validation.validePar ? ` par ${e.validation.validePar}` : ''}</p>}
             {e.effets?.slice(0, 2).map((x, i) => <p key={i}>{x.libelle} : {x.valeur}</p>)}
+            {(trace.parEtape.get(e.id)?.length ?? 0) > 0 && <p>{trace.parEtape.get(e.id)!.length} mail(s)</p>}
         </>,
     }));
 
@@ -118,7 +146,15 @@ export function VieContrat({ contract, documents, onVoirDocuments }: { contract:
                     </div>
                 </div>
                 <Frise points={points} ouvert={ouvert} onOuvrir={setOuvert} label="Frise chronologique de la vie du contrat" />
-                {choisie && <Detail e={choisie} onClose={() => setOuvert(null)} onVoirDocuments={onVoirDocuments} />}
+                {choisie && <Detail e={choisie} mails={trace.parEtape.get(choisie.id) ?? []} onClose={() => setOuvert(null)} onVoirDocuments={onVoirDocuments} />}
+                {mails.length > 0 && (
+                    <div>
+                        <button type="button" className="inline-flex items-center gap-1.5 text-sm underline" aria-expanded={tousMails} onClick={() => setTousMails(v => !v)}>
+                            <Mail className="h-4 w-4" />{tousMails ? 'Masquer' : 'Voir'} tous les mails de ce contrat ({mails.length})
+                        </button>
+                        {tousMails && <div className="mt-3"><Mails mails={[...mails].sort((a, b) => b.creeLe.localeCompare(a.creeLe))} titre="Mails de ce contrat, du plus récent au plus ancien" /></div>}
+                    </div>
+                )}
             </CardContent>
         </Card>
     );

@@ -2,6 +2,8 @@
 
 import { AccesRefuse, useHorsPerimetre } from '@/components/perimetre/acces';
 import { VieContrat } from '@/components/contracts/vie-contrat';
+import type { MailContrat } from '@/lib/notifications/trace';
+import { lireServeur } from '@/services/lecture';
 import { EtatValidation, LienPiece } from "@/components/contracts/events/etat-document";
 import { AFaire, Indicateur, eur0, CompteurAFaire, useOngletUrl, type PointAFaire } from "@/components/fiches/fiche";
 import { CarteContacts, TableauFactures, TableauSites, etatSite } from "@/components/fiches/tableaux";
@@ -102,6 +104,7 @@ export default function ContractDetailPage() {
 
   // Contract Events State
   const [ongletDocuments, setOngletDocuments] = useState('amendments');
+  const [mails, setMails] = useState<MailContrat[]>([]);
   const [amendments, setAmendments] = useState<Amendment[]>([]);
   const [terminations, setTerminations] = useState<Termination[]>([]);
   const [renewals, setRenewals] = useState<Renewal[]>([]);
@@ -137,6 +140,10 @@ export default function ContractDetailPage() {
   const [revP2, setRevP2] = useState<Partial<RevisionInfo>>({});
   const [revP3, setRevP3] = useState<Partial<RevisionInfo>>({});
 
+  // Mails composés pour ce contrat (trace sur la frise) : sans eux, la frise s'affiche quand même.
+  const chargerMails = useCallback(() => { if (id) lireServeur<MailContrat[]>('notificationsDuContrat', { id }, []).then(setMails).catch(() => setMails([])); }, [id]);
+  useEffect(() => { chargerMails(); }, [chargerMails]);
+
   const reloadData = useCallback(async () => {
     if (!id) return;
     try {
@@ -147,6 +154,7 @@ export default function ContractDetailPage() {
       ]);
       setSites(sitesData);
       setAmendments(am); setTerminations(te); setRenewals(re); setTrusteeChanges(tr); setBeChanges(be);
+      chargerMails();
     } catch (error) {
       console.error("Failed to reload data", error);
       toast({ title: "Erreur", description: "Impossible de rafraîchir les données.", variant: "destructive" });
@@ -556,7 +564,7 @@ export default function ContractDetailPage() {
 
         <TabsContent value="historique" className="mt-4">
           <div className="mb-4">
-            <VieContrat contract={contract} documents={{ amendments, terminations, renewals, trusteeChanges, beChanges }}
+            <VieContrat contract={contract} mails={mails} documents={{ amendments, terminations, renewals, trusteeChanges, beChanges }}
               onVoirDocuments={onglet => { setOngletDocuments(onglet); document.getElementById('documents-contrat')?.scrollIntoView({ behavior: 'smooth', block: 'start' }); }} />
           </div>
           {(contract.modificationsValidees?.length ?? 0) > 0 && (

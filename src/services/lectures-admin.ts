@@ -174,6 +174,15 @@ const documentsASuivre: Lecture = async (_a, garde) => {
     return out;
 };
 
+/** Mails composés pour un contrat (journal des notifications), sans leur corps : trace sur la vie du contrat. */
+const notificationsDuContrat: Lecture = async (a, garde) => {
+    if ((await acces(garde, 'contrat', a.id)) === 'absent') return [];
+    return (await par('notifications', 'contractId', a.id)).map(n => ({
+        id: s(n.id), evenement: s(n.evenement), cle: s(n.cle), creeLe: s(n.creeLe), destinataires: Array.isArray(n.destinataires) ? n.destinataires.map(s) : [],
+        nbEcartes: Array.isArray(n.ecartes) ? n.ecartes.length : 0, statut: s(n.statut), sujet: s(n.sujet),
+    })).sort((x, y) => x.creeLe.localeCompare(y.creeLe));
+};
+
 export const LECTURES = {
     client: fiche('clients', d => d.id),
     contrat: fiche('contracts', d => s(d.clientId) || null),
@@ -210,7 +219,7 @@ export const LECTURES = {
     facturesDePeriode, avoirsDePeriode, facturesImpayees, facturesDuClient, numeroDeFacture, rechercheFactures, syntheseFactures,
     /** Listes entières, réduites au périmètre. */
     devisTous: (async (_a, garde) => garde.filtrer(docs(await adminDb.collection('quotes').get()), d => s(d.clientId))) as Lecture,
-    documentsASuivre,
+    documentsASuivre, notificationsDuContrat,
     affaires: (async (_a, garde) => garde.filtrer(docs(await adminDb.collection('projects').get()), d => s(d.clientId))) as Lecture,
 } satisfies Record<string, Lecture>;
 
