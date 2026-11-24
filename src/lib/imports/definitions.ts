@@ -502,7 +502,7 @@ const GUIDES: Record<ImportEntityKey, Guide> = {
             startDate: 'Début d\'exécution du contrat : point de départ de l\'échéancier de facturation.', endDate: 'Fin du contrat (avant reconduction).',
             billingSchedule: 'Périodicité par défaut (Mensuel, Trimestriel…) ; chaque prestation peut avoir la sienne.',
             renewalDuration: 'Durée de chaque reconduction, en texte libre (ex. « 1 an »).', noticePeriod: 'Délai de dénonciation, en texte libre (ex. « 3 mois »).',
-            chorusMarketNumber: 'N° du marché public dans Chorus Pro.', [P1_COLONNE('contract', 'correspondanceTwimm')]: 'Code du contrat dans TWIMM (moteur P1) : rapproche les résultats du moteur.',
+            chorusMarketNumber: 'N° du marché public dans Chorus Pro.', [P1_COLONNE('contract', 'correspondanceTwimm')]: 'Code du contrat dans un autre logiciel, si besoin : sert à rapprocher des données venues de ce logiciel.',
         },
     },
     sites: {
@@ -518,7 +518,7 @@ const GUIDES: Record<ImportEntityKey, Guide> = {
         aides: {
             name: 'Nom usuel du site (résidence, bâtiment).', address: 'Adresse du site (pas celle du client).', postalCode: '5 chiffres.', city: 'Ville du site.',
             [P1_COLONNE('site', 'periodeReference')]: 'Période de calcul de la cible et de l\'intéressement : saison de chauffe ou année civile.',
-            [P1_COLONNE('site', 'correspondanceTwimm')]: 'Code du site dans TWIMM (moteur P1) : rapproche les résultats du moteur.',
+            [P1_COLONNE('site', 'correspondanceTwimm')]: 'Code du site dans un autre logiciel, si besoin : sert à rapprocher des données venues de ce logiciel.',
             [P1_COLONNE('poste', 'cibleNb')]: 'Consommation contractuelle de référence du poste (N\'B), dans l\'unité de la cible.',
             [P1_COLONNE('poste', 'cibleNbUnite')]: 'Unité de la cible NB : MWh, t ou L.',
             [P1_COLONNE('poste', 'djuReference')]: 'DJU de la période de référence : la cible est corrigée de la rigueur climatique (station météo du site).',

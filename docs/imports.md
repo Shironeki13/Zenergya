@@ -58,7 +58,7 @@ clé distincte (SIRET, n° de site, PDL/PCE, réf. externe) pour créer un autre
 
 ### Réf. externe : reprendre une ancienne codification
 
-Clients, contrats, sites et compteurs ont une **réf. externe** (code dans l'ancien système, TWIMM…), unique par type.
+Clients, contrats, sites et compteurs ont une **réf. externe** (code dans un autre logiciel), unique par type.
 Elle retrouve l'élément au réimport et **désigne le parent dans les autres fichiers** : le client d'un contrat ou
 d'un site (code CLI, SIRET ou réf. externe), le contrat d'un site (n° CTN ou réf. externe), le site d'un compteur
 (code SIT ou réf. externe), le compteur d'un relevé (code CPT ou réf. externe). Une reprise complète se fait donc
@@ -131,11 +131,11 @@ rapport au relevé précédent (ou supérieur au suivant), compteur hors service
 Chaque paramètre P1 a sa colonne « P1 · … » dans l'import de l'élément qui le porte :
 
 - **Sites** : type de marché, période de référence, prix de base chauffage et ECS, station météo (l'ancienne colonne
-  « Station météo » y est reprise), quantités des acomptes, code TWIMM ; et le **poste de consommation** (« P1 ·
+  « Station météo » y est reprise), quantités des acomptes, code externe ; et le **poste de consommation** (« P1 ·
   Poste », vide : « Chauffage », créé s'il n'existe pas) : formule de NC, cible NB et son unité, DJU de référence. Un
   site à plusieurs postes : une ligne par poste.
-- **Compteurs** : usage, énergie, QE, qECS, code TWIMM.
-- **Contrats** : régime du compte de prestation, coefficient et frais de gestion, code TWIMM, répartitions des
+- **Compteurs** : usage, énergie, QE, qECS, code externe.
+- **Contrats** : régime du compte de prestation, coefficient et frais de gestion, code externe, répartitions des
   acomptes (12 parts « ; »), barèmes de partage par marché.
 
 « P1 · Date d'effet » et « P1 · Motif » valent pour toute la ligne. Une valeur crée une **version** datée (jamais
