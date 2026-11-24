@@ -267,8 +267,11 @@ export async function prepareContractInvoice(contractId: string, invoiceDate: st
     const day = toDay(invoiceDate) ?? toDay(new Date())!;
     const until = toDay(opts.until) ?? day;
     const due = dueInvoiceLines(input, invoices, until);
-    if (due.errors.length) throw new Error(`Facture impossible : ${due.errors.join(' ')}`);
-    if (due.lines.length === 0) {
+    // Sans sélection, toute anomalie bloque la facture. Avec une sélection (facturation manuelle), une échéance bloquée
+    // n'empêche pas de facturer les autres prestations : seule une anomalie du contrat entier bloque.
+    const contratBloque = due.errors.length > 0 && (due.bloquees ?? []).length === 0;
+    if (due.errors.length && (!opts.selection || contratBloque)) throw new Error(`Facture impossible : ${due.errors.join(' ')}`);
+    if (due.lines.length === 0 && !opts.selection) {
         const next = nextBillableOn(input, invoices);
         throw new Error(`Rien à facturer au ${frDay(until)}${next ? ` : prochaine échéance facturable le ${frDay(next)}` : ' : tout est facturé'}.`);
     }
@@ -309,6 +312,7 @@ export type ApercuFacturation = {
     jusquAu: string;
     prochaine: string | null;
     echeances: EcheanceDue[];
+    /** Anomalies du contrat entier (périodicité, terme…) : rien n'est facturable. Les blocages d'une échéance sont sur elle. */
     blocages: string[];
     avertissements: string[];
     paiement: string | null;
@@ -331,7 +335,7 @@ export async function apercuFacturation(contractId: string, jusquAu?: string): P
     const prochaine = due.errors.length && !due.echeances.length ? null
         : items.flatMap(i => echeancesOf(i, start, billed.get(i.key) ?? null, '9999-12-31', 60).map(e => e.billableOn)).filter(d => d > until).sort()[0] ?? null;
     return {
-        contrat, jusquAu: until, prochaine, echeances: echeancesDues(due), blocages: due.errors, avertissements: due.warnings,
+        contrat, jusquAu: until, prochaine, echeances: echeancesDues(due), blocages: (due.bloquees ?? []).length ? [] : due.errors, avertissements: due.warnings,
         paiement: (term as { deadline?: string } | null)?.deadline?.trim() || null,
     };
 }

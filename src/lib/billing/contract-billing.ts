@@ -380,7 +380,11 @@ export function echeancesOf(item: BillingItem, contractStart: string, last: stri
     return out;
 }
 
-export type DueResult = { echeances: Echeance[]; lines: InvoiceLineItem[]; errors: string[]; warnings: string[] };
+/** Échéance qui ne peut pas être facturée (donnée manquante) : son motif et sa nature, pour orienter la correction. */
+export type NatureBlocage = 'tva' | 'releve' | 'dju' | 'acompte' | 'revision' | 'global';
+export type EcheanceBloquee = { key: string; start: string; nature: NatureBlocage; message: string };
+
+export type DueResult = { echeances: Echeance[]; lines: InvoiceLineItem[]; errors: string[]; warnings: string[]; bloquees?: EcheanceBloquee[] };
 
 /** Échéances facturables d'un contrat à la date `until`, et lignes de facture correspondantes. */
 export function dueInvoiceLines(input: BillingInput, invoices: BilledInvoice[], until: string): DueResult {
@@ -400,9 +404,14 @@ export function dueInvoiceLines(input: BillingInput, invoices: BilledInvoice[], 
     }
     const vat = new Map(input.vatRates.map(v => [v.id, v]));
     const lineErrors: string[] = [];
+    const bloquees: EcheanceBloquee[] = [];
+    const bloquer = (e: Echeance, nature: NatureBlocage, message: string) => {
+        lineErrors.push(message);
+        if (!bloquees.some(b => b.key === e.item.key && b.start === e.start)) bloquees.push({ key: e.item.key, start: e.start, nature, message });
+    };
     const rateOf = (e: Echeance) => {
         const v = e.item.vatRateId ? vat.get(e.item.vatRateId) : undefined;
-        if (!v) lineErrors.push(`TVA non renseignée : ${e.item.activity.code} sur le site ${e.item.site.name} (à définir sur la prestation ou sur l'activité, dans le paramétrage).`);
+        if (!v) bloquer(e, 'tva', `TVA non renseignée : ${e.item.activity.code} sur le site ${e.item.site.name} (à définir sur la prestation ou sur l'activité, dans le paramétrage).`);
         return v?.rate;
     };
 
@@ -414,7 +423,7 @@ export function dueInvoiceLines(input: BillingInput, invoices: BilledInvoice[], 
     for (const e of echeances) {
         if (e.item.p1Releve) {
             const r = releveCompteur(e, input, lastIndex, lastCalendaire, frozen);
-            if (typeof r === 'string') { lineErrors.push(`${e.item.p1Releve.usage === 'ecs' ? 'ECS' : 'Chauffage'} au compteur impossible : site ${e.item.site.name}, ${r}.`); continue; }
+            if (typeof r === 'string') { bloquer(e, 'releve', `${e.item.p1Releve.usage === 'ecs' ? 'ECS' : 'Chauffage'} au compteur impossible : site ${e.item.site.name}, ${r}.`); continue; }
             // Échéances suivantes du même appel : dernier relevé facturé, ou dernier jour facturé au mois calendaire.
             for (const c of r.detail.compteurs) if (!c.calendaire) lastIndex.set(`${e.item.key}|${c.meterId}`, c.fin);
             for (const m of r.detail.detail ?? []) if (m.methode === 'calendaire') for (const c of m.compteurs) lastCalendaire.set(`${e.item.key}|${c.meterId}`, m.fin);
@@ -423,13 +432,13 @@ export function dueInvoiceLines(input: BillingInput, invoices: BilledInvoice[], 
         }
         if (e.item.p1Dju) {
             const r = mtiAuDju(e, input.p1Dju);
-            if (typeof r === 'string') { lineErrors.push(`MTI au DJU impossible : site ${e.item.site.name}, ${r}.`); continue; }
+            if (typeof r === 'string') { bloquer(e, 'dju', `MTI au DJU impossible : site ${e.item.site.name}, ${r}.`); continue; }
             pieces.push({ e, start: e.start, end: e.end, days: e.days, base: r.montant, amount: r.montant, dju: r });
             continue;
         }
         if (e.item.p1Acompte) {
             const r = acompteP1(e, input.p1);
-            if (typeof r === 'string') { lineErrors.push(`Acompte P1 impossible : site ${e.item.site.name}, ${r}.`); continue; }
+            if (typeof r === 'string') { bloquer(e, 'acompte', `Acompte P1 impossible : site ${e.item.site.name}, ${r}.`); continue; }
             pieces.push({ e, start: e.start, end: e.end, days: e.days, base: r.total, amount: r.total, p1: r.mois });
             continue;
         }
@@ -446,7 +455,7 @@ export function dueInvoiceLines(input: BillingInput, invoices: BilledInvoice[], 
                 const known = frozen.get(`${e.item.key}|${date}`);
                 const computed = known ?? revisionAt(config, date, input.indices ?? [], input.indexValues ?? []);
                 if ('error' in computed) {
-                    lineErrors.push(`Révision impossible : ${e.item.activity.code} sur le site ${e.item.site.name}, ${computed.error}.`);
+                    bloquer(e, 'revision', `Révision impossible : ${e.item.activity.code} sur le site ${e.item.site.name}, ${computed.error}.`);
                     return;
                 }
                 revision = computed;
@@ -476,7 +485,7 @@ export function dueInvoiceLines(input: BillingInput, invoices: BilledInvoice[], 
         for (const p of pieces) {
             const rate = rateOf(p.e);
             if (rate === undefined) continue;
-            if (p.p1 || p.releve || p.dju) { lineErrors.push(`${p.p1 ? 'Acompte P1' : p.dju ? 'MTI au DJU' : 'P1 au compteur'} : facturation globale non prise en charge (site ${p.e.item.site.name}) ; passez le contrat en multi-site.`); continue; }
+            if (p.p1 || p.releve || p.dju) { bloquer(p.e, 'global', `${p.p1 ? 'Acompte P1' : p.dju ? 'MTI au DJU' : 'P1 au compteur'} : facturation globale non prise en charge (site ${p.e.item.site.name}) ; passez le contrat en multi-site.`); continue; }
             const key = `${p.e.item.activity.id}|${rate}|${p.start}|${p.end}|${p.revision ? `${p.revision.rule}@${p.revision.date}=${p.revision.coefficient}` : ''}`;
             if (!groups.has(key)) groups.set(key, { p, rate, amounts: [], bases: [], keys: [] });
             const g = groups.get(key)!;
@@ -509,7 +518,7 @@ export function dueInvoiceLines(input: BillingInput, invoices: BilledInvoice[], 
             });
         }
     }
-    return { echeances, lines: lines.filter(l => l.total !== 0), errors: [...new Set(lineErrors)], warnings };
+    return { echeances, lines: lines.filter(l => l.total !== 0), errors: [...new Set(lineErrors)], warnings, bloquees };
 }
 
 export type P1Mois = { mois: string; quantite: number; prix: number; montant: number };

@@ -7,7 +7,7 @@
  * Module sans dépendance serveur.
  */
 import type { InvoiceLineItem } from '@/lib/types';
-import { lineItemKeys, type DueResult, type Echeance } from './contract-billing';
+import { lineItemKeys, type DueResult, type Echeance, type NatureBlocage } from './contract-billing';
 
 export type EcheanceDue = {
     id: string;
@@ -24,13 +24,20 @@ export type EcheanceDue = {
     revise: boolean;
     prorata: boolean;
     lignes: InvoiceLineItem[];
+    /** Échéance non facturable en l'état : motif, nature et site concerné (pour le lien de correction). */
+    blocage?: { message: string; nature: NatureBlocage; siteId: string };
 };
 
 const dans = (l: InvoiceLineItem, e: Echeance) =>
     lineItemKeys(l).includes(e.item.key) && String(l.periodStartDate) >= e.start && String(l.periodEndDate) <= e.end;
 
-/** Échéances dues, de la plus ancienne à la plus récente. Les échéances sans ligne (montant nul, erreur) sont omises. */
-export function echeancesDues(due: Pick<DueResult, 'echeances' | 'lines'>): EcheanceDue[] {
+/**
+ * Échéances dues, de la plus ancienne à la plus récente. Une échéance bloquée (donnée manquante) est listée sans
+ * ligne ni montant : elle ne peut pas être cochée, ni les suivantes de la même prestation. Les échéances de montant
+ * nul sont omises.
+ */
+export function echeancesDues(due: Pick<DueResult, 'echeances' | 'lines' | 'bloquees'>): EcheanceDue[] {
+    const bloquee = (e: Echeance) => (due.bloquees ?? []).find(b => b.key === e.item.key && b.start === e.start);
     // Composantes : échéances reliées par une ligne commune (facturation globale).
     const groupe = due.echeances.map((_, i) => i);
     const racine = (i: number): number => (groupe[i] === i ? i : (groupe[i] = racine(groupe[i])));
@@ -41,12 +48,14 @@ export function echeancesDues(due: Pick<DueResult, 'echeances' | 'lines'>): Eche
         if (j === undefined) premier.set(l, i); else groupe[racine(i)] = racine(j);
     }));
     const parRacine = new Map<number, number[]>();
-    due.echeances.forEach((_, i) => { if (lignesDe[i].length) parRacine.set(racine(i), [...(parRacine.get(racine(i)) ?? []), i]); });
+    due.echeances.forEach((e, i) => { if (lignesDe[i].length || bloquee(e)) parRacine.set(racine(i), [...(parRacine.get(racine(i)) ?? []), i]); });
 
     const out: EcheanceDue[] = [];
     for (const membres of parRacine.values()) {
         const es = membres.map(i => due.echeances[i]);
-        const lignes = [...new Set(membres.flatMap(i => lignesDe[i]))];
+        const motif = es.map(x => ({ x, b: bloquee(x) })).find(m => m.b);
+        // Bloquée : rien n'est facturé pour l'échéance, même si une partie a pu être calculée.
+        const lignes = motif ? [] : [...new Set(membres.flatMap(i => lignesDe[i]))];
         const e = es[0];
         const sites = [...new Set(es.map(x => x.item.site.name))];
         const debut = es.map(x => x.start).sort()[0];
@@ -63,13 +72,28 @@ export function echeancesDues(due: Pick<DueResult, 'echeances' | 'lines'>): Eche
             revise: lignes.some(l => !!l.revision),
             prorata: es.some(x => x.days < x.nominalDays && !x.item.p1Acompte && !x.item.p1Releve && !x.item.p1Dju),
             lignes,
+            ...(motif && { blocage: { message: motif.b!.message, nature: motif.b!.nature, siteId: motif.x.item.site.id } }),
         });
     }
     return out.sort((a, b) => a.debut.localeCompare(b.debut) || a.site.localeCompare(b.site, 'fr') || a.activite.localeCompare(b.activite));
 }
 
-type Ordre = Pick<EcheanceDue, 'id' | 'cles' | 'debut'>;
+type Ordre = Pick<EcheanceDue, 'id' | 'cles' | 'debut'> & { blocage?: unknown };
 const partage = (a: Ordre, b: Ordre) => a.cles.some(k => b.cles.includes(k));
+
+/** Une échéance peut être cochée si ni elle ni aucune échéance plus ancienne qu'elle entraînerait n'est bloquée. */
+export function cochable(echeances: Ordre[], cible: Ordre): boolean {
+    const vus = new Set<string>();
+    const file = [cible];
+    while (file.length) {
+        const c = file.pop()!;
+        if (vus.has(c.id)) continue;
+        vus.add(c.id);
+        if (c.blocage) return false;
+        for (const e of echeances) if (e.debut < c.debut && partage(e, c)) file.push(e);
+    }
+    return true;
+}
 
 /**
  * Coche ou décoche une échéance en gardant l'ordre : cocher entraîne les échéances plus anciennes du même élément,
@@ -78,6 +102,8 @@ const partage = (a: Ordre, b: Ordre) => a.cles.some(k => b.cles.includes(k));
 export function basculer(echeances: Ordre[], selection: string[], id: string, coche: boolean): string[] {
     const cible = echeances.find(e => e.id === id);
     if (!cible) return selection;
+    // Bloquée, ou précédée d'une échéance bloquée de la même prestation : ne peut pas être cochée.
+    if (coche && !cochable(echeances, cible)) return selection;
     const s = new Set(selection);
     // Propagation de proche en proche (une échéance globale relie plusieurs éléments).
     const file = [cible];
@@ -99,6 +125,7 @@ export function controleSelection(echeances: Ordre[], selection: string[]): stri
     const connus = new Set(echeances.map(e => e.id));
     if (selection.some(id => !connus.has(id))) return ["Les échéances dues ont changé depuis l'aperçu : rechargez la page."];
     const s = new Set(selection);
+    if (echeances.some(e => s.has(e.id) && e.blocage)) return ["Une échéance bloquée ne peut pas être facturée."];
     const trou = echeances.some(e => s.has(e.id) && echeances.some(a => !s.has(a.id) && a.debut < e.debut && partage(a, e)));
     return trou ? ["Une échéance ne peut pas être facturée avant une échéance plus ancienne de la même prestation."] : [];
 }
@@ -107,4 +134,16 @@ export function controleSelection(echeances: Ordre[], selection: string[]): stri
 export function lignesRetenues(echeances: Pick<EcheanceDue, 'id' | 'lignes'>[], selection: string[]): InvoiceLineItem[] {
     const s = new Set(selection);
     return [...new Set(echeances.filter(e => s.has(e.id)).flatMap(e => e.lignes))];
+}
+
+/** Où corriger un blocage : l'écran à ouvrir et le libellé du lien. */
+export function lienBlocage(b: NonNullable<EcheanceDue['blocage']>, contractId: string): { href: string; libelle: string } {
+    switch (b.nature) {
+        case 'tva': return { href: `/sites/${b.siteId}`, libelle: 'Renseigner la TVA de la prestation' };
+        case 'releve': return { href: '/meters', libelle: 'Saisir le relevé' };
+        case 'dju': return { href: '/settings', libelle: 'Compléter les DJU (Paramétrage › Stations météo)' };
+        case 'acompte': return { href: `/sites/${b.siteId}`, libelle: 'Compléter le paramétrage P1 du site' };
+        case 'revision': return { href: '/billing/indices', libelle: "Saisir l'indice manquant" };
+        case 'global': return { href: `/contracts/${contractId}`, libelle: 'Ouvrir le contrat (passer en multi-site)' };
+    }
 }

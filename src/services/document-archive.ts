@@ -152,6 +152,24 @@ async function load(kind: ArchivedKind, id: string): Promise<Loaded> {
     };
 }
 
+/**
+ * Aperçu d'une facture avant son émission : même mise en page et mêmes mentions que la facture, sans numéro,
+ * marqué « sans valeur comptable ». Rien n'est écrit ni archivé.
+ */
+export async function apercuPdf(p: { invoice: Omit<Invoice, 'id' | 'invoiceNumber' | 'companyId' | 'issuedAt' | 'pdf' | 'einvoicing'>; client: Client; company: Company; contract: Pick<Contract, 'paymentTermId'> }): Promise<Buffer> {
+    const { invoice, client, company } = p;
+    const paymentTerms = await libellePaiement(p.contract, client);
+    return renderAccountingPdf({
+        kind: 'proforma', date: invoice.date, dueDate: invoice.dueDate, periodStartDate: invoice.periodStartDate, periodEndDate: invoice.periodEndDate,
+        company, client: clientBlock(client, invoice.clientName), lineItems: invoice.lineItems,
+        subtotal: invoice.subtotal, tax: invoice.tax, total: invoice.total, taxRate: invoice.taxRate,
+        ...(invoice.vatBreakdown && { vatBreakdown: invoice.vatBreakdown }),
+        ...annexesDe(invoice.lineItems),
+        ...(paymentTerms && { paymentTerms }),
+        ...(await mentions(invoice as Invoice, client)),
+    });
+}
+
 /** Annexes P1 du document (détail figé dans ses lignes) ; rien s'il n'y a pas de P1 détaillé. */
 function annexesDe(lineItems: Invoice['lineItems']): Pick<AccountingDocumentData, 'annexes'> {
     const annexes = annexesP1(lineItems ?? []);

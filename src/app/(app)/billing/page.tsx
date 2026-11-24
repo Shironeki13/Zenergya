@@ -1,9 +1,9 @@
 'use client';
 
-import { Suspense, useCallback, useEffect, useMemo, useState } from 'react';
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { AlertTriangle, CalendarPlus, CheckCircle2, FileText, Loader2, Receipt, RotateCcw } from 'lucide-react';
+import { AlertTriangle, CalendarPlus, CheckCircle2, ExternalLink, Eye, EyeOff, FileText, Loader2, Receipt, RefreshCw, RotateCcw } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -17,7 +17,7 @@ import { useData } from '@/context/data-context';
 import { generateInvoice } from '@/ai/flows/generate-invoice-flow';
 import { apercuFacturationAction } from '@/lib/billing/actions';
 import { frDay, vatTotals } from '@/lib/billing/contract-billing';
-import { basculer, controleSelection, lignesRetenues } from '@/lib/billing/selection';
+import { basculer, cochable, controleSelection, lienBlocage, lignesRetenues } from '@/lib/billing/selection';
 import type { ApercuFacturation } from '@/services/contract-billing-admin';
 
 const eur = (n: number) => n.toLocaleString('fr-FR', { style: 'currency', currency: 'EUR' });
@@ -39,6 +39,10 @@ function Facturation() {
     const [date, setDate] = useState(aujourdhui());
     const [envoi, setEnvoi] = useState<'proforma' | 'facture' | null>(null);
     const [emise, setEmise] = useState<Emise | null>(null);
+    // Aperçu PDF en direct : recalculé peu après chaque changement de sélection ou de date.
+    const [voirPdf, setVoirPdf] = useState(true);
+    const [pdf, setPdf] = useState<{ url?: string; erreur?: string; calcul?: boolean }>({});
+    const demande = useRef(0);
 
     // Une seule recherche : numéro de contrat, client, libellé, sites, villes, SIRET.
     const options = useMemo<SearchableOption[]>(() => {
@@ -65,7 +69,8 @@ function Facturation() {
         setApercu(r.data);
         // Tout ce qui est dû est coché d'avance ; en élargissant l'horizon, la sélection en cours est conservée.
         const dues = r.data.echeances;
-        setSelection(garder ? dues.filter(e => garder.includes(e.id)).map(e => e.id) : dues.filter(e => e.facturableLe <= aujourdhui()).map(e => e.id));
+        const libres = dues.filter(e => cochable(dues, e));
+        setSelection(garder ? libres.filter(e => garder.includes(e.id)).map(e => e.id) : libres.filter(e => e.facturableLe <= aujourdhui()).map(e => e.id));
     }, []);
 
     useEffect(() => { if (contratId) { setEmise(null); void charger(contratId); } else setApercu(null); }, [contratId, charger]);
@@ -76,12 +81,31 @@ function Facturation() {
     const totaux = useMemo(() => vatTotals(lignesRetenues(dues, selection)), [dues, selection]);
     const anomalies = dues.length ? controleSelection(dues, selection) : [];
     const bloque = !apercu || apercu.blocages.length > 0 || anomalies.length > 0 || !!envoi || chargement;
+    const bloquees = dues.filter(e => e.blocage).length;
+    const horizon = (sel: string[]) => { const u = dues.filter(e => sel.includes(e.id)).map(e => e.facturableLe).sort().at(-1); return u && apercu && u > apercu.jusquAu ? u : apercu?.jusquAu; };
+
+    const cleApercu = apercu && voirPdf && selection.length > 0 && anomalies.length === 0 && apercu.blocages.length === 0 && !emise ? `${apercu.contrat.id}|${date}|${selection.join(',')}` : null;
+    useEffect(() => {
+        if (!cleApercu || !apercu) { setPdf(p => { if (p.url) URL.revokeObjectURL(p.url); return {}; }); return; }
+        const n = ++demande.current;
+        setPdf(p => ({ ...p, calcul: true, erreur: undefined }));
+        const t = setTimeout(async () => {
+            try {
+                const r = await fetch('/api/documents/apercu', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ contractId: apercu.contrat.id, invoiceDate: date, until: horizon(selection), selection }) });
+                if (n !== demande.current) return;
+                if (!r.ok) { const e = await r.json().catch(() => ({})); setPdf(p => { if (p.url) URL.revokeObjectURL(p.url); return { erreur: e.error ?? 'Aperçu impossible.' }; }); return; }
+                const url = URL.createObjectURL(await r.blob());
+                setPdf(p => { if (p.url) URL.revokeObjectURL(p.url); return { url }; });
+            } catch { if (n === demande.current) setPdf({ erreur: 'Aperçu impossible.' }); }
+        }, 500);
+        return () => clearTimeout(t);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [cleApercu]);
 
     const emettre = async (proforma: boolean) => {
         if (!apercu) return;
         setEnvoi(proforma ? 'proforma' : 'facture');
-        const until = dues.filter(e => selection.includes(e.id)).map(e => e.facturableLe).sort().at(-1);
-        const r = await generateInvoice({ contractId: apercu.contrat.id, invoiceDate: date, isProforma: proforma, until: until && until > date ? until : apercu.jusquAu, selection });
+        const r = await generateInvoice({ contractId: apercu.contrat.id, invoiceDate: date, isProforma: proforma, until: horizon(selection), selection });
         setEnvoi(null);
         if (!r.success || !r.invoiceId) { toast({ title: 'Émission impossible', description: r.error ?? 'Erreur inconnue.', variant: 'destructive' }); void charger(apercu.contrat.id); return; }
         setEmise({ id: r.invoiceId, numero: r.invoiceNumber, proforma, total: totaux.total, contrat: [apercu.contrat.numero, apercu.contrat.client].filter(Boolean).join(' · ') });
@@ -90,6 +114,7 @@ function Facturation() {
     };
 
     return (
+        <div className={voirPdf && pdf.url ? 'grid gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]' : ''}>
         <div className="space-y-6 max-w-4xl">
             <div>
                 <h1 className="text-2xl font-bold tracking-tight">Facturation manuelle</h1>
@@ -147,9 +172,28 @@ function Facturation() {
                             <div className="divide-y rounded-md border">
                                 {dues.map(e => {
                                     const avance = e.facturableLe > aujourdhui();
+                                    const libre = cochable(dues, e);
+                                    if (e.blocage) {
+                                        const lien = lienBlocage(e.blocage, apercu.contrat.id);
+                                        return (
+                                            <div key={e.id} className="flex items-start gap-3 bg-destructive/5 p-3">
+                                                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
+                                                <div className="min-w-0 flex-1">
+                                                    <div className="flex flex-wrap items-center gap-2 text-sm font-medium">
+                                                        <Badge variant="secondary">{e.activite}</Badge><span>{e.libelle}</span><Badge variant="destructive">bloquée</Badge>
+                                                    </div>
+                                                    <div className="text-xs text-muted-foreground">{e.site} — du {frDay(e.debut)} au {frDay(e.fin)}</div>
+                                                    <div className="mt-1 text-xs text-destructive">{e.blocage.message}</div>
+                                                    <a href={lien.href} target="_blank" rel="noopener noreferrer" className="mt-1 inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline">
+                                                        <ExternalLink className="h-3 w-3" />{lien.libelle}
+                                                    </a>
+                                                </div>
+                                            </div>
+                                        );
+                                    }
                                     return (
-                                        <label key={e.id} className="flex cursor-pointer items-start gap-3 p-3 hover:bg-muted/40">
-                                            <Checkbox className="mt-0.5" checked={selection.includes(e.id)} onCheckedChange={v => setSelection(s => basculer(dues, s, e.id, v === true))} aria-label={`${e.activite} ${e.site} du ${frDay(e.debut)} au ${frDay(e.fin)}`} />
+                                        <label key={e.id} className={`flex items-start gap-3 p-3 ${libre ? 'cursor-pointer hover:bg-muted/40' : 'opacity-60'}`} title={libre ? undefined : "À facturer après l'échéance bloquée de la même prestation"}>
+                                            <Checkbox className="mt-0.5" disabled={!libre} checked={selection.includes(e.id)} onCheckedChange={v => setSelection(s => basculer(dues, s, e.id, v === true))} aria-label={`${e.activite} ${e.site} du ${frDay(e.debut)} au ${frDay(e.fin)}`} />
                                             <div className="min-w-0 flex-1">
                                                 <div className="flex flex-wrap items-center gap-2 text-sm font-medium">
                                                     <Badge variant="secondary">{e.activite}</Badge>
@@ -164,6 +208,14 @@ function Facturation() {
                                         </label>
                                     );
                                 })}
+                            </div>
+                        )}
+                        {(bloquees > 0 || apercu.blocages.length > 0) && (
+                            <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                                <Button variant="outline" size="sm" disabled={chargement} onClick={() => charger(apercu.contrat.id, apercu.jusquAu, selection)}>
+                                    <RefreshCw className={`mr-2 h-4 w-4 ${chargement ? 'animate-spin' : ''}`} />Recalculer après correction
+                                </Button>
+                                {bloquees > 0 && <span>{bloquees} échéance{bloquees > 1 ? 's' : ''} bloquée{bloquees > 1 ? 's' : ''} : le reste peut être facturé.</span>}
                             </div>
                         )}
                         {apercu.prochaine && apercu.blocages.length === 0 && (
@@ -197,13 +249,27 @@ function Facturation() {
                             </div>
                         </div>
                         {anomalies.length > 0 && selection.length > 0 && <p className="text-sm text-destructive">{anomalies.join(' ')}</p>}
-                        <div className="flex flex-wrap justify-end gap-2">
+                        <div className="flex flex-wrap items-center justify-end gap-2">
+                            <Button variant="ghost" size="sm" className="mr-auto" onClick={() => setVoirPdf(v => !v)}>
+                                {voirPdf ? <EyeOff className="mr-2 h-4 w-4" /> : <Eye className="mr-2 h-4 w-4" />}{voirPdf ? "Masquer l'aperçu" : "Afficher l'aperçu"}
+                            </Button>
                             <Button variant="outline" disabled={bloque} onClick={() => emettre(true)}>{envoi === 'proforma' ? 'Création…' : 'Créer un proforma'}</Button>
                             <Button disabled={bloque} onClick={() => emettre(false)}>{envoi === 'facture' ? 'Émission…' : `Émettre la facture — ${eur(totaux.total)}`}</Button>
                         </div>
                     </CardContent>
                 </Card>
             )}
+        </div>
+        {voirPdf && apercu && !emise && (pdf.url || pdf.erreur) && (
+            <div className="xl:sticky xl:top-4 xl:self-start">
+                <div className="mb-2 flex items-center gap-2 text-sm font-medium">
+                    Aperçu de la facture {pdf.calcul && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
+                    <span className="text-xs font-normal text-muted-foreground">sans numéro tant qu'elle n'est pas émise</span>
+                </div>
+                {pdf.erreur ? <p className="text-sm text-destructive">{pdf.erreur}</p>
+                    : <iframe title="Aperçu de la facture" src={`${pdf.url}#toolbar=0&view=FitH`} className="h-[80vh] w-full rounded-md border bg-white" />}
+            </div>
+        )}
         </div>
     );
 }
