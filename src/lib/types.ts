@@ -949,7 +949,7 @@ export type User = {
 // Genkit Flow Schemas
 export const GenerateInvoiceInputSchema = z.object({
     contractId: z.string().describe('The ID of the contract to generate an invoice for.'),
-    invoiceDate: z.string().describe('The date for the invoice in ISO format.'),
+    invoiceDate: z.string().describe("Ignorée : la facture est toujours datée du jour (ni antidatée ni postdatée)."),
     isProforma: z.boolean().describe('Whether to generate a proforma invoice instead of a final one.'),
     until: z.string().optional().describe("Facturer les échéances facturables jusqu'à cette date (AAAA-MM-JJ) ; par défaut, la date de facture."),
     selection: z.array(z.string()).max(500).optional().describe("Facturation manuelle : identifiants des échéances dues à facturer ; absent : toutes."),

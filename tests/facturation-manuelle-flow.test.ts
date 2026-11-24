@@ -3,7 +3,7 @@ import { test, before } from 'node:test';
 import assert from 'node:assert/strict';
 import { Timestamp } from 'firebase-admin/firestore';
 import { adminDb } from '../src/lib/firebase-admin';
-import { apercuFacturation, prepareContractInvoice } from '../src/services/contract-billing-admin';
+import { apercuFacturation, prepareContractInvoice, previewBatchBilling } from '../src/services/contract-billing-admin';
 import { apercuPdf } from '../src/services/document-archive';
 import { createInvoice } from '../src/services/firestore-admin';
 
@@ -84,4 +84,14 @@ test("blocage d'une prestation : listé sur son échéance, le reste du contrat 
     const pdf = await apercuPdf(p);
     assert.equal(pdf.subarray(0, 5).toString(), '%PDF-');
     assert.equal((await adminDb.collection('invoices').where('contractId', '==', 'fman-k2').get()).size, 0);
+});
+
+test('file de travail : retard compté depuis la plus ancienne échéance réellement à facturer', async () => {
+    const lignes = await previewBatchBilling('2031-04-11');
+    const k = lignes.find(l => l.contractId === 'fman-k')!;
+    // Le P2 est facturé jusqu'au 30/06 ; le P3 est dû depuis le 01/01 (à échoir).
+    assert.deepEqual([k.periodStart, k.periodEnd, k.subtotal, k.dueSince], ['2031-01-01', '2031-06-30', 1550, '2031-01-01']);
+    const k2 = lignes.find(l => l.contractId === 'fman-k2')!;
+    assert.match(k2.error ?? '', /TVA non renseignée/);
+    assert.equal(k2.dueSince, '2031-01-01');
 });

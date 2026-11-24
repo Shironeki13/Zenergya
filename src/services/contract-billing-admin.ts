@@ -343,6 +343,8 @@ export async function apercuFacturation(contractId: string, jusquAu?: string): P
 export type BatchRow = {
     contractId: string; contractNumber: string; clientName: string; periodStart: string; periodEnd: string;
     echeances: number; subtotal: number; tax: number; warnings: string[]; error?: string;
+    /** Date depuis laquelle la plus ancienne échéance est facturable (mesure du retard). */
+    dueSince?: string;
 };
 
 /** Aperçu de la facturation groupée : pour chaque contrat actif, ce que sa facture contiendrait à la date (même calcul). */
@@ -361,11 +363,14 @@ export async function previewBatchBilling(until: string): Promise<BatchRow[]> {
             const due = dueInvoiceLines(input, invoices, day);
             if (!due.errors.length && due.lines.length === 0) continue;
             const totals = vatTotals(due.lines);
+            const dues = echeancesDues(due);
             const starts = due.lines.map(l => l.periodStartDate!).sort();
             const ends = due.lines.map(l => l.periodEndDate!).sort();
             rows.push({
                 ...base, periodStart: starts[0] ?? '', periodEnd: ends[ends.length - 1] ?? '', echeances: due.lines.length,
                 subtotal: totals.subtotal, tax: totals.tax, warnings: due.warnings, ...(due.errors.length && { error: due.errors.join(' ') }),
+                // Retard mesuré sur ce qui est réellement à facturer (les échéances de montant nul ne comptent pas).
+                ...(dues.length && { dueSince: dues.map(e => e.facturableLe).sort()[0] }),
             });
         } catch (e) {
             rows.push({ ...base, periodStart: '', periodEnd: '', echeances: 0, subtotal: 0, tax: 0, warnings: [], error: (e as Error).message });

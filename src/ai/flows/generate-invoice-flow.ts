@@ -13,6 +13,7 @@ import { z } from 'genkit';
 import { createInvoice } from '@/services/firestore-admin';
 import { prepareContractInvoice } from '@/services/contract-billing-admin';
 import { archiveDocumentSafely } from '@/services/document-archive';
+import { toDay } from '@/lib/services/site-amounts';
 import { requireUser } from '@/lib/auth/server';
 import { gardePerimetre } from '@/lib/auth/perimetre-server';
 import { GenerateInvoiceInputSchema, GenerateInvoiceOutputSchema, type GenerateInvoiceInput, type GenerateInvoiceOutput } from '@/lib/types';
@@ -37,7 +38,9 @@ const generateInvoiceFlow = ai.defineFlow(
   },
   async (input) => {
     try {
-      const { contractId, invoiceDate, isProforma, until, selection } = input;
+      const { contractId, isProforma, until, selection } = input;
+      // Une pièce n'est ni antidatée ni postdatée : la date de la facture est toujours celle du jour.
+      const invoiceDate = toDay(new Date())!;
       // Échéances facturables jusqu'à la date (terme et périodicité de chaque prestation), TVA par ligne, prorata
       // au jour près, totaux par taux, échéance de paiement : voir lib/billing/contract-billing.
       const { invoice: newInvoice, company, billingVersion } = await prepareContractInvoice(contractId, invoiceDate, { isProforma, until, selection });
