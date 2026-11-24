@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { AlertTriangle, BellRing, CalendarClock, CalendarX, CircleAlert, FileClock, FilePlus2, FileX2, Files, Info, Loader2, ShieldCheck } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
@@ -9,6 +9,8 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { useData } from '@/context/data-context';
+import { BoutonValidation, type CibleValidation } from '@/components/contracts/validation/bouton-validation';
+import type { TypeValidation } from '@/lib/validations';
 import { lireServeur } from '@/services/lecture';
 import { cn } from '@/lib/utils';
 import { LIBELLE_NATURE, LIBELLE_SUIVI, NATURES_DOCUMENT, suiviContratheque, type DocumentSuivi, type Gravite, type LigneSuivi, type TypeSuivi } from '@/lib/contrats/suivi';
@@ -55,13 +57,23 @@ function Tuile({ titre, valeur, sous, icone: Icone, ton, actif, onClick }: { tit
 }
 
 export default function ContrathequePage() {
-    const { contracts, isLoading, isContratheque } = useData();
+    const { contracts, isLoading, isContratheque, reloadData } = useData();
     const [documents, setDocuments] = useState<DocumentSuivi[] | null>(null);
     const [filtre, setFiltreBrut] = useState<Filtre>('tout');
     // Sous-filtre par nature (contrat, avenant, reconduction…) pour ce qui est à valider ou refusé.
     const [nature, setNature] = useState<LigneSuivi['document'] | null>(null);
     const setFiltre = (f: Filtre | ((x: Filtre) => Filtre)) => { setFiltreBrut(f); setNature(null); };
-    useEffect(() => { lireServeur<DocumentSuivi[]>('documentsASuivre', {}, []).then(setDocuments).catch(() => setDocuments([])); }, []);
+    const chargerDocuments = useCallback(() => lireServeur<DocumentSuivi[]>('documentsASuivre', {}, []).then(setDocuments).catch(() => setDocuments([])), []);
+    useEffect(() => { void chargerDocuments(); }, [chargerDocuments]);
+    // Après une validation ou un refus : documents et contrats relus.
+    const recharger = useCallback(async () => { await Promise.all([chargerDocuments(), reloadData(['contracts', 'clients', 'sites', 'services'])]); }, [chargerDocuments, reloadData]);
+    /** Document à contrôler d'une ligne en attente (contrat ou document du contrat). */
+    const cibleDe = (l: LigneSuivi): CibleValidation | null => {
+        if (l.type === 'contrat_attente') return { type: 'contrat', id: l.contractId };
+        if (l.type !== 'document_attente') return null;
+        const [, type, id] = l.cle.split(':');
+        return type && id ? { type: type as TypeValidation, id } : null;
+    };
 
     const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/Paris' });
     const suivi = useMemo(() => suiviContratheque(contracts, documents ?? [], today), [contracts, documents, today]);
@@ -78,6 +90,7 @@ export default function ContrathequePage() {
                 <div>
                     <h1 className="text-2xl font-bold tracking-tight">Contrathèque</h1>
                     <p className="text-muted-foreground">Ce qu&apos;il faut traiter sur vos contrats, et ce qui arrive dans les douze prochains mois.</p>
+                    {!isContratheque && <p className="text-sm text-muted-foreground">Les documents déposés sont validés ou refusés par la contrathèque ou un administrateur ; vous êtes prévenu par mail de la décision.</p>}
                 </div>
                 <div className="flex flex-wrap gap-2">
                     {isContratheque && <Button asChild variant="outline"><Link href="/admin/validations"><ShieldCheck className="mr-2 h-4 w-4" />Valider les documents</Link></Button>}
@@ -131,7 +144,7 @@ export default function ContrathequePage() {
                         <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-3 pb-3">
                             <div>
                                 <CardTitle className="text-base">À traiter ({lignes.length})</CardTitle>
-                                <CardDescription>Du plus urgent au moins urgent. Un clic ouvre la vie du contrat.</CardDescription>
+                                <CardDescription>Du plus urgent au moins urgent. Un clic ouvre la vie du contrat{isContratheque ? ' ; « Contrôler » ouvre le document pour le valider ou le refuser' : ''}.</CardDescription>
                             </div>
                             <div className="flex flex-wrap gap-1" role="group" aria-label="Filtrer">
                                 {(Object.keys(FILTRES) as Filtre[]).map(f => <Button key={f} size="sm" variant={filtre === f ? 'default' : 'outline'} onClick={() => setFiltre(f)} aria-pressed={filtre === f}>{FILTRES[f].libelle}</Button>)}
@@ -154,8 +167,8 @@ export default function ContrathequePage() {
                                         const g = GRAVITE[l.gravite];
                                         const Icone = ICONE[l.type];
                                         return (
-                                            <li key={l.cle}>
-                                                <Link href={`/contracts/${l.contractId}?onglet=historique`} className="flex items-start gap-3 rounded-md px-2 py-2.5 hover:bg-muted/50">
+                                            <li key={l.cle} className="flex items-center gap-2">
+                                                <Link href={`/contracts/${l.contractId}?onglet=historique`} className="flex min-w-0 flex-1 items-start gap-3 rounded-md px-2 py-2.5 hover:bg-muted/50">
                                                     <g.icone className={cn('mt-0.5 h-4 w-4 shrink-0', g.classe)} aria-label={g.libelle} />
                                                     <div className="min-w-0 flex-1">
                                                         <p className="text-sm"><span className="font-mono text-xs">{l.contrat}</span> <span className="font-medium">{l.client}</span></p>
@@ -164,6 +177,7 @@ export default function ContrathequePage() {
                                                     <Badge variant="outline" className="shrink-0 gap-1"><Icone className="h-3 w-3" />{LIBELLE_SUIVI[l.type]}</Badge>
                                                     <span className="w-20 shrink-0 text-right text-xs tabular-nums text-muted-foreground">{fr(l.date)}</span>
                                                 </Link>
+                                                {cibleDe(l) && <BoutonValidation cible={cibleDe(l)!} onTraite={recharger} />}
                                             </li>
                                         );
                                     })}

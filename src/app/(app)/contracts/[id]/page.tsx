@@ -2,6 +2,7 @@
 
 import { AccesRefuse, useHorsPerimetre } from '@/components/perimetre/acces';
 import { VieContrat } from '@/components/contracts/vie-contrat';
+import { ControleCible, type CibleValidation } from '@/components/contracts/validation/bouton-validation';
 import type { MailContrat } from '@/lib/notifications/trace';
 import { lireServeur } from '@/services/lecture';
 import { EtatValidation, LienPiece } from "@/components/contracts/events/etat-document";
@@ -132,7 +133,7 @@ export default function ContractDetailPage() {
   const id = params.id as string;
   const router = useRouter();
   const { toast } = useToast();
-  const { revisionRules, services, vatRates, schedules, terms, paymentTerms, isAdmin, isContratheque } = useData();
+  const { revisionRules, services, vatRates, schedules, terms, paymentTerms, isAdmin, isContratheque, reloadData: rechargerReferentiel } = useData();
 
   const [isLoading, setIsLoading] = useState(true);
   const [contract, setContract] = useState<Contract | null>(null);
@@ -184,6 +185,7 @@ export default function ContractDetailPage() {
   const chargerMails = useCallback(() => { if (id) lireServeur<MailContrat[]>('notificationsDuContrat', { id }, []).then(setMails).catch(() => setMails([])); }, [id]);
   useEffect(() => { chargerMails(); }, [chargerMails]);
 
+  const [aControler, setAControler] = useState<CibleValidation | null>(null);
   const reloadData = useCallback(async () => {
     if (!id) return;
     try {
@@ -200,6 +202,12 @@ export default function ContractDetailPage() {
       toast({ title: "Erreur", description: "Impossible de rafraîchir les données.", variant: "destructive" });
     }
   }, [id, toast]);
+
+  // Après une validation ou un refus : le contrat (statut, valeurs corrigées) et ses documents sont relus.
+  const apresValidation = useCallback(async () => {
+    const [k] = await Promise.all([getContract(id), reloadData(), rechargerReferentiel(['contracts', 'sites', 'services'])]);
+    if (k) setContract(k);
+  }, [id, reloadData, rechargerReferentiel]);
 
   useEffect(() => {
     if (!id) return;
@@ -413,9 +421,11 @@ export default function ContractDetailPage() {
   const echeances = enRetard(periodesDuContrat(contract, sites, { services, activities, vatRates, schedules, terms, invoices }).values());
   const contactFacturation = contacts.find(c => c.type === 'facturation');
   const aDuP1 = activities.some(a => contract.activityIds?.includes(a.id) && a.type === 'P1');
+  const docsEnAttente = [...amendments, ...terminations, ...renewals, ...trusteeChanges, ...beChanges].filter(d => d.validationStatus === 'pending_validation').length;
   const pointsAFaire: PointAFaire[] = [
     ...(contract.validationStatus === 'refused' ? [{ id: 'refus', gravite: 'bloquant' as const, texte: `Contrat refusé à la validation${contract.refusalReason ? ` : ${contract.refusalReason}` : ''}.`, action: { label: 'Corriger', onClick: () => router.push(`/contracts/${id}/edit`) } }] : []),
-    ...(contract.validationStatus === 'pending_validation' ? [{ id: 'validation', gravite: 'attention' as const, texte: 'Contrat en attente de validation : il n\'est pas encore facturé.' }] : []),
+    ...(docsEnAttente ? [{ id: 'documents', gravite: 'attention' as const, texte: isContratheque ? `${docsEnAttente} document(s) du contrat en attente de votre validation.` : `${docsEnAttente} document(s) du contrat en attente de validation par la contrathèque ou un administrateur.`, action: { label: isContratheque ? 'Contrôler' : 'Voir', onClick: () => changerOnglet('historique') } }] : []),
+    ...(contract.validationStatus === 'pending_validation' ? [{ id: 'validation', gravite: 'attention' as const, texte: isContratheque ? 'Contrat en attente de votre validation : il n\'est pas encore facturé.' : 'Contrat en attente de validation par la contrathèque ou un administrateur : il n\'est pas encore facturé. Vous serez prévenu par mail de la décision.', ...(isContratheque && { action: { label: 'Contrôler et valider', onClick: () => setAControler({ type: 'contrat', id: contract.id }) } }) }] : []),
     ...(sites.length === 0 ? [{ id: 'sites', gravite: 'bloquant' as const, texte: 'Aucun site rattaché : rien n\'est facturé.', action: { label: 'Ajouter un site', onClick: () => handleOpenSiteDialog() } }] : []),
     ...(sansPrestation.length ? [{ id: 'sans', gravite: 'bloquant' as const, texte: `${sansPrestation.length} site(s) sans prestation : ${sansPrestation.slice(0, 3).map(e => e.site.name).join(', ')}${sansPrestation.length > 3 ? '…' : ''}.`, action: { label: 'Sites', onClick: () => changerOnglet('sites') } }] : []),
     ...(incompletes.length ? [{ id: 'inc', gravite: 'bloquant' as const, texte: `${incompletes.length} prestation(s) incomplète(s) (TVA, périodicité, terme ou montant manquant).`, action: { label: 'Sites', onClick: () => changerOnglet('sites') } }] : []),
@@ -433,6 +443,7 @@ export default function ContractDetailPage() {
 
   return (
     <div className="space-y-6">
+      <ControleCible cible={aControler} onClose={() => setAControler(null)} onTraite={apresValidation} />
       {/* Bandeau : identité du contrat, client, période, actions */}
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="min-w-0">
@@ -583,7 +594,7 @@ export default function ContractDetailPage() {
 
         <TabsContent value="historique" className="mt-4">
           <div className="mb-4">
-            <VieContrat contract={contract} mails={mails} documents={{ amendments, terminations, renewals, trusteeChanges, beChanges }}
+            <VieContrat contract={contract} mails={mails} documents={{ amendments, terminations, renewals, trusteeChanges, beChanges }} onTraite={apresValidation}
               onVoirDocuments={onglet => { setOngletDocuments(onglet); document.getElementById('documents-contrat')?.scrollIntoView({ behavior: 'smooth', block: 'start' }); }} />
           </div>
           {(contract.modificationsValidees?.length ?? 0) > 0 && (
@@ -637,7 +648,7 @@ export default function ContractDetailPage() {
                       <TableCell>{a.description}</TableCell>
                       <TableCell>{a.impactP1 ? `${a.impactP1} (P1)` : ''} {a.impactP2 ? `${a.impactP2} (P2)` : ''}</TableCell>
                       <TableCell>{a.signed ? 'Oui' : 'Non'}</TableCell>
-                      <TableCell><EtatValidation doc={a} /></TableCell>
+                      <TableCell><span className="inline-flex flex-wrap items-center gap-2"><EtatValidation doc={a} />{isContratheque && a.validationStatus === 'pending_validation' && <Button size="sm" variant="outline" className="h-7 px-2 text-xs" onClick={() => setAControler({ type: a.nature === 'os' ? 'os' : 'avenant', id: a.id })}>Contrôler</Button>}</span></TableCell>
                       <TableCell><LienPiece doc={a} /></TableCell>
                     </TableRow>
                   )) : <TableRow><TableCell colSpan={6} className="text-center">Aucun avenant</TableCell></TableRow>}
@@ -663,7 +674,7 @@ export default function ContractDetailPage() {
                       <TableCell>{new Date(t.createdAt).toLocaleDateString('fr-FR')}</TableCell>
                       <TableCell>{t.effectiveDate ? new Date(t.effectiveDate).toLocaleDateString('fr-FR') : '-'}</TableCell>
                       <TableCell>{t.reason}</TableCell>
-                      <TableCell><EtatValidation doc={t} /></TableCell>
+                      <TableCell><span className="inline-flex flex-wrap items-center gap-2"><EtatValidation doc={t} />{isContratheque && t.validationStatus === 'pending_validation' && <Button size="sm" variant="outline" className="h-7 px-2 text-xs" onClick={() => setAControler({ type: 'resiliation', id: t.id })}>Contrôler</Button>}</span></TableCell>
                       <TableCell><LienPiece doc={t} /></TableCell>
                     </TableRow>
                   )) : <TableRow><TableCell colSpan={5} className="text-center">Aucune résiliation</TableCell></TableRow>}
@@ -689,7 +700,7 @@ export default function ContractDetailPage() {
                       <TableCell>{new Date(r.createdAt).toLocaleDateString('fr-FR')}</TableCell>
                       <TableCell>{new Date(r.newEndDate).toLocaleDateString('fr-FR')}</TableCell>
                       <TableCell>{r.duration}</TableCell>
-                      <TableCell><EtatValidation doc={r} /></TableCell>
+                      <TableCell><span className="inline-flex flex-wrap items-center gap-2"><EtatValidation doc={r} />{isContratheque && r.validationStatus === 'pending_validation' && <Button size="sm" variant="outline" className="h-7 px-2 text-xs" onClick={() => setAControler({ type: 'reconduction', id: r.id })}>Contrôler</Button>}</span></TableCell>
                       <TableCell><LienPiece doc={r} /></TableCell>
                     </TableRow>
                   )) : <TableRow><TableCell colSpan={5} className="text-center">Aucune reconduction</TableCell></TableRow>}
@@ -715,7 +726,7 @@ export default function ContractDetailPage() {
                       <TableCell>{new Date(t.effectiveDate).toLocaleDateString('fr-FR')}</TableCell>
                       <TableCell>{t.newRepresentative}</TableCell>
                       <TableCell>{t.contactEmail}</TableCell>
-                      <TableCell><EtatValidation doc={t} /></TableCell>
+                      <TableCell><span className="inline-flex flex-wrap items-center gap-2"><EtatValidation doc={t} />{isContratheque && t.validationStatus === 'pending_validation' && <Button size="sm" variant="outline" className="h-7 px-2 text-xs" onClick={() => setAControler({ type: 'syndic', id: t.id })}>Contrôler</Button>}</span></TableCell>
                       <TableCell><LienPiece doc={t} /></TableCell>
                     </TableRow>
                   )) : <TableRow><TableCell colSpan={5} className="text-center">Aucun changement</TableCell></TableRow>}
@@ -741,7 +752,7 @@ export default function ContractDetailPage() {
                       <TableCell>{new Date(b.effectiveDate).toLocaleDateString('fr-FR')}</TableCell>
                       <TableCell>{b.newBe}</TableCell>
                       <TableCell>{b.contactEmail}</TableCell>
-                      <TableCell><EtatValidation doc={b} /></TableCell>
+                      <TableCell><span className="inline-flex flex-wrap items-center gap-2"><EtatValidation doc={b} />{isContratheque && b.validationStatus === 'pending_validation' && <Button size="sm" variant="outline" className="h-7 px-2 text-xs" onClick={() => setAControler({ type: 'be', id: b.id })}>Contrôler</Button>}</span></TableCell>
                       <TableCell><LienPiece doc={b} /></TableCell>
                     </TableRow>
                   )) : <TableRow><TableCell colSpan={5} className="text-center">Aucun changement</TableCell></TableRow>}

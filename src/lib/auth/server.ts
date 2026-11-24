@@ -101,6 +101,9 @@ export async function resolveAppUser(uid: string, email: string | undefined, dis
         }
     }
 
+    // Un administrateur valide d'office les documents de contrat ; le droit « Contrathèque » désigne les autres valideurs.
+    isContratheque = isContratheque || isAdmin;
+
     return {
         uid,
         email,
@@ -181,9 +184,9 @@ export async function requireAdmin(): Promise<SessionUser> {
     return user;
 }
 
-/** Contrathèque : seule à valider ou refuser les documents de contrat. */
+/** Valider ou refuser les documents de contrat : la contrathèque et les administrateurs. */
 export async function requireContratheque(): Promise<SessionUser> {
     const user = await requireUser();
-    if (!user.isContratheque) throw new AuthError(403, 'Réservé à la contrathèque.');
+    if (!user.isContratheque && !user.isAdmin) throw new AuthError(403, 'Réservé à la contrathèque et aux administrateurs.');
     return user;
 }

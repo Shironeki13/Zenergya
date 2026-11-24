@@ -71,7 +71,7 @@ export async function fileValidation(): Promise<ElementAValider[]> {
 
 /** Valide (contrôle complet, corrections et effets appliqués) ou refuse (motif obligatoire) un document en attente. */
 export async function traiterValidation(type: TypeValidation, id: string, choix: DecisionValidation, user: SessionUser): Promise<void> {
-    if (!user.isContratheque) throw new Error('Réservé à la contrathèque.');
+    if (!user.isContratheque && !user.isAdmin) throw new Error('Réservé à la contrathèque et aux administrateurs.');
     const coll = COLLECTION_VALIDATION[type];
     if (!coll) throw new Error('Type de document inconnu.');
     const motif = (choix.motif ?? '').trim();

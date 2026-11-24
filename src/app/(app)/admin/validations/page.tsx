@@ -58,7 +58,7 @@ export default function ValidationsPage() {
         },
     ], [onglet]);
 
-    if (!isContratheque) return <p className="text-muted-foreground">La validation des documents de contrat est réservée à la contrathèque (droit donné par un administrateur dans Utilisateurs › Rôles).</p>;
+    if (!isContratheque) return <p className="text-muted-foreground">La validation des documents de contrat est réservée à la contrathèque et aux administrateurs (droit « Contrathèque » donné par un administrateur dans Utilisateurs › Rôles).</p>;
 
     return (
         <div className="flex flex-col gap-4">

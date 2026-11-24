@@ -49,9 +49,12 @@ test('file d\'attente : chaque type, contrat et client, pièce, valeurs à contr
     assert.deepEqual([k.documentName, k.valeurs.startDate, k.valeurs.endDate, k.valeurs.baseAmountP2], ['contrat.pdf', '2026-01-01', '2030-12-31', 1200]);
 });
 
-test('droit : seule la contrathèque valide ou refuse, même un administrateur ne le peut pas', async () => {
-    await assert.rejects(traiterValidation('os', 'va-os', { decision: 'valider', controles: await tout('os', 'va-os') }, adminSeul), /contrathèque/);
-    await assert.rejects(traiterValidation('os', 'va-os', { decision: 'refuser', motif: 'x' }, adminSeul), /contrathèque/);
+test('droit : la contrathèque et les administrateurs valident ou refusent ; un autre utilisateur ne le peut pas', async () => {
+    const simple = { uid: 'usr', email: 'adv@v.fr', isAdmin: false, isContratheque: false, profile: {} } as unknown as SessionUser;
+    await assert.rejects(traiterValidation('os', 'va-os', { decision: 'valider', controles: await tout('os', 'va-os') }, simple), /Réservé à la contrathèque et aux administrateurs/);
+    await assert.rejects(traiterValidation('os', 'va-os', { decision: 'refuser', motif: 'x' }, simple), /Réservé à la contrathèque et aux administrateurs/);
+    // Un administrateur passe le contrôle du droit : le refus sans motif lui est opposé comme à la contrathèque.
+    await assert.rejects(traiterValidation('os', 'va-os', { decision: 'refuser', motif: ' ' }, adminSeul), /Motif du refus obligatoire/);
 });
 
 test('contrôle : chaque valeur doit être cochée ; correction invalide ou champ figé refusés', async () => {

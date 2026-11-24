@@ -72,7 +72,8 @@ async function validationContratIntacte(id: string, data: DocumentData | undefin
     }
 
     // Contrat validé.
-    const contratheque = user?.isContratheque === true;
+    // Contrathèque ou administrateur : les deux valident et corrigent un contrat validé.
+    const contratheque = user?.isContratheque === true || user?.isAdmin === true;
     if (v(apres, 'validationStatus', 'validated') !== 'validated' && !contratheque) throw new Error('Un contrat validé ne se remet pas en validation : ses données contractuelles se modifient par un avenant, ou par la contrathèque.');
     const [a, b] = [valeursDocument('contrat', avant), valeursDocument('contrat', apres)];
     // Vide, « non » et zéro se valent : un champ jamais renseigné n'est pas « modifié » par un formulaire qui l'envoie vide.

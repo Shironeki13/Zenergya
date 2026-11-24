@@ -112,15 +112,15 @@ test('garde-fous repris des règles : codes immuables, validation des contrats, 
     await assert.rejects(ecrire('deleteQuoteDraft', ['ec-dl'], lyon), /Seul un brouillon/);
 });
 
-test('contrat validé : champs contractuels réservés à la contrathèque, statut par la contrathèque ou un administrateur, modifications tracées', async () => {
+test('contrat validé : champs contractuels et statut réservés à la contrathèque et aux administrateurs, modifications tracées', async () => {
     const ctq = u('ec-ctq', ['ec-ag-lyon'], { isContratheque: true });
     await set('contracts', 'ec-kv', { clientId: 'ec-cl', clientName: 'Client l', label: 'Chaufferie', contractNumber: 'CTN-9V', status: 'Actif', validationStatus: 'validated', validatedBy: 'ctq@v.fr',
         startDate: Timestamp.fromDate(new Date('2025-01-01T00:00:00Z')), endDate: Timestamp.fromDate(new Date('2029-12-31T00:00:00Z')), baseAmountP2: 6000, noticePeriod: '3 mois' });
     await set('contracts', 'ec-kancien', { clientId: 'ec-cl', clientName: 'Client l', label: 'Ancien', contractNumber: 'CTN-9A', status: 'Terminé' });   // antérieur à la validation : considéré validé
     const k = async (id = 'ec-kv') => (await lu('contracts', id)).data()!;
 
-    // Utilisateur (et administrateur sans le droit contrathèque) : les champs contractuels ne se modifient pas.
-    for (const user of [lyon, admin]) {
+    // Utilisateur : les champs contractuels ne se modifient pas (un administrateur a les droits de la contrathèque).
+    for (const user of [lyon]) {
         await assert.rejects(ecrire('updateContract', ['ec-kv', { label: 'Autre libellé' }], user), /Contrat validé : « Libellé » ne se modifie que par la contrathèque, ou par un avenant/);
         await assert.rejects(ecrire('updateContract', ['ec-kv', { endDate: '2031-12-31', baseAmountP2: 7000 }], user), /« Fin », « Base marché P2 \(€ HT\/an\) » ne se modifient que par la contrathèque/);
     }

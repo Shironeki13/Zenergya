@@ -11,6 +11,16 @@ import { vieContrat, type DocumentsContrat, type EtapeVie, type TypeVie } from '
 import { LIBELLE_EVENEMENT } from '@/lib/notifications/modeles';
 import { LIBELLE_STATUT_MAIL, mailsParEtape, type MailContrat } from '@/lib/notifications/trace';
 import type { Contract } from '@/lib/types';
+import { BoutonValidation, type CibleValidation } from '@/components/contracts/validation/bouton-validation';
+import type { TypeValidation } from '@/lib/validations';
+
+/** Document à contrôler pour une étape en attente : le contrat lui-même, ou l'un de ses documents. */
+function cibleDe(e: EtapeVie, contractId: string): CibleValidation | null {
+    if (e.id === 'validation') return e.etat === 'en_cours' ? { type: 'contrat', id: contractId } : null;
+    if (e.validation?.etat !== 'en_attente') return null;
+    const id = e.id.split(':')[1];
+    return id ? { type: e.type as TypeValidation, id } : null;
+}
 
 /**
  * Vie du contrat : frise chronologique de tout ce qui lui est arrivé (dépôt, validation, début, documents et leur
@@ -46,7 +56,7 @@ function Mails({ mails, titre }: { mails: MailContrat[]; titre: string }) {
     );
 }
 
-function Detail({ e, mails, onClose, onVoirDocuments }: { e: EtapeVie; mails: MailContrat[]; onClose: () => void; onVoirDocuments?: (onglet: NonNullable<EtapeVie['onglet']>) => void }) {
+function Detail({ e, mails, onClose, onVoirDocuments, cible, onTraite }: { e: EtapeVie; mails: MailContrat[]; onClose: () => void; onVoirDocuments?: (onglet: NonNullable<EtapeVie['onglet']>) => void; cible?: CibleValidation | null; onTraite?: () => Promise<void> | void }) {
     const ton = TON_POINT[e.etat];
     const ligne = (libelle: string, valeur: React.ReactNode) => <div className="flex justify-between gap-4"><dt className="text-muted-foreground">{libelle}</dt><dd className="text-right font-medium">{valeur}</dd></div>;
     const v = e.validation;
@@ -59,6 +69,12 @@ function Detail({ e, mails, onClose, onVoirDocuments }: { e: EtapeVie; mails: Ma
                 </div>
                 <button type="button" onClick={onClose} className="rounded p-1 text-muted-foreground hover:bg-muted" aria-label="Fermer le détail"><X className="h-4 w-4" /></button>
             </div>
+            {cible && onTraite && (
+                <div className="mt-3 flex flex-wrap items-center gap-2 rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-900">
+                    <span className="flex-1">Ce document attend une décision.</span>
+                    <BoutonValidation cible={cible} onTraite={onTraite} libelle="Contrôler, puis valider ou refuser" className="h-8 gap-1 bg-background" />
+                </div>
+            )}
             {e.note && <p className={cn('mt-2 flex items-start gap-2 text-sm', e.etat === 'alerte' ? 'text-red-700' : 'text-muted-foreground')}>{e.etat === 'alerte' && <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />}{e.note}</p>}
             <div className="mt-3 grid gap-6 md:grid-cols-2">
                 {v && (
@@ -97,7 +113,7 @@ function Detail({ e, mails, onClose, onVoirDocuments }: { e: EtapeVie; mails: Ma
     );
 }
 
-export function VieContrat({ contract, documents, mails = [], onVoirDocuments }: { contract: Contract; documents: DocumentsContrat; /** Mails composés pour ce contrat (journal des notifications). */ mails?: MailContrat[]; onVoirDocuments?: (onglet: NonNullable<EtapeVie['onglet']>) => void }) {
+export function VieContrat({ contract, documents, mails = [], onVoirDocuments, onTraite }: { /** Après une validation ou un refus fait depuis la frise : recharger le contrat. */ onTraite?: () => Promise<void> | void; contract: Contract; documents: DocumentsContrat; /** Mails composés pour ce contrat (journal des notifications). */ mails?: MailContrat[]; onVoirDocuments?: (onglet: NonNullable<EtapeVie['onglet']>) => void }) {
     const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/Paris' });
     const vie = useMemo(() => vieContrat(contract, documents, today), [contract, documents, today]);
     const [ouvert, setOuvert] = useState<string | null>(null);
@@ -146,7 +162,7 @@ export function VieContrat({ contract, documents, mails = [], onVoirDocuments }:
                     </div>
                 </div>
                 <Frise points={points} ouvert={ouvert} onOuvrir={setOuvert} label="Frise chronologique de la vie du contrat" />
-                {choisie && <Detail e={choisie} mails={trace.parEtape.get(choisie.id) ?? []} onClose={() => setOuvert(null)} onVoirDocuments={onVoirDocuments} />}
+                {choisie && <Detail e={choisie} mails={trace.parEtape.get(choisie.id) ?? []} onClose={() => setOuvert(null)} onVoirDocuments={onVoirDocuments} cible={cibleDe(choisie, contract.id)} onTraite={onTraite} />}
                 {mails.length > 0 && (
                     <div>
                         <button type="button" className="inline-flex items-center gap-1.5 text-sm underline" aria-expanded={tousMails} onClick={() => setTousMails(v => !v)}>
