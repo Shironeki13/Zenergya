@@ -56,6 +56,9 @@ import {
   TrendingUp,
   AlertTriangle,
   ChevronDown,
+  CheckCircle2,
+  CircleDashed,
+  Euro,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -87,12 +90,49 @@ import { ContractEInvoicingCard } from "@/components/contracts/EInvoicingCard";
 const ONGLETS_CONTRAT = ['synthese', 'sites', 'factures', 'rfe', 'p1', 'historique'] as const;
 type OngletContrat = typeof ONGLETS_CONTRAT[number];
 
+/** Encart « Informations » : blocs titrés, une ligne par information (libellé à gauche, valeur à droite). */
+function BlocInfos({ titre, icone, children }: { titre: string; icone: React.ReactNode; children: React.ReactNode }) {
+  return (
+    <section>
+      <h3 className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">{icone}{titre}</h3>
+      <div className="space-y-1.5">{children}</div>
+    </section>
+  );
+}
+function LigneInfo({ libelle, children }: { libelle: string; children: React.ReactNode }) {
+  return (
+    <div className="grid grid-cols-[11rem_minmax(0,1fr)] gap-3">
+      <span className="text-muted-foreground">{libelle}</span>
+      <span className="min-w-0 font-medium">{children}</span>
+    </div>
+  );
+}
+const Vide = ({ texte = 'Non renseigné' }: { texte?: string }) => <span className="font-normal text-muted-foreground">{texte}</span>;
+function Signature({ fait, qui }: { fait: boolean; qui: string }) {
+  return (
+    <span className={`inline-flex items-center gap-1 ${fait ? 'text-emerald-700' : 'text-amber-700'}`}>
+      {fait ? <CheckCircle2 className="h-4 w-4" /> : <CircleDashed className="h-4 w-4" />}{fait ? `Signé par ${qui}` : `Non signé par ${qui}`}
+    </span>
+  );
+}
+const PARIS = { timeZone: 'Europe/Paris' } as const;
+/** « 5 ans », « 4 ans et 3 mois », « 8 mois » : durée du contrat, fin incluse (dates lues à l'heure de Paris). */
+function dureeContrat(debut: string, fin: string): string {
+  const jour = (d: string) => new Date(d).toLocaleDateString('en-CA', PARIS).split('-').map(Number);
+  const [a1, m1, j1] = jour(debut);
+  const lendemain = new Date(Date.UTC(...(jour(fin) as [number, number, number])) + 86_400_000);
+  const [a2, m2, j2] = [lendemain.getUTCFullYear(), lendemain.getUTCMonth() + 1, lendemain.getUTCDate()];
+  const mois = Math.max(0, (a2 - a1) * 12 + m2 - m1 - (j2 < j1 ? 1 : 0));
+  const ans = Math.floor(mois / 12), reste = mois % 12;
+  return [ans ? `${ans} an${ans > 1 ? 's' : ''}` : '', reste ? `${reste} mois` : ''].filter(Boolean).join(' et ') || "moins d'un mois";
+}
+
 export default function ContractDetailPage() {
   const params = useParams();
   const id = params.id as string;
   const router = useRouter();
   const { toast } = useToast();
-  const { revisionRules, services, vatRates, schedules, terms, isAdmin, isContratheque } = useData();
+  const { revisionRules, services, vatRates, schedules, terms, paymentTerms, isAdmin, isContratheque } = useData();
 
   const [isLoading, setIsLoading] = useState(true);
   const [contract, setContract] = useState<Contract | null>(null);
@@ -385,6 +425,10 @@ export default function ContractDetailPage() {
     ...(!contactFacturation ? [{ id: 'contact', gravite: 'attention' as const, texte: 'Aucun contact de facturation chez le client.', action: { label: 'Fiche client', onClick: () => router.push(`/clients/${contract.clientId}`) } }] : []),
     ...(showRenewAlert ? [{ id: 'echeance', gravite: 'attention' as const, texte: `Le contrat arrive à échéance dans ${daysUntilEnd} jour(s), le ${new Date(contract.endDate).toLocaleDateString('fr-FR')}${contract.tacitRenewal ? ' (reconduction tacite)' : ''}.`, action: { label: 'Reconductions', onClick: () => changerOnglet('historique') } }] : []),
   ];
+  const terme = paymentTerms.find(t => t.id === (contract.paymentTermId || client?.paymentTermId));
+  const conditionsPaiement = terme ? `${terme.deadline}${contract.paymentTermId ? '' : ' (celles du client)'}` : '30 jours (par défaut)';
+  const basesMarche = ([['P1', contract.baseAmountP1], ['P2', contract.baseAmountP2], ['P3', contract.baseAmountP3], ['P3R', contract.baseAmountP3R]] as [string, number | undefined][])
+    .filter((x): x is [string, number] => typeof x[1] === 'number' && x[1] > 0);
   const nbEvenements = amendments.length + terminations.length + renewals.length + trusteeChanges.length + beChanges.length + (contract.modificationsValidees?.length ?? 0);
 
   return (
@@ -433,7 +477,7 @@ export default function ContractDetailPage() {
         </div>
         <div className="flex shrink-0 flex-wrap gap-2">
           <Button variant="outline" asChild><Link href={`/contracts/${id}/edit`}>Modifier</Link></Button>
-          <Button onClick={() => router.push('/billing')}><PlusCircle className="mr-2 h-4 w-4" />Générer une facture</Button>
+          <Button onClick={() => router.push(`/billing?contrat=${id}`)}><PlusCircle className="mr-2 h-4 w-4" />Générer une facture</Button>
         </div>
       </div>
 
@@ -462,80 +506,55 @@ export default function ContractDetailPage() {
           <div className="grid gap-6 lg:grid-cols-2">
             <Card>
               <CardHeader className="pb-2"><CardTitle className="text-base">Informations</CardTitle></CardHeader>
-              <CardContent>
-            <div className="space-y-2 text-sm">
-              <div className="flex items-center">
-                <Calendar className="mr-2 h-4 w-4 text-muted-foreground" />
-                <span>
-                  {new Date(contract.startDate).toLocaleDateString('fr-FR')} —{" "}
-                  {new Date(contract.endDate).toLocaleDateString('fr-FR')}
-                </span>
-              </div>
-              <div className="flex items-center">
-                <FileClock className="mr-2 h-4 w-4 text-muted-foreground" />
-                <span>
-                  Facturé {sites[0]?.billingSchedule || contract.billingSchedule || 'Non défini'}
-                </span>
-              </div>
-              <div className="flex items-center">
-                <CreditCard className="mr-2 h-4 w-4 text-muted-foreground" />
-                <span>
-                  Facturation : {contract.invoicingType === 'global' ? 'Globale' : 'Détaillée par site'}
-                </span>
-              </div>
-              <ResponsableFacturation contractId={contract.id} value={contract.billingManagerId} />
-              <div className="flex items-center gap-2">
-                <MapPin className="mr-2 h-4 w-4 text-muted-foreground" />
-                <Badge variant={sites.length > 1 ? "default" : "secondary"}>
-                  {sites.length > 1 ? `Multi-sites (${sites.length})` : 'Mono-site'}
-                </Badge>
-              </div>
-              <div className="flex items-start">
-                <Paperclip className="mr-2 h-4 w-4 mt-1 text-muted-foreground" />
-                <div>
-                  <span className="font-medium">Documents :</span>
+              <CardContent className="space-y-5 text-sm">
+                <BlocInfos titre="Le contrat" icone={<FileText className="h-4 w-4" />}>
+                  <LigneInfo libelle="Libellé">{contract.label || <Vide />}</LigneInfo>
+                  {contract.marketType && <LigneInfo libelle="Type de marché">{contract.marketType}</LigneInfo>}
+                  <LigneInfo libelle="Période">
+                    du {new Date(contract.startDate).toLocaleDateString('fr-FR', PARIS)} au {new Date(contract.endDate).toLocaleDateString('fr-FR', PARIS)}
+                    <span className="text-muted-foreground"> ({dureeContrat(contract.startDate, contract.endDate)})</span>
+                  </LigneInfo>
+                  <LigneInfo libelle="Reconduction">
+                    {!contract.renewal ? 'Aucune : le contrat prend fin à son terme'
+                      : `${contract.tacitRenewal ? 'Tacite' : 'Expresse (accord à renouveler)'}${contract.renewalDuration ? `, par période de ${contract.renewalDuration}` : ''}`}
+                  </LigneInfo>
+                  {contract.noticePeriod && <LigneInfo libelle="Préavis de dénonciation">{contract.noticePeriod}</LigneInfo>}
+                  <LigneInfo libelle="Signatures">
+                    <span className="flex flex-wrap gap-x-4 gap-y-1">
+                      <Signature fait={!!contract.signedByCompany} qui="Zenergya" />
+                      <Signature fait={!!contract.signedByClient} qui="le client" />
+                    </span>
+                  </LigneInfo>
+                  {contract.externalRef && <LigneInfo libelle="Réf. externe">{contract.externalRef}</LigneInfo>}
+                </BlocInfos>
+
+                <BlocInfos titre="La facturation" icone={<CreditCard className="h-4 w-4" />}>
+                  <LigneInfo libelle="Périodicité">{sites[0]?.billingSchedule || contract.billingSchedule || <Vide texte="Non définie" />}</LigneInfo>
+                  <LigneInfo libelle="Présentation">{contract.invoicingType === 'global' ? 'Une facture globale, une ligne par activité' : `Une facture détaillée par site (${sites.length} site${sites.length > 1 ? 's' : ''})`}</LigneInfo>
+                  <LigneInfo libelle="Conditions de paiement">{conditionsPaiement}</LigneInfo>
+                  <div className="pt-1"><ResponsableFacturation contractId={contract.id} value={contract.billingManagerId} /></div>
+                </BlocInfos>
+
+                <BlocInfos titre="Montants de base du marché (HT par an)" icone={<Euro className="h-4 w-4" />}>
+                  {basesMarche.length === 0 ? <p className="text-muted-foreground">Aucun montant de base renseigné.</p> : (
+                    <>
+                      {basesMarche.map(([code, montant]) => <LigneInfo key={code} libelle={code}><span className="tabular-nums">{eur0(montant)}</span></LigneInfo>)}
+                      {basesMarche.length > 1 && <LigneInfo libelle="Total"><span className="font-semibold tabular-nums">{eur0(basesMarche.reduce((t, [, m]) => t + m, 0))}</span></LigneInfo>}
+                    </>
+                  )}
+                </BlocInfos>
+
+                <BlocInfos titre={`Documents${contract.documents?.length ? ` (${contract.documents.length})` : ''}`} icone={<Paperclip className="h-4 w-4" />}>
                   {contract.documents && contract.documents.length > 0 ? (
-                    <ul className="list-disc pl-5">
+                    <ul className="space-y-1">
                       {contract.documents.map((doc, index) => (
                         <li key={index} className="truncate">
-                          <a href={doc.url} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">
-                            {doc.name}
-                          </a>
+                          <a href={doc.url} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">{doc.name}</a>
                         </li>
                       ))}
                     </ul>
-                  ) : (
-                    <span className="text-muted-foreground ml-2">Aucun document</span>
-                  )}
-                </div>
-              </div>
-              <div className="flex items-center">
-                <FileText className="mr-2 h-4 w-4 text-muted-foreground" />
-                <span>Libellé : {contract.label || 'N/A'}</span>
-              </div>
-              <div className="flex items-center">
-                <FileText className="mr-2 h-4 w-4 text-muted-foreground" />
-                <span>Réf. Externe : {contract.externalRef || 'N/A'}</span>
-              </div>
-              <Separator className="my-2" />
-              <div className="grid grid-cols-2 gap-2">
-                <div><span className="font-medium">Base P1:</span> {contract.baseAmountP1?.toFixed(2) || '-'} €</div>
-                <div><span className="font-medium">Base P2:</span> {contract.baseAmountP2?.toFixed(2) || '-'} €</div>
-                <div><span className="font-medium">Base P3:</span> {contract.baseAmountP3?.toFixed(2) || '-'} €</div>
-                <div><span className="font-medium">Base P3R:</span> {contract.baseAmountP3R?.toFixed(2) || '-'} €</div>
-              </div>
-              <Separator className="my-2" />
-              <div className="grid grid-cols-2 gap-2">
-                <div><span className="font-medium">Reconduction:</span> {contract.renewal ? 'Oui' : 'Non'}</div>
-                <div><span className="font-medium">Tacite:</span> {contract.tacitRenewal ? 'Oui' : 'Non'}</div>
-                <div><span className="font-medium">Durée:</span> {contract.renewalDuration || 'N/A'}</div>
-              </div>
-              <Separator className="my-2" />
-              <div className="grid grid-cols-2 gap-2">
-                <div><span className="font-medium">Signé Zenergya:</span> {contract.signedByCompany ? 'Oui' : 'Non'}</div>
-                <div><span className="font-medium">Signé Client:</span> {contract.signedByClient ? 'Oui' : 'Non'}</div>
-              </div>
-            </div>
+                  ) : <p className="text-muted-foreground">Aucun document joint.</p>}
+                </BlocInfos>
               </CardContent>
             </Card>
             <CarteContacts contacts={contacts} lienClient={`/clients/${contract.clientId}`} />
@@ -549,7 +568,7 @@ export default function ContractDetailPage() {
         </TabsContent>
 
         <TabsContent value="factures" className="mt-4">
-          <TableauFactures factures={invoices} onGenerer={() => router.push('/billing')} description="Factures et proformas du contrat, du plus récent au plus ancien." />
+          <TableauFactures factures={invoices} onGenerer={() => router.push(`/billing?contrat=${id}`)} description="Factures et proformas du contrat, du plus récent au plus ancien." />
         </TabsContent>
 
         <TabsContent value="rfe" className="mt-4">
