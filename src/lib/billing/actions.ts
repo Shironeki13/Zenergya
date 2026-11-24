@@ -4,7 +4,7 @@ import { requireUser } from '@/lib/auth/server';
 import { gardePerimetre, requireUserDans } from '@/lib/auth/perimetre-server';
 import { convertProformaToInvoice } from '@/services/firestore-admin';
 import { archiveDocumentSafely } from '@/services/document-archive';
-import { previewBatchBilling, type BatchRow } from '@/services/contract-billing-admin';
+import { apercuFacturation, previewBatchBilling, type ApercuFacturation, type BatchRow } from '@/services/contract-billing-admin';
 
 /** Transforme un proforma en facture définitive (numéro attribué côté serveur). */
 export async function convertProforma(invoiceId: string): Promise<{ success: boolean; invoiceNumber?: string; error?: string }> {
@@ -25,6 +25,16 @@ export async function previewBatchBillingAction(until: string): Promise<{ succes
         const contrats = await gardePerimetre(await requireUser()).ids('contracts');
         const lignes = await previewBatchBilling(until);
         return { success: true, data: contrats ? lignes.filter(l => contrats.has(l.contractId)) : lignes };
+    } catch (error) {
+        return { success: false, error: error instanceof Error ? error.message : 'Aperçu impossible.' };
+    }
+}
+
+/** Facturation manuelle : échéances dues d'un contrat jusqu'à une date (aujourd'hui par défaut). */
+export async function apercuFacturationAction(contractId: string, jusquAu?: string): Promise<{ success: true; data: ApercuFacturation } | { success: false; error: string }> {
+    try {
+        await requireUserDans('contrat', contractId);
+        return { success: true, data: await apercuFacturation(contractId, jusquAu) };
     } catch (error) {
         return { success: false, error: error instanceof Error ? error.message : 'Aperçu impossible.' };
     }

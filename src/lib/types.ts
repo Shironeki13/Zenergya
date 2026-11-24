@@ -952,12 +952,14 @@ export const GenerateInvoiceInputSchema = z.object({
     invoiceDate: z.string().describe('The date for the invoice in ISO format.'),
     isProforma: z.boolean().describe('Whether to generate a proforma invoice instead of a final one.'),
     until: z.string().optional().describe("Facturer les échéances facturables jusqu'à cette date (AAAA-MM-JJ) ; par défaut, la date de facture."),
+    selection: z.array(z.string()).max(500).optional().describe("Facturation manuelle : identifiants des échéances dues à facturer ; absent : toutes."),
 });
 export type GenerateInvoiceInput = z.infer<typeof GenerateInvoiceInputSchema>;
 
 export const GenerateInvoiceOutputSchema = z.object({
     success: z.boolean(),
     invoiceId: z.string().optional(),
+    invoiceNumber: z.string().optional(),
     error: z.string().optional(),
 });
 export type GenerateInvoiceOutput = z.infer<typeof GenerateInvoiceOutputSchema>;

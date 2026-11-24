@@ -37,10 +37,10 @@ const generateInvoiceFlow = ai.defineFlow(
   },
   async (input) => {
     try {
-      const { contractId, invoiceDate, isProforma, until } = input;
+      const { contractId, invoiceDate, isProforma, until, selection } = input;
       // Échéances facturables jusqu'à la date (terme et périodicité de chaque prestation), TVA par ligne, prorata
       // au jour près, totaux par taux, échéance de paiement : voir lib/billing/contract-billing.
-      const { invoice: newInvoice, company, billingVersion } = await prepareContractInvoice(contractId, invoiceDate, { isProforma, until });
+      const { invoice: newInvoice, company, billingVersion } = await prepareContractInvoice(contractId, invoiceDate, { isProforma, until, selection });
 
       // Numéro attribué dans la même transaction que l'écriture ; refus si le contrat a été facturé entre-temps.
       const savedInvoice = await createInvoice(newInvoice, company, { contractId, billingVersion });
@@ -51,6 +51,7 @@ const generateInvoiceFlow = ai.defineFlow(
       return {
         success: true,
         invoiceId: savedInvoice.id,
+        ...(savedInvoice.invoiceNumber && { invoiceNumber: savedInvoice.invoiceNumber }),
       };
 
     } catch (error) {

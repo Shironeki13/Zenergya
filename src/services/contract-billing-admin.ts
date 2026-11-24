@@ -5,6 +5,7 @@ import {
     billingItems, billedUntil, dueDateFor, dueInvoiceLines, echeancesOf, frDay, vatTotals,
     type BillingInput, type BillingService, type BillingSite, type DueResult, type NamedRef,
 } from '@/lib/billing/contract-billing';
+import { controleSelection, echeancesDues, lignesRetenues, type EcheanceDue } from '@/lib/billing/selection';
 import { toDay } from '@/lib/services/site-amounts';
 import {
     getActivities, getClient, getContract, getIndexValues, getIndices, getInvoicesByContract, resolveIssuingCompany, resolvePaymentTerm,
@@ -254,7 +255,7 @@ function nextBillableOn(input: BillingInput, invoices: Invoice[]): string | null
     return next[0] ?? null;
 }
 
-export async function prepareContractInvoice(contractId: string, invoiceDate: string, opts: { isProforma: boolean; until?: string }): Promise<PreparedInvoice> {
+export async function prepareContractInvoice(contractId: string, invoiceDate: string, opts: { isProforma: boolean; until?: string; selection?: string[] }): Promise<PreparedInvoice> {
     const [contract, versionSnap] = await Promise.all([getContract(contractId), adminDb.collection('contracts').doc(contractId).get()]);
     if (!contract) throw new Error('Contrat non trouvé.');
     const client = await getClient(contract.clientId);
@@ -270,6 +271,13 @@ export async function prepareContractInvoice(contractId: string, invoiceDate: st
     if (due.lines.length === 0) {
         const next = nextBillableOn(input, invoices);
         throw new Error(`Rien à facturer au ${frDay(until)}${next ? ` : prochaine échéance facturable le ${frDay(next)}` : ' : tout est facturé'}.`);
+    }
+    // Facturation manuelle : seules les échéances cochées sont facturées (dans l'ordre, sans trou).
+    if (opts.selection) {
+        const dues = echeancesDues(due);
+        const anomalies = controleSelection(dues, opts.selection);
+        if (anomalies.length) throw new Error(`Facture impossible : ${anomalies.join(' ')}`);
+        due.lines = lignesRetenues(dues, opts.selection);
     }
     // Analytique de chaque ligne : figée (codes enregistrés) à l'émission d'une facture, calculée pour un proforma.
     const analytique = opts.isProforma ? await analytiqueContrat(contract.id) : await figerAnalytique(contract.id);
@@ -291,6 +299,40 @@ export async function prepareContractInvoice(contractId: string, invoiceDate: st
             lineItems: due.lines,
             ...vatTotals(due.lines),
         },
+    };
+}
+
+/** Aperçu de la facturation manuelle d'un contrat : ce qui est dû, échéance par échéance, sans rien écrire. */
+export type ApercuFacturation = {
+    contrat: { id: string; numero: string; libelle: string; client: string; global: boolean };
+    /** Date jusqu'à laquelle les échéances sont proposées, et prochaine date où une autre deviendra facturable. */
+    jusquAu: string;
+    prochaine: string | null;
+    echeances: EcheanceDue[];
+    blocages: string[];
+    avertissements: string[];
+    paiement: string | null;
+};
+
+export async function apercuFacturation(contractId: string, jusquAu?: string): Promise<ApercuFacturation> {
+    const contract = await getContract(contractId);
+    if (!contract) throw new Error('Contrat non trouvé.');
+    const client = await getClient(contract.clientId);
+    const until = toDay(jusquAu) ?? toDay(new Date())!;
+    const contrat = { id: contract.id, numero: contract.contractNumber ?? '', libelle: contract.label ?? contract.name ?? '', client: contract.clientName, global: contract.invoicingType === 'global' };
+    const vide = { contrat, jusquAu: until, prochaine: null, echeances: [], avertissements: [], paiement: null };
+    if ((contract.siteIds ?? []).length === 0) return { ...vide, blocages: ["Aucun site n'est associé à ce contrat."] };
+    const [input, invoices, term] = await Promise.all([loadBillingInput(contract), getInvoicesByContract(contract.id), resolvePaymentTerm(contract, client).catch(() => null)]);
+    const due = dueInvoiceLines(input, invoices, until);
+    // Prochaine échéance au-delà de l'horizon affiché.
+    const { items } = billingItems(input);
+    const billed = billedUntil(items, invoices);
+    const start = toDay(input.contract.startDate)!;
+    const prochaine = due.errors.length && !due.echeances.length ? null
+        : items.flatMap(i => echeancesOf(i, start, billed.get(i.key) ?? null, '9999-12-31', 60).map(e => e.billableOn)).filter(d => d > until).sort()[0] ?? null;
+    return {
+        contrat, jusquAu: until, prochaine, echeances: echeancesDues(due), blocages: due.errors, avertissements: due.warnings,
+        paiement: (term as { deadline?: string } | null)?.deadline?.trim() || null,
     };
 }
 
