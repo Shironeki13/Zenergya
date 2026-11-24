@@ -15,8 +15,8 @@ import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
 import { etatNotificationsAction, lancerRappelsAction, modifierNotificationsAction, type EtatNotifications } from '@/lib/notifications/actions';
-import { BALISES, GROUPES_BALISE, LIBELLE_NATURE_DOCUMENT, NATURES, controlerModele, rendre, type ModeleMail, type NatureDocument } from '@/lib/notifications/balises';
-import { EVENEMENTS_DOCUMENT, LIBELLE_EVENEMENT, LIBELLE_ROLE, ROLES_DESTINATAIRE, contexteExemple, modeleDe, type Evenement, type ModeEnvoi, type RoleDestinataire } from '@/lib/notifications/modeles';
+import { BALISES, GROUPES_FAMILLE, LIBELLE_NATURE_DOCUMENT, NATURES, controlerModele, rendre, type Famille, type ModeleMail, type NatureDocument } from '@/lib/notifications/balises';
+import { EVENEMENTS_DOCUMENT, FAMILLE_EVENEMENT, LIBELLE_EVENEMENT, LIBELLE_FAMILLE, LIBELLE_ROLE, ROLES_FAMILLE, contexteExemple, modeleDe, type Evenement, type ModeEnvoi, type RoleDestinataire } from '@/lib/notifications/modeles';
 import type { Notification, StatutNotification } from '@/services/notifications-admin';
 
 /**
@@ -122,11 +122,11 @@ function EditeurModele({ etat, evenement, onEnregistre }: { etat: EtatNotificati
                 </div>
                 <div>
                     <p className="mb-1.5 text-sm font-medium">Balises <span className="font-normal text-muted-foreground">— cliquez pour insérer à l&apos;endroit du curseur</span></p>
-                    {GROUPES_BALISE.map(g => (
+                    {[...GROUPES_FAMILLE[FAMILLE_EVENEMENT[evenement]], ...(FAMILLE_EVENEMENT[evenement] === 'contrat' ? [] : ['Dates et délais' as const])].map(g => (
                         <div key={g} className="mb-2">
                             <p className="mb-1 text-xs uppercase tracking-wide text-muted-foreground">{g}</p>
                             <div className="flex flex-wrap gap-1.5">
-                                {BALISES.filter(b => b.groupe === g).map(b => (
+                                {BALISES.filter(b => b.groupe === g && (FAMILLE_EVENEMENT[evenement] === 'contrat' || g !== 'Dates et délais' || b.nom === 'Date du jour')).map(b => (
                                     <button key={b.nom} type="button" title={b.aide} onClick={() => inserer(b.nom)} className="rounded-md border bg-muted/40 px-2 py-1 font-mono text-xs hover:border-primary hover:bg-primary/5">&lt;&lt;{b.nom}&gt;&gt;</button>
                                 ))}
                             </div>
@@ -174,11 +174,11 @@ function EditeurRegle({ etat, evenement, onEnregistre }: { etat: EtatNotificatio
                 <Label htmlFor="regle-actif">{actif ? 'Notification active' : 'Notification désactivée : aucun mail pour cet événement'}</Label>
             </div>
             <div>
-                <p className="mb-2 text-sm font-medium">Destinataires par rôle <span className="font-normal text-muted-foreground">— résolus sur le contrat concerné</span></p>
+                <p className="mb-2 text-sm font-medium">Destinataires par rôle <span className="font-normal text-muted-foreground">— résolus sur {FAMILLE_EVENEMENT[evenement] === 'contrat' ? 'le contrat concerné' : FAMILLE_EVENEMENT[evenement] === 'commande' ? 'la commande concernée' : 'les heures concernées'}</span></p>
                 <div className="space-y-2">
-                    {ROLES_DESTINATAIRE.map(r => (
+                    {ROLES_FAMILLE[FAMILLE_EVENEMENT[evenement]].map(r => (
                         <div key={r} className="flex items-center gap-2">
-                            <Checkbox id={`role-${r}`} checked={roles.includes(r)} onCheckedChange={v => setRoles(x => (v === true ? ROLES_DESTINATAIRE.filter(y => x.includes(y) || y === r) : x.filter(y => y !== r)))} />
+                            <Checkbox id={`role-${r}`} checked={roles.includes(r)} onCheckedChange={v => setRoles(x => (v === true ? ROLES_FAMILLE[FAMILLE_EVENEMENT[evenement]].filter(y => x.includes(y) || y === r) : x.filter(y => y !== r)))} />
                             <Label htmlFor={`role-${r}`} className="font-normal">{LIBELLE_ROLE[r]}</Label>
                         </div>
                     ))}
@@ -317,7 +317,7 @@ export default function NotificationsPage() {
             <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
                     <h1 className="text-2xl font-bold tracking-tight">Notifications par mail</h1>
-                    <p className="text-muted-foreground">Ce que Zenergya envoie, à qui, avec quel texte, et le journal de ce qui a été composé. Les mails restent internes.</p>
+                    <p className="text-muted-foreground">Ce que Zenergya envoie pour les contrats, les commandes et les heures : à qui, avec quel texte, et le journal de ce qui a été composé. Les mails restent internes.</p>
                 </div>
                 <Button variant="outline" onClick={charger}><RefreshCw className="mr-2 h-4 w-4" />Actualiser</Button>
             </div>
@@ -352,21 +352,28 @@ export default function NotificationsPage() {
                     <CardDescription>Choisissez un événement, puis réglez son mail et ses destinataires. Seules les adresses des domaines internes reçoivent un mail.</CardDescription>
                 </CardHeader>
                 <CardContent className="grid gap-6 lg:grid-cols-[minmax(0,19rem)_1fr]">
-                    <ul className="space-y-1" aria-label="Événements">
-                        {etat.regles.map(r => (
-                            <li key={r.evenement}>
-                                <button type="button" onClick={() => setEvenement(r.evenement)} aria-pressed={evenement === r.evenement}
-                                    className={cn('w-full rounded-md border px-3 py-2 text-left text-sm transition-colors hover:bg-muted/60', evenement === r.evenement && 'border-primary bg-primary/5')}>
-                                    <span className="flex items-center justify-between gap-2">
-                                        <span className="font-medium">{LIBELLE_EVENEMENT[r.evenement]}</span>
-                                        {r.regle.actif ? <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600" aria-label="Actif" /> : <Badge variant="outline">Inactif</Badge>}
-                                    </span>
-                                    <span className="mt-0.5 block text-xs text-muted-foreground">{[...r.regle.roles.map(x => LIBELLE_ROLE[x]), ...r.regle.adresses].join(' · ') || 'Aucun destinataire'}</span>
-                                    {nbPropres(r.evenement) > 0 && <span className="mt-0.5 block text-xs text-blue-700">{nbPropres(r.evenement)} modèle(s) propre(s)</span>}
-                                </button>
-                            </li>
+                    <div className="space-y-4" aria-label="Événements" role="list">
+                        {(['contrat', 'commande', 'heures'] as Famille[]).map(f => (
+                            <div key={f}>
+                                <p className="mb-1.5 text-xs font-medium uppercase tracking-wide text-muted-foreground">{LIBELLE_FAMILLE[f]}</p>
+                                <ul className="space-y-1">
+                                    {etat.regles.filter(r => FAMILLE_EVENEMENT[r.evenement] === f).map(r => (
+                                        <li key={r.evenement}>
+                                            <button type="button" onClick={() => setEvenement(r.evenement)} aria-pressed={evenement === r.evenement}
+                                                className={cn('w-full rounded-md border px-3 py-2 text-left text-sm transition-colors hover:bg-muted/60', evenement === r.evenement && 'border-primary bg-primary/5')}>
+                                                <span className="flex items-center justify-between gap-2">
+                                                    <span className="font-medium">{LIBELLE_EVENEMENT[r.evenement]}</span>
+                                                    {r.regle.actif ? <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600" aria-label="Actif" /> : <Badge variant="outline">Inactif</Badge>}
+                                                </span>
+                                                <span className="mt-0.5 block text-xs text-muted-foreground">{[...r.regle.roles.map(x => LIBELLE_ROLE[x]), ...r.regle.adresses].join(' · ') || 'Aucun destinataire'}</span>
+                                                {nbPropres(r.evenement) > 0 && <span className="mt-0.5 block text-xs text-blue-700">{nbPropres(r.evenement)} modèle(s) propre(s)</span>}
+                                            </button>
+                                        </li>
+                                    ))}
+                                </ul>
+                            </div>
                         ))}
-                    </ul>
+                    </div>
                     <Tabs defaultValue="modele" className="min-w-0">
                         <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
                             <p className="font-semibold">{LIBELLE_EVENEMENT[evenement]}</p>

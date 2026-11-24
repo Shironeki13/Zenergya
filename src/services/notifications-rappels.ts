@@ -3,7 +3,8 @@ import { adminDb } from '@/lib/firebase-admin';
 import { rappelsDuJour, type AttenteRappel, type ContratRappel } from '@/lib/notifications/rappels';
 import type { Evenement, NatureDocument } from '@/lib/notifications/modeles';
 import type { MontantsPrestation } from '@/lib/notifications/balises';
-import { notifier, reglagesNotifications } from '@/services/notifications-admin';
+import { notifier, reglagesNotifications, type DemandeNotification } from '@/services/notifications-admin';
+import { rappelsHeures } from '@/services/notifications-metier';
 
 /**
  * Rappels programmés : une fois par jour (fonction planifiée) ou à la demande (administrateur), relit les contrats
@@ -75,7 +76,9 @@ export async function lancerRappels(opts: { declencheur: PassageRappels['declenc
         passage.enAttente = attentes.length;
         const precedent = await dernierPassageRappels();
         const dernierJour = precedent ? new Date(precedent.le).toLocaleDateString('en-CA', { timeZone: 'Europe/Paris' }) : null;
-        const dus = rappelsDuJour(contrats, attentes, today, reglages.rappels, opts.dernierPassage !== undefined ? opts.dernierPassage : dernierJour);
+        const dernier = opts.dernierPassage !== undefined ? opts.dernierPassage : dernierJour;
+        // Rappels des contrats, puis récapitulatif des heures à valider (un mail par responsable).
+        const dus: DemandeNotification[] = [...rappelsDuJour(contrats, attentes, today, reglages.rappels, dernier), ...(await rappelsHeures(today, dernier))];
         passage.dus = dus.length;
         for (const r of dus) {
             try {

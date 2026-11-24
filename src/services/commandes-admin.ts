@@ -1,4 +1,5 @@
 import 'server-only';
+import { notifierCommande } from '@/services/notifications-metier';
 import { randomUUID } from 'crypto';
 import { adminDb } from '@/lib/firebase-admin';
 import type { SessionUser } from '@/lib/auth/server';
@@ -183,7 +184,9 @@ export async function soumettreCommande(id: string, user: SessionUser, importee 
             ...(etapes.length === 0 ? { status: 'validee', autoValidee: !importee, validatedAt: t, ...(importee && { importee: true, importedBy: user.email }) } : { status: 'a_valider', autoValidee: false }),
         });
     });
-    return lire(id);
+    const soumise = await lire(id);
+    await notifierCommande(soumise, 'soumission');   // le premier valideur est prévenu ; jamais bloquant
+    return soumise;
 }
 
 /** Valide ou refuse l'étape en cours (N+1, N+2, achats ; administrateur en secours ; jamais sa propre commande). */
@@ -197,7 +200,9 @@ export async function deciderCommande(id: string, decision: 'validee' | 'refusee
         if (typeof r === 'string') throw new Error(r);
         tx.update(commandes().doc(id), { etapes: r.etapes, status: r.status, updatedAt: t, ...(r.status === 'validee' && { validatedAt: t }) });
     });
-    return lire(id);
+    const decidee = await lire(id);
+    await notifierCommande(decidee, 'decision');     // valideur suivant, ou demandeur (validée, refusée) ; jamais bloquant
+    return decidee;
 }
 
 /** Étape suivante après validation : passée au fournisseur, puis reçue. */

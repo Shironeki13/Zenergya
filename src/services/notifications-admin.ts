@@ -2,7 +2,7 @@ import 'server-only';
 import { createHash } from 'crypto';
 import { adminDb } from '@/lib/firebase-admin';
 import {
-    EVENEMENTS, EVENEMENTS_DOCUMENT, REGLAGES_DEFAUT, ROLES_DESTINATAIRE, composer, destinataires, domaineDe, regleDe,
+    EVENEMENTS, EVENEMENTS_DOCUMENT, FAMILLE_EVENEMENT, REGLAGES_DEFAUT, ROLES_DESTINATAIRE, ROLES_FAMILLE, composer, destinataires, domaineDe, regleDe,
     type Annuaire, type ContexteMail, type Evenement, type Mail, type ModeEnvoi, type ModelesPropres, type Regle, type ReglagesNotifications,
 } from '@/lib/notifications/modeles';
 import { NATURES, controlerModele, type ModeleMail } from '@/lib/notifications/balises';
@@ -89,6 +89,10 @@ export type DemandeNotification = {
     contexte: Omit<ContexteMail, 'urlApplication'>;
     /** Adresse du déposant du document, s'il y en a un. */
     deposant?: string | null;
+    /** Titulaires des rôles propres à l'objet (valideur, demandeur d'une commande ou d'heures) : complètent ceux du contrat. */
+    annuaire?: Annuaire;
+    /** Libellé de l'objet au journal quand il ne s'agit pas d'un contrat (« Commande ZEN-CMD2026-0012 »). */
+    libelle?: string;
 };
 
 /** Compose, journalise et remet au transport ; rend la notification, ou null si elle est inactive ou déjà faite. */
@@ -100,11 +104,11 @@ export async function notifier(d: DemandeNotification): Promise<Notification | n
     const id = createHash('sha256').update(`${d.evenement}|${d.cle}`).digest('hex').slice(0, 32);
     const ref = adminDb.collection(COLLECTION).doc(id);
     if ((await ref.get()).exists) return null;
-    const annuaire = await annuaireContrat(d.contexte.contrat.id, d.deposant);
+    const annuaire = { ...(await annuaireContrat(d.contexte.contrat.id, d.deposant)), ...(d.annuaire ?? {}) };
     const { retenus, ecartes } = destinataires(regle, annuaire, reglages.domaines);
     const mail: Mail = composer(d.evenement, { ...d.contexte, urlApplication: reglages.urlApplication }, reglages.modeles);
     const n: Notification = {
-        id, evenement: d.evenement, cle: d.cle, contractId: d.contexte.contrat.id, contrat: d.contexte.contrat.id ? `${d.contexte.contrat.numero} — ${d.contexte.contrat.client}` : 'Tous les contrats',
+        id, evenement: d.evenement, cle: d.cle, contractId: d.contexte.contrat.id, contrat: d.libelle ?? (d.contexte.contrat.id ? `${d.contexte.contrat.numero} — ${d.contexte.contrat.client}` : 'Tous les contrats'),
         destinataires: retenus, ecartes, expediteur: reglages.expediteur, ...mail,
         statut: retenus.length === 0 ? 'sans_destinataire' : reglages.mode === 'simulation' ? 'simule' : 'a_envoyer', mode: reglages.mode, creeLe: new Date().toISOString(),
     };
@@ -181,6 +185,8 @@ export async function modifierReglagesNotifications(m: ModificationReglages, par
         else {
             const roles = [...new Set(regle.roles)];
             if (roles.some(r => !ROLES_DESTINATAIRE.includes(r))) throw new Error('Rôle de destinataire inconnu.');
+            const horsSujet = roles.filter(r => !ROLES_FAMILLE[FAMILLE_EVENEMENT[evenement]].includes(r));
+            if (horsSujet.length) throw new Error(`Rôle sans objet pour cet événement : ${horsSujet.join(', ')}.`);
             const adresses = [...new Set((regle.adresses ?? []).map(a => a.trim().toLowerCase()).filter(Boolean))];
             const invalides = adresses.filter(a => !adresse(a));
             if (invalides.length) throw new Error(`Adresse(s) invalide(s) : ${invalides.join(', ')}.`);

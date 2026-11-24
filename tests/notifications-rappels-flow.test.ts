@@ -10,7 +10,7 @@ if (!process.env.FIRESTORE_EMULATOR_HOST) throw new Error('À lancer via « npm 
 const set = (c: string, id: string, data: object) => adminDb.collection(c).doc(id).set(data);
 const reglages = adminDb.collection('notificationsReglages').doc('reglages');
 /** Notifications des contrats de ce test, « événement:contrat », triées. */
-const duTest = async () => (await journalNotifications(500)).filter(n => n.contractId.startsWith('nr-') || n.cle.startsWith('attente/')).map(n => `${n.evenement}:${n.contractId || 'recap'}`).sort();
+const duTest = async () => (await journalNotifications(500)).filter(n => n.contractId.startsWith('nr-') || n.cle.startsWith('attente/2026-1')).map(n => `${n.evenement}:${n.contractId || 'recap'}`).sort();   // récapitulatifs des jours de ce test seulement
 
 before(async () => {
     await reglages.set({ mode: 'simulation', expediteur: 'contratheque@interne.test', domaines: ['interne.test'], urlApplication: 'https://zen.interne.test' });
@@ -35,7 +35,7 @@ test('passage du 23/11/2026 : préavis, échéances, échéance dépassée et do
     assert.deepEqual(await duTest(), ['document_en_attente:recap', 'echeance:nr-preavis', 'echeance:nr-sans-resp', 'echeance_depassee:nr-depasse', 'preavis:nr-preavis', 'preavis:nr-sans-resp']);
     assert.deepEqual([p.declencheur, p.mode, p.erreurs], ['planifie', 'simulation', []]);
     assert.ok(p.dus >= 6 && p.composes >= 6 && p.contrats >= 4 && p.enAttente >= 2);
-    const journal = (await journalNotifications(500)).filter(n => n.contractId.startsWith('nr-') || n.cle.startsWith('attente/'));
+    const journal = (await journalNotifications(500)).filter(n => n.contractId.startsWith('nr-') || n.cle.startsWith('attente/2026-1'));
     const de = (e: string, k: string) => journal.find(n => n.evenement === e && n.contractId === k)!;
     assert.deepEqual(de('preavis', 'nr-preavis').destinataires, ['nr-resp@interne.test', 'nr-chef@interne.test']);
     assert.equal(de('preavis', 'nr-preavis').sujet, '[Contrats] Préavis dans 38 jours — CTN-nr-preavis — Client NR');

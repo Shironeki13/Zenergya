@@ -1,4 +1,5 @@
 import 'server-only';
+import { notifierHeuresRefusees } from '@/services/notifications-metier';
 import { adminDb } from '@/lib/firebase-admin';
 import type { SessionUser } from '@/lib/auth/server';
 import type { CibleCommande } from '@/lib/commandes';
@@ -114,6 +115,8 @@ export async function deleteHeures(id: string, user: SessionUser): Promise<void>
 
 // --- Validation par le responsable (N+1) ---
 
+const nomValideur = (u: SessionUser) => [u.profile?.firstName, u.profile?.name].filter(Boolean).join(' ') || u.email;
+
 async function responsables(): Promise<Map<string, string | null>> {
     const users = await adminDb.collection('users').select('managerId').get();
     return new Map(users.docs.map(d => [d.id, (d.get('managerId') as string | undefined) ?? null]));
@@ -148,6 +151,7 @@ export async function deciderHeures(ids: string[], decision: 'validee' | 'refuse
     const lot = adminDb.batch();
     for (const s of saisies) lot.update(heures().doc(s.id), decision === 'validee' ? { statut: 'validee', valideePar: user.email, valideeLe: t, motifRefus: '' } : { statut: 'refusee', valideePar: user.email, valideeLe: t, motifRefus: motif.trim() });
     await lot.commit();
+    if (decision === 'refusee') await notifierHeuresRefusees(saisies, motif.trim(), nomValideur(user), t);   // chaque salarié concerné est prévenu ; jamais bloquant
     return saisies.length;
 }
 

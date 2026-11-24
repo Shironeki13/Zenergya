@@ -168,6 +168,30 @@ n'y figure pas. La lecture respecte le périmètre de l'utilisateur.
 
 Code : `src/lib/notifications/trace.ts`, lecture `notificationsDuContrat`.
 
+## Commandes d'achat et heures
+
+Les mêmes mécanismes (règles, modèles à balises, journal, domaines internes, rappels) servent aux commandes et aux heures.
+
+| Moment | Événement | Destinataires par défaut |
+|---|---|---|
+| Commande soumise, puis à chaque étape validée | commande à valider | le valideur de l'étape en cours : le responsable attendu, ou les acheteurs pour l'étape « achats » |
+| Dernière étape validée | commande validée | le demandeur |
+| Commande refusée (motif) | commande refusée | le demandeur |
+| Chaque jour, s'il y a des saisies nouvelles ou corrigées en attente | heures à valider (récapitulatif) | chaque responsable, pour son équipe ; les administrateurs pour les salariés sans responsable |
+| Heures refusées (motif) | heures refusées | le salarié concerné, un mail par salarié |
+
+- Une commande autovalidée ou importée ne prévient personne. Une commande refusée puis resoumise prévient de nouveau
+  son valideur.
+- Le récapitulatif des heures part au plus une fois par jour et par responsable, et seulement s'il y a du nouveau
+  depuis le passage précédent ; il liste toutes les saisies en attente de l'équipe.
+- Rôles de ces événements : le valideur attendu, le demandeur (ou le salarié concerné), les administrateurs. Les
+  rôles des contrats (contrathèque, responsable de facturation…) n'y ont pas de sens et sont refusés.
+- Balises : groupe « Commande » (numéro, objet, fournisseur, montant, demandeur, étape de validation, valideur,
+  décision prise par, motif de la décision, lien vers la commande) et groupe « Heures » (salarié, nombre de saisies,
+  total des heures, liste des heures, lien vers les heures). L'éditeur ne propose que les balises du domaine.
+
+Code : `src/services/notifications-metier.ts`.
+
 ## À venir
 
-Envoi réel par la messagerie Google, mêmes notifications pour les commandes et les heures à valider.
+Envoi réel par la messagerie Google.

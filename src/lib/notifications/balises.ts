@@ -30,6 +30,10 @@ const NOM_PRESTATION: Record<Prestation, string> = { p1: 'P1', p2: 'P2', p3: 'P3
 /** Ligne du récapitulatif des documents en attente. */
 export type DocumentEnAttente = { numero: string; client: string; nature: NatureDocument; jours: number; deposeLe?: string | null; deposePar?: string; resume?: string };
 
+export type CommandeMail = { id: string; numero: string; objet: string; fournisseur: string; montantHT: number; demandeur: string; etape?: string; valideur?: string; decidePar?: string; motif?: string };
+export type LigneHeures = { date: string; heures: number; salarie: string; affectation: string };
+export type HeuresMail = { salarie?: string; lignes: LigneHeures[]; decidePar?: string; motif?: string };
+
 export type ContexteMail = {
     /** `montants` : montants annuels HT du contrat par prestation (base marché). */
     contrat: { id: string; numero: string; client: string; montants?: MontantsPrestation };
@@ -44,13 +48,21 @@ export type ContexteMail = {
     reconduction?: string;
     /** Récapitulatif : documents en attente de validation, du plus ancien au plus récent. */
     liste?: DocumentEnAttente[];
+    /** Commande d'achat (événements des commandes). */
+    commande?: CommandeMail;
+    /** Heures saisies (événements des heures) : à valider par un responsable, ou refusées à un salarié. */
+    heures?: HeuresMail;
     urlApplication: string;
     /** Jour de composition (AAAA-MM-JJ) ; à défaut, aujourd'hui. */
     aujourdhui?: string;
 };
 
-export type GroupeBalise = 'Contrat' | 'Document' | 'Montants' | 'Dates et délais' | 'Récapitulatif';
-export const GROUPES_BALISE: GroupeBalise[] = ['Contrat', 'Document', 'Montants', 'Dates et délais', 'Récapitulatif'];
+export type GroupeBalise = 'Contrat' | 'Document' | 'Montants' | 'Dates et délais' | 'Récapitulatif' | 'Commande' | 'Heures';
+export const GROUPES_BALISE: GroupeBalise[] = ['Contrat', 'Document', 'Montants', 'Dates et délais', 'Récapitulatif', 'Commande', 'Heures'];
+/** Domaine d'un événement : les balises proposées dans l'éditeur dépendent de lui. */
+export type Famille = 'contrat' | 'commande' | 'heures';
+export const GROUPES_FAMILLE: Record<Famille, GroupeBalise[]> = { contrat: ['Contrat', 'Document', 'Montants', 'Dates et délais', 'Récapitulatif'], commande: ['Commande'], heures: ['Heures'] };
+const heure = (x: number) => `${x.toLocaleString('fr-FR', { maximumFractionDigits: 2 })} h`;
 
 const nombre = (x: number) => Math.abs(x).toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 /** « 12 400,00 € » ; vide si absent ou nul. */
@@ -78,7 +90,7 @@ export const BALISES: Balise[] = [
     { nom: 'Déposé par', groupe: 'Document', aide: 'Adresse de la personne qui a déposé le document', valeur: c => c.document?.deposePar ?? '' },
     { nom: 'Date de dépôt', groupe: 'Document', aide: 'JJ/MM/AAAA', valeur: c => fr(c.document?.deposeLe) },
     { nom: 'Décidé par', groupe: 'Document', aide: 'Adresse de la personne qui a validé ou refusé', valeur: c => c.document?.decidePar ?? '' },
-    { nom: 'Motif du refus', groupe: 'Document', aide: 'Motif saisi par la contrathèque', valeur: c => sansFin(c.document?.motifRefus) },
+    { nom: 'Motif du refus', groupe: 'Document', aide: 'Motif saisi par la personne qui a refusé', valeur: c => sansFin(c.document?.motifRefus ?? c.commande?.motif ?? c.heures?.motif) },
     { nom: 'Date d\'effet', groupe: 'Document', aide: 'Date d\'effet du document, JJ/MM/AAAA', valeur: c => fr(c.document?.effet) },
     ...PRESTATIONS.map((p): Balise => ({ nom: `Montant ${NOM_PRESTATION[p]} du contrat`, groupe: 'Montants', aide: `Montant annuel HT ${NOM_PRESTATION[p]} du contrat ; vide s'il n'y en a pas`, valeur: c => montant(c.contrat.montants?.[p]) })),
     { nom: 'Montant total du contrat', groupe: 'Montants', aide: 'Somme annuelle HT des prestations du contrat', valeur: c => (aucun(c.contrat.montants) ? '' : montant(somme(c.contrat.montants))) },
@@ -97,6 +109,21 @@ export const BALISES: Balise[] = [
         valeur: c => (c.liste ?? []).map(d => `- ${d.numero} — ${d.client} : ${NATURE[d.nature].nom}${d.deposeLe ? ` déposé${NATURE[d.nature].e} le ${fr(d.deposeLe)}` : ''}${d.deposePar ? ` par ${d.deposePar}` : ''}, ${d.jours} jour${d.jours > 1 ? 's' : ''} d'attente${sansFin(d.resume) ? ` — ${sansFin(d.resume)}` : ''}`).join('\n'),
     },
     { nom: 'Lien vers la contrathèque', groupe: 'Récapitulatif', aide: 'Adresse du tableau de bord de la contrathèque (cliquable dans le mail)', valeur: c => (c.urlApplication ? `${c.urlApplication.replace(/\/+$/, '')}/contracts/library` : '') },
+    { nom: 'Numéro de commande', groupe: 'Commande', aide: 'ZEN-CMD2026-0012', valeur: c => c.commande?.numero ?? '' },
+    { nom: 'Objet de la commande', groupe: 'Commande', aide: 'Objet saisi sur la commande', valeur: c => sansFin(c.commande?.objet) },
+    { nom: 'Fournisseur', groupe: 'Commande', aide: 'Nom du fournisseur', valeur: c => c.commande?.fournisseur ?? '' },
+    { nom: 'Montant de la commande', groupe: 'Commande', aide: 'Total HT : « 12 400,00 € »', valeur: c => (c.commande ? montant(c.commande.montantHT) || '0,00 €' : '') },
+    { nom: 'Demandeur', groupe: 'Commande', aide: 'Personne qui a passé la commande', valeur: c => c.commande?.demandeur ?? '' },
+    { nom: 'Étape de validation', groupe: 'Commande', aide: '« Responsable (N+1) », « Achats »…', valeur: c => c.commande?.etape ?? '' },
+    { nom: 'Valideur', groupe: 'Commande', aide: 'Personne attendue pour valider l\'étape en cours', valeur: c => c.commande?.valideur ?? '' },
+    { nom: 'Décision prise par', groupe: 'Commande', aide: 'Personne qui a validé ou refusé (commande, heures)', valeur: c => c.commande?.decidePar ?? c.heures?.decidePar ?? '' },
+    { nom: 'Motif de la décision', groupe: 'Commande', aide: 'Commentaire ou motif saisi à la validation ou au refus (commande, heures)', valeur: c => sansFin(c.commande?.motif ?? c.heures?.motif) },
+    { nom: 'Lien vers la commande', groupe: 'Commande', aide: 'Adresse de la commande dans Zenergya (cliquable dans le mail)', valeur: c => (c.urlApplication && c.commande?.id ? `${c.urlApplication.replace(/\/+$/, '')}/purchases/${c.commande.id}` : '') },
+    { nom: 'Salarié', groupe: 'Heures', aide: 'Personne dont les heures sont concernées (mail de refus)', valeur: c => c.heures?.salarie ?? '' },
+    { nom: 'Nombre de saisies', groupe: 'Heures', aide: 'Nombre de saisies d\'heures listées', valeur: c => (c.heures ? String(c.heures.lignes.length) : '') },
+    { nom: 'Total des heures', groupe: 'Heures', aide: 'Somme des heures listées : « 37,5 h »', valeur: c => (c.heures ? heure(c.heures.lignes.reduce((t, l) => t + l.heures, 0)) : '') },
+    { nom: 'Liste des heures', groupe: 'Heures', aide: 'Une ligne par saisie : date, salarié, heures, affectation', valeur: c => (c.heures?.lignes ?? []).map(l => `- ${fr(l.date)} — ${l.salarie} : ${heure(l.heures)} — ${l.affectation}`).join('\n') },
+    { nom: 'Lien vers les heures', groupe: 'Heures', aide: 'Adresse de l\'écran des heures dans Zenergya (cliquable dans le mail)', valeur: c => (c.urlApplication ? `${c.urlApplication.replace(/\/+$/, '')}/timesheets` : '') },
     { nom: 'Date du jour', groupe: 'Dates et délais', aide: 'Jour d\'envoi du mail, JJ/MM/AAAA', valeur: c => fr(c.aujourdhui ?? new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/Paris' })) },
 ];
 

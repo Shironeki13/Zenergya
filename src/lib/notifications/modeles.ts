@@ -5,23 +5,37 @@
  * transport (simulation, ou messagerie).
  */
 
-import { rendre, type ContexteMail, type Mail, type ModeleMail, type NatureDocument } from './balises';
+import { rendre, type ContexteMail, type Famille, type Mail, type ModeleMail, type NatureDocument } from './balises';
 import { RAPPELS_DEFAUT, type ReglagesRappels } from './rappels';
 
-export type { ContexteMail, Mail, ModeleMail, NatureDocument } from './balises';
+export type { ContexteMail, Famille, Mail, ModeleMail, NatureDocument } from './balises';
 
-export type Evenement = 'document_depose' | 'document_valide' | 'document_refuse' | 'document_en_attente' | 'preavis' | 'echeance' | 'echeance_depassee' | 'resiliation_validee';
-export const EVENEMENTS: Evenement[] = ['document_depose', 'document_valide', 'document_refuse', 'document_en_attente', 'preavis', 'echeance', 'echeance_depassee', 'resiliation_validee'];
+export type Evenement = 'document_depose' | 'document_valide' | 'document_refuse' | 'document_en_attente' | 'preavis' | 'echeance' | 'echeance_depassee' | 'resiliation_validee'
+    | 'commande_a_valider' | 'commande_validee' | 'commande_refusee' | 'heures_a_valider' | 'heures_refusees';
+export const EVENEMENTS: Evenement[] = ['document_depose', 'document_valide', 'document_refuse', 'document_en_attente', 'preavis', 'echeance', 'echeance_depassee', 'resiliation_validee',
+    'commande_a_valider', 'commande_validee', 'commande_refusee', 'heures_a_valider', 'heures_refusees'];
+/** Domaine de chaque événement : contrats, commandes d'achat, heures. */
+export const FAMILLE_EVENEMENT: Record<Evenement, Famille> = {
+    document_depose: 'contrat', document_valide: 'contrat', document_refuse: 'contrat', document_en_attente: 'contrat', preavis: 'contrat', echeance: 'contrat', echeance_depassee: 'contrat', resiliation_validee: 'contrat',
+    commande_a_valider: 'commande', commande_validee: 'commande', commande_refusee: 'commande', heures_a_valider: 'heures', heures_refusees: 'heures',
+};
+export const LIBELLE_FAMILLE: Record<Famille, string> = { contrat: 'Contrats', commande: 'Commandes d\'achat', heures: 'Heures' };
 export const LIBELLE_EVENEMENT: Record<Evenement, string> = {
     document_depose: 'Document déposé', document_valide: 'Document validé', document_refuse: 'Document refusé', document_en_attente: 'Documents en attente (récapitulatif)',
     preavis: 'Date limite de préavis qui approche', echeance: 'Échéance qui approche', echeance_depassee: 'Échéance dépassée', resiliation_validee: 'Résiliation validée',
+    commande_a_valider: 'Commande à valider', commande_validee: 'Commande validée', commande_refusee: 'Commande refusée',
+    heures_a_valider: 'Heures à valider (récapitulatif)', heures_refusees: 'Heures refusées',
 };
 
-export type RoleDestinataire = 'deposant' | 'contratheque' | 'responsable_facturation' | 'n1_responsable' | 'administrateurs';
-export const ROLES_DESTINATAIRE: RoleDestinataire[] = ['deposant', 'contratheque', 'responsable_facturation', 'n1_responsable', 'administrateurs'];
+export type RoleDestinataire = 'deposant' | 'contratheque' | 'responsable_facturation' | 'n1_responsable' | 'valideur' | 'demandeur' | 'administrateurs';
+export const ROLES_DESTINATAIRE: RoleDestinataire[] = ['deposant', 'contratheque', 'responsable_facturation', 'n1_responsable', 'valideur', 'demandeur', 'administrateurs'];
+/** Rôles qui ont un sens pour chaque domaine (les autres n'auraient jamais de titulaire). */
+export const ROLES_FAMILLE: Record<Famille, RoleDestinataire[]> = {
+    contrat: ['deposant', 'contratheque', 'responsable_facturation', 'n1_responsable', 'administrateurs'], commande: ['valideur', 'demandeur', 'administrateurs'], heures: ['valideur', 'demandeur', 'administrateurs'],
+};
 export const LIBELLE_ROLE: Record<RoleDestinataire, string> = {
     deposant: 'Le déposant du document', contratheque: 'La contrathèque', responsable_facturation: 'Le responsable de facturation du contrat',
-    n1_responsable: 'Le N+1 du responsable de facturation', administrateurs: 'Les administrateurs',
+    n1_responsable: 'Le N+1 du responsable de facturation', valideur: 'Le valideur attendu (responsable, ou achats)', demandeur: 'Le demandeur, ou le salarié concerné', administrateurs: 'Les administrateurs',
 };
 
 export type Regle = { actif: boolean; roles: RoleDestinataire[]; adresses: string[] };
@@ -34,6 +48,11 @@ export const REGLES_DEFAUT: Record<Evenement, Regle> = {
     echeance: { actif: true, roles: ['responsable_facturation', 'contratheque'], adresses: [] },
     echeance_depassee: { actif: true, roles: ['responsable_facturation', 'contratheque'], adresses: [] },
     resiliation_validee: { actif: true, roles: ['responsable_facturation', 'n1_responsable'], adresses: [] },
+    commande_a_valider: { actif: true, roles: ['valideur'], adresses: [] },
+    commande_validee: { actif: true, roles: ['demandeur'], adresses: [] },
+    commande_refusee: { actif: true, roles: ['demandeur'], adresses: [] },
+    heures_a_valider: { actif: true, roles: ['valideur'], adresses: [] },
+    heures_refusees: { actif: true, roles: ['demandeur'], adresses: [] },
 };
 
 /** `simulation` : le mail est écrit au journal sans partir ; `messagerie` : remis à la messagerie ; `arret` : rien. */
@@ -91,6 +110,7 @@ export const EVENEMENTS_DOCUMENT: Evenement[] = ['document_depose', 'document_va
 
 const PIED = 'Vie du contrat : <<Lien vers le contrat>>\n\nMessage automatique de Zenergya, réservé à un usage interne. Ne pas répondre.';
 const K = '<<Numéro du contrat>> — <<Client>>';
+const PIED_SIMPLE = 'Message automatique de Zenergya, réservé à un usage interne. Ne pas répondre.';
 
 /** Modèles d'origine, écrits avec les mêmes balises que ceux de l'administrateur. */
 export const MODELES_DEFAUT: Record<Evenement, ModeleMail> = {
@@ -126,6 +146,26 @@ export const MODELES_DEFAUT: Record<Evenement, ModeleMail> = {
         objet: `[Contrats] Résiliation validée — ${K}`,
         corps: `Bonjour,\n\nLa résiliation du contrat ${K} est validée.\nDate d'effet : <<Date d'effet>>\nMotif : <<Objet du document>>\n\nAnticipez la fin des prestations et la dernière facturation.\n\n${PIED}`,
     },
+    commande_a_valider: {
+        objet: '[Achats] Commande à valider — <<Numéro de commande>> — <<Montant de la commande>>',
+        corps: `Bonjour,\n\nLa commande <<Numéro de commande>> de <<Demandeur>> attend votre validation (<<Étape de validation>>).\nObjet : <<Objet de la commande>>\nFournisseur : <<Fournisseur>>\nMontant : <<Montant de la commande>> HT\n\nValidez-la ou refusez-la avec un motif.\n\nCommande : <<Lien vers la commande>>\n\n${PIED_SIMPLE}`,
+    },
+    commande_validee: {
+        objet: '[Achats] Votre commande <<Numéro de commande>> est validée',
+        corps: `Bonjour,\n\nVotre commande <<Numéro de commande>> est validée : elle peut être passée au fournisseur.\nObjet : <<Objet de la commande>>\nFournisseur : <<Fournisseur>>\nMontant : <<Montant de la commande>> HT\nDernière validation par <<Décision prise par>>.\n\nCommande : <<Lien vers la commande>>\n\n${PIED_SIMPLE}`,
+    },
+    commande_refusee: {
+        objet: '[Achats] Votre commande <<Numéro de commande>> est refusée',
+        corps: `Bonjour,\n\nVotre commande <<Numéro de commande>> a été refusée par <<Décision prise par>>.\nMotif : <<Motif de la décision>>\nObjet : <<Objet de la commande>>\nMontant : <<Montant de la commande>> HT\n\nCorrigez-la puis soumettez-la à nouveau.\n\nCommande : <<Lien vers la commande>>\n\n${PIED_SIMPLE}`,
+    },
+    heures_a_valider: {
+        objet: '[Heures] <<Nombre de saisies>> saisie(s) à valider — <<Total des heures>>',
+        corps: `Bonjour,\n\n<<Nombre de saisies>> saisie(s) d'heures de votre équipe attendent votre validation, soit <<Total des heures>> :\n\n<<Liste des heures>>\n\nTant qu'elles ne sont pas validées, elles ne comptent pas dans la rentabilité des affaires.\n\nHeures : <<Lien vers les heures>>\n\n${PIED_SIMPLE}`,
+    },
+    heures_refusees: {
+        objet: '[Heures] <<Nombre de saisies>> saisie(s) d\'heures refusée(s)',
+        corps: `Bonjour,\n\n<<Nombre de saisies>> de vos saisies d'heures (<<Total des heures>>) ont été refusées par <<Décision prise par>>.\nMotif : <<Motif de la décision>>\n\n<<Liste des heures>>\n\nCorrigez-les : elles repartiront en validation.\n\nHeures : <<Lien vers les heures>>\n\n${PIED_SIMPLE}`,
+    },
 };
 
 /** Modèle en vigueur : celui du type de document s'il existe, sinon celui de l'événement, sinon celui d'origine. */
@@ -159,6 +199,14 @@ export function contexteExemple(e: Evenement, urlApplication = 'https://zenergya
             { numero: 'CTN-00011', client: 'Copropriété Le Clos Fleuri', nature: 'contrat', jours: 8, deposeLe: '2026-11-15', deposePar: 'adv2@exemple.fr' },
         ],
     };
+    const vide = { contrat: { id: '', numero: '', client: '' }, urlApplication, aujourdhui: '2026-11-23' };
+    const commande = { id: 'exemple', numero: 'ZEN-CMD2026-0012', objet: 'Remplacement de deux circulateurs', fournisseur: 'Chauffage Pro', montantHT: 8400, demandeur: 'Lucas Morel' };
+    if (e === 'commande_a_valider') return { ...vide, commande: { ...commande, etape: 'Responsable (N+1)', valideur: 'Nadia Roche' } };
+    if (e === 'commande_validee') return { ...vide, commande: { ...commande, decidePar: 'Paul Garnier' } };
+    if (e === 'commande_refusee') return { ...vide, commande: { ...commande, decidePar: 'Nadia Roche', motif: 'Devis fournisseur manquant.' } };
+    const lignes = [{ date: '2026-11-18', heures: 7.5, salarie: 'Lucas Morel', affectation: 'Affaire ZEN-AFF2026-0003 — Rénovation de chaufferie' }, { date: '2026-11-19', heures: 4, salarie: 'Lucas Morel', affectation: 'Contrat CTN-00003 — P2' }, { date: '2026-11-19', heures: 6, salarie: 'Emma Petit', affectation: 'Affaire ZEN-AFF2026-0001 — Circulateur' }];
+    if (e === 'heures_a_valider') return { ...vide, heures: { lignes } };
+    if (e === 'heures_refusees') return { ...vide, heures: { salarie: 'Lucas Morel', lignes: lignes.slice(0, 2), decidePar: 'Nadia Roche', motif: 'Affectation erronée : ces heures relèvent de l\'affaire, pas du contrat.' } };
     if (e === 'preavis') return { ...base, jours: 60, date: '2027-06-29', echeance: '2027-09-29', preavis: '3 mois', reconduction: 'sans dénonciation, reconduction tacite de 1 an' };
     if (e === 'echeance') return { ...base, jours: 180, date: '2027-09-29', reconduction: 'reconduction tacite de 1 an' };
     if (e === 'echeance_depassee') return { ...base, jours: 12, date: '2026-11-11' };
