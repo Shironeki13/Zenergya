@@ -38,6 +38,7 @@ import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { useData } from '@/context/data-context';
+import { ESCOMPTE_DEFAUT, PENALITES_DEFAUT, manquesSociete, natureActivite, type NatureActivite } from '@/lib/billing/mentions';
 
 
 const fileToDataUrl = (file: File): Promise<string> => {
@@ -67,6 +68,10 @@ const CompaniesSection = ({ onCompaniesUpdate }: { onCompaniesUpdate: (companies
     const [siren, setSiren] = useState('');
     const [vatNumber, setVatNumber] = useState('');
     const [einvoicingStartDate, setEinvoicingStartDate] = useState('');
+    // Mentions légales des factures
+    const num = (v: string) => (v.trim() === '' || Number.isNaN(Number(v.replace(',', '.'))) ? null : Number(v.replace(',', '.')));
+    const MENTIONS_VIDES = { legalForm: '', shareCapital: '', rcsCity: '', latePenaltyRate: '', earlyPaymentDiscount: '', vatOnDebits: false };
+    const [mentions, setMentions] = useState(MENTIONS_VIDES);
     // Devis : valeurs par défaut, saisies en texte (vide = non renseigné)
     const [quoteDefaults, setQuoteDefaults] = useState({ coefficient: '', laborRate: '', laborCost: '', validityDays: '', vatRate: '' });
     const [quoteTexts, setQuoteTexts] = useState({ insurer: '', insurancePolicy: '', insuranceCoverage: '', quoteFooterText: '' });
@@ -91,6 +96,7 @@ const CompaniesSection = ({ onCompaniesUpdate }: { onCompaniesUpdate: (companies
         setSiren('');
         setVatNumber('');
         setEinvoicingStartDate('');
+        setMentions(MENTIONS_VIDES);
         setQuoteDefaults({ coefficient: '', laborRate: '', laborCost: '', validityDays: '', vatRate: '' });
         setQuoteTexts({ insurer: '', insurancePolicy: '', insuranceCoverage: '', quoteFooterText: '' });
         setLogoFile(null);
@@ -110,6 +116,10 @@ const CompaniesSection = ({ onCompaniesUpdate }: { onCompaniesUpdate: (companies
             setSiren(company.siren || '');
             setVatNumber(company.vatNumber || '');
             setEinvoicingStartDate(company.einvoicingStartDate || '');
+            setMentions({
+                legalForm: company.legalForm || '', shareCapital: company.shareCapital ? String(company.shareCapital) : '', rcsCity: company.rcsCity || '',
+                latePenaltyRate: company.latePenaltyRate || '', earlyPaymentDiscount: company.earlyPaymentDiscount || '', vatOnDebits: !!company.vatOnDebits,
+            });
             const s = (v?: number | null) => (v === null || v === undefined ? '' : String(v));
             setQuoteDefaults({
                 coefficient: s(company.quoteCoefficient), laborRate: s(company.quoteLaborRate), laborCost: s(company.quoteLaborCost),
@@ -146,9 +156,10 @@ const CompaniesSection = ({ onCompaniesUpdate }: { onCompaniesUpdate: (companies
                 logoUrl = await fileToDataUrl(logoFile);
             }
 
-            const num = (v: string) => (v.trim() === '' || Number.isNaN(Number(v.replace(',', '.'))) ? null : Number(v.replace(',', '.')));
             const companyData = {
                 name, code, address, postalCode, city, siret, siren, vatNumber, logoUrl, einvoicingStartDate,
+                legalForm: mentions.legalForm.trim(), shareCapital: num(mentions.shareCapital.replace(/\s/g, '')), rcsCity: mentions.rcsCity.trim(),
+                latePenaltyRate: mentions.latePenaltyRate.trim(), earlyPaymentDiscount: mentions.earlyPaymentDiscount.trim(), vatOnDebits: mentions.vatOnDebits,
                 quoteCoefficient: num(quoteDefaults.coefficient), quoteLaborRate: num(quoteDefaults.laborRate),
                 quoteLaborCost: num(quoteDefaults.laborCost), quoteValidityDays: num(quoteDefaults.validityDays),
                 quoteDefaultVatRate: num(quoteDefaults.vatRate),
@@ -263,7 +274,7 @@ const CompaniesSection = ({ onCompaniesUpdate }: { onCompaniesUpdate: (companies
                 </div>
 
                 <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-                    <DialogContent className="sm:max-w-[600px]">
+                    <DialogContent className="sm:max-w-[600px] max-h-[90vh] overflow-y-auto">
                         <DialogHeader>
                             <DialogTitle>{editingCompany ? 'Modifier la société' : 'Nouvelle société'}</DialogTitle>
                         </DialogHeader>
@@ -312,6 +323,39 @@ const CompaniesSection = ({ onCompaniesUpdate }: { onCompaniesUpdate: (companies
                             <div className="space-y-2">
                                 <Label htmlFor="vatNumber">N° TVA Intracommunautaire</Label>
                                 <Input id="vatNumber" value={vatNumber} onChange={(e) => setVatNumber(e.target.value)} />
+                            </div>
+                            <div className="space-y-2 rounded-md border p-3">
+                                <Label>Mentions légales des factures</Label>
+                                <div className="grid grid-cols-3 gap-2">
+                                    {([
+                                        ['legalForm', 'Forme juridique', 'ex. SAS'],
+                                        ['shareCapital', 'Capital social (€)', 'ex. 1000000'],
+                                        ['rcsCity', 'RCS (ville)', 'ex. Lyon'],
+                                    ] as const).map(([key, label, placeholder]) => (
+                                        <div key={key} className="space-y-1">
+                                            <Label htmlFor={`mention-${key}`} className="text-xs text-muted-foreground">{label}</Label>
+                                            <Input id={`mention-${key}`} placeholder={placeholder} value={mentions[key]} onChange={(e) => setMentions(m => ({ ...m, [key]: e.target.value }))} />
+                                        </div>
+                                    ))}
+                                </div>
+                                <div className="grid grid-cols-2 gap-2">
+                                    <div className="space-y-1">
+                                        <Label htmlFor="mention-latePenaltyRate" className="text-xs text-muted-foreground">Pénalités de retard</Label>
+                                        <Input id="mention-latePenaltyRate" placeholder={PENALITES_DEFAUT} value={mentions.latePenaltyRate} onChange={(e) => setMentions(m => ({ ...m, latePenaltyRate: e.target.value }))} />
+                                    </div>
+                                    <div className="space-y-1">
+                                        <Label htmlFor="mention-earlyPaymentDiscount" className="text-xs text-muted-foreground">Escompte</Label>
+                                        <Input id="mention-earlyPaymentDiscount" placeholder={ESCOMPTE_DEFAUT} value={mentions.earlyPaymentDiscount} onChange={(e) => setMentions(m => ({ ...m, earlyPaymentDiscount: e.target.value }))} />
+                                    </div>
+                                </div>
+                                <label className="flex items-center gap-2 text-sm">
+                                    <input type="checkbox" checked={mentions.vatOnDebits} onChange={(e) => setMentions(m => ({ ...m, vatOnDebits: e.target.checked }))} />
+                                    Option pour le paiement de la TVA d'après les débits
+                                </label>
+                                {(() => {
+                                    const manques = manquesSociete({ ...mentions, shareCapital: num(mentions.shareCapital.replace(/\s/g, '')), siret, siren, vatNumber, address });
+                                    return manques.length > 0 && <p className="text-xs text-amber-600">Il manque pour une facture complète : {manques.join(', ')}.</p>;
+                                })()}
                             </div>
                             <div className="space-y-2">
                                 <Label htmlFor="einvoicingStartDate">Facturation électronique obligatoire à partir du</Label>
@@ -717,15 +761,17 @@ const ActivitiesSection = () => {
     const [code, setCode] = useState('');
     const [label, setLabel] = useState('');
     const [type, setType] = useState<'P1' | 'P2' | 'P3'>('P1');
+    const [nature, setNature] = useState<NatureActivite>('biens');
     const [activityVatRateId, setActivityVatRateId] = useState('');
 
-    const resetForm = () => { setCode(''); setLabel(''); setType('P1'); setActivityVatRateId(''); setEditingActivity(null); };
+    const resetForm = () => { setCode(''); setLabel(''); setType('P1'); setNature('biens'); setActivityVatRateId(''); setEditingActivity(null); };
 
     const handleOpenDialog = (activity: Activity | null = null) => {
         setEditingActivity(activity);
         setCode(activity ? activity.code : '');
         setLabel(activity ? activity.label : '');
         setType(activity ? activity.type : 'P1');
+        setNature(natureActivite(activity ?? { code: '', type: 'P1' }));
         setActivityVatRateId(activity?.vatRateId ?? '');
         setDialogOpen(true);
     };
@@ -736,10 +782,10 @@ const ActivitiesSection = () => {
         setIsSubmitting(true);
         try {
             if (editingActivity) {
-                await updateActivity(editingActivity.id, { code, label, type, vatRateId: activityVatRateId });
+                await updateActivity(editingActivity.id, { code, label, type, operationNature: nature, vatRateId: activityVatRateId });
                 toast({ title: "Succès", description: "Activité mise à jour." });
             } else {
-                await createActivity({ code, label, type, vatRateId: activityVatRateId });
+                await createActivity({ code, label, type, operationNature: nature, vatRateId: activityVatRateId });
                 toast({ title: "Succès", description: "Activité créée." });
             }
             await reloadData(['activities']);
@@ -825,12 +871,22 @@ const ActivitiesSection = () => {
                             </div>
                             <div className="space-y-2">
                                 <Label htmlFor="activityType">Type</Label>
-                                <Select onValueChange={(v: 'P1' | 'P2' | 'P3') => setType(v)} value={type}>
+                                <Select onValueChange={(v: 'P1' | 'P2' | 'P3') => { setType(v); if (!editingActivity) setNature(natureActivite({ code: '', type: v })); }} value={type}>
                                     <SelectTrigger><SelectValue placeholder="Sélectionner un type" /></SelectTrigger>
                                     <SelectContent>
                                         <SelectItem value="P1">P1 (Énergie)</SelectItem>
                                         <SelectItem value="P2">P2 (Maintenance)</SelectItem>
                                         <SelectItem value="P3">P3 (Gros Entretien)</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                            <div className="space-y-2">
+                                <Label htmlFor="activityNature">Nature de l'opération (mention sur les factures)</Label>
+                                <Select onValueChange={(v: NatureActivite) => setNature(v)} value={nature}>
+                                    <SelectTrigger id="activityNature"><SelectValue /></SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="biens">Livraison de biens (fourniture d'énergie)</SelectItem>
+                                        <SelectItem value="services">Prestation de services</SelectItem>
                                     </SelectContent>
                                 </Select>
                             </div>

@@ -8,6 +8,8 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Send } from 'lucide-react';
 import { CHANNEL_LABELS, REGIME_LABELS, REGIME_SHORT_LABELS, resolveEInvoicing } from '@/lib/einvoicing';
 import { EINVOICING_REGIMES, type Typology } from '@/lib/types';
+import { Button } from '@/components/ui/button';
+import { tvaDepuisSiren } from '@/lib/billing/mentions';
 
 const SOURCE_LABELS = {
     client: 'réglage de la fiche client',
@@ -83,6 +85,19 @@ export function ClientEInvoicingFields({ typologies }: { typologies: Typology[] 
                     )} />
                 )}
             </div>
+            <FormField control={form.control} name="vatNumber" render={({ field }) => (
+                <FormItem className="md:w-1/2">
+                    <FormLabel>N° de TVA intracommunautaire du client</FormLabel>
+                    <div className="flex gap-2">
+                        <FormControl><Input placeholder="ex. FR12345678901" {...field} value={field.value ?? ''} /></FormControl>
+                        {tvaDepuisSiren(siret) && !field.value && (
+                            <Button type="button" variant="outline" onClick={() => form.setValue('vatNumber', tvaDepuisSiren(siret), { shouldDirty: true, shouldValidate: true })}>Déduire du SIRET</Button>
+                        )}
+                    </div>
+                    <FormDescription>Imprimé sur les factures. À laisser vide pour un client non assujetti (particulier, certaines collectivités ou copropriétés).</FormDescription>
+                    <FormMessage />
+                </FormItem>
+            )} />
             <Alert variant={resolution.blocking.length ? 'destructive' : 'default'}>
                 <Send className="h-4 w-4" />
                 <AlertTitle>

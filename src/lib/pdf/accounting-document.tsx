@@ -5,6 +5,7 @@ import { Document, Page, View, Text, Image, StyleSheet, renderToBuffer } from '@
 import type { Client, Company, InvoiceLineItem, InvoiceQuoteLink, VatBreakdown } from '@/lib/types';
 import type { SituationSnapshot } from '@/lib/projects/types';
 import { afficher, type AnnexeP1 } from '@/lib/billing/p1-annexe';
+import { conditionsPaiement, identiteLegale, mentionEscompte, mentionPenalites, MENTION_DEBITS } from '@/lib/billing/mentions';
 
 /**
  * Modèle PDF des factures, proformas et avoirs (rendu côté serveur par @react-pdf/renderer).
@@ -31,7 +32,13 @@ export type AccountingDocumentData = {
     periodStartDate?: string;
     periodEndDate?: string;
     company: Company;
-    client: Pick<Client, 'name' | 'address' | 'postalCode' | 'city'> & { siret?: string };
+    client: Pick<Client, 'name' | 'address' | 'postalCode' | 'city'> & { siret?: string; vatNumber?: string };
+    /** Mentions légales résolues à la génération : conditions de paiement, nature, lieux, références de l'acheteur. */
+    paymentTerms?: string;
+    operationNature?: string;
+    places?: string[];
+    legalCommitment?: string;
+    marketNumber?: string;
     lineItems: InvoiceLineItem[];
     subtotal: number;
     tax: number;
@@ -226,6 +233,7 @@ export function AccountingDocumentPdf({ data }: { data: AccountingDocumentData }
         company.siret ? `SIRET ${company.siret}` : company.siren ? `SIREN ${company.siren}` : undefined,
         company.vatNumber ? `TVA intracommunautaire ${company.vatNumber}` : undefined,
     ].filter(Boolean).join(' · ');
+    const identite = identiteLegale(company);
 
     return (
         <Document title={`${title} ${data.number ?? ''}`.trim()} author={company.name}>
@@ -237,6 +245,7 @@ export function AccountingDocumentPdf({ data }: { data: AccountingDocumentData }
                         <Text style={styles.companyName}>{company.name}</Text>
                         {company.address && <Text style={styles.muted}>{company.address}</Text>}
                         {(company.postalCode || company.city) && <Text style={styles.muted}>{`${company.postalCode ?? ''} ${company.city ?? ''}`.trim()}</Text>}
+                        {identite && <Text style={styles.muted}>{identite}</Text>}
                         {legalIds && <Text style={styles.muted}>{legalIds}</Text>}
                     </View>
                     <View>
@@ -253,6 +262,7 @@ export function AccountingDocumentPdf({ data }: { data: AccountingDocumentData }
                         {client.address && <Text>{client.address}</Text>}
                         <Text>{`${client.postalCode ?? ''} ${client.city ?? ''}`.trim()}</Text>
                         {client.siret && <Text style={styles.muted}>SIRET {client.siret}</Text>}
+                        {client.vatNumber && <Text style={styles.muted}>TVA intracommunautaire {client.vatNumber}</Text>}
                     </View>
                     <View style={styles.box}>
                         <View style={styles.infoRow}><Text style={styles.infoLabel}>Date d'émission :</Text><Text>{formatDate(data.date)}</Text></View>
@@ -274,6 +284,12 @@ export function AccountingDocumentPdf({ data }: { data: AccountingDocumentData }
                         )}
                         {data.quote?.purchaseOrderNumber && (
                             <View style={styles.infoRow}><Text style={styles.infoLabel}>Bon de commande :</Text><Text>{data.quote.purchaseOrderNumber}</Text></View>
+                        )}
+                        {data.legalCommitment && (
+                            <View style={styles.infoRow}><Text style={styles.infoLabel}>Engagement :</Text><Text>{data.legalCommitment}</Text></View>
+                        )}
+                        {data.marketNumber && (
+                            <View style={styles.infoRow}><Text style={styles.infoLabel}>Marché :</Text><Text>{data.marketNumber}</Text></View>
                         )}
                         {data.references && data.references.length > 0 && (
                             <View style={styles.infoRow}><Text style={styles.infoLabel}>Facture(s) d'origine :</Text><Text>{data.references.join(', ')}</Text></View>
@@ -319,17 +335,22 @@ export function AccountingDocumentPdf({ data }: { data: AccountingDocumentData }
 
                 <View style={styles.notes} wrap={false}>
                     {kind === 'creditNote' && data.reason && <Text>Motif : {data.reason}</Text>}
-                    {kind === 'invoice' && (
+                    {data.operationNature && <Text>Nature de l'opération : {data.operationNature}.</Text>}
+                    {data.places && data.places.length > 0 && (
+                        <Text>{`${data.places.length > 1 ? "Lieux d'exécution" : "Lieu d'exécution"} : ${data.places.join(' ; ')}.`}</Text>
+                    )}
+                    {company.vatOnDebits && <Text>{MENTION_DEBITS}</Text>}
+                    {kind !== 'creditNote' && (
                         <>
-                            <Text>Paiement à réception, au plus tard à la date d'échéance. Pas d'escompte pour paiement anticipé.</Text>
-                            <Text>Tout retard de paiement entraîne des pénalités de 1,5 % par mois ainsi qu'une indemnité forfaitaire pour frais de recouvrement de 40 € (art. L441-10 du Code de commerce).</Text>
+                            <Text>{`${conditionsPaiement(data.paymentTerms ? { deadline: data.paymentTerms } : null)} ${mentionEscompte(company)}`}</Text>
+                            <Text>{mentionPenalites(company)}</Text>
                         </>
                     )}
                     {kind === 'proforma' && <Text>Document sans valeur comptable : ne constitue pas une facture.</Text>}
                 </View>
 
                 <Text style={styles.footer} fixed render={({ pageNumber, totalPages }) =>
-                    `${company.name}${legalIds ? ` · ${legalIds}` : ''} — Page ${pageNumber}/${totalPages}`
+                    `${company.name}${identite ? ` · ${identite}` : ''}${legalIds ? ` · ${legalIds}` : ''} — Page ${pageNumber}/${totalPages}`
                 } />
             </Page>
             {data.annexes && data.annexes.length > 0 && <AnnexePages data={data} />}

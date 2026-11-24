@@ -4,8 +4,9 @@ import { adminBucket, adminDb } from '@/lib/firebase-admin';
 import { renderAccountingPdf, renderAnnexePdf, type AccountingDocumentData } from '@/lib/pdf/accounting-document';
 import { annexesP1 } from '@/lib/billing/p1-annexe';
 import { annexeXlsx } from '@/lib/billing/p1-annexe-xlsx';
-import type { ArchivedPdf, Client, Company, CreditNote, Invoice } from '@/lib/types';
-import { getClient, getCompany, getContract, getCreditNote, getInvoice, getInvoicesByIds, resolveIssuingCompany } from './firestore-admin';
+import { lieuxExecution, natureOperation } from '@/lib/billing/mentions';
+import type { ArchivedPdf, Client, Company, Contract, CreditNote, Invoice, Site } from '@/lib/types';
+import { getActivities, getClient, getCompany, getContract, getCreditNote, getInvoice, getInvoicesByIds, resolveIssuingCompany, resolvePaymentTerm } from './firestore-admin';
 
 /**
  * Archivage des PDF de factures et d'avoirs (copie conforme, conservation 10 ans).
@@ -51,8 +52,36 @@ async function issuingCompany(companyId: string | undefined, contractId: string,
 
 function clientBlock(client: Client | null, fallbackName: string): AccountingDocumentData['client'] {
     return client
-        ? { name: client.name, address: client.address, postalCode: client.postalCode, city: client.city, siret: client.siret }
+        ? { name: client.name, address: client.address, postalCode: client.postalCode, city: client.city, siret: client.siret, ...(client.vatNumber && { vatNumber: client.vatNumber.replace(/\s/g, '') }) }
         : { name: fallbackName, address: '', postalCode: '', city: '' };
+}
+
+const MAX_LIEUX = 8;
+
+/**
+ * Mentions légales résolues à la génération (donc figées dans le PDF archivé) : nature de l'opération d'après
+ * les activités des lignes, lieux d'exécution différents de l'adresse de facturation, références de l'acheteur.
+ */
+async function mentions(record: Invoice | CreditNote, client: Client | null): Promise<Pick<AccountingDocumentData, 'operationNature' | 'places' | 'legalCommitment' | 'marketNumber'>> {
+    const lignes = record.lineItems ?? [];
+    const siteIds = [...new Set(lignes.map(l => l.siteId).filter((x): x is string => !!x))];
+    const [activites, sites] = await Promise.all([
+        getActivities(),
+        siteIds.length ? adminDb.getAll(...siteIds.map(i => adminDb.collection('sites').doc(i))) : Promise.resolve([]),
+    ]);
+    const lieux = lieuxExecution(sites.filter(d => d.exists).map(d => d.data() as Site), client ?? {});
+    const chorus = record.einvoicing?.chorus;
+    return {
+        operationNature: natureOperation(lignes, activites),
+        ...(lieux.length > 0 && { places: lieux.length > MAX_LIEUX ? [`${lieux.length} sites, détaillés au contrat`] : lieux }),
+        ...(chorus?.legalCommitment && { legalCommitment: chorus.legalCommitment }),
+        ...(chorus?.marketNumber && { marketNumber: chorus.marketNumber }),
+    };
+}
+
+/** Libellé des conditions de paiement du contrat, sinon du client ; absent : délai par défaut. */
+async function libellePaiement(contract: Pick<Contract, 'paymentTermId'> | null, client: Client | null): Promise<string | undefined> {
+    try { return (await resolvePaymentTerm(contract, client))?.deadline?.trim() || undefined; } catch { return undefined; }
 }
 
 async function load(kind: ArchivedKind, id: string): Promise<Loaded> {
@@ -61,6 +90,7 @@ async function load(kind: ArchivedKind, id: string): Promise<Loaded> {
         if (!invoice) throw new Error('Facture introuvable.');
         const client = await getClient(invoice.clientId);
         const company = await issuingCompany(invoice.companyId, invoice.contractId, client);
+        const paymentTerms = await libellePaiement(invoice.contractId ? await getContract(invoice.contractId) : null, client);
         const isProforma = invoice.status === 'proforma';
         return {
             record: invoice,
@@ -85,6 +115,8 @@ async function load(kind: ArchivedKind, id: string): Promise<Loaded> {
                 ...(invoice.quote && { quote: invoice.quote }),
                 ...(invoice.situation && { situation: invoice.situation }),
                 ...annexesDe(invoice.lineItems),
+                ...(paymentTerms && { paymentTerms }),
+                ...(await mentions(invoice, client)),
             },
         };
     }
@@ -111,6 +143,7 @@ async function load(kind: ArchivedKind, id: string): Promise<Loaded> {
             total: creditNote.total,
             references: originals.map(inv => inv.invoiceNumber || inv.id),
             reason: creditNote.reason,
+            ...(await mentions(creditNote, client)),
             ...(creditNote.vatBreakdown && { vatBreakdown: creditNote.vatBreakdown }),
             // Avoir d'annulation : ses lignes reprennent (inversées) celles de la facture, dont l'annexe fait foi ;
             // seules les lignes de décompte ou de régularisation ont une annexe propre à l'avoir.

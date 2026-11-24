@@ -111,7 +111,7 @@ async function remiseAZero() {
 async function referentiels() {
     await set('companies', 'demo-zen', {
         code: 'ZEN', name: 'Zenergya Services (démo)', address: '12 rue de l\'Exemple', postalCode: '69003', city: 'Lyon',
-        siret: '90000000000013', siren: '900000000', vatNumber: 'FR00900000000', quoteCoefficient: 1.35, quoteLaborRate: 68, quoteLaborCost: 42, quoteValidityDays: 90, quoteDefaultVatRate: 20,
+        siret: '90000000000013', siren: '900000000', vatNumber: 'FR00900000000', legalForm: 'SAS', shareCapital: 500000, rcsCity: 'Lyon', quoteCoefficient: 1.35, quoteLaborRate: 68, quoteLaborCost: 42, quoteValidityDays: 90, quoteDefaultVatRate: 20,
     });
     for (const [id, name, code] of [['demo-ag-lyon', 'Lyon', 'LYO'], ['demo-ag-paris', 'Paris Est', 'PAE']]) await set('agencies', id, { name, code, companyId: 'demo-zen', companyName: 'Zenergya Services (démo)' });
     for (const [id, name, agencyId, code] of [['demo-se-ln', 'Lyon Nord', 'demo-ag-lyon', 'LN'], ['demo-se-ls', 'Lyon Sud', 'demo-ag-lyon', 'LS'], ['demo-se-p', 'Paris 11e-12e', 'demo-ag-paris', 'P11'], ]) {

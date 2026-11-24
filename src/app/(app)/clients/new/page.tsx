@@ -79,6 +79,7 @@ export default function NewClientPage() {
       useChorus: false,
       einvoicingRegime: 'auto',
       einvoicingAddress: '',
+      vatNumber: '',
       siret: "",
       chorusServiceCode: "",
       chorusLegalCommitmentNumber: "",

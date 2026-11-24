@@ -166,6 +166,8 @@ export const ClientBaseSchema = z.object({
     bePhone: z.string().optional(),
     useChorus: z.boolean().default(false),
     siret: z.string().optional(),
+    vatNumber: z.string().trim().optional()
+        .refine(v => !v || /^[A-Z]{2}[A-Z0-9]{2,13}$/.test(v.replace(/\s/g, '')), "Format attendu : code pays puis numéro (ex. FR12345678901)."),
     chorusServiceCode: z.string().optional(),
     chorusLegalCommitmentNumber: z.string().optional(),
     chorusMarketNumber: z.string().optional(),
@@ -796,6 +798,13 @@ export type Company = {
     siret?: string;
     siren?: string;
     vatNumber?: string;
+    // Mentions légales des factures (lib/billing/mentions)
+    legalForm?: string;                   // forme juridique (SAS, SA…)
+    shareCapital?: number | null;         // capital social en €
+    rcsCity?: string;                     // ville d'immatriculation au RCS
+    vatOnDebits?: boolean;                // option pour le paiement de la TVA d'après les débits
+    latePenaltyRate?: string;             // taux des pénalités de retard (vide : 1,5 % par mois)
+    earlyPaymentDiscount?: string;        // conditions d'escompte (vide : pas d'escompte)
     /** Date d'entrée en vigueur de l'obligation d'émission électronique pour cette société (ISO, ex. 2027-09-01). */
     einvoicingStartDate?: string;
     // Devis : valeurs par défaut (la fiche client peut fixer son coefficient et son taux horaire)
@@ -836,6 +845,8 @@ export type Activity = {
     code: string;
     label: string;
     type: 'P1' | 'P2' | 'P3';
+    /** Nature de l'opération sur les factures ; absente : biens pour le P1 (fourniture d'énergie), services sinon. */
+    operationNature?: 'biens' | 'services';
     vatRateId?: string; // TVA par défaut de l'activité (sinon celle de la prestation) ; aucune TVA supposée
 }
 

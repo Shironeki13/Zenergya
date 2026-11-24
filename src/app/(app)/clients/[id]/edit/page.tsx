@@ -71,6 +71,7 @@ export default function EditClientPage() {
       useChorus: false,
       einvoicingRegime: 'auto',
       einvoicingAddress: '',
+      vatNumber: '',
       siret: "",
       chorusServiceCode: "",
       chorusLegalCommitmentNumber: "",
@@ -131,6 +132,7 @@ export default function EditClientPage() {
           // Champs ajoutés après la création de certaines fiches : jamais « undefined » (refusé par Firestore).
           einvoicingRegime: clientData.einvoicingRegime || 'auto',
           einvoicingAddress: clientData.einvoicingAddress || '',
+          vatNumber: clientData.vatNumber || '',
           chorusServiceCodeRequired: clientData.chorusServiceCodeRequired ?? false,
           relation: clientData.relation ?? 'client',
           externalRef: clientData.externalRef ?? '',
