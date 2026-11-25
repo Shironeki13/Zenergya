@@ -64,6 +64,7 @@ export const NAV_GROUPS: NavGroup[] = [
     {
         id: 'achats', label: 'Achats', icon: ShoppingCart, ton: 'violet', items: [
             { href: '/purchases', label: 'Commandes', icon: ShoppingCart, keywords: 'achat fournisseur validation engagé bon de commande' },
+            { href: '/purchases/energie', label: "Contrats d'énergie", icon: Gauge, keywords: 'fournisseur gaz électricité pdl pce point de livraison renouvellement prix molécule' },
         ],
     },
     {

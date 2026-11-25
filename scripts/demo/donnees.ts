@@ -6,6 +6,7 @@
 // Garde-fou : refuse de tourner hors émulateurs ou sur un projet dont l'identifiant ne commence pas par « demo- ».
 import { Timestamp } from 'firebase-admin/firestore';
 import { creerFactureEnergie } from '../../src/services/factures-energie-admin';
+import { importerPoints, rattacherPoint } from '../../src/services/energie-admin';
 import { getStorage } from 'firebase-admin/storage';
 import { adminAuth, adminDb } from '../../src/lib/firebase-admin';
 import { applyImport, type ImportReport } from '../../src/services/imports-admin';
@@ -591,6 +592,28 @@ async function abonnementEtRefacturation() {
     console.log('Familles du P1 : abonnement P1A et refacturation €€ (3 factures du fournisseur) sur la copropriété Square Voltaire.');
 }
 
+/**
+ * Contrats de fourniture d'énergie : un point de livraison de gaz par chaufferie de la démo, avec son historique de
+ * contrats fournisseur. Trois cas : couvert jusqu'en 2028, à renouveler à la fin de l'année, sans contrat en cours.
+ */
+async function contratsEnergie() {
+    const sites = (await adminDb.collection('sites').get()).docs.filter(d => /chaufferie|sous-station|bâtiment a|mairie|gymnase/i.test(String(d.get('name')))).slice(0, 7);
+    const cas: [string, string, string, string, number][][] = [
+        [['2024-01-01', '2025-12-31', 'Gaz du Sud (démo)', 'MULTISITES 2024/2025', 31.4], ['2026-01-01', '2028-12-31', 'Énergies du Rhône (démo)', 'ACCORD CADRE 2026/2028', 27.9]],
+        [['2023-01-01', '2024-12-31', 'Gaz du Sud (démo)', 'MULTISITES 2023/2024', 48.2], ['2025-01-01', '2026-12-31', 'Gaz du Sud (démo)', 'MULTISITES 2025/2026', 33.6]],
+        [['2023-07-01', '2026-06-30', 'Énergies du Rhône (démo)', 'ER-2023-0417', 36.1]],
+    ];
+    const points = sites.map((d, i) => ({
+        pdl: `2145${String(8100000000 + i * 7919)}`, energie: 'GAZ' as const, client: String(d.get('clientName') ?? ''), site: String(d.get('name')), agence: i % 3 === 2 ? 'Paris Est' : 'Lyon', typeMarche: 'MTI',
+        segment: i % 2 ? 'T3' : 'T2', profil: 'P012', car: 180 + i * 95, ville: String(d.get('city') ?? ''), adresse: String(d.get('address') ?? ''), codePostal: String(d.get('postalCode') ?? ''), centreCout: `68W2/V0${80900 + i}-1`,
+        finClient: '2029-06-30',
+        periodes: cas[i % 3].map(([debut, fin, fournisseur, numeroContrat, prixMolecule]) => ({ debut, fin, fournisseur, numeroContrat, titulaire: 'Zenergya Services (démo)', tacite: 'non' as const, indexationAchat: 'FIXE', indexationVente: 'PEG', prixMolecule, totalAbonnement: 940 + i * 60, contratDisponible: fin > '2026-01-01' && i % 2 ? 'EN COURS' : 'OUI' })),
+    }));
+    await importerPoints(points, 'achats@example.com');
+    for (const [i, d] of sites.entries()) { const pt = (await adminDb.collection('pointsLivraison').where('pdl', '==', points[i].pdl).limit(1).get()).docs[0]; if (pt && i !== 4) await rattacherPoint(pt.id, d.id, 'achats@example.com'); }
+    console.log(`Contrats d'énergie : ${points.length} points de livraison de gaz et leurs contrats fournisseur par période.`);
+}
+
 async function travaux(codesClients: string[], contrats: { id: string }[]) {
     const pricing: QuotePricing = { coefficient: 1.35, laborRate: 68, laborCost: 42, defaultVatRate: 20 };
     const client = async (code: string) => (await adminDb.collection('clients').where('externalCode', '==', code).limit(1).get()).docs[0];
@@ -738,6 +761,7 @@ async function heuresDemo(affaires: { circulateur: string; chaufferie: string },
     await factures(contrats);
     await revisionsForfaits();
     await abonnementEtRefacturation();
+    await contratsEnergie();
     const affaires = await travaux(codesClients, contrats);
     await achats(affaires, contrats);
     await heuresDemo(affaires, contrats);

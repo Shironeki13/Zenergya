@@ -65,11 +65,12 @@ export async function xlsxTemplate(entity: ImportEntity, lists: Partial<Record<R
 }
 
 /** Tableau de l'onglet « Données » (sinon le premier onglet), valeurs affichées en texte. */
-export async function readXlsxTable(buffer: ArrayBuffer): Promise<string[][]> {
+export async function readXlsxTable(buffer: ArrayBuffer, feuille?: string): Promise<string[][]> {
     const XLSX = await import('xlsx');
     if (!versionAtLeast(XLSX.version, MIN_SAFE_XLSX_VERSION)) throw new UnsafeXlsxError(XLSX.version);
     const wb = XLSX.read(buffer, { type: 'array', cellFormula: false, cellHTML: false, cellStyles: false, cellDates: true, UTC: true });
-    const name = wb.SheetNames.includes('Données') ? 'Données' : wb.SheetNames[0];
+    // Onglet demandé (classeur à plusieurs onglets), sinon « Données » des modèles, sinon le premier.
+    const name = feuille && wb.SheetNames.includes(feuille) ? feuille : wb.SheetNames.includes('Données') ? 'Données' : wb.SheetNames[0];
     if (!name) return [];
     const sheet = wb.Sheets[name];
     // Cellules date : restituées en AAAA-MM-JJ (HH:MM si une heure est saisie), quel que soit leur format d'affichage
