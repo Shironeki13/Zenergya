@@ -2,6 +2,7 @@
 
 import { TYPES_P1, libelleFamilleP1 } from '@/lib/p1/familles';
 import { FacturesEnergie } from '@/components/sites/factures-energie';
+import { MargeP1Site } from '@/components/sites/marge-p1';
 import { lireServeur } from '@/services/lecture';
 import { useConfirm } from '@/components/confirm-provider';
 import Link from 'next/link';
@@ -1407,6 +1408,7 @@ export default function SiteDetailsPage() {
 
                 <TabsContent value="factures" className="mt-4 space-y-6">
                     {services.some(x => x.siteId === siteId && x.type === 'P1' && x.isActive !== false) && <FacturesEnergie siteId={siteId} contractId={contract?.id} refacturation={services.some(x => x.siteId === siteId && x.p1Type === 'REFACTURATION' && x.isActive !== false)} />}
+                    {services.some(x => x.siteId === siteId && x.type === 'P1') && <MargeP1Site siteId={siteId} />}
                     <FacturesDuSite factures={facturesSite} />
                 </TabsContent>
             </Tabs>

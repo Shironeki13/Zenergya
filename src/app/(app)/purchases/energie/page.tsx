@@ -14,6 +14,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { DataTable, type Colonne } from '@/components/data-table/data-table';
 import { useData } from '@/context/data-context';
 import { useToast } from '@/hooks/use-toast';
+import { margesP1Action } from '@/lib/energie/actions';
+import type { MargeSite } from '@/services/energie-marge-admin';
 import { baseEnergieAction, enregistrerPeriodeAction, importerPointsAction, pointLivraisonAction, rattacherPointAction, supprimerPeriodeAction } from '@/lib/energie/actions';
 import {
     LIBELLE_COUVERTURE, LIBELLE_ENERGIE, LIBELLE_ETAT_PERIODE, etatPeriode, lireFeuille, type LectureFeuille, type PeriodeFourniture, type PointLivraison, type StatutCouverture,
@@ -45,6 +47,8 @@ export default function ContratsEnergiePage() {
     const [filtre, setFiltre] = useState<Filtre>('actifs');
     const [ouvert, setOuvert] = useState<string | null>(null);
     const [importOuvert, setImportOuvert] = useState(false);
+    const [marges, setMarges] = useState<MargeSite[] | null>(null);
+    const chargerMarges = useCallback(async () => { const r = await margesP1Action(); setMarges(r.success ? r.data : []); }, []);
 
     const charger = useCallback(async () => {
         const r = await baseEnergieAction();
@@ -107,6 +111,7 @@ export default function ContratsEnergiePage() {
                             <TabsTrigger value="points">Points de livraison ({lignes.length})</TabsTrigger>
                             <TabsTrigger value="contrats">Contrats fournisseur ({base.contrats.length})</TabsTrigger>
                             <TabsTrigger value="synthese">Synthèse annuelle</TabsTrigger>
+                            <TabsTrigger value="marge" onClick={() => { if (marges === null) void chargerMarges(); }}>Marge P1</TabsTrigger>
                         </TabsList>
 
                         <TabsContent value="points" className="mt-4">
@@ -157,6 +162,34 @@ export default function ContratsEnergiePage() {
                                         ))}</tbody>
                                         <tfoot><tr className="border-t font-semibold"><td className="py-2" colSpan={3}>Total</td>{base.synthese.totaux.map((n, j) => <td key={j} className="px-2 text-right">{n}</td>)}</tr></tfoot>
                                     </table>
+                                </CardContent>
+                            </Card>
+                        </TabsContent>
+
+                        <TabsContent value="marge" className="mt-4">
+                            <Card>
+                                <CardHeader className="pb-3">
+                                    <CardTitle className="text-base">Marge P1 par site, sur douze mois</CardTitle>
+                                    <CardDescription>P1 facturé au client face aux factures du fournisseur d'énergie saisies sur le site. Calculée sur les mois où les deux sont connus ; les sites sans facture du fournisseur n'apparaissent pas. La marge la plus faible d'abord.</CardDescription>
+                                </CardHeader>
+                                <CardContent className="overflow-x-auto">
+                                    {marges === null ? <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /> : marges.length === 0 ? <p className="py-4 text-center text-sm text-muted-foreground">Aucune facture du fournisseur saisie : la marge ne peut pas encore être calculée.</p> : (
+                                        <table className="w-full min-w-[820px] text-sm tabular-nums" data-tableau="marges">
+                                            <thead><tr className="border-b text-xs text-muted-foreground"><th className="py-2 text-left font-medium">Client</th><th className="px-2 text-left font-medium">Site</th><th className="px-2 text-right font-medium">Mois complets</th>
+                                                <th className="px-2 text-right font-medium">P1 facturé</th><th className="px-2 text-right font-medium">Achats d'énergie</th><th className="px-2 text-right font-medium">Marge</th><th className="px-2 text-right font-medium">Taux</th><th className="pl-2 text-right font-medium">Facturé sans achat saisi</th></tr></thead>
+                                            <tbody>{marges.map(x => (
+                                                <tr key={x.siteId} className="border-b last:border-0">
+                                                    <td className="py-2"><span className="block max-w-[220px] truncate" title={x.client}>{x.client}</span></td>
+                                                    <td className="px-2"><Link href={`/sites/${x.siteId}?onglet=factures`} className="text-primary hover:underline">{x.siteNom}</Link></td>
+                                                    <td className="px-2 text-right">{x.marge.moisComplets}</td>
+                                                    <td className="px-2 text-right">{eur(x.marge.ventes)}</td><td className="px-2 text-right">{eur(x.marge.achats)}</td>
+                                                    <td className={`px-2 text-right font-medium ${x.marge.marge < 0 ? 'text-red-700' : ''}`}>{eur(x.marge.marge)}</td>
+                                                    <td className={`px-2 text-right ${x.marge.taux !== null && x.marge.taux < 0 ? 'text-red-700' : ''}`}>{x.marge.taux !== null ? `${x.marge.taux.toLocaleString('fr-FR')} %` : '—'}</td>
+                                                    <td className="pl-2 text-right text-muted-foreground">{x.marge.ventesSansAchat ? eur(x.marge.ventesSansAchat) : '—'}</td>
+                                                </tr>
+                                            ))}</tbody>
+                                        </table>
+                                    )}
                                 </CardContent>
                             </Card>
                         </TabsContent>

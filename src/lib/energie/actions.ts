@@ -3,6 +3,7 @@
 import { requireUser } from '@/lib/auth/server';
 import { gardePerimetre } from '@/lib/auth/perimetre-server';
 import type { PeriodeFourniture, PointImporte, PointLivraison } from '@/lib/energie/fournitures';
+import { margeSite, margesP1, type MargeSite } from '@/services/energie-marge-admin';
 import {
     baseEnergie, enregistrerPeriode, exigerAchatsEnergie, importerPoints, pointLivraison, rattacherPoint, supprimerPeriode, type BaseEnergie, type RapportImportEnergie,
 } from '@/services/energie-admin';
@@ -34,3 +35,7 @@ export const rattacherPointAction = async (id: string, siteId: string | null): P
 
 export const enregistrerPeriodeAction = async (id: string, saisie: Partial<PeriodeFourniture>): Promise<Result<null>> => run(async u => { await pointLivraison(id, gardePerimetre(u)); await enregistrerPeriode(id, saisie, u.email); return null; });
 export const supprimerPeriodeAction = async (id: string, periodeId: string): Promise<Result<null>> => run(async u => { await pointLivraison(id, gardePerimetre(u)); await supprimerPeriode(id, periodeId, u.email); return null; });
+
+/** Marge P1 d'un site (achats d'énergie face au P1 facturé), et de tous les sites qui ont des achats saisis. */
+export const margeSiteAction = async (siteId: string): Promise<Result<MargeSite>> => run(async u => { await gardePerimetre(u).exiger('site', siteId); return margeSite(siteId); });
+export const margesP1Action = async (): Promise<Result<MargeSite[]>> => run(u => margesP1(gardePerimetre(u)));

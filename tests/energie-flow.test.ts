@@ -7,6 +7,7 @@ import type { SessionUser } from '../src/lib/auth/server';
 import { lireFeuille } from '../src/lib/energie/fournitures';
 import { creerFactureEnergie, facturesEnergieDuPoint, facturesEnergieDuSite } from '../src/services/factures-energie-admin';
 import { rappelsEnergie } from '../src/services/notifications-metier';
+import { margeSite, margesP1 } from '../src/services/energie-marge-admin';
 import { baseEnergie, enregistrerPeriode, exigerAchatsEnergie, importerPoints, pointLivraison, rattacherPoint, supprimerPeriode } from '../src/services/energie-admin';
 
 if (!process.env.FIRESTORE_EMULATOR_HOST) throw new Error('À lancer via « npm run test:billing » (émulateur requis).');
@@ -117,4 +118,30 @@ test('rappel des renouvellements : une demande de mail listant les points à ren
     const ligne = d.contexte.energie!.lignes.find(l => l.pdl === 'EN-PDL-R')!;
     assert.deepEqual([ligne.client, ligne.site, ligne.fournisseur, ligne.numeroContrat, ligne.jours], ['Client Énergie', 'Chaufferie R', 'ENI', 'EN-KR', 20]);
     assert.deepEqual(await rappelsEnergie(jour, jour), []);   // déjà passé aujourd'hui : rien
+});
+
+test('marge P1 : P1 facturé au client face aux achats, mois complets seulement ; annulée ignorée, avoir de régularisation déduit', async () => {
+    const jour = new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/Paris' });
+    const mois = (n: number) => { const [a, m] = jour.slice(0, 7).split('-').map(Number); const t = a * 12 + m - 1 + n; return `${Math.floor(t / 12)}-${String((t % 12) + 1).padStart(2, '0')}`; };
+    const fin = (m: string) => `${m}-${String(new Date(Date.UTC(+m.slice(0, 4), +m.slice(5, 7), 0)).getUTCDate()).padStart(2, '0')}`;
+    const [m1, m2] = [mois(-1), mois(-2)];
+    await set('activities', 'en-p1', { code: 'P1EN', label: 'Chaleur', type: 'P1' });
+    await set('activities', 'en-p2', { code: 'P2EN', label: 'Conduite', type: 'P2' });
+    await set('contracts', 'en-km', { contractNumber: 'CTN-EN-M', clientName: 'Client Marge' });
+    await set('sites', 'en-s3', { name: 'Site Marge', contractId: 'en-km' });
+    const ligne = (code: string, m: string, total: number, siteId = 'en-s3') => ({ siteId, activityCode: code, total, periodStartDate: `${m}-01`, periodEndDate: fin(m) });
+    await set('invoices', 'en-f1', { contractId: 'en-km', invoiceNumber: 'EN-1', status: 'due', lineItems: [ligne('P1EN', m1, 5000), ligne('P2EN', m1, 900), ligne('P1EN', m1, 777, 'autre-site')] });
+    await set('invoices', 'en-f2', { contractId: 'en-km', invoiceNumber: 'EN-2', status: 'paid', lineItems: [ligne('P1EN', m2, 4000)] });
+    await set('invoices', 'en-f3', { contractId: 'en-km', invoiceNumber: 'EN-3', status: 'cancelled', cancelledByCreditNoteId: 'en-a1', lineItems: [ligne('P1EN', m1, 9999)] });
+    await set('invoices', 'en-f4', { contractId: 'en-km', status: 'proforma', lineItems: [ligne('P1EN', m1, 8888)] });
+    await set('creditNotes', 'en-a1', { contractId: 'en-km', originalInvoiceIds: ['en-f3'], lineItems: [ligne('P1EN', m1, 9999)] });
+    await set('creditNotes', 'en-a2', { contractId: 'en-km', originalInvoiceIds: ['en-f1'], lineItems: [ligne('P1EN', m1, 200)] });   // régularisation : en-f1 n'est pas annulée
+    await creerFactureEnergie('en-s3', { fournisseur: 'ENI', numero: 'M-1', date: jour, debut: `${m1}-01`, fin: fin(m1), montantHT: 3800, quantite: 80 }, 'achats@v.fr');
+
+    const m = await margeSite('en-s3');
+    assert.deepEqual([m.siteNom, m.client, m.contractNumber], ['Site Marge', 'Client Marge', 'CTN-EN-M']);
+    assert.deepEqual(m.marge.mois.map(l => [l.mois, l.ventes, l.achats, l.marge]), [[m2, 4000, 0, null], [m1, 4800, 3800, 1000]]);
+    assert.deepEqual([m.marge.ventes, m.marge.achats, m.marge.marge, m.marge.taux, m.marge.moisComplets, m.marge.ventesSansAchat], [4800, 3800, 1000, 20.8, 1, 4000]);
+    assert.ok((await margesP1(tout)).some(x => x.siteId === 'en-s3'));
+    assert.ok(!(await margesP1(restreint(['en-s1']))).some(x => x.siteId === 'en-s3'));
 });
