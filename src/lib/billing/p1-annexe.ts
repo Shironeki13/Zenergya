@@ -261,3 +261,52 @@ export function afficher(v: ValeurAnnexe, c: Pick<ColonneAnnexe, 'format' | 'dec
         default: return n(v, 0, c.decimales ?? 2);
     }
 }
+
+// --- Présentation : chiffres clés, formule en étapes ---
+
+export type SyntheseAnnexe = {
+    sites: number;
+    /** Quantité facturée et son unité, quand l'annexe en porte une seule (MWh, m³). */
+    quantite: { valeur: number; unite: string } | null;
+    /** Prix moyen HT par unité facturée. */
+    prixMoyen: number | null;
+    /** Montant HT (et quantité) par mois, dans l'ordre chronologique ; vide si l'annexe n'est pas mensuelle. */
+    parMois: { mois: string; ht: number; quantite: number | null }[];
+};
+
+/** Chiffres clés d'une annexe, tirés de ses lignes (les lignes de sous-détail ne comptent pas). */
+export function syntheseAnnexe(a: AnnexeP1): SyntheseAnnexe {
+    const lignes = a.lignes.filter(l => !l.detail && typeof l.valeurs.ht === 'number');
+    const colQuantite = a.colonnes.find(c => c.cle === 'quantite');
+    const unites = new Set(lignes.map(l => (typeof l.valeurs.unite === 'string' ? l.valeurs.unite : colQuantite?.libelle.replace(/ facturés$/, '') ?? '')).filter(Boolean));
+    const unite = colQuantite && unites.size === 1 && !/quantité/i.test([...unites][0]) ? [...unites][0] : null;
+    const total = unite ? lignes.reduce((s, l) => s + (typeof l.valeurs.quantite === 'number' ? l.valeurs.quantite : 0), 0) : 0;
+    const mensuelle = a.colonnes.some(c => c.cle === 'mois') && lignes.every(l => /^\d{2}\/\d{4}$/.test(String(l.valeurs.mois ?? '')));
+    const parMois = new Map<string, { ht: number; quantite: number }>();
+    if (mensuelle) for (const l of lignes) {
+        const [mm, aaaa] = String(l.valeurs.mois).split('/');
+        const c = parMois.get(`${aaaa}-${mm}`) ?? { ht: 0, quantite: 0 };
+        c.ht += l.valeurs.ht as number; c.quantite += typeof l.valeurs.quantite === 'number' ? l.valeurs.quantite : 0;
+        parMois.set(`${aaaa}-${mm}`, c);
+    }
+    return {
+        sites: new Set(lignes.map(l => String(l.valeurs.site ?? '')).filter(Boolean)).size,
+        quantite: unite && total ? { valeur: Math.round(total * 1000) / 1000, unite } : null,
+        prixMoyen: unite && total ? Math.round((a.totaux.ht / total) * 10000) / 10000 : null,
+        parMois: [...parMois].sort(([x], [y]) => x.localeCompare(y)).map(([mois, c]) => ({ mois, ht: cents(c.ht), quantite: unite ? Math.round(c.quantite * 1000) / 1000 : null })),
+    };
+}
+
+export type EtapeFormule = { resultat: string; termes: { operateur: string | null; texte: string }[] };
+
+/** « A = B × C / D ; E = A − F » découpé en étapes : résultat, puis termes et opérateurs. */
+export function etapesFormule(formule: string): EtapeFormule[] {
+    return formule.split(' ; ').map(partie => {
+        const i = partie.indexOf(' = ');
+        const [resultat, droite] = i < 0 ? ['', partie] : [partie.slice(0, i).trim(), partie.slice(i + 3)];
+        const morceaux = droite.split(/ (×|\/|−|\+) (?![^(]*\))/);
+        const termes: EtapeFormule['termes'] = [];
+        for (let k = 0; k < morceaux.length; k += 2) termes.push({ operateur: k === 0 ? null : morceaux[k - 1], texte: morceaux[k].trim() });
+        return { resultat, termes };
+    });
+}

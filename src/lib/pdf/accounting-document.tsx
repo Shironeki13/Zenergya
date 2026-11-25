@@ -4,7 +4,7 @@
 import { Document, Page, View, Text, Image, StyleSheet, renderToBuffer } from '@react-pdf/renderer';
 import type { Client, Company, InvoiceLineItem, InvoiceQuoteLink, VatBreakdown } from '@/lib/types';
 import type { SituationSnapshot } from '@/lib/projects/types';
-import { afficher, type AnnexeP1 } from '@/lib/billing/p1-annexe';
+import { afficher, etapesFormule, syntheseAnnexe, type AnnexeP1 } from '@/lib/billing/p1-annexe';
 import { conditionsPaiement, identiteLegale, mentionEscompte, mentionPenalites, MENTION_DEBITS } from '@/lib/billing/mentions';
 
 /**
@@ -128,84 +128,209 @@ const styles = StyleSheet.create({
     grandTotal: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 5, borderTopWidth: 1, borderTopColor: '#111827', marginTop: 3, fontFamily: 'Helvetica-Bold', fontSize: 11 },
     notes: { marginTop: 20 },
     footer: { position: 'absolute', bottom: 24, left: 40, right: 40, fontSize: 7, color: '#6b7280', textAlign: 'center', borderTopWidth: 0.5, borderTopColor: '#e5e7eb', paddingTop: 6 },
-    // Annexe P1 (paysage)
-    aPage: { paddingTop: 28, paddingHorizontal: 28, paddingBottom: 44, fontSize: 7, fontFamily: 'Helvetica', color: '#111827' },
-    aEntete: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 10 },
-    aTitre: { fontSize: 12, fontFamily: 'Helvetica-Bold', color: '#1d4ed8' },
-    aFormule: { backgroundColor: '#eff6ff', padding: 6, marginBottom: 8, fontSize: 8 },
-    aSousTitre: { fontFamily: 'Helvetica-Bold', fontSize: 8, marginTop: 6, marginBottom: 3 },
-    aTh: { flexDirection: 'row', backgroundColor: '#1f3864', color: '#ffffff', fontFamily: 'Helvetica-Bold', paddingVertical: 4, paddingHorizontal: 2, alignItems: 'center' },
-    aTr: { flexDirection: 'row', paddingVertical: 3, paddingHorizontal: 2, borderBottomWidth: 0.5, borderBottomColor: '#e5e7eb' },
-    aDetail: { color: '#6b7280' },
-    aTotal: { flexDirection: 'row', paddingVertical: 4, paddingHorizontal: 2, fontFamily: 'Helvetica-Bold', borderTopWidth: 1, borderTopColor: '#111827' },
+    // Annexe P1 (paysage) : bandeau, chiffres clés, formule en étapes, graphique mensuel, détail par site
+    aPage: { paddingTop: 0, paddingHorizontal: 28, paddingBottom: 44, fontSize: 7, fontFamily: 'Helvetica', color: '#0f172a' },
+    aBandeau: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#0f2747', color: '#ffffff', marginHorizontal: -28, paddingHorizontal: 28, paddingVertical: 12, marginBottom: 12 },
+    aPastille: { fontSize: 7, fontFamily: 'Helvetica-Bold', color: '#93c5fd', letterSpacing: 1, marginBottom: 2 },
+    aTitre: { fontSize: 15, fontFamily: 'Helvetica-Bold', color: '#ffffff' },
+    aSousBandeau: { fontSize: 7.5, color: '#cbd5e1', marginTop: 2 },
+    aHaut: { flexDirection: 'row', marginBottom: 6 },
+    aGauche: { width: '60%', paddingRight: 10 },
+    aDroite: { width: '40%' },
+    aSection: { fontFamily: 'Helvetica-Bold', fontSize: 7, color: '#64748b', letterSpacing: 0.8, marginBottom: 4, marginTop: 2 },
+    aTuiles: { flexDirection: 'row', marginBottom: 8 },
+    aTuile: { flex: 1, backgroundColor: '#f1f5f9', borderRadius: 4, paddingVertical: 6, paddingHorizontal: 7, marginRight: 5 },
+    aTuileForte: { flex: 1, backgroundColor: '#1d4ed8', color: '#ffffff', borderRadius: 4, paddingVertical: 6, paddingHorizontal: 7, marginRight: 5 },
+    aTuileLibelle: { fontSize: 6.5, color: '#64748b', marginBottom: 2 },
+    aTuileValeur: { fontSize: 11, fontFamily: 'Helvetica-Bold' },
+    aFormule: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', backgroundColor: '#eff6ff', borderRadius: 4, borderLeftWidth: 3, borderLeftColor: '#1d4ed8', paddingVertical: 5, paddingHorizontal: 7, marginBottom: 4 },
+    aResultat: { fontFamily: 'Helvetica-Bold', fontSize: 8.5, color: '#1d4ed8', marginRight: 4 },
+    aTerme: { backgroundColor: '#ffffff', borderWidth: 0.5, borderColor: '#bfdbfe', borderRadius: 3, paddingVertical: 2, paddingHorizontal: 5, fontSize: 7.5, marginVertical: 1 },
+    aOperateur: { fontFamily: 'Helvetica-Bold', fontSize: 9, color: '#1d4ed8', marginHorizontal: 4 },
+    aReference: { fontSize: 6.5, color: '#64748b', marginBottom: 6 },
+    aRevision: { flexDirection: 'row', alignItems: 'center', borderBottomWidth: 0.5, borderBottomColor: '#e2e8f0', paddingVertical: 3 },
+    aIndice: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#f8fafc', borderRadius: 3, paddingVertical: 2, paddingHorizontal: 5, marginRight: 5 },
+    aGraphique: { flexDirection: 'row', alignItems: 'flex-end', height: 62, borderBottomWidth: 0.5, borderBottomColor: '#94a3b8', paddingHorizontal: 2 },
+    aBarre: { flex: 1, alignItems: 'center', justifyContent: 'flex-end', marginHorizontal: 3 },
+    aSousTitre: { fontFamily: 'Helvetica-Bold', fontSize: 7, color: '#64748b', letterSpacing: 0.8, marginTop: 8, marginBottom: 3 },
+    aTh: { flexDirection: 'row', backgroundColor: '#e2e8f0', color: '#334155', fontFamily: 'Helvetica-Bold', fontSize: 6.5, paddingVertical: 4, paddingHorizontal: 2, alignItems: 'center', borderTopLeftRadius: 3, borderTopRightRadius: 3 },
+    aSite: { flexDirection: 'row', backgroundColor: '#f1f5f9', paddingVertical: 3, paddingHorizontal: 4, marginTop: 2, fontFamily: 'Helvetica-Bold', fontSize: 7.5, color: '#0f2747', borderLeftWidth: 2, borderLeftColor: '#1d4ed8' },
+    aTr: { flexDirection: 'row', paddingVertical: 3, paddingHorizontal: 2, borderBottomWidth: 0.5, borderBottomColor: '#eef2f7' },
+    aPair: { backgroundColor: '#fafbfc' },
+    aDetail: { color: '#94a3b8' },
+    aMontant: { fontFamily: 'Helvetica-Bold' },
+    aTotal: { flexDirection: 'row', paddingVertical: 5, paddingHorizontal: 2, marginTop: 3, fontFamily: 'Helvetica-Bold', fontSize: 8, backgroundColor: '#0f2747', color: '#ffffff', borderRadius: 3 },
     aCell: { paddingHorizontal: 2 },
     aFooter: { position: 'absolute', bottom: 20, left: 28, right: 28, fontSize: 7, color: '#6b7280', textAlign: 'center', borderTopWidth: 0.5, borderTopColor: '#e5e7eb', paddingTop: 5 },
 });
 
-/** Pages d'annexe P1 (paysage) : formule, révision des prix, une ligne par site et par mois, totaux. */
+/**
+ * Pages d'annexe P1 (paysage), pensées pour le client : bandeau, chiffres clés, formule en étapes, montant par mois,
+ * révision des prix (indice du mois, base, variation), puis le détail regroupé par site et le total.
+ */
 function AnnexePages({ data }: { data: AccountingDocumentData }) {
     const { company, client } = data;
     const doc = `${data.kind === 'creditNote' ? "l'avoir" : data.kind === 'proforma' ? 'la facture proforma' : 'la facture'}${data.number ? ` n° ${data.number}` : ''}`;
     const fr = (m: string) => `${m.slice(5, 7)}/${m.slice(0, 4)}`;
+    const MOIS = ['janv.', 'févr.', 'mars', 'avr.', 'mai', 'juin', 'juil.', 'août', 'sept.', 'oct.', 'nov.', 'déc.'];
+    const moisCourt = (m: string) => `${MOIS[Number(m.slice(5, 7)) - 1]} ${m.slice(2, 4)}`;
+    const nombre = (v: number, d: number) => afficher(v, { format: 'nombre', decimales: d });
+    const logo = supportedLogo(company.logoUrl);
     return (
         <>
             {(data.annexes ?? []).map((a, k) => {
-                const total = a.colonnes.reduce((s, c) => s + c.largeur, 0);
+                const synthese = syntheseAnnexe(a);
+                const etapes = etapesFormule(a.formule);
+                // Détail regroupé par site : la colonne « Site » devient un bandeau par site.
+                const parSite = a.colonnes[0]?.cle === 'site' && synthese.sites > 0;
+                const colonnes = parSite ? a.colonnes.slice(1) : a.colonnes;
+                const total = colonnes.reduce((s, c) => s + c.largeur, 0);
                 const w = (l: number) => `${(l / total) * 100}%`;
                 const droite = (f: string) => f !== 'texte';
-                const avantMontants = a.colonnes.findIndex(c => c.cle === 'ht');
+                const avantMontants = colonnes.findIndex(c => c.cle === 'ht');
+                const maxMois = Math.max(1, ...synthese.parMois.map(m => Math.abs(m.ht)));
+                // Lignes d'un même site rassemblées, dans l'ordre d'apparition des sites (les lignes restent dans leur ordre).
+                const ordreSites = [...new Set(a.lignes.map(l => String(l.valeurs.site ?? '')))];
+                const lignes = parSite ? ordreSites.flatMap(site => a.lignes.filter(l => String(l.valeurs.site ?? '') === site)) : a.lignes;
+                let sitePrecedent: string | null = null, rang = 0;
                 return (
                     <Page key={k} size="A4" orientation="landscape" style={styles.aPage}>
-                        <View style={styles.aEntete} fixed>
+                        <View style={styles.aBandeau} fixed>
                             <View>
-                                <Text style={styles.aTitre}>{pdfTexte(`ANNEXE ${k + 1}/${data.annexes!.length} — ${a.titre}`)}</Text>
-                                <Text>{pdfTexte(`Annexe à ${doc} du ${formatDate(data.date)}${data.periodStartDate && data.periodEndDate ? ` — période du ${formatDate(data.periodStartDate)} au ${formatDate(data.periodEndDate)}` : ''}`)}</Text>
+                                <Text style={styles.aPastille}>{pdfTexte(`ANNEXE ${k + 1}/${data.annexes!.length}  ·  LE DÉTAIL DE VOTRE FACTURE`)}</Text>
+                                <Text style={styles.aTitre}>{pdfTexte(a.titre)}</Text>
+                                <Text style={styles.aSousBandeau}>{pdfTexte(`Annexe à ${doc} du ${formatDate(data.date)}${data.periodStartDate && data.periodEndDate ? `  ·  période du ${formatDate(data.periodStartDate)} au ${formatDate(data.periodEndDate)}` : ''}`)}</Text>
                             </View>
-                            <View>
-                                <Text style={{ fontFamily: 'Helvetica-Bold', textAlign: 'right' }}>{company.name}</Text>
-                                <Text style={{ textAlign: 'right' }}>{client.name}</Text>
+                            <View style={{ alignItems: 'flex-end' }}>
+                                {/* eslint-disable-next-line jsx-a11y/alt-text */}
+                                {logo && <Image src={logo} style={{ height: 22, maxWidth: 110, objectFit: 'contain', marginBottom: 3 }} />}
+                                <Text style={{ fontFamily: 'Helvetica-Bold', fontSize: 9 }}>{pdfTexte(company.name)}</Text>
+                                <Text style={styles.aSousBandeau}>{pdfTexte(`pour ${client.name}`)}</Text>
                             </View>
                         </View>
-                        <Text style={styles.aFormule}>{pdfTexte(`${a.formule}${a.references.length ? `     (${a.references.map(([l, v]) => `${l} : ${v}`).join(' ; ')})` : ''}`)}</Text>
 
-                        {a.revisions.length > 0 && (
-                            <View wrap={false}>
-                                <Text style={styles.aSousTitre}>Révision des prix : indices du mois (valeur de base) et coefficient C/C0</Text>
-                                <View style={styles.aTh}>
-                                    <Text style={[styles.aCell, { width: '8%' }]}>Mois</Text>
-                                    <Text style={[styles.aCell, { width: '82%' }]}>Indices</Text>
-                                    <Text style={[styles.aCell, { width: '10%', textAlign: 'right' }]}>C/C0</Text>
-                                </View>
-                                {a.revisions.map((r, i) => (
-                                    <View key={i} style={styles.aTr}>
-                                        <Text style={[styles.aCell, { width: '8%' }]}>{fr(r.mois)}</Text>
-                                        <Text style={[styles.aCell, { width: '82%' }]}>{pdfTexte(`${r.sites.length ? `${r.sites.join(', ')} : ` : ''}${r.termes.map(t =>
-                                            `${t.indice ?? t.terme} ${t.valeur === null ? '—' : afficher(t.valeur, { format: 'coef', decimales: 4 })} (base ${t.base === null ? '—' : afficher(t.base, { format: 'coef', decimales: 4 })})`).join('   ·   ') || 'prix non révisé'}`)}</Text>
-                                        <Text style={[styles.aCell, { width: '10%', textAlign: 'right' }]}>{r.coefficient === null ? '' : afficher(r.coefficient, { format: 'coef', decimales: 5 })}</Text>
+                        <View style={styles.aHaut} wrap={false}>
+                            <View style={styles.aGauche}>
+                                <Text style={styles.aSection}>COMMENT CE MONTANT EST CALCULÉ</Text>
+                                {etapes.map((e, i) => (
+                                    <View key={i} style={styles.aFormule}>
+                                        {e.resultat !== '' && <Text style={styles.aResultat}>{pdfTexte(`${e.resultat}  =`)}</Text>}
+                                        {e.termes.map((t, j) => (
+                                            <View key={j} style={{ flexDirection: 'row', alignItems: 'center' }}>
+                                                {t.operateur && <Text style={styles.aOperateur}>{pdfTexte(t.operateur)}</Text>}
+                                                <Text style={styles.aTerme}>{pdfTexte(t.texte)}</Text>
+                                            </View>
+                                        ))}
                                     </View>
                                 ))}
-                            </View>
-                        )}
+                                {a.references.length > 0 && <Text style={styles.aReference}>{pdfTexte(a.references.map(([l, v]) => `${l} : ${v}`).join('   ·   '))}</Text>}
 
-                        <Text style={styles.aSousTitre}>Détail</Text>
-                        <View style={styles.aTh} fixed>
-                            {a.colonnes.map(c => <Text key={c.cle} style={[styles.aCell, { width: w(c.largeur), textAlign: droite(c.format) ? 'right' : 'left' }]}>{pdfTexte(c.libelle)}</Text>)}
-                        </View>
-                        {a.lignes.map((l, i) => (
-                            <View key={i} style={l.detail ? [styles.aTr, styles.aDetail] : styles.aTr} wrap={false}>
-                                {a.colonnes.map(c => <Text key={c.cle} style={[styles.aCell, { width: w(c.largeur), textAlign: droite(c.format) ? 'right' : 'left' }]}>{pdfTexte(afficher(l.valeurs[c.cle] ?? null, c))}</Text>)}
+                                {a.revisions.length > 0 && (
+                                    <View>
+                                        <Text style={styles.aSection}>RÉVISION DES PRIX : INDICES DU MOIS, COMPARÉS À LEUR VALEUR DE BASE</Text>
+                                        {a.revisions.map((r, i) => (
+                                            <View key={i} style={styles.aRevision}>
+                                                <Text style={{ width: 44, fontFamily: 'Helvetica-Bold' }}>{fr(r.mois)}</Text>
+                                                <View style={{ flex: 1, flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center' }}>
+                                                    {r.sites.length > 0 && <Text style={[styles.muted, { marginRight: 5 }]}>{pdfTexte(`${r.sites.join(', ')} :`)}</Text>}
+                                                    {r.termes.length === 0 && <Text style={styles.muted}>prix non révisé</Text>}
+                                                    {r.termes.map((t, j) => {
+                                                        const variation = t.valeur !== null && t.base ? (t.valeur / t.base - 1) * 100 : null;
+                                                        return (
+                                                            <View key={j} style={styles.aIndice}>
+                                                                <Text style={{ fontFamily: 'Helvetica-Bold' }}>{pdfTexte(`${t.indice ?? t.terme} `)}</Text>
+                                                                <Text>{t.valeur === null ? '—' : afficher(t.valeur, { format: 'coef', decimales: 4 })}</Text>
+                                                                <Text style={styles.muted}>{`  base ${t.base === null ? '—' : afficher(t.base, { format: 'coef', decimales: 4 })}`}</Text>
+                                                                {variation !== null && <Text style={{ color: variation > 0 ? '#b45309' : variation < 0 ? '#047857' : '#64748b', fontFamily: 'Helvetica-Bold' }}>{`  ${variation > 0 ? '+' : variation < 0 ? '-' : ''}${nombre(Math.abs(variation), 1)} %`}</Text>}
+                                                            </View>
+                                                        );
+                                                    })}
+                                                </View>
+                                                <Text style={[styles.muted, { marginRight: 4 }]}>coefficient</Text>
+                                                <Text style={{ width: 46, textAlign: 'right', fontFamily: 'Helvetica-Bold', fontSize: 8.5, color: '#1d4ed8' }}>{r.coefficient === null ? '—' : afficher(r.coefficient, { format: 'coef', decimales: 5 })}</Text>
+                                            </View>
+                                        ))}
+                                    </View>
+                                )}
                             </View>
-                        ))}
+
+                            <View style={styles.aDroite}>
+                                <Text style={styles.aSection}>EN BREF</Text>
+                                <View style={styles.aTuiles}>
+                                    <View style={styles.aTuileForte}>
+                                        <Text style={[styles.aTuileLibelle, { color: '#bfdbfe' }]}>Montant HT</Text>
+                                        <Text style={styles.aTuileValeur}>{formatEur(a.totaux.ht)}</Text>
+                                    </View>
+                                    {synthese.quantite && (
+                                        <View style={styles.aTuile}>
+                                            <Text style={styles.aTuileLibelle}>{pdfTexte(`Quantité facturée (${synthese.quantite.unite})`)}</Text>
+                                            <Text style={styles.aTuileValeur}>{nombre(synthese.quantite.valeur, 3)}</Text>
+                                        </View>
+                                    )}
+                                    {synthese.prixMoyen !== null && synthese.quantite ? (
+                                        <View style={[styles.aTuile, { marginRight: 0 }]}>
+                                            <Text style={styles.aTuileLibelle}>{pdfTexte(`Prix moyen HT par ${synthese.quantite.unite}`)}</Text>
+                                            <Text style={styles.aTuileValeur}>{formatEur(Math.round(synthese.prixMoyen * 100) / 100)}</Text>
+                                        </View>
+                                    ) : (
+                                        <View style={[styles.aTuile, { marginRight: 0 }]}>
+                                            <Text style={styles.aTuileLibelle}>Montant TTC</Text>
+                                            <Text style={styles.aTuileValeur}>{formatEur(a.totaux.ttc)}</Text>
+                                        </View>
+                                    )}
+                                </View>
+                                {synthese.parMois.length > 1 && (
+                                    <View>
+                                        <Text style={styles.aSection}>MONTANT HT MOIS PAR MOIS</Text>
+                                        <View style={styles.aGraphique}>
+                                            {synthese.parMois.map(m => (
+                                                <View key={m.mois} style={styles.aBarre}>
+                                                    <Text style={{ fontSize: 6, marginBottom: 1 }}>{formatEur(Math.round(m.ht)).replace(',00', '')}</Text>
+                                                    <View style={{ width: '100%', maxWidth: 34, height: Math.max(1, (Math.abs(m.ht) / maxMois) * 46), backgroundColor: m.ht < 0 ? '#f59e0b' : '#1d4ed8', borderTopLeftRadius: 2, borderTopRightRadius: 2 }} />
+                                                </View>
+                                            ))}
+                                        </View>
+                                        <View style={{ flexDirection: 'row', paddingHorizontal: 2, marginTop: 2 }}>
+                                            {synthese.parMois.map(m => (
+                                                <View key={m.mois} style={{ flex: 1, alignItems: 'center', marginHorizontal: 3 }}>
+                                                    <Text style={{ fontSize: 6.5 }}>{moisCourt(m.mois)}</Text>
+                                                    {m.quantite !== null && synthese.quantite && <Text style={[styles.muted, { fontSize: 6 }]}>{pdfTexte(`${nombre(m.quantite, 1)} ${synthese.quantite.unite}`)}</Text>}
+                                                </View>
+                                            ))}
+                                        </View>
+                                    </View>
+                                )}
+                            </View>
+                        </View>
+
+                        <Text style={styles.aSousTitre}>{parSite && synthese.sites > 1 ? `LE DÉTAIL, SITE PAR SITE (${synthese.sites} SITES)` : 'LE DÉTAIL'}</Text>
+                        <View style={styles.aTh} fixed>
+                            {colonnes.map(c => <Text key={c.cle} style={[styles.aCell, { width: w(c.largeur), textAlign: droite(c.format) ? 'right' : 'left' }]}>{pdfTexte(c.libelle.trim())}</Text>)}
+                        </View>
+                        {lignes.map((l, i) => {
+                            const site = parSite ? String(l.valeurs.site ?? '') : null;
+                            const nouveau = site !== null && site !== sitePrecedent;
+                            if (nouveau) { sitePrecedent = site; rang = 0; }
+                            const pair = !l.detail && rang++ % 2 === 1;
+                            return (
+                                <View key={i} wrap={false}>
+                                    {nouveau && <View style={styles.aSite}><Text>{pdfTexte(site || 'Site non précisé')}</Text></View>}
+                                    <View style={[styles.aTr, ...(pair ? [styles.aPair] : []), ...(l.detail ? [styles.aDetail] : [])]}>
+                                        {colonnes.map(c => <Text key={c.cle} style={[styles.aCell, { width: w(c.largeur), textAlign: droite(c.format) ? 'right' : 'left' }, ...(c.cle === 'ht' ? [styles.aMontant] : [])]}>{pdfTexte(afficher(l.valeurs[c.cle] ?? null, c))}</Text>)}
+                                    </View>
+                                </View>
+                            );
+                        })}
                         <View style={styles.aTotal} wrap={false}>
-                            <Text style={[styles.aCell, { width: w(a.colonnes.slice(0, avantMontants).reduce((s, c) => s + c.largeur, 0)) }]}>{pdfTexte(`TOTAL — ${a.titre}`)}</Text>
-                            {a.colonnes.slice(avantMontants).map(c => (
+                            <Text style={[styles.aCell, { width: w(colonnes.slice(0, avantMontants).reduce((s, c) => s + c.largeur, 0)), paddingLeft: 5 }]}>{pdfTexte(`Total  ${a.titre}`)}</Text>
+                            {colonnes.slice(avantMontants).map(c => (
                                 <Text key={c.cle} style={[styles.aCell, { width: w(c.largeur), textAlign: 'right' }]}>
                                     {c.cle === 'ht' ? formatEur(a.totaux.ht) : c.cle === 'tva' ? formatEur(a.totaux.tva) : c.cle === 'ttc' ? formatEur(a.totaux.ttc) : ''}
                                 </Text>
                             ))}
                         </View>
                         {a.notes.map((n, i) => <Text key={i} style={[styles.muted, { marginTop: i ? 1 : 6 }]}>{pdfTexte(n)}</Text>)}
-                        <Text style={[styles.muted, { marginTop: 2 }]}>TVA indicative par ligne ; la TVA de la facture est calculée sur le total HT par taux.</Text>
+                        <Text style={[styles.muted, { marginTop: 3, fontSize: 6.5 }]}>TVA indicative par ligne ; la TVA de la facture est calculée sur le total HT par taux.</Text>
 
                         <Text style={styles.aFooter} fixed render={({ pageNumber, totalPages }) => pdfTexte(`${company.name} — Annexe P1 à ${doc} — Page ${pageNumber}/${totalPages}`)} />
                     </Page>

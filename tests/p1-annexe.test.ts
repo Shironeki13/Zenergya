@@ -69,3 +69,23 @@ test('affichage et nom du site', () => {
     assert.equal(nomSite({ siteId: 'x', description: 'ECS — Site : Tilleuls - Bâtiment A — du 01/01' }), 'Tilleuls - Bâtiment A');
     assert.equal(nomSite({ siteId: 'x', description: '…' }, { x: 'Nom fourni' }), 'Nom fourni');
 });
+
+test('présentation : chiffres clés par mois et formule découpée en étapes', async () => {
+    const { etapesFormule, syntheseAnnexe } = await import('../src/lib/billing/p1-annexe');
+    const a = {
+        type: 'compteur-ecs', titre: 'P1 ECS au compteur', formule: 'P1 = (compteur M − compteur M-1) × PU de base × C/C0', references: [], revisions: [], notes: [],
+        colonnes: [{ cle: 'site', libelle: 'Site', format: 'texte', largeur: 1 }, { cle: 'mois', libelle: 'Mois', format: 'texte', largeur: 1 }, { cle: 'quantite', libelle: 'm³ facturés', format: 'nombre', largeur: 1 }, { cle: 'ht', libelle: 'Montant HT', format: 'eur', largeur: 1 }],
+        lignes: [
+            { valeurs: { site: 'A', mois: '08/2026', quantite: 70, ht: 490 } }, { valeurs: { site: 'A', mois: '07/2026', quantite: 60, ht: 420 } },
+            { valeurs: { site: 'B', mois: '07/2026', quantite: 30, ht: 210 } }, { valeurs: { site: 'A', mois: '07/2026', quantite: 999 }, detail: true },
+        ],
+        totaux: { ht: 1120, tva: 112, ttc: 1232 },
+    } as Parameters<typeof syntheseAnnexe>[0];
+    assert.deepEqual(syntheseAnnexe(a), { sites: 2, quantite: { valeur: 160, unite: 'm³' }, prixMoyen: 7, parMois: [{ mois: '2026-07', ht: 630, quantite: 90 }, { mois: '2026-08', ht: 490, quantite: 70 }] });
+    assert.deepEqual(etapesFormule(a.formule), [{ resultat: 'P1', termes: [{ operateur: null, texte: '(compteur M − compteur M-1)' }, { operateur: '×', texte: 'PU de base' }, { operateur: '×', texte: 'C/C0' }] }]);
+    assert.deepEqual(etapesFormule('P1 dû = base × C / DJU contractuels ; décompte = P1 dû − acomptes facturés').map(e => [e.resultat, e.termes.map(t => `${t.operateur ?? ''}${t.texte}`).join('|')]),
+        [['P1 dû', 'base|×C|/DJU contractuels'], ['décompte', 'P1 dû|−acomptes facturés']]);
+    // Annexe non mensuelle ou sans unité unique : pas de graphique ni de quantité.
+    const regul = { ...a, colonnes: a.colonnes.filter(c => c.cle !== 'quantite' && c.cle !== 'mois'), lignes: [{ valeurs: { site: 'A', ht: 100 } }], totaux: { ht: 100, tva: 10, ttc: 110 } };
+    assert.deepEqual(syntheseAnnexe(regul), { sites: 1, quantite: null, prixMoyen: null, parMois: [] });
+});
