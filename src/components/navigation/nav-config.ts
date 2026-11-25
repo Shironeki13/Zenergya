@@ -20,6 +20,7 @@ export const NAV_GROUPS: NavGroup[] = [
         id: 'pilotage', label: 'Pilotage', icon: LayoutDashboard, ton: 'rose', items: [
             { href: '/dashboard', label: 'Tableau de bord', icon: LayoutDashboard, keywords: 'accueil kpi chiffre affaires' },
             { href: '/billing/suivi', label: 'Suivi facturation', icon: ListChecks, keywords: 'retard échéances à facturer blocages adv impayés' },
+            { href: '/billing/previsionnel', label: 'Prévisionnel', icon: TrendingUp, keywords: 'prévision chiffre affaires à venir 12 mois agence activité' },
         ],
     },
     {

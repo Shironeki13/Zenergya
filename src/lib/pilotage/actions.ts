@@ -5,6 +5,7 @@ import { gardePerimetre, requireUserDans } from '@/lib/auth/perimetre-server';
 import { ajouterCommentaire, definirResponsable, alertesCompteurs, historiqueCommentaires, suiviFacturation, type NouveauCommentaire, type SuiviFacturation } from '@/services/pilotage-admin';
 import type { CommentaireSuivi } from '@/lib/pilotage/tcd';
 import type { Alerte } from '@/lib/pilotage/alertes-compteurs';
+import { previsionnelFacturation, type Previsionnel } from '@/services/previsionnel-admin';
 
 type Result<T> = { success: true; data: T } | { success: false; error: string };
 const fail = (e: unknown): { success: false; error: string } => ({ success: false, error: e instanceof Error ? e.message : 'Calcul impossible.' });
@@ -44,4 +45,17 @@ export async function ajouterCommentaireAction(input: NouveauCommentaire): Promi
 
 export async function definirResponsableAction(contractId: string, userId: string | null): Promise<Result<null>> {
     try { const user = await requireUserDans('contrat', contractId); await definirResponsable(contractId, userId, user.email); return { success: true, data: null }; } catch (e) { return fail(e); }
+}
+
+/** Prévisionnel de facturation sur les mois à venir, limité aux clients du périmètre de l'utilisateur. */
+export async function previsionnelFacturationAction(nbMois = 12): Promise<Result<Previsionnel>> {
+    try {
+        const garde = gardePerimetre(await requireUser());
+        const p = await previsionnelFacturation(nbMois);
+        const visibles = await garde.clients();
+        if (!visibles) return { success: true, data: p };
+        const lignes = p.lignes.filter(l => visibles.has(l.clientId));
+        const contratsEnErreur = p.contratsEnErreur.filter(c => visibles.has(c.clientId));
+        return { success: true, data: { ...p, lignes, contratsEnErreur, contrats: new Set(lignes.map(l => l.contractId)).size } };
+    } catch (e) { return fail(e); }
 }
