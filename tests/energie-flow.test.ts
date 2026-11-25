@@ -6,6 +6,7 @@ import type { GardePerimetre } from '../src/lib/auth/perimetre-server';
 import type { SessionUser } from '../src/lib/auth/server';
 import { lireFeuille } from '../src/lib/energie/fournitures';
 import { creerFactureEnergie, facturesEnergieDuPoint, facturesEnergieDuSite } from '../src/services/factures-energie-admin';
+import { rappelsEnergie } from '../src/services/notifications-metier';
 import { baseEnergie, enregistrerPeriode, exigerAchatsEnergie, importerPoints, pointLivraison, rattacherPoint, supprimerPeriode } from '../src/services/energie-admin';
 
 if (!process.env.FIRESTORE_EMULATOR_HOST) throw new Error('À lancer via « npm run test:billing » (émulateur requis).');
@@ -101,4 +102,19 @@ test('facture du fournisseur rattachée à son point de livraison : contrat retr
     assert.match(par('F-LIBRE').controle!.alertes[0].texte, /non rattachée à un point de livraison/);
     assert.deepEqual((await facturesEnergieDuPoint(a.id)).map(f => f.numero).sort(), ['F-KO', 'F-OK']);
     assert.deepEqual(await facturesEnergieDuPoint(bb.id), []);
+});
+
+test('rappel des renouvellements : une demande de mail listant les points à renouveler, pour les acheteurs', async () => {
+    const jour = new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/Paris' });
+    await set('roles', 'en-r-ach', { name: 'Acheteur énergie', isAcheteur: true });
+    await set('users', 'en-u-ach', { email: 'acheteur.energie@v.fr', name: 'Acheteur', roleId: 'en-r-ach' });
+    // Un point dont la fourniture s'arrête dans 20 jours, sans suite, avec un contrat client qui continue.
+    const dans = (n: number) => new Date(Date.now() + n * 86_400_000).toLocaleDateString('fr-FR', { timeZone: 'Europe/Paris' });
+    await importerPoints(lireFeuille([ENT, ['GAZ', 'Agence Test', 'Client Énergie', 'Chaufferie R', 'EN-PDL-R', `31/12/${an + 4}`, dans(-300), dans(20), 'ENI', 'EN-KR', '', '']]).points, 'achats@v.fr');
+    const [d] = (await rappelsEnergie(jour, null)).filter(x => x.evenement === 'energie_a_renouveler');
+    assert.equal(d.cle, `energie/a-renouveler/${jour}`);
+    assert.ok(d.annuaire?.acheteurs?.includes('acheteur.energie@v.fr'));
+    const ligne = d.contexte.energie!.lignes.find(l => l.pdl === 'EN-PDL-R')!;
+    assert.deepEqual([ligne.client, ligne.site, ligne.fournisseur, ligne.numeroContrat, ligne.jours], ['Client Énergie', 'Chaufferie R', 'ENI', 'EN-KR', 20]);
+    assert.deepEqual(await rappelsEnergie(jour, jour), []);   // déjà passé aujourd'hui : rien
 });

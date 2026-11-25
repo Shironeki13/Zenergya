@@ -11,31 +11,32 @@ import { RAPPELS_DEFAUT, type ReglagesRappels } from './rappels';
 export type { ContexteMail, Famille, Mail, ModeleMail, NatureDocument } from './balises';
 
 export type Evenement = 'document_depose' | 'document_valide' | 'document_refuse' | 'document_en_attente' | 'preavis' | 'echeance' | 'echeance_depassee' | 'resiliation_validee'
-    | 'commande_a_valider' | 'commande_validee' | 'commande_refusee' | 'heures_a_valider' | 'heures_refusees';
+    | 'commande_a_valider' | 'commande_validee' | 'commande_refusee' | 'heures_a_valider' | 'heures_refusees' | 'energie_a_renouveler';
 export const EVENEMENTS: Evenement[] = ['document_depose', 'document_valide', 'document_refuse', 'document_en_attente', 'preavis', 'echeance', 'echeance_depassee', 'resiliation_validee',
-    'commande_a_valider', 'commande_validee', 'commande_refusee', 'heures_a_valider', 'heures_refusees'];
+    'commande_a_valider', 'commande_validee', 'commande_refusee', 'heures_a_valider', 'heures_refusees', 'energie_a_renouveler'];
 /** Domaine de chaque événement : contrats, commandes d'achat, heures. */
 export const FAMILLE_EVENEMENT: Record<Evenement, Famille> = {
     document_depose: 'contrat', document_valide: 'contrat', document_refuse: 'contrat', document_en_attente: 'contrat', preavis: 'contrat', echeance: 'contrat', echeance_depassee: 'contrat', resiliation_validee: 'contrat',
-    commande_a_valider: 'commande', commande_validee: 'commande', commande_refusee: 'commande', heures_a_valider: 'heures', heures_refusees: 'heures',
+    commande_a_valider: 'commande', commande_validee: 'commande', commande_refusee: 'commande', heures_a_valider: 'heures', heures_refusees: 'heures', energie_a_renouveler: 'energie',
 };
-export const LIBELLE_FAMILLE: Record<Famille, string> = { contrat: 'Contrats', commande: 'Commandes d\'achat', heures: 'Heures' };
+export const LIBELLE_FAMILLE: Record<Famille, string> = { contrat: 'Contrats', commande: 'Commandes d\'achat', heures: 'Heures', energie: "Contrats d'énergie" };
 export const LIBELLE_EVENEMENT: Record<Evenement, string> = {
     document_depose: 'Document déposé', document_valide: 'Document validé', document_refuse: 'Document refusé', document_en_attente: 'Documents en attente (récapitulatif)',
     preavis: 'Date limite de préavis qui approche', echeance: 'Échéance qui approche', echeance_depassee: 'Échéance dépassée', resiliation_validee: 'Résiliation validée',
     commande_a_valider: 'Commande à valider', commande_validee: 'Commande validée', commande_refusee: 'Commande refusée',
     heures_a_valider: 'Heures à valider (récapitulatif)', heures_refusees: 'Heures refusées',
+    energie_a_renouveler: "Fournitures d'énergie à renouveler (récapitulatif)",
 };
 
-export type RoleDestinataire = 'deposant' | 'contratheque' | 'responsable_facturation' | 'n1_responsable' | 'valideur' | 'demandeur' | 'administrateurs';
-export const ROLES_DESTINATAIRE: RoleDestinataire[] = ['deposant', 'contratheque', 'responsable_facturation', 'n1_responsable', 'valideur', 'demandeur', 'administrateurs'];
+export type RoleDestinataire = 'deposant' | 'contratheque' | 'responsable_facturation' | 'n1_responsable' | 'valideur' | 'demandeur' | 'acheteurs' | 'administrateurs';
+export const ROLES_DESTINATAIRE: RoleDestinataire[] = ['deposant', 'contratheque', 'responsable_facturation', 'n1_responsable', 'valideur', 'demandeur', 'acheteurs', 'administrateurs'];
 /** Rôles qui ont un sens pour chaque domaine (les autres n'auraient jamais de titulaire). */
 export const ROLES_FAMILLE: Record<Famille, RoleDestinataire[]> = {
-    contrat: ['deposant', 'contratheque', 'responsable_facturation', 'n1_responsable', 'administrateurs'], commande: ['valideur', 'demandeur', 'administrateurs'], heures: ['valideur', 'demandeur', 'administrateurs'],
+    contrat: ['deposant', 'contratheque', 'responsable_facturation', 'n1_responsable', 'administrateurs'], commande: ['valideur', 'demandeur', 'administrateurs'], heures: ['valideur', 'demandeur', 'administrateurs'], energie: ['acheteurs', 'administrateurs'],
 };
 export const LIBELLE_ROLE: Record<RoleDestinataire, string> = {
     deposant: 'Le déposant du document', contratheque: 'La contrathèque', responsable_facturation: 'Le responsable de facturation du contrat',
-    n1_responsable: 'Le N+1 du responsable de facturation', valideur: 'Le valideur attendu (responsable, ou achats)', demandeur: 'Le demandeur, ou le salarié concerné', administrateurs: 'Les administrateurs',
+    n1_responsable: 'Le N+1 du responsable de facturation', valideur: 'Le valideur attendu (responsable, ou achats)', demandeur: 'Le demandeur, ou le salarié concerné', acheteurs: 'Les acheteurs (rôle Achats)', administrateurs: 'Les administrateurs',
 };
 
 export type Regle = { actif: boolean; roles: RoleDestinataire[]; adresses: string[] };
@@ -53,6 +54,7 @@ export const REGLES_DEFAUT: Record<Evenement, Regle> = {
     commande_refusee: { actif: true, roles: ['demandeur'], adresses: [] },
     heures_a_valider: { actif: true, roles: ['valideur'], adresses: [] },
     heures_refusees: { actif: true, roles: ['demandeur'], adresses: [] },
+    energie_a_renouveler: { actif: true, roles: ['acheteurs', 'administrateurs'], adresses: [] },
 };
 
 /** `simulation` : le mail est écrit au journal sans partir ; `messagerie` : remis à la messagerie ; `arret` : rien. */
@@ -166,6 +168,10 @@ export const MODELES_DEFAUT: Record<Evenement, ModeleMail> = {
         objet: '[Heures] <<Nombre de saisies>> saisie(s) d\'heures refusée(s)',
         corps: `Bonjour,\n\n<<Nombre de saisies>> de vos saisies d'heures (<<Total des heures>>) ont été refusées par <<Décision prise par>>.\nMotif : <<Motif de la décision>>\n\n<<Liste des heures>>\n\nCorrigez-les : elles repartiront en validation.\n\nHeures : <<Lien vers les heures>>\n\n${PIED_SIMPLE}`,
     },
+    energie_a_renouveler: {
+        objet: '[Énergie] <<Nombre de points à renouveler>> point(s) de livraison à renouveler — première fin le <<Première fin de fourniture>>',
+        corps: `Bonjour,\n\nLa fourniture d'énergie de <<Nombre de points à renouveler>> point(s) de livraison arrive à son terme sans contrat pour la suite :\n\n<<Liste des points à renouveler>>\n\n<<Points sans contrat en cours>> point(s) n'ont déjà plus de contrat en cours alors que le contrat client est actif.\n\nRenouveler, c'est ajouter la nouvelle période sur le point de livraison : <<Lien vers les contrats d'énergie>>`,
+    },
 };
 
 /** Modèle en vigueur : celui du type de document s'il existe, sinon celui de l'événement, sinon celui d'origine. */
@@ -207,6 +213,11 @@ export function contexteExemple(e: Evenement, urlApplication = 'https://zenergya
     const lignes = [{ date: '2026-11-18', heures: 7.5, salarie: 'Lucas Morel', affectation: 'Affaire ZEN-AFF2026-0003 — Rénovation de chaufferie' }, { date: '2026-11-19', heures: 4, salarie: 'Lucas Morel', affectation: 'Contrat CTN-00003 — P2' }, { date: '2026-11-19', heures: 6, salarie: 'Emma Petit', affectation: 'Affaire ZEN-AFF2026-0001 — Circulateur' }];
     if (e === 'heures_a_valider') return { ...vide, heures: { lignes } };
     if (e === 'heures_refusees') return { ...vide, heures: { salarie: 'Lucas Morel', lignes: lignes.slice(0, 2), decidePar: 'Nadia Roche', motif: 'Affectation erronée : ces heures relèvent de l\'affaire, pas du contrat.' } };
+    if (e === 'energie_a_renouveler') return { ...vide, energie: { sansContrat: 2, lignes: [
+        { pdl: '21458100007919', client: 'Copropriété Les Tilleuls', site: 'Tilleuls - Bâtiment A', fournisseur: 'Gaz du Sud', numeroContrat: 'MULTISITES 2025/2026', fin: '2026-12-31', jours: 38 },
+        { pdl: '21458100031676', client: 'Copropriété Square Voltaire', site: 'Square Voltaire - Chaufferie', fournisseur: 'Gaz du Sud', numeroContrat: 'MULTISITES 2025/2026', fin: '2026-12-31', jours: 38 },
+        { pdl: '30002310560856', client: 'Ville de Bagnols', site: 'Groupe scolaire', fournisseur: 'Énergies du Rhône', numeroContrat: '', fin: '2027-03-31', jours: 128 },
+    ] } };
     if (e === 'preavis') return { ...base, jours: 60, date: '2027-06-29', echeance: '2027-09-29', preavis: '3 mois', reconduction: 'sans dénonciation, reconduction tacite de 1 an' };
     if (e === 'echeance') return { ...base, jours: 180, date: '2027-09-29', reconduction: 'reconduction tacite de 1 an' };
     if (e === 'echeance_depassee') return { ...base, jours: 12, date: '2026-11-11' };

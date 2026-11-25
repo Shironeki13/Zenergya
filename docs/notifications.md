@@ -195,3 +195,17 @@ Code : `src/services/notifications-metier.ts`.
 ## À venir
 
 Envoi réel par la messagerie Google.
+
+## Contrats d'énergie : fournitures à renouveler
+
+Événement « Fournitures d'énergie à renouveler (récapitulatif) », domaine « Contrats d'énergie ».
+
+- **Quand** : lors du passage quotidien des rappels, le jour où au moins un point de livraison franchit un seuil avant la
+  fin de sa couverture (180, 90 puis 30 jours), sans contrat fournisseur pour la suite. Un seul mail par jour au plus.
+- **Contenu** : tous les points à renouveler, du plus urgent au moins urgent (fin de fourniture, jours restants, client,
+  site, PDL, fournisseur et contrat), et le nombre de points déjà sans contrat en cours.
+- **Destinataires par défaut** : les acheteurs (utilisateurs dont le rôle a le droit « Achats ») et les administrateurs.
+- **Balises** : « Nombre de points à renouveler », « Première fin de fourniture », « Liste des points à renouveler »,
+  « Points sans contrat en cours », « Lien vers les contrats d'énergie ».
+- Un point dont le contrat client se termine en même temps que sa fourniture n'est pas « à renouveler ».
+

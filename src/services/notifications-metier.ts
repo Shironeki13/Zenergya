@@ -1,3 +1,5 @@
+import { couverture, type PointLivraison } from '@/lib/energie/fournitures';
+import { rappelEnergie, type PointSuivi } from '@/lib/energie/rappels';
 import 'server-only';
 import { adminDb } from '@/lib/firebase-admin';
 import { etapeEnCours, libelleEtape, type Commande } from '@/lib/commandes';
@@ -105,4 +107,32 @@ export async function rappelsHeures(today: string, dernierPassage: string | null
         });
     }
     return demandes;
+}
+
+/**
+ * Récapitulatif des fournitures d'énergie à renouveler (contrats d'énergie) : un mail aux acheteurs et aux
+ * administrateurs le jour où un point de livraison franchit un seuil, listant tous les points à renouveler.
+ */
+export async function rappelsEnergie(today: string, dernierPassage: string | null): Promise<DemandeNotification[]> {
+    const snap = await adminDb.collection('pointsLivraison').get();
+    if (snap.empty) return [];
+    const suivis: PointSuivi[] = [];
+    let sansContrat = 0;
+    for (const d of snap.docs) {
+        const p = d.data() as Partial<PointLivraison>;
+        const periodes = (p.periodes ?? []).map(x => ({ ...x, debut: x.debut ?? null, fin: x.fin ?? null }));
+        const c = couverture({ periodes, finClient: p.finClient }, today);
+        if (c.statut === 'sans_couverture') sansContrat++;
+        if (c.statut !== 'a_renouveler' || !c.finCouverture || c.jours === null) continue;
+        suivis.push({ statut: c.statut, pdl: String(p.pdl ?? ''), client: String(p.client ?? ''), site: String(p.site ?? ''), fournisseur: c.courante?.fournisseur ?? '', numeroContrat: c.courante?.numeroContrat ?? '', fin: c.finCouverture, jours: c.jours });
+    }
+    const lignes = rappelEnergie(suivis, today, dernierPassage);
+    if (!lignes) return [];
+    const [roles, users] = await Promise.all([adminDb.collection('roles').where('isAcheteur', '==', true).get(), adminDb.collection('users').get()]);
+    const idsRoles = new Set(roles.docs.map(r => r.id));
+    const acheteurs = users.docs.filter(u => idsRoles.has(String(u.get('roleId') ?? ''))).map(u => String(u.get('email') ?? '').trim()).filter(Boolean);
+    return [{
+        evenement: 'energie_a_renouveler', cle: `energie/a-renouveler/${today}`, libelle: "Fournitures d'énergie à renouveler", annuaire: { acheteurs },
+        contexte: { contrat: SANS_CONTRAT, energie: { lignes, ...(sansContrat && { sansContrat }) }, aujourdhui: today },
+    }];
 }

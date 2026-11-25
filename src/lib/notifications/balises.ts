@@ -32,6 +32,9 @@ export type DocumentEnAttente = { numero: string; client: string; nature: Nature
 
 export type CommandeMail = { id: string; numero: string; objet: string; fournisseur: string; montantHT: number; demandeur: string; etape?: string; valideur?: string; decidePar?: string; motif?: string };
 export type LigneHeures = { date: string; heures: number; salarie: string; affectation: string };
+/** Point de livraison dont la fourniture d'énergie arrive à son terme sans suite. */
+export type PointEnergieMail = { pdl: string; client: string; site: string; fournisseur: string; numeroContrat: string; fin: string; jours: number };
+export type EnergieMail = { lignes: PointEnergieMail[]; sansContrat?: number };
 export type HeuresMail = { salarie?: string; lignes: LigneHeures[]; decidePar?: string; motif?: string };
 
 export type ContexteMail = {
@@ -52,16 +55,18 @@ export type ContexteMail = {
     commande?: CommandeMail;
     /** Heures saisies (événements des heures) : à valider par un responsable, ou refusées à un salarié. */
     heures?: HeuresMail;
+    /** Contrats de fourniture d'énergie : points de livraison à renouveler (récapitulatif). */
+    energie?: EnergieMail;
     urlApplication: string;
     /** Jour de composition (AAAA-MM-JJ) ; à défaut, aujourd'hui. */
     aujourdhui?: string;
 };
 
-export type GroupeBalise = 'Contrat' | 'Document' | 'Montants' | 'Dates et délais' | 'Récapitulatif' | 'Commande' | 'Heures';
-export const GROUPES_BALISE: GroupeBalise[] = ['Contrat', 'Document', 'Montants', 'Dates et délais', 'Récapitulatif', 'Commande', 'Heures'];
+export type GroupeBalise = 'Contrat' | 'Document' | 'Montants' | 'Dates et délais' | 'Récapitulatif' | 'Commande' | 'Heures' | 'Énergie';
+export const GROUPES_BALISE: GroupeBalise[] = ['Contrat', 'Document', 'Montants', 'Dates et délais', 'Récapitulatif', 'Commande', 'Heures', 'Énergie'];
 /** Domaine d'un événement : les balises proposées dans l'éditeur dépendent de lui. */
-export type Famille = 'contrat' | 'commande' | 'heures';
-export const GROUPES_FAMILLE: Record<Famille, GroupeBalise[]> = { contrat: ['Contrat', 'Document', 'Montants', 'Dates et délais', 'Récapitulatif'], commande: ['Commande'], heures: ['Heures'] };
+export type Famille = 'contrat' | 'commande' | 'heures' | 'energie';
+export const GROUPES_FAMILLE: Record<Famille, GroupeBalise[]> = { contrat: ['Contrat', 'Document', 'Montants', 'Dates et délais', 'Récapitulatif'], commande: ['Commande'], heures: ['Heures'], energie: ['Énergie'] };
 const heure = (x: number) => `${x.toLocaleString('fr-FR', { maximumFractionDigits: 2 })} h`;
 
 const nombre = (x: number) => Math.abs(x).toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -125,6 +130,14 @@ export const BALISES: Balise[] = [
     { nom: 'Liste des heures', groupe: 'Heures', aide: 'Une ligne par saisie : date, salarié, heures, affectation', valeur: c => (c.heures?.lignes ?? []).map(l => `- ${fr(l.date)} — ${l.salarie} : ${heure(l.heures)} — ${l.affectation}`).join('\n') },
     { nom: 'Lien vers les heures', groupe: 'Heures', aide: 'Adresse de l\'écran des heures dans Zenergya (cliquable dans le mail)', valeur: c => (c.urlApplication ? `${c.urlApplication.replace(/\/+$/, '')}/timesheets` : '') },
     { nom: 'Date du jour', groupe: 'Dates et délais', aide: 'Jour d\'envoi du mail, JJ/MM/AAAA', valeur: c => fr(c.aujourdhui ?? new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/Paris' })) },
+    { nom: 'Nombre de points à renouveler', groupe: 'Énergie', aide: 'Nombre de points de livraison dont la fourniture se termine sans suite', valeur: c => (c.energie ? String(c.energie.lignes.length) : '') },
+    { nom: 'Première fin de fourniture', groupe: 'Énergie', aide: 'Date la plus proche parmi les points listés, JJ/MM/AAAA', valeur: c => fr([...(c.energie?.lignes ?? [])].map(l => l.fin).sort()[0]) },
+    {
+        nom: 'Liste des points à renouveler', groupe: 'Énergie', aide: 'Une ligne par point de livraison : fin de fourniture, jours restants, client, site, PDL, fournisseur et contrat',
+        valeur: c => (c.energie?.lignes ?? []).map(l => `- ${fr(l.fin)} (${l.jours} jour${l.jours > 1 ? 's' : ''}) — ${l.client}, ${l.site} — PDL ${l.pdl}${l.fournisseur ? ` — ${l.fournisseur}${l.numeroContrat ? ` ${l.numeroContrat}` : ''}` : ''}`).join('\n'),
+    },
+    { nom: 'Points sans contrat en cours', groupe: 'Énergie', aide: 'Nombre de points de livraison sans fourniture en cours alors que le contrat client est actif ; vide s\'il n\'y en a pas', valeur: c => (c.energie?.sansContrat ? String(c.energie.sansContrat) : '') },
+    { nom: 'Lien vers les contrats d\'énergie', groupe: 'Énergie', aide: 'Adresse de la base des contrats d\'énergie (cliquable dans le mail)', valeur: c => (c.urlApplication ? `${c.urlApplication.replace(/\/+$/, '')}/purchases/energie` : '') },
 ];
 
 const cle = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[’]/g, '\'').replace(/\s+/g, ' ').trim().toLowerCase();

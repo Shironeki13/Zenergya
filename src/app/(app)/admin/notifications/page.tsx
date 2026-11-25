@@ -317,7 +317,7 @@ export default function NotificationsPage() {
             <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
                     <h1 className="text-2xl font-bold tracking-tight">Notifications par mail</h1>
-                    <p className="text-muted-foreground">Ce que Zenergya envoie pour les contrats, les commandes et les heures : à qui, avec quel texte, et le journal de ce qui a été composé. Les mails restent internes.</p>
+                    <p className="text-muted-foreground">Ce que Zenergya envoie pour les contrats, les commandes, les heures et les contrats d'énergie : à qui, avec quel texte, et le journal de ce qui a été composé. Les mails restent internes.</p>
                 </div>
                 <Button variant="outline" onClick={charger}><RefreshCw className="mr-2 h-4 w-4" />Actualiser</Button>
             </div>
@@ -353,7 +353,7 @@ export default function NotificationsPage() {
                 </CardHeader>
                 <CardContent className="grid gap-6 lg:grid-cols-[minmax(0,19rem)_1fr]">
                     <div className="space-y-4" aria-label="Événements" role="list">
-                        {(['contrat', 'commande', 'heures'] as Famille[]).map(f => (
+                        {(['contrat', 'commande', 'heures', 'energie'] as Famille[]).map(f => (
                             <div key={f}>
                                 <p className="mb-1.5 text-xs font-medium uppercase tracking-wide text-muted-foreground">{LIBELLE_FAMILLE[f]}</p>
                                 <ul className="space-y-1">
