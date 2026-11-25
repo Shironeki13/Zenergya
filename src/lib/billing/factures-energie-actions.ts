@@ -3,8 +3,9 @@
 import { requireUser } from '@/lib/auth/server';
 import { gardePerimetre, requireUserDans } from '@/lib/auth/perimetre-server';
 import { exigerAchatsEnergie } from '@/services/energie-admin';
+import { bigQueryActif } from '@/services/energie-bigquery';
 import {
-    creerFactureEnergie, facturesEnergieDuPoint, facturesEnergieDuSite, modifierFactureEnergie, pointsDuSite, siteDeFactureEnergie, supprimerFactureEnergie, type FactureEnergieSuivie, type PointDuSite,
+    creerFactureEnergie, facturesEnergieDuPoint, facturesEnergieDuSiteAvecEtat, modifierFactureEnergie, pointsDuSite, siteDeFactureEnergie, supprimerFactureEnergie, type FactureEnergieSuivie, type PointDuSite,
 } from '@/services/factures-energie-admin';
 
 /** Factures des fournisseurs d'énergie d'un site (refacturation à l'euro l'euro) : réservé aux utilisateurs du périmètre du site. */
@@ -12,11 +13,11 @@ import {
 type Result<T> = { success: true; data: T } | { success: false; error: string };
 const fail = (e: unknown): { success: false; error: string } => ({ success: false, error: e instanceof Error ? e.message : 'Opération impossible.' });
 
-export async function facturesEnergieAction(siteId: string): Promise<Result<{ factures: FactureEnergieSuivie[]; points: PointDuSite[] }>> {
+export async function facturesEnergieAction(siteId: string): Promise<Result<{ factures: FactureEnergieSuivie[]; points: PointDuSite[]; avertissement?: string; flux: boolean }>> {
     try {
         await requireUserDans('site', siteId);
-        const [factures, pts] = await Promise.all([facturesEnergieDuSite(siteId), pointsDuSite(siteId)]);
-        return { success: true, data: JSON.parse(JSON.stringify({ factures, points: pts.points })) };
+        const [etat, pts] = await Promise.all([facturesEnergieDuSiteAvecEtat(siteId), pointsDuSite(siteId)]);
+        return { success: true, data: JSON.parse(JSON.stringify({ ...etat, points: pts.points, flux: bigQueryActif() })) };
     } catch (e) { return fail(e); }
 }
 

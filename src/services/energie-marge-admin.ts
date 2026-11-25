@@ -3,6 +3,8 @@ import { adminDb } from '@/lib/firebase-admin';
 import type { GardePerimetre } from '@/lib/auth/perimetre-server';
 import { douzeMois, margeP1, type Achat, type MargeP1, type Vente } from '@/lib/energie/marge';
 import { toDay } from '@/lib/services/site-amounts';
+import { pdlNorme } from '@/lib/energie/bigquery';
+import { BigQueryIndisponible, bigQueryActif, facturesBigQuery } from '@/services/energie-bigquery';
 
 /**
  * Marge P1 par site : lignes P1 facturées au client (factures émises, avoirs de régularisation déduits) face aux
@@ -49,28 +51,48 @@ async function ventesP1(siteId: string, contractId: string, p1: Set<string>): Pr
     return ventes;
 }
 
-const achatDe = (d: FirebaseFirestore.QueryDocumentSnapshot): Achat => ({ date: String(d.get('date') ?? ''), debut: d.get('debut') ?? null, fin: d.get('fin') ?? null, montantHT: Number(d.get('montantHT') ?? 0), quantite: d.get('quantite') ?? null });
+const achatDe = (d: FirebaseFirestore.QueryDocumentSnapshot): Achat & { numero: string } => ({ numero: String(d.get('numero') ?? ''), date: String(d.get('date') ?? ''), debut: d.get('debut') ?? null, fin: d.get('fin') ?? null, montantHT: Number(d.get('montantHT') ?? 0), quantite: d.get('quantite') ?? null });
 
-export async function margeSite(siteId: string): Promise<MargeSite> {
+/** Achats d'un site : factures saisies, plus celles des flux des fournisseurs pour ses points de livraison (sans doublon de numéro). */
+async function achatsDuSite(siteId: string, pdls: string[]): Promise<Achat[]> {
+    const saisies = (await adminDb.collection('facturesEnergie').where('siteId', '==', siteId).get()).docs.map(achatDe);
+    const numeros = new Set(saisies.map(a => a.numero.trim().toUpperCase()));
+    const flux = (await facturesBigQuery(pdls).catch(e => { if (e instanceof BigQueryIndisponible) return []; throw e; }))
+        .filter(f => !numeros.has(f.numero.trim().toUpperCase())).map(f => ({ date: f.date, debut: f.debut, fin: f.fin, montantHT: f.montantHT, quantite: f.quantite }));
+    return [...saisies, ...flux];
+}
+
+async function calculer(siteId: string, pdls: string[], p1: Set<string>): Promise<MargeSite> {
     const site = await adminDb.collection('sites').doc(siteId).get();
     if (!site.exists) throw new Error('Site introuvable.');
     const contractId = (site.get('contractId') as string | undefined) ?? null;
-    const [achats, contrat, p1] = await Promise.all([
-        adminDb.collection('facturesEnergie').where('siteId', '==', siteId).get(),
-        contractId ? adminDb.collection('contracts').doc(contractId).get() : Promise.resolve(null), codesP1(),
-    ]);
+    const [achats, contrat] = await Promise.all([achatsDuSite(siteId, pdls), contractId ? adminDb.collection('contracts').doc(contractId).get() : Promise.resolve(null)]);
     const { de, a } = douzeMois(toDay(new Date())!);
     return {
         siteId, siteNom: String(site.get('name') ?? ''), client: String(contrat?.get('clientName') ?? site.get('clientName') ?? ''), contractId, contractNumber: String(contrat?.get('contractNumber') ?? ''), de, a,
-        marge: margeP1(contractId ? await ventesP1(siteId, contractId, p1) : [], achats.docs.map(achatDe), de, a),
+        marge: margeP1(contractId ? await ventesP1(siteId, contractId, p1) : [], achats, de, a),
     };
 }
 
-/** Marge P1 de tous les sites qui ont au moins une facture du fournisseur saisie, la plus faible d'abord. */
+export async function margeSite(siteId: string): Promise<MargeSite> {
+    const [points, p1] = await Promise.all([adminDb.collection('pointsLivraison').where('siteId', '==', siteId).get(), codesP1()]);
+    return calculer(siteId, points.docs.map(d => pdlNorme(String(d.get('pdl') ?? ''))), p1);
+}
+
+/**
+ * Marge P1 des sites qui ont des achats connus : une facture du fournisseur saisie, ou (flux BigQuery actif) un point
+ * de livraison rattaché. La plus faible d'abord.
+ */
 export async function margesP1(garde: GardePerimetre): Promise<MargeSite[]> {
-    const [snap, visibles] = await Promise.all([adminDb.collection('facturesEnergie').get(), garde.ids('sites')]);
-    const sites = [...new Set(snap.docs.map(d => String(d.get('siteId') ?? '')).filter(Boolean))].filter(s => !visibles || visibles.has(s));
+    const [saisies, points, visibles, p1] = await Promise.all([adminDb.collection('facturesEnergie').get(), adminDb.collection('pointsLivraison').get(), garde.ids('sites'), codesP1()]);
+    const pdls = new Map<string, string[]>();
+    for (const d of points.docs) { const s = d.get('siteId') as string | undefined; if (s) pdls.set(s, [...(pdls.get(s) ?? []), pdlNorme(String(d.get('pdl') ?? ''))]); }
+    const sites = new Set(saisies.docs.map(d => String(d.get('siteId') ?? '')).filter(Boolean));
+    if (bigQueryActif()) for (const s of pdls.keys()) sites.add(s);
     const out: MargeSite[] = [];
-    for (const s of sites) { try { out.push(await margeSite(s)); } catch { /* site supprimé : ignoré */ } }
+    for (const s of sites) {
+        if (visibles && !visibles.has(s)) continue;
+        try { const m = await calculer(s, pdls.get(s) ?? [], p1); if (m.marge.mois.length) out.push(m); } catch { /* site supprimé : ignoré */ }
+    }
     return out.sort((x, y) => (x.marge.taux ?? Infinity) - (y.marge.taux ?? Infinity) || x.client.localeCompare(y.client, 'fr'));
 }

@@ -4,6 +4,8 @@ import { controlerFactureEnergie, type SaisieFactureEnergie } from '@/lib/billin
 import type { FactureEnergie } from '@/lib/billing/contract-billing';
 import { controlerFactureFournisseur, type ControleFacture } from '@/lib/energie/controle-facture';
 import type { PeriodeFourniture } from '@/lib/energie/fournitures';
+import { pdlNorme, type FactureBigQuery } from '@/lib/energie/bigquery';
+import { BigQueryIndisponible, facturesBigQuery } from '@/services/energie-bigquery';
 
 /**
  * Factures des fournisseurs d'énergie d'un site, refacturées à l'euro l'euro par la prestation P1 « €€ ».
@@ -14,6 +16,10 @@ export type FactureEnergieSuivie = FactureEnergie & {
     commentaire?: string; saisiPar?: string; saisiLe?: string;
     /** Point de livraison concerné, quantité (MWh), et contrôle face au contrat de fourniture. */
     pointId?: string | null; pdl?: string; quantite?: number | null; controle?: ControleFacture;
+    /** `bigquery` : lue dans les flux des fournisseurs (non modifiable) ; `saisie` : saisie dans le logiciel. */
+    origine?: 'bigquery' | 'saisie'; source?: string; pdf?: string | null;
+    /** Composantes HT de la facture (flux des fournisseurs) : molécule, acheminement, taxes, abonnement. */
+    consommation?: number | null; acheminement?: number | null; taxes?: number | null; abonnement?: number | null;
     /** Facture client qui la refacture (absent : à refacturer). */
     refacturee?: { invoiceId: string; numero: string; proforma: boolean };
 };
@@ -24,19 +30,44 @@ const lire = (d: FirebaseFirestore.DocumentSnapshot): FactureEnergieSuivie => {
     return {
         id: d.id, siteId: String(x.siteId ?? ''), serviceId: x.serviceId ?? null, fournisseur: String(x.fournisseur ?? ''), numero: String(x.numero ?? ''),
         date: String(x.date ?? ''), debut: x.debut ?? null, fin: x.fin ?? null, montantHT: Number(x.montantHT ?? 0),
-        pointId: x.pointId ?? null, quantite: typeof x.quantite === 'number' ? x.quantite : null,
+        pointId: x.pointId ?? null, quantite: typeof x.quantite === 'number' ? x.quantite : null, origine: 'saisie',
         ...(x.commentaire && { commentaire: String(x.commentaire) }), ...(x.saisiPar && { saisiPar: String(x.saisiPar) }), ...(x.saisiLe && { saisiLe: String(x.saisiLe) }),
     };
 };
 
-/** Factures à refacturer des sites donnés (entrée de la facturation). */
+const deBigQuery = (f: FactureBigQuery, siteId: string, pointId: string | null): FactureEnergieSuivie => ({
+    id: f.id, siteId, serviceId: null, fournisseur: f.fournisseur, numero: f.numero, date: f.date, debut: f.debut, fin: f.fin, montantHT: f.montantHT,
+    pointId, pdl: f.pdl, quantite: f.quantite, origine: 'bigquery', source: f.source, pdf: f.pdf,
+    consommation: f.consommation, acheminement: f.acheminement, taxes: f.taxes, abonnement: f.abonnement,
+});
+const cleFacture = (f: { fournisseur: string; numero: string }) => `${f.numero.trim().toUpperCase()}`;
+
+/**
+ * Factures des flux des fournisseurs (BigQuery) pour des points de livraison rattachés à des sites. Une facture
+ * déjà saisie à la main sur le site (même numéro) n'est pas reprise une seconde fois.
+ */
+async function fluxDesPoints(points: { id: string; pdl: string; siteId: string }[], saisies: FactureEnergieSuivie[]): Promise<FactureEnergieSuivie[]> {
+    if (!points.length) return [];
+    const parPdl = new Map(points.map(p => [pdlNorme(p.pdl), p]));
+    const dejaSaisies = new Set(saisies.map(f => `${f.siteId}|${cleFacture(f)}`));
+    return (await facturesBigQuery(points.map(p => p.pdl))).flatMap(f => {
+        const pt = parPdl.get(f.pdl);
+        return pt && !dejaSaisies.has(`${pt.siteId}|${cleFacture(f)}`) ? [deBigQuery(f, pt.siteId, pt.id)] : [];
+    });
+}
+
+/** Factures à refacturer des sites donnés (entrée de la facturation) : saisies dans le logiciel et flux des fournisseurs. */
 export async function facturesEnergieDesSites(siteIds: string[]): Promise<FactureEnergie[]> {
-    const out: FactureEnergie[] = [];
+    const saisies: FactureEnergieSuivie[] = [];
+    const points: { id: string; pdl: string; siteId: string }[] = [];
     for (let i = 0; i < siteIds.length; i += 30) {
-        const snap = await adminDb.collection(COLL).where('siteId', 'in', siteIds.slice(i, i + 30)).get();
-        out.push(...snap.docs.map(lire));
+        const [f, p] = await Promise.all([adminDb.collection(COLL).where('siteId', 'in', siteIds.slice(i, i + 30)).get(), adminDb.collection('pointsLivraison').where('siteId', 'in', siteIds.slice(i, i + 30)).get()]);
+        saisies.push(...f.docs.map(lire));
+        points.push(...p.docs.map(d => ({ id: d.id, pdl: String(d.get('pdl') ?? ''), siteId: String(d.get('siteId')) })));
     }
-    return out.sort((a, b) => a.date.localeCompare(b.date) || a.numero.localeCompare(b.numero));
+    // Une panne de BigQuery remonte : mieux vaut ne pas facturer que d'oublier des factures à refacturer.
+    const flux = await fluxDesPoints(points, saisies);
+    return [...saisies, ...flux].sort((a, b) => a.date.localeCompare(b.date) || a.numero.localeCompare(b.numero));
 }
 
 /** Factures client (non annulées) qui refacturent chaque facture du fournisseur, pour un site. */
@@ -77,15 +108,26 @@ const suivre = (f: FactureEnergieSuivie, faites: Map<string, NonNullable<Facture
     ...(pts.points.length > 0 && { controle: controlerFactureFournisseur(f, f.pointId ? pts.periodes.get(f.pointId) ?? null : null) }),
 });
 
-export async function facturesEnergieDuSite(siteId: string): Promise<FactureEnergieSuivie[]> {
+/** Factures du fournisseur d'un site : saisies et flux, avec leur contrôle et leur refacturation. `avertissement` : flux indisponible. */
+export async function facturesEnergieDuSiteAvecEtat(siteId: string): Promise<{ factures: FactureEnergieSuivie[]; avertissement?: string }> {
     const [snap, faites, pts] = await Promise.all([adminDb.collection(COLL).where('siteId', '==', siteId).get(), refacturations(siteId), pointsDuSite(siteId)]);
-    return snap.docs.map(lire).map(f => suivre(f, faites, pts)).sort((a, b) => b.date.localeCompare(a.date) || b.numero.localeCompare(a.numero));
+    const saisies = snap.docs.map(lire);
+    let flux: FactureEnergieSuivie[] = [], avertissement: string | undefined;
+    try { flux = await fluxDesPoints(pts.points.map(p => ({ id: p.id, pdl: p.pdl, siteId })), saisies); }
+    catch (e) { if (!(e instanceof BigQueryIndisponible)) throw e; avertissement = e.message; }
+    return { factures: [...saisies, ...flux].map(f => suivre(f, faites, pts)).sort((a, b) => b.date.localeCompare(a.date) || b.numero.localeCompare(a.numero)), ...(avertissement && { avertissement }) };
 }
+
+export const facturesEnergieDuSite = async (siteId: string): Promise<FactureEnergieSuivie[]> => (await facturesEnergieDuSiteAvecEtat(siteId)).factures;
 
 /** Factures du fournisseur rattachées à un point de livraison (fiche du point), avec leur refacturation au client. */
 export async function facturesEnergieDuPoint(pointId: string): Promise<FactureEnergieSuivie[]> {
-    const snap = await adminDb.collection(COLL).where('pointId', '==', pointId).get();
-    const factures = snap.docs.map(lire);
+    const [snap, point] = await Promise.all([adminDb.collection(COLL).where('pointId', '==', pointId).get(), adminDb.collection('pointsLivraison').doc(pointId).get()]);
+    const saisies = snap.docs.map(lire);
+    // Flux des fournisseurs : pour un point rattaché à un site (sans site, pas de client à qui les relier).
+    const siteDuPoint = point.get('siteId') as string | undefined;
+    const flux = siteDuPoint ? await fluxDesPoints([{ id: pointId, pdl: String(point.get('pdl') ?? ''), siteId: siteDuPoint }], saisies).catch(e => { if (e instanceof BigQueryIndisponible) return []; throw e; }) : [];
+    const factures = [...saisies, ...flux];
     const sites = [...new Set(factures.map(f => f.siteId).filter(Boolean))];
     const parSite = new Map(await Promise.all(sites.map(async s => [s, { faites: await refacturations(s), pts: await pointsDuSite(s) }] as const)));
     return factures.map(f => (parSite.has(f.siteId) ? suivre(f, parSite.get(f.siteId)!.faites, parSite.get(f.siteId)!.pts) : f)).sort((a, b) => b.date.localeCompare(a.date));
@@ -111,6 +153,7 @@ export async function creerFactureEnergie(siteId: string, saisie: unknown, par: 
 }
 
 async function modifiable(id: string): Promise<FirebaseFirestore.DocumentSnapshot> {
+    if (id.startsWith('bq:')) throw new Error('Cette facture vient du flux du fournisseur : elle ne se modifie pas dans le logiciel.');
     const d = await adminDb.collection(COLL).doc(id).get();
     if (!d.exists) throw new Error('Facture du fournisseur introuvable.');
     const faite = (await refacturations(String(d.get('siteId')))).get(id);
@@ -130,5 +173,6 @@ export async function supprimerFactureEnergie(id: string): Promise<void> {
 
 /** Site d'une facture du fournisseur (contrôle du périmètre). */
 export async function siteDeFactureEnergie(id: string): Promise<string> {
+    if (id.startsWith('bq:')) return '';
     return String((await adminDb.collection(COLL).doc(id).get()).get('siteId') ?? '');
 }

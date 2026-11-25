@@ -5,12 +5,17 @@
  */
 import type { PeriodeFourniture } from './fournitures';
 
+/** Écart toléré entre la molécule facturée et un prix fixe au contrat. */
+export const SEUIL_MOLECULE = 0.05;
+
 export type AlerteFacture = { gravite: 'attention' | 'info'; texte: string };
 export type ControleFacture = {
     /** Période de fourniture qui couvre la facture (son début de consommation, sinon sa date). */
     periode: Pick<PeriodeFourniture, 'id' | 'debut' | 'fin' | 'fournisseur' | 'numeroContrat' | 'prixMolecule' | 'indexationAchat'> | null;
     /** Prix moyen HT par MWh (toutes composantes), quand la quantité est saisie. */
     prixMoyen: number | null;
+    /** Molécule facturée en €/MWh, quand la facture détaille ses consommations (factures lues dans BigQuery). */
+    molecule: number | null;
     alertes: AlerteFacture[];
 };
 
@@ -30,11 +35,12 @@ export function memeFournisseur(a: string, b: string): boolean {
 }
 
 export function controlerFactureFournisseur(
-    f: { fournisseur: string; date: string; debut?: string | null; fin?: string | null; montantHT: number; quantite?: number | null },
+    f: { fournisseur: string; date: string; debut?: string | null; fin?: string | null; montantHT: number; quantite?: number | null; consommation?: number | null },
     periodes: PeriodeFourniture[] | null,
 ): ControleFacture {
     const prixMoyen = f.quantite && f.quantite > 0 ? Math.round((f.montantHT / f.quantite) * 100) / 100 : null;
-    if (periodes === null) return { periode: null, prixMoyen, alertes: [{ gravite: 'info', texte: 'Facture non rattachée à un point de livraison : aucun contrôle sur le contrat fournisseur.' }] };
+    const molecule = f.quantite && f.quantite > 1 && typeof f.consommation === 'number' && f.consommation > 0 ? Math.round((f.consommation / f.quantite) * 100) / 100 : null;
+    if (periodes === null) return { periode: null, prixMoyen, molecule, alertes: [{ gravite: 'info', texte: 'Facture non rattachée à un point de livraison : aucun contrôle sur le contrat fournisseur.' }] };
     const [du, au] = f.debut && f.fin ? [f.debut, f.fin] : [f.date, f.date];
     const datees = periodes.filter(p => p.debut && p.fin);
     const couvre = (jour: string) => datees.filter(p => p.debut! <= jour && p.fin! >= jour).sort((a, b) => b.debut!.localeCompare(a.debut!))[0] ?? null;
@@ -47,11 +53,19 @@ export function controlerFactureFournisseur(
         if (!debutCouvert || !finCouverte) alertes.push({ gravite: 'attention', texte: `Le contrat fournisseur ne couvre qu'une partie de ${quoi} (contrat du ${fr(periode.debut!)} au ${fr(periode.fin!)}).` });
         else if (debutCouvert.id !== finCouverte.id) alertes.push({ gravite: 'info', texte: `La consommation est à cheval sur deux contrats : ${debutCouvert.fournisseur || '?'} jusqu'au ${fr(debutCouvert.fin!)}, puis ${finCouverte.fournisseur || '?'}.` });
         if (periode.fournisseur && !memeFournisseur(periode.fournisseur, f.fournisseur)) alertes.push({ gravite: 'attention', texte: `Fournisseur de la facture (${f.fournisseur}) différent de celui du contrat en vigueur (${periode.fournisseur}).` });
-        if (prixMoyen !== null && typeof periode.prixMolecule === 'number' && periode.prixMolecule > 0) {
+        const contrat = typeof periode.prixMolecule === 'number' && periode.prixMolecule > 0 ? periode.prixMolecule : null;
+        if (molecule !== null && contrat !== null) {
+            // La facture détaille sa molécule : comparaison directe. Seul un prix fixe au contrat doit s'y retrouver ;
+            // un prix indexé (PEG…) varie d'un mois à l'autre.
+            const ecart = molecule / contrat - 1;
+            const fixe = /FIXE/i.test(periode.indexationAchat ?? '');
+            if (fixe && Math.abs(ecart) > SEUIL_MOLECULE) alertes.push({ gravite: 'attention', texte: `Molécule facturée ${eur(molecule)}/MWh pour un prix fixe de ${eur(contrat)}/MWh au contrat (${ecart > 0 ? '+' : '−'}${Math.abs(Math.round(ecart * 100))} %).` });
+            else alertes.push({ gravite: 'info', texte: `Molécule facturée ${eur(molecule)}/MWh, pour ${eur(contrat)}/MWh au contrat${fixe ? '' : ` (${periode.indexationAchat || 'prix indexé'})`}.` });
+        } else if (prixMoyen !== null && typeof periode.prixMolecule === 'number' && periode.prixMolecule > 0) {
             // Le prix moyen inclut acheminement, abonnements et taxes : il dépasse normalement la molécule seule.
             if (prixMoyen < periode.prixMolecule) alertes.push({ gravite: 'attention', texte: `Prix moyen de ${eur(prixMoyen)}/MWh, inférieur à la molécule du contrat (${eur(periode.prixMolecule)}/MWh) : vérifiez la quantité ou le montant.` });
             else alertes.push({ gravite: 'info', texte: `Prix moyen de ${eur(prixMoyen)}/MWh toutes composantes, pour une molécule à ${eur(periode.prixMolecule)}/MWh au contrat.` });
         }
     }
-    return { periode: periode ? { id: periode.id, debut: periode.debut, fin: periode.fin, fournisseur: periode.fournisseur, numeroContrat: periode.numeroContrat, prixMolecule: periode.prixMolecule ?? null, indexationAchat: periode.indexationAchat } : null, prixMoyen, alertes };
+    return { periode: periode ? { id: periode.id, debut: periode.debut, fin: periode.fin, fournisseur: periode.fournisseur, numeroContrat: periode.numeroContrat, prixMolecule: periode.prixMolecule ?? null, indexationAchat: periode.indexationAchat } : null, prixMoyen, molecule, alertes };
 }

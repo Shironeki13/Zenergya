@@ -30,13 +30,14 @@ export function FacturesEnergie({ siteId, contractId, refacturation }: { siteId:
     const { toast } = useToast();
     const [factures, setFactures] = useState<FactureEnergieSuivie[] | null>(null);
     const [points, setPoints] = useState<PointDuSite[]>([]);
+    const [flux, setFlux] = useState<{ actif: boolean; avertissement?: string }>({ actif: false });
     const [ouvert, setOuvert] = useState<{ id: string | null } | null>(null);
     const [saisie, setSaisie] = useState(VIDE);
     const [envoi, setEnvoi] = useState(false);
 
     const charger = useCallback(async () => {
         const r = await facturesEnergieAction(siteId);
-        if (r.success) { setFactures(r.data.factures); setPoints(r.data.points); } else { setFactures([]); toast({ title: 'Factures du fournisseur indisponibles', description: r.error, variant: 'destructive' }); }
+        if (r.success) { setFactures(r.data.factures); setPoints(r.data.points); setFlux({ actif: r.data.flux, avertissement: r.data.avertissement }); } else { setFactures([]); toast({ title: 'Factures du fournisseur indisponibles', description: r.error, variant: 'destructive' }); }
     }, [siteId, toast]);
     useEffect(() => { void charger(); }, [charger]);
 
@@ -82,6 +83,7 @@ export function FacturesEnergie({ siteId, contractId, refacturation }: { siteId:
                         {refacturation ? "Chaque facture saisie ici est refacturée au client une seule fois, à l'euro l'euro, par la prestation de refacturation du site."
                             : "Les achats d'énergie de ce site, pour les rapprocher de son contrat fournisseur et de ce qui est facturé au client. Elles ne sont pas refacturées (pas de prestation €€ sur ce site)."}
                         {refacturation && factures && attente.length > 0 ? ` ${attente.length} en attente, pour ${eur(attente.reduce((a, f) => a + f.montantHT, 0))} HT.` : ''}
+                        {flux.actif && points.length > 0 ? ' Les factures reçues par le flux des fournisseurs (Esker) apparaissent ici d\'elles-mêmes ; la saisie reste possible pour les autres.' : ''}
                         {points.length > 0 ? ` ${points.length} point${points.length > 1 ? 's' : ''} de livraison suivi${points.length > 1 ? 's' : ''} sur ce site.` : ''}
                     </CardDescription>
                 </div>
@@ -91,6 +93,7 @@ export function FacturesEnergie({ siteId, contractId, refacturation }: { siteId:
                 </div>
             </CardHeader>
             <CardContent>
+                {flux.avertissement && <p className="mb-3 flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 p-2 text-sm text-amber-800"><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />{flux.avertissement} Seules les factures saisies dans le logiciel sont affichées.</p>}
                 {factures === null ? <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
                     : factures.length === 0 ? <p className="py-4 text-center text-sm text-muted-foreground">Aucune facture du fournisseur saisie sur ce site.</p> : (
                         <Table>
@@ -102,6 +105,7 @@ export function FacturesEnergie({ siteId, contractId, refacturation }: { siteId:
                                 {factures.map(f => (
                                     <TableRow key={f.id}>
                                         <TableCell className="font-medium">{f.fournisseur}
+                                            {f.origine === 'bigquery' && <Badge variant="outline" className="ml-2 px-1.5 py-0 text-[10px] font-normal">{f.source || 'Flux'}</Badge>}
                                             {f.pdl && <span className="block font-mono text-xs font-normal text-muted-foreground">PDL {f.pdl}{f.controle?.periode?.numeroContrat ? ` · ${f.controle.periode.numeroContrat}` : ''}</span>}
                                             {(f.controle?.alertes ?? []).map((a, i) => (
                                                 <span key={i} className={`mt-0.5 flex items-start gap-1 text-xs font-normal ${a.gravite === 'attention' ? 'text-amber-700' : 'text-muted-foreground'}`}>
@@ -109,17 +113,22 @@ export function FacturesEnergie({ siteId, contractId, refacturation }: { siteId:
                                                 </span>
                                             ))}
                                         </TableCell>
-                                        <TableCell className="font-mono text-xs">{f.numero}</TableCell>
+                                        <TableCell className="font-mono text-xs">{f.pdf ? <a href={f.pdf} target="_blank" rel="noopener noreferrer" className="text-primary underline" title="Ouvrir la facture du fournisseur">{f.numero}</a> : f.numero}</TableCell>
                                         <TableCell>{fr(f.date)}</TableCell>
                                         <TableCell className="text-sm text-muted-foreground">{f.debut && f.fin ? `du ${fr(f.debut)} au ${fr(f.fin)}` : '—'}</TableCell>
-                                        <TableCell className="text-right tabular-nums">{eur(f.montantHT)}{f.quantite ? <span className="block text-xs text-muted-foreground">{f.quantite.toLocaleString('fr-FR')} MWh</span> : null}</TableCell>
+                                        <TableCell className="text-right tabular-nums">{eur(f.montantHT)}{f.quantite ? <span className="block text-xs text-muted-foreground">{f.quantite.toLocaleString('fr-FR')} MWh</span> : null}
+                                            {f.origine === 'bigquery' && (f.consommation != null || f.acheminement || f.taxes) && (
+                                                <span className="block text-[11px] text-muted-foreground" title="Molécule · acheminement · taxes · abonnement (HT)">
+                                                    {[f.consommation != null ? `mol. ${eur(f.consommation)}` : '', f.acheminement ? `ach. ${eur(f.acheminement)}` : '', f.taxes ? `taxes ${eur(f.taxes)}` : '', f.abonnement ? `abo. ${eur(f.abonnement)}` : ''].filter(Boolean).join(' · ')}
+                                                </span>
+                                            )}</TableCell>
                                         {refacturation && <TableCell>
                                             {f.refacturee
                                                 ? <Link href={`/invoices/${f.refacturee.invoiceId}`}><Badge variant="secondary">{f.refacturee.proforma ? 'Sur un proforma' : `Refacturée : ${f.refacturee.numero}`}</Badge></Link>
                                                 : <Badge variant="outline" className="border-amber-400 bg-amber-50 text-amber-800">À refacturer</Badge>}
                                         </TableCell>}
                                         <TableCell>
-                                            {!f.refacturee && (
+                                            {!f.refacturee && f.origine !== 'bigquery' && (
                                                 <div className="flex justify-end">
                                                     <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => ouvrir(f)} aria-label={`Modifier la facture ${f.numero}`}><Pencil className="h-4 w-4" /></Button>
                                                     <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive" onClick={() => supprimer(f)} aria-label={`Supprimer la facture ${f.numero}`}><Trash2 className="h-4 w-4" /></Button>

@@ -30,3 +30,16 @@ test('alertes : hors contrat, fournisseur différent, à cheval, partielle, prix
     assert.deepEqual(t({}, null), ['info:Facture non rattachée à un poi']);
     assert.deepEqual(t({}, []), ['attention:Aucun contrat fournisseur de c']);
 });
+
+test('molécule facturée (factures des flux) : comparée au prix fixe du contrat à 5 % près ; simple repère si le prix est indexé', () => {
+    const fixe = [{ ...per('a', '2026-01-01', '2026-12-31', 'ENDESA', 25), indexationAchat: 'FIXE' }];
+    const peg = [{ ...per('a', '2026-01-01', '2026-12-31', 'ENDESA', 25), indexationAchat: 'PEG' }];
+    const c = (conso: number, p = fixe) => controlerFactureFournisseur(f({ quantite: 100, consommation: conso }), p);
+    assert.deepEqual([c(2550).molecule, c(2550).alertes.map(a => a.gravite)], [25.5, ['info']]);                    // +2 % : dans la tolérance
+    assert.deepEqual(c(3000).alertes, [{ gravite: 'attention', texte: 'Molécule facturée 30,00 €/MWh pour un prix fixe de 25,00 €/MWh au contrat (+20 %).' }]);
+    assert.deepEqual(c(2000).alertes[0].gravite, 'attention');
+    assert.deepEqual(c(4000, peg).alertes, [{ gravite: 'info', texte: 'Molécule facturée 40,00 €/MWh, pour 25,00 €/MWh au contrat (PEG).' }]);
+    // Sans détail des consommations, ou quantité trop faible : retour au prix moyen.
+    assert.equal(controlerFactureFournisseur(f({ quantite: 100 }), fixe).molecule, null);
+    assert.equal(controlerFactureFournisseur(f({ quantite: 0.5, consommation: 30 }), fixe).molecule, null);
+});
