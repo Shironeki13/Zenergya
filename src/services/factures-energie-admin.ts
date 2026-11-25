@@ -2,6 +2,8 @@ import 'server-only';
 import { adminDb } from '@/lib/firebase-admin';
 import { controlerFactureEnergie, type SaisieFactureEnergie } from '@/lib/billing/factures-energie';
 import type { FactureEnergie } from '@/lib/billing/contract-billing';
+import { controlerFactureFournisseur, type ControleFacture } from '@/lib/energie/controle-facture';
+import type { PeriodeFourniture } from '@/lib/energie/fournitures';
 
 /**
  * Factures des fournisseurs d'énergie d'un site, refacturées à l'euro l'euro par la prestation P1 « €€ ».
@@ -10,6 +12,8 @@ import type { FactureEnergie } from '@/lib/billing/contract-billing';
 
 export type FactureEnergieSuivie = FactureEnergie & {
     commentaire?: string; saisiPar?: string; saisiLe?: string;
+    /** Point de livraison concerné, quantité (MWh), et contrôle face au contrat de fourniture. */
+    pointId?: string | null; pdl?: string; quantite?: number | null; controle?: ControleFacture;
     /** Facture client qui la refacture (absent : à refacturer). */
     refacturee?: { invoiceId: string; numero: string; proforma: boolean };
 };
@@ -20,6 +24,7 @@ const lire = (d: FirebaseFirestore.DocumentSnapshot): FactureEnergieSuivie => {
     return {
         id: d.id, siteId: String(x.siteId ?? ''), serviceId: x.serviceId ?? null, fournisseur: String(x.fournisseur ?? ''), numero: String(x.numero ?? ''),
         date: String(x.date ?? ''), debut: x.debut ?? null, fin: x.fin ?? null, montantHT: Number(x.montantHT ?? 0),
+        pointId: x.pointId ?? null, quantite: typeof x.quantite === 'number' ? x.quantite : null,
         ...(x.commentaire && { commentaire: String(x.commentaire) }), ...(x.saisiPar && { saisiPar: String(x.saisiPar) }), ...(x.saisiLe && { saisiLe: String(x.saisiLe) }),
     };
 };
@@ -50,9 +55,40 @@ async function refacturations(siteId: string): Promise<Map<string, NonNullable<F
     return m;
 }
 
+export type PointDuSite = { id: string; pdl: string; energie: string; fournisseur: string };
+
+/** Points de livraison rattachés à un site, avec le fournisseur de leur contrat le plus récent (aide à la saisie). */
+export async function pointsDuSite(siteId: string): Promise<{ points: PointDuSite[]; periodes: Map<string, PeriodeFourniture[]> }> {
+    const snap = await adminDb.collection('pointsLivraison').where('siteId', '==', siteId).get();
+    const periodes = new Map<string, PeriodeFourniture[]>();
+    const points = snap.docs.map(d => {
+        const p = ((d.get('periodes') ?? []) as PeriodeFourniture[]).map(x => ({ ...x, debut: x.debut ?? null, fin: x.fin ?? null, fournisseur: x.fournisseur ?? '', numeroContrat: x.numeroContrat ?? '' }));
+        periodes.set(d.id, p);
+        const recente = [...p].filter(x => x.debut).sort((a, b) => b.debut!.localeCompare(a.debut!))[0];
+        return { id: d.id, pdl: String(d.get('pdl') ?? ''), energie: String(d.get('energie') ?? ''), fournisseur: recente?.fournisseur ?? '' };
+    });
+    return { points, periodes };
+}
+
+const suivre = (f: FactureEnergieSuivie, faites: Map<string, NonNullable<FactureEnergieSuivie['refacturee']>>, pts: Awaited<ReturnType<typeof pointsDuSite>>): FactureEnergieSuivie => ({
+    ...f, ...(faites.has(f.id) && { refacturee: faites.get(f.id)! }),
+    ...(f.pointId && pts.points.find(p => p.id === f.pointId) && { pdl: pts.points.find(p => p.id === f.pointId)!.pdl }),
+    // Contrôle seulement quand le site a des points de livraison suivis.
+    ...(pts.points.length > 0 && { controle: controlerFactureFournisseur(f, f.pointId ? pts.periodes.get(f.pointId) ?? null : null) }),
+});
+
 export async function facturesEnergieDuSite(siteId: string): Promise<FactureEnergieSuivie[]> {
-    const [snap, faites] = await Promise.all([adminDb.collection(COLL).where('siteId', '==', siteId).get(), refacturations(siteId)]);
-    return snap.docs.map(lire).map(f => ({ ...f, ...(faites.has(f.id) && { refacturee: faites.get(f.id)! }) })).sort((a, b) => b.date.localeCompare(a.date) || b.numero.localeCompare(a.numero));
+    const [snap, faites, pts] = await Promise.all([adminDb.collection(COLL).where('siteId', '==', siteId).get(), refacturations(siteId), pointsDuSite(siteId)]);
+    return snap.docs.map(lire).map(f => suivre(f, faites, pts)).sort((a, b) => b.date.localeCompare(a.date) || b.numero.localeCompare(a.numero));
+}
+
+/** Factures du fournisseur rattachées à un point de livraison (fiche du point), avec leur refacturation au client. */
+export async function facturesEnergieDuPoint(pointId: string): Promise<FactureEnergieSuivie[]> {
+    const snap = await adminDb.collection(COLL).where('pointId', '==', pointId).get();
+    const factures = snap.docs.map(lire);
+    const sites = [...new Set(factures.map(f => f.siteId).filter(Boolean))];
+    const parSite = new Map(await Promise.all(sites.map(async s => [s, { faites: await refacturations(s), pts: await pointsDuSite(s) }] as const)));
+    return factures.map(f => (parSite.has(f.siteId) ? suivre(f, parSite.get(f.siteId)!.faites, parSite.get(f.siteId)!.pts) : f)).sort((a, b) => b.date.localeCompare(a.date));
 }
 
 async function controler(siteId: string, saisie: unknown, saufId?: string): Promise<SaisieFactureEnergie> {
@@ -62,6 +98,8 @@ async function controler(siteId: string, saisie: unknown, saufId?: string): Prom
     // Même fournisseur et même numéro sur le site : doublon de saisie.
     const memes = await adminDb.collection(COLL).where('siteId', '==', siteId).where('numero', '==', c.valeur.numero).get();
     if (memes.docs.some(d => d.id !== saufId && String(d.get('fournisseur')).toLowerCase() === c.valeur.fournisseur.toLowerCase())) throw new Error(`La facture ${c.valeur.numero} de ${c.valeur.fournisseur} est déjà saisie sur ce site.`);
+    // Le point de livraison doit être rattaché à ce site.
+    if (c.valeur.pointId && (await adminDb.collection('pointsLivraison').doc(c.valeur.pointId).get()).get('siteId') !== siteId) throw new Error("Ce point de livraison n'est pas rattaché à ce site.");
     return c.valeur;
 }
 

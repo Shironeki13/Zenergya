@@ -1,8 +1,10 @@
 'use server';
 
-import { requireUserDans } from '@/lib/auth/perimetre-server';
+import { requireUser } from '@/lib/auth/server';
+import { gardePerimetre, requireUserDans } from '@/lib/auth/perimetre-server';
+import { exigerAchatsEnergie } from '@/services/energie-admin';
 import {
-    creerFactureEnergie, facturesEnergieDuSite, modifierFactureEnergie, siteDeFactureEnergie, supprimerFactureEnergie, type FactureEnergieSuivie,
+    creerFactureEnergie, facturesEnergieDuPoint, facturesEnergieDuSite, modifierFactureEnergie, pointsDuSite, siteDeFactureEnergie, supprimerFactureEnergie, type FactureEnergieSuivie, type PointDuSite,
 } from '@/services/factures-energie-admin';
 
 /** Factures des fournisseurs d'énergie d'un site (refacturation à l'euro l'euro) : réservé aux utilisateurs du périmètre du site. */
@@ -10,8 +12,25 @@ import {
 type Result<T> = { success: true; data: T } | { success: false; error: string };
 const fail = (e: unknown): { success: false; error: string } => ({ success: false, error: e instanceof Error ? e.message : 'Opération impossible.' });
 
-export async function facturesEnergieAction(siteId: string): Promise<Result<FactureEnergieSuivie[]>> {
-    try { await requireUserDans('site', siteId); return { success: true, data: await facturesEnergieDuSite(siteId) }; } catch (e) { return fail(e); }
+export async function facturesEnergieAction(siteId: string): Promise<Result<{ factures: FactureEnergieSuivie[]; points: PointDuSite[] }>> {
+    try {
+        await requireUserDans('site', siteId);
+        const [factures, pts] = await Promise.all([facturesEnergieDuSite(siteId), pointsDuSite(siteId)]);
+        return { success: true, data: JSON.parse(JSON.stringify({ factures, points: pts.points })) };
+    } catch (e) { return fail(e); }
+}
+
+/** Factures du fournisseur d'un point de livraison (fiche du point, module Achats). */
+export async function facturesEnergieDuPointAction(pointId: string): Promise<Result<FactureEnergieSuivie[]>> {
+    try {
+        const user = await requireUser();
+        exigerAchatsEnergie(user);
+        const factures = await facturesEnergieDuPoint(pointId);
+        const garde = gardePerimetre(user);
+        const visibles: FactureEnergieSuivie[] = [];
+        for (const f of factures) if (await garde.voit('site', f.siteId)) visibles.push(f);
+        return { success: true, data: JSON.parse(JSON.stringify(visibles)) };
+    } catch (e) { return fail(e); }
 }
 
 export async function enregistrerFactureEnergieAction(siteId: string, id: string | null, saisie: Record<string, unknown>): Promise<Result<null>> {

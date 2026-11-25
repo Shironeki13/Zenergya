@@ -21,6 +21,8 @@ import {
 import { csvToTable } from '@/lib/imports/engine';
 import { readXlsxTable } from '@/lib/imports/xlsx';
 import { optionsSites } from '@/lib/select-options';
+import { facturesEnergieDuPointAction } from '@/lib/billing/factures-energie-actions';
+import type { FactureEnergieSuivie } from '@/services/factures-energie-admin';
 import type { BaseEnergie, ResumePoint } from '@/services/energie-admin';
 
 /**
@@ -187,8 +189,9 @@ function FichePoint({ id, aujourdhui, onClose, onChange }: { id: string | null; 
     const [p, setP] = useState<PointLivraison | null>(null);
     const [saisie, setSaisie] = useState<typeof PERIODE_VIDE | null>(null);
     const [envoi, setEnvoi] = useState(false);
+    const [factures, setFactures] = useState<FactureEnergieSuivie[]>([]);
     const lire = useCallback(async (x: string) => { const r = await pointLivraisonAction(x); if (r.success) setP(r.data); else { toast({ title: 'Point de livraison indisponible', description: r.error, variant: 'destructive' }); onClose(); } }, [toast, onClose]);
-    useEffect(() => { setP(null); setSaisie(null); if (id) void lire(id); }, [id, lire]);
+    useEffect(() => { setP(null); setSaisie(null); setFactures([]); if (id) { void lire(id); void facturesEnergieDuPointAction(id).then(r => { if (r.success) setFactures(r.data); }); } }, [id, lire]);
 
     const fait = async (r: { success: boolean; error?: string }, message: string) => {
         setEnvoi(false);
@@ -273,6 +276,25 @@ function FichePoint({ id, aujourdhui, onClose, onChange }: { id: string | null; 
                                     })}</tbody>
                                 </table>
                             </div>
+                        </div>
+
+                        <div data-bloc="factures-point">
+                            <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Factures du fournisseur ({factures.length})</p>
+                            {factures.length === 0 ? <p className="text-muted-foreground">Aucune facture du fournisseur rattachée à ce point. Elles se saisissent sur la fiche du site, onglet Factures.</p> : (
+                                <table className="w-full text-sm">
+                                    <thead><tr className="border-b text-xs text-muted-foreground"><th className="py-2 text-left font-medium">Date</th><th className="px-2 text-left font-medium">Fournisseur</th><th className="px-2 text-left font-medium">N° de facture</th><th className="px-2 text-left font-medium">Consommation</th><th className="px-2 text-right font-medium">Montant HT</th><th className="pl-2 text-left font-medium">Facturé au client</th></tr></thead>
+                                    <tbody>{factures.map(f => (
+                                        <tr key={f.id} className="border-b align-top last:border-0">
+                                            <td className="py-2 tabular-nums">{fr(f.date)}</td>
+                                            <td className="px-2">{f.fournisseur}{(f.controle?.alertes ?? []).filter(a => a.gravite === 'attention').map((a, i) => <span key={i} className="mt-0.5 flex items-start gap-1 text-xs text-amber-700"><AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" />{a.texte}</span>)}</td>
+                                            <td className="px-2 font-mono text-xs">{f.numero}</td>
+                                            <td className="px-2 text-muted-foreground">{f.debut && f.fin ? `${fr(f.debut)} → ${fr(f.fin)}` : '—'}{f.quantite ? ` · ${f.quantite.toLocaleString('fr-FR')} MWh` : ''}</td>
+                                            <td className="px-2 text-right tabular-nums">{eur(f.montantHT)}</td>
+                                            <td className="pl-2">{f.refacturee ? <Link href={`/invoices/${f.refacturee.invoiceId}`} className="text-primary hover:underline">{f.refacturee.proforma ? 'proforma' : f.refacturee.numero}</Link> : <span className="text-muted-foreground">—</span>}</td>
+                                        </tr>
+                                    ))}</tbody>
+                                </table>
+                            )}
                         </div>
                     </div>
                 )}

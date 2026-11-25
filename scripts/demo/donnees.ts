@@ -607,10 +607,17 @@ async function contratsEnergie() {
         pdl: `2145${String(8100000000 + i * 7919)}`, energie: 'GAZ' as const, client: String(d.get('clientName') ?? ''), site: String(d.get('name')), agence: i % 3 === 2 ? 'Paris Est' : 'Lyon', typeMarche: 'MTI',
         segment: i % 2 ? 'T3' : 'T2', profil: 'P012', car: 180 + i * 95, ville: String(d.get('city') ?? ''), adresse: String(d.get('address') ?? ''), codePostal: String(d.get('postalCode') ?? ''), centreCout: `68W2/V0${80900 + i}-1`,
         finClient: '2029-06-30',
-        periodes: cas[i % 3].map(([debut, fin, fournisseur, numeroContrat, prixMolecule]) => ({ debut, fin, fournisseur, numeroContrat, titulaire: 'Zenergya Services (démo)', tacite: 'non' as const, indexationAchat: 'FIXE', indexationVente: 'PEG', prixMolecule, totalAbonnement: 940 + i * 60, contratDisponible: fin > '2026-01-01' && i % 2 ? 'EN COURS' : 'OUI' })),
+        // Square Voltaire (où des factures du fournisseur sont saisies) : contrat Gaz du Sud en cours, à renouveler.
+        periodes: cas[/Voltaire/.test(String(d.get('name'))) ? 1 : i % 3].map(([debut, fin, fournisseur, numeroContrat, prixMolecule]) => ({ debut, fin, fournisseur, numeroContrat, titulaire: 'Zenergya Services (démo)', tacite: 'non' as const, indexationAchat: 'FIXE', indexationVente: 'PEG', prixMolecule, totalAbonnement: 940 + i * 60, contratDisponible: fin > '2026-01-01' && i % 2 ? 'EN COURS' : 'OUI' })),
     }));
     await importerPoints(points, 'achats@example.com');
     for (const [i, d] of sites.entries()) { const pt = (await adminDb.collection('pointsLivraison').where('pdl', '==', points[i].pdl).limit(1).get()).docs[0]; if (pt && i !== 4) await rattacherPoint(pt.id, d.id, 'achats@example.com'); }
+    // Les factures du fournisseur déjà saisies (refacturation €€) sont rattachées au point de livraison de leur site.
+    for (const pt of (await adminDb.collection('pointsLivraison').get()).docs) {
+        if (!pt.get('siteId')) continue;
+        const factures = await adminDb.collection('facturesEnergie').where('siteId', '==', pt.get('siteId')).get();
+        for (const [i, f] of factures.docs.entries()) await f.ref.update({ pointId: pt.id, quantite: [29.4, 51.2, 24.1][i % 3] });
+    }
     console.log(`Contrats d'énergie : ${points.length} points de livraison de gaz et leurs contrats fournisseur par période.`);
 }
 

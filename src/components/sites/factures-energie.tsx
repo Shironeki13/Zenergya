@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
-import { Loader2, Pencil, Plus, Trash2 } from 'lucide-react';
+import { AlertTriangle, Info, Loader2, Pencil, Plus, Trash2 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -12,7 +12,8 @@ import { Label } from '@/components/ui/label';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { useToast } from '@/hooks/use-toast';
 import { enregistrerFactureEnergieAction, facturesEnergieAction, supprimerFactureEnergieAction } from '@/lib/billing/factures-energie-actions';
-import type { FactureEnergieSuivie } from '@/services/factures-energie-admin';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import type { FactureEnergieSuivie, PointDuSite } from '@/services/factures-energie-admin';
 
 /**
  * Factures du fournisseur d'énergie d'un site, refacturées à l'euro l'euro (prestation P1 « €€ ») : saisie, suivi de
@@ -21,34 +22,39 @@ import type { FactureEnergieSuivie } from '@/services/factures-energie-admin';
 
 const eur = (n: number) => n.toLocaleString('fr-FR', { style: 'currency', currency: 'EUR' });
 const fr = (d?: string | null) => (d ? d.split('-').reverse().join('/') : '');
-const VIDE = { fournisseur: '', numero: '', date: '', debut: '', fin: '', montantHT: '', commentaire: '' };
+const VIDE = { fournisseur: '', numero: '', date: '', debut: '', fin: '', montantHT: '', commentaire: '', pointId: '', quantite: '' };
+const AUCUN = '__aucun__';
 
-export function FacturesEnergie({ siteId, contractId }: { siteId: string; contractId?: string }) {
+/** `refacturation` : le site a une prestation €€ (les factures saisies sont refacturées au client) ; sinon elles servent au suivi des achats. */
+export function FacturesEnergie({ siteId, contractId, refacturation }: { siteId: string; contractId?: string; refacturation: boolean }) {
     const { toast } = useToast();
     const [factures, setFactures] = useState<FactureEnergieSuivie[] | null>(null);
+    const [points, setPoints] = useState<PointDuSite[]>([]);
     const [ouvert, setOuvert] = useState<{ id: string | null } | null>(null);
     const [saisie, setSaisie] = useState(VIDE);
     const [envoi, setEnvoi] = useState(false);
 
     const charger = useCallback(async () => {
         const r = await facturesEnergieAction(siteId);
-        if (r.success) setFactures(r.data); else { setFactures([]); toast({ title: 'Factures du fournisseur indisponibles', description: r.error, variant: 'destructive' }); }
+        if (r.success) { setFactures(r.data.factures); setPoints(r.data.points); } else { setFactures([]); toast({ title: 'Factures du fournisseur indisponibles', description: r.error, variant: 'destructive' }); }
     }, [siteId, toast]);
     useEffect(() => { void charger(); }, [charger]);
 
     const ouvrir = (f?: FactureEnergieSuivie) => {
-        setSaisie(f ? { fournisseur: f.fournisseur, numero: f.numero, date: f.date, debut: f.debut ?? '', fin: f.fin ?? '', montantHT: String(f.montantHT).replace('.', ','), commentaire: f.commentaire ?? '' }
-            : { ...VIDE, fournisseur: factures?.[0]?.fournisseur ?? '' });
+        // Nouvelle facture : le point de livraison du site s'il est seul, et le fournisseur de son contrat.
+        const seul = points.length === 1 ? points[0] : null;
+        setSaisie(f ? { fournisseur: f.fournisseur, numero: f.numero, date: f.date, debut: f.debut ?? '', fin: f.fin ?? '', montantHT: String(f.montantHT).replace('.', ','), commentaire: f.commentaire ?? '', pointId: f.pointId ?? '', quantite: f.quantite != null ? String(f.quantite).replace('.', ',') : '' }
+            : { ...VIDE, pointId: seul?.id ?? '', fournisseur: seul?.fournisseur || factures?.[0]?.fournisseur || '' });
         setOuvert({ id: f?.id ?? null });
     };
     const enregistrer = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!ouvert) return;
         setEnvoi(true);
-        const r = await enregistrerFactureEnergieAction(siteId, ouvert.id, { ...saisie, montantHT: Number(saisie.montantHT.replace(/\s/g, '').replace(',', '.')) });
+        const r = await enregistrerFactureEnergieAction(siteId, ouvert.id, { ...saisie, montantHT: Number(saisie.montantHT.replace(/\s/g, '').replace(',', '.')), quantite: saisie.quantite.trim() ? Number(saisie.quantite.replace(/\s/g, '').replace(',', '.')) : null });
         setEnvoi(false);
         if (!r.success) { toast({ title: 'Enregistrement refusé', description: r.error, variant: 'destructive' }); return; }
-        toast({ title: ouvert.id ? 'Facture du fournisseur modifiée' : 'Facture du fournisseur ajoutée', description: 'Elle sera proposée à la prochaine facturation du contrat.' });
+        toast({ title: ouvert.id ? 'Facture du fournisseur modifiée' : 'Facture du fournisseur ajoutée', description: refacturation ? 'Elle sera proposée à la prochaine facturation du contrat.' : undefined });
         setOuvert(null);
         await charger();
     };
@@ -71,14 +77,16 @@ export function FacturesEnergie({ siteId, contractId }: { siteId: string; contra
         <Card data-bloc="factures-energie">
             <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-3 pb-3">
                 <div>
-                    <CardTitle className="text-base">Factures du fournisseur à refacturer (€€)</CardTitle>
+                    <CardTitle className="text-base">{refacturation ? 'Factures du fournisseur à refacturer (€€)' : "Factures du fournisseur d'énergie"}</CardTitle>
                     <CardDescription data-resume>
-                        Chaque facture saisie ici est refacturée au client une seule fois, à l'euro l'euro, par la prestation de refacturation du site.
-                        {factures && attente.length > 0 ? ` ${attente.length} en attente, pour ${eur(attente.reduce((a, f) => a + f.montantHT, 0))} HT.` : ''}
+                        {refacturation ? "Chaque facture saisie ici est refacturée au client une seule fois, à l'euro l'euro, par la prestation de refacturation du site."
+                            : "Les achats d'énergie de ce site, pour les rapprocher de son contrat fournisseur et de ce qui est facturé au client. Elles ne sont pas refacturées (pas de prestation €€ sur ce site)."}
+                        {refacturation && factures && attente.length > 0 ? ` ${attente.length} en attente, pour ${eur(attente.reduce((a, f) => a + f.montantHT, 0))} HT.` : ''}
+                        {points.length > 0 ? ` ${points.length} point${points.length > 1 ? 's' : ''} de livraison suivi${points.length > 1 ? 's' : ''} sur ce site.` : ''}
                     </CardDescription>
                 </div>
                 <div className="flex gap-2">
-                    {contractId && attente.length > 0 && <Button asChild variant="outline" size="sm"><Link href={`/billing?contrat=${contractId}`}>Facturer le contrat</Link></Button>}
+                    {refacturation && contractId && attente.length > 0 && <Button asChild variant="outline" size="sm"><Link href={`/billing?contrat=${contractId}`}>Facturer le contrat</Link></Button>}
                     <Button size="sm" onClick={() => ouvrir()}><Plus className="mr-1 h-4 w-4" />Ajouter une facture</Button>
                 </div>
             </CardHeader>
@@ -88,21 +96,28 @@ export function FacturesEnergie({ siteId, contractId }: { siteId: string; contra
                         <Table>
                             <TableHeader><TableRow>
                                 <TableHead>Fournisseur</TableHead><TableHead>N° de facture</TableHead><TableHead>Date</TableHead><TableHead>Consommation</TableHead>
-                                <TableHead className="text-right">Montant HT</TableHead><TableHead>Refacturation</TableHead><TableHead className="w-24" />
+                                <TableHead className="text-right">Montant HT</TableHead>{refacturation && <TableHead>Refacturation</TableHead>}<TableHead className="w-24" />
                             </TableRow></TableHeader>
                             <TableBody>
                                 {factures.map(f => (
                                     <TableRow key={f.id}>
-                                        <TableCell className="font-medium">{f.fournisseur}</TableCell>
+                                        <TableCell className="font-medium">{f.fournisseur}
+                                            {f.pdl && <span className="block font-mono text-xs font-normal text-muted-foreground">PDL {f.pdl}{f.controle?.periode?.numeroContrat ? ` · ${f.controle.periode.numeroContrat}` : ''}</span>}
+                                            {(f.controle?.alertes ?? []).map((a, i) => (
+                                                <span key={i} className={`mt-0.5 flex items-start gap-1 text-xs font-normal ${a.gravite === 'attention' ? 'text-amber-700' : 'text-muted-foreground'}`}>
+                                                    {a.gravite === 'attention' ? <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" /> : <Info className="mt-0.5 h-3 w-3 shrink-0" />}{a.texte}
+                                                </span>
+                                            ))}
+                                        </TableCell>
                                         <TableCell className="font-mono text-xs">{f.numero}</TableCell>
                                         <TableCell>{fr(f.date)}</TableCell>
                                         <TableCell className="text-sm text-muted-foreground">{f.debut && f.fin ? `du ${fr(f.debut)} au ${fr(f.fin)}` : '—'}</TableCell>
-                                        <TableCell className="text-right tabular-nums">{eur(f.montantHT)}</TableCell>
-                                        <TableCell>
+                                        <TableCell className="text-right tabular-nums">{eur(f.montantHT)}{f.quantite ? <span className="block text-xs text-muted-foreground">{f.quantite.toLocaleString('fr-FR')} MWh</span> : null}</TableCell>
+                                        {refacturation && <TableCell>
                                             {f.refacturee
                                                 ? <Link href={`/invoices/${f.refacturee.invoiceId}`}><Badge variant="secondary">{f.refacturee.proforma ? 'Sur un proforma' : `Refacturée : ${f.refacturee.numero}`}</Badge></Link>
                                                 : <Badge variant="outline" className="border-amber-400 bg-amber-50 text-amber-800">À refacturer</Badge>}
-                                        </TableCell>
+                                        </TableCell>}
                                         <TableCell>
                                             {!f.refacturee && (
                                                 <div className="flex justify-end">
@@ -121,10 +136,22 @@ export function FacturesEnergie({ siteId, contractId }: { siteId: string; contra
             <Dialog open={!!ouvert} onOpenChange={o => { if (!o) setOuvert(null); }}>
                 <DialogContent className="sm:max-w-[520px]">
                     <DialogHeader>
-                        <DialogTitle>{ouvert?.id ? 'Modifier la facture du fournisseur' : 'Facture du fournisseur à refacturer'}</DialogTitle>
-                        <DialogDescription>Recopiez la facture du fournisseur d'énergie : son montant HT sera refacturé tel quel au client.</DialogDescription>
+                        <DialogTitle>{ouvert?.id ? 'Modifier la facture du fournisseur' : refacturation ? 'Facture du fournisseur à refacturer' : 'Facture du fournisseur'}</DialogTitle>
+                        <DialogDescription>Recopiez la facture du fournisseur d'énergie{refacturation ? ' : son montant HT sera refacturé tel quel au client.' : '.'}</DialogDescription>
                     </DialogHeader>
                     <form onSubmit={enregistrer} className="space-y-3">
+                        {points.length > 0 && (
+                            <div className="space-y-1">
+                                <Label htmlFor="fe-point">Point de livraison</Label>
+                                <Select value={saisie.pointId || AUCUN} onValueChange={v => setSaisie(s => ({ ...s, pointId: v === AUCUN ? '' : v, fournisseur: s.fournisseur || points.find(p => p.id === v)?.fournisseur || '' }))}>
+                                    <SelectTrigger id="fe-point"><SelectValue /></SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value={AUCUN}>Non précisé</SelectItem>
+                                        {points.map(p => <SelectItem key={p.id} value={p.id}>{p.energie} · {p.pdl}{p.fournisseur ? ` — ${p.fournisseur}` : ''}</SelectItem>)}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                        )}
                         <div className="grid grid-cols-2 gap-3">{champ('fournisseur', 'Fournisseur', 'text', true)}{champ('numero', 'N° de la facture', 'text', true)}</div>
                         <div className="grid grid-cols-2 gap-3">
                             {champ('date', 'Date de la facture', 'date', true)}
@@ -134,7 +161,13 @@ export function FacturesEnergie({ siteId, contractId }: { siteId: string; contra
                             </div>
                         </div>
                         <div className="grid grid-cols-2 gap-3">{champ('debut', 'Consommation du (facultatif)', 'date')}{champ('fin', 'au', 'date')}</div>
-                        {champ('commentaire', 'Commentaire (facultatif)')}
+                        <div className="grid grid-cols-2 gap-3">
+                            <div className="space-y-1">
+                                <Label htmlFor="fe-quantite">Quantité (MWh, facultatif)</Label>
+                                <Input id="fe-quantite" inputMode="decimal" placeholder="ex. 42,5" value={saisie.quantite} onChange={e => setSaisie(s => ({ ...s, quantite: e.target.value }))} />
+                            </div>
+                            {champ('commentaire', 'Commentaire (facultatif)')}
+                        </div>
                         <p className="text-xs text-muted-foreground">Un avoir du fournisseur se saisit avec un montant négatif.</p>
                         <DialogFooter>
                             <Button type="button" variant="outline" onClick={() => setOuvert(null)}>Annuler</Button>

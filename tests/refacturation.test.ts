@@ -93,7 +93,7 @@ test('annexe : une ligne par facture du fournisseur, colonne des frais seulement
 test('saisie d\'une facture du fournisseur : champs obligatoires, période cohérente, avoir en négatif', async () => {
     const { controlerFactureEnergie } = await import('../src/lib/billing/factures-energie');
     const ok = controlerFactureEnergie({ fournisseur: ' Gaz du Sud ', numero: 'G-1', date: '2026-02-10', montantHT: -120.456, debut: '', fin: '' });
-    assert.deepEqual(ok, { ok: true, valeur: { fournisseur: 'Gaz du Sud', numero: 'G-1', date: '2026-02-10', debut: null, fin: null, montantHT: -120.46, serviceId: null } });
+    assert.deepEqual(ok, { ok: true, valeur: { fournisseur: 'Gaz du Sud', numero: 'G-1', date: '2026-02-10', debut: null, fin: null, montantHT: -120.46, serviceId: null, pointId: null, quantite: null } });
     const ko = controlerFactureEnergie({ fournisseur: '', numero: '', date: '10/02/2026', montantHT: 0, debut: '2026-02-01' });
     assert.equal(ko.ok, false);
     assert.equal(!ko.ok && ko.erreurs.length, 5);

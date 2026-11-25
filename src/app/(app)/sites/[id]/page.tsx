@@ -1406,7 +1406,7 @@ export default function SiteDetailsPage() {
                 </TabsContent>
 
                 <TabsContent value="factures" className="mt-4 space-y-6">
-                    {services.some(x => x.siteId === siteId && x.p1Type === 'REFACTURATION' && x.isActive !== false) && <FacturesEnergie siteId={siteId} contractId={contract?.id} />}
+                    {services.some(x => x.siteId === siteId && x.type === 'P1' && x.isActive !== false) && <FacturesEnergie siteId={siteId} contractId={contract?.id} refacturation={services.some(x => x.siteId === siteId && x.p1Type === 'REFACTURATION' && x.isActive !== false)} />}
                     <FacturesDuSite factures={facturesSite} />
                 </TabsContent>
             </Tabs>

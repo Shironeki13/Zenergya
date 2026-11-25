@@ -5,6 +5,7 @@ import { adminDb } from '../src/lib/firebase-admin';
 import type { GardePerimetre } from '../src/lib/auth/perimetre-server';
 import type { SessionUser } from '../src/lib/auth/server';
 import { lireFeuille } from '../src/lib/energie/fournitures';
+import { creerFactureEnergie, facturesEnergieDuPoint, facturesEnergieDuSite } from '../src/services/factures-energie-admin';
 import { baseEnergie, enregistrerPeriode, exigerAchatsEnergie, importerPoints, pointLivraison, rattacherPoint, supprimerPeriode } from '../src/services/energie-admin';
 
 if (!process.env.FIRESTORE_EMULATOR_HOST) throw new Error('À lancer via « npm run test:billing » (émulateur requis).');
@@ -81,4 +82,23 @@ test('périmètre restreint : seuls les points rattachés à un site visible', a
     assert.deepEqual(b.points.filter(p => p.pdl.startsWith('EN-PDL')).map(p => p.pdl), ['EN-PDL-1']);
     const idB = (await baseEnergie(tout)).points.find(p => p.pdl === 'EN-PDL-2')!.id;
     await assert.rejects(pointLivraison(idB, restreint(['en-s1'])), /hors de votre périmètre/);
+});
+
+test('facture du fournisseur rattachée à son point de livraison : contrat retrouvé, alertes, liste sur la fiche du point', async () => {
+    const b = await baseEnergie(tout);
+    const [a, bb] = ['EN-PDL-1', 'EN-PDL-2'].map(pdl => b.points.find(p => p.pdl === pdl)!);
+    // EN-PDL-1 (site en-s1) : EDF, contrat EN-K2, molécule à 24,10 €/MWh cette année.
+    await creerFactureEnergie('en-s1', { fournisseur: 'EDF Entreprises', numero: 'F-OK', date: `${an}-03-10`, debut: `${an}-02-01`, fin: `${an}-02-28`, montantHT: 6000, quantite: 100, pointId: a.id }, 'achats@v.fr');
+    await creerFactureEnergie('en-s1', { fournisseur: 'ENI', numero: 'F-KO', date: `${an + 3}-03-10`, montantHT: 100, pointId: a.id }, 'achats@v.fr');
+    await creerFactureEnergie('en-s1', { fournisseur: 'EDF', numero: 'F-LIBRE', date: `${an}-04-10`, montantHT: 50 }, 'achats@v.fr');
+    await assert.rejects(creerFactureEnergie('en-s1', { fournisseur: 'EDF', numero: 'F-X', date: `${an}-04-10`, montantHT: 50, pointId: bb.id }, 'achats@v.fr'), /n'est pas rattaché à ce site/);
+    await assert.rejects(creerFactureEnergie('en-s1', { fournisseur: 'EDF', numero: 'F-Y', date: `${an}-04-10`, montantHT: 50, quantite: -3 }, 'achats@v.fr'), /Quantité/);
+
+    const site = await facturesEnergieDuSite('en-s1');
+    const par = (n: string) => site.find(f => f.numero === n)!;
+    assert.deepEqual([par('F-OK').pdl, par('F-OK').controle?.periode?.numeroContrat, par('F-OK').controle?.prixMoyen, par('F-OK').controle?.alertes.map(x => x.gravite)], ['EN-PDL-1', 'EN-K2', 60, ['info']]);
+    assert.match(par('F-KO').controle!.alertes[0].texte, /Aucun contrat fournisseur de ce point ne couvre/);
+    assert.match(par('F-LIBRE').controle!.alertes[0].texte, /non rattachée à un point de livraison/);
+    assert.deepEqual((await facturesEnergieDuPoint(a.id)).map(f => f.numero).sort(), ['F-KO', 'F-OK']);
+    assert.deepEqual(await facturesEnergieDuPoint(bb.id), []);
 });
