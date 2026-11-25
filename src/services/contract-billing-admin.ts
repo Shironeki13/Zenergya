@@ -5,6 +5,7 @@ import {
     billingItems, billedUntil, dueDateFor, dueInvoiceLines, echeancesOf, frDay, vatTotals,
     type BillingInput, type BillingService, type BillingSite, type DueResult, type NamedRef,
 } from '@/lib/billing/contract-billing';
+import { precedentDe, type Precedent } from '@/lib/billing/controle';
 import { controleSelection, echeancesDues, lignesRetenues, type EcheanceDue } from '@/lib/billing/selection';
 import { toDay } from '@/lib/services/site-amounts';
 import {
@@ -316,6 +317,8 @@ export type ApercuFacturation = {
     blocages: string[];
     avertissements: string[];
     paiement: string | null;
+    /** Ce qui a déjà été facturé sur le contrat : base du contrôle avant émission. */
+    precedent: Precedent;
 };
 
 export async function apercuFacturation(contractId: string, jusquAu?: string): Promise<ApercuFacturation> {
@@ -324,7 +327,7 @@ export async function apercuFacturation(contractId: string, jusquAu?: string): P
     const client = await getClient(contract.clientId);
     const until = toDay(jusquAu) ?? toDay(new Date())!;
     const contrat = { id: contract.id, numero: contract.contractNumber ?? '', libelle: contract.label ?? contract.name ?? '', client: contract.clientName, global: contract.invoicingType === 'global' };
-    const vide = { contrat, jusquAu: until, prochaine: null, echeances: [], avertissements: [], paiement: null };
+    const vide = { contrat, jusquAu: until, prochaine: null, echeances: [], avertissements: [], paiement: null, precedent: precedentDe([]) };
     if ((contract.siteIds ?? []).length === 0) return { ...vide, blocages: ["Aucun site n'est associé à ce contrat."] };
     const [input, invoices, term] = await Promise.all([loadBillingInput(contract), getInvoicesByContract(contract.id), resolvePaymentTerm(contract, client).catch(() => null)]);
     const due = dueInvoiceLines(input, invoices, until);
@@ -337,6 +340,7 @@ export async function apercuFacturation(contractId: string, jusquAu?: string): P
     return {
         contrat, jusquAu: until, prochaine, echeances: echeancesDues(due), blocages: (due.bloquees ?? []).length ? [] : due.errors, avertissements: due.warnings,
         paiement: (term as { deadline?: string } | null)?.deadline?.trim() || null,
+        precedent: precedentDe(invoices as Parameters<typeof precedentDe>[0]),
     };
 }
 

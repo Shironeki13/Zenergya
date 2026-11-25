@@ -3,7 +3,7 @@
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
-import { AlertTriangle, CalendarPlus, CheckCircle2, ExternalLink, Eye, EyeOff, FileText, Loader2, Receipt, Maximize2, RefreshCw, RotateCcw, SkipForward } from 'lucide-react';
+import { AlertTriangle, CalendarPlus, CheckCircle2, ExternalLink, Info, Eye, EyeOff, FileText, Loader2, Receipt, Maximize2, RefreshCw, RotateCcw, SkipForward } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -17,6 +17,7 @@ import { useToast } from '@/hooks/use-toast';
 import { useData } from '@/context/data-context';
 import { generateInvoice } from '@/ai/flows/generate-invoice-flow';
 import { apercuFacturationAction, previewBatchBillingAction } from '@/lib/billing/actions';
+import { controlesEmission } from '@/lib/billing/controle';
 import { fileFacturation, libelleRetard, suivant, type ContratAFacturer } from '@/lib/billing/file';
 import { frDay, vatTotals } from '@/lib/billing/contract-billing';
 import { basculer, cochable, controleSelection, lienBlocage, lignesRetenues } from '@/lib/billing/selection';
@@ -100,6 +101,12 @@ function Facturation() {
     const bloque = !apercu || apercu.blocages.length > 0 || anomalies.length > 0 || !!envoi || chargement;
     const bloquees = dues.filter(e => e.blocage).length;
     const prochain = file.contrats ? suivant(file.contrats, contratId) : null;
+    // Contrôle avant émission : écarts avec ce qui a déjà été facturé. Une alerte forte demande une confirmation.
+    const alertes = useMemo(() => (apercu ? controlesEmission(dues, selection, apercu.precedent, aujourdhui()) : []), [apercu, dues, selection]);
+    const aConfirmer = alertes.some(a => a.gravite === 'forte');
+    const cleAlertes = alertes.filter(a => a.gravite === 'forte').map(a => a.id).join('|');
+    const [confirme, setConfirme] = useState('');
+    const verifie = !aConfirmer || confirme === cleAlertes;
     const horizon = (sel: string[]) => { const u = dues.filter(e => sel.includes(e.id)).map(e => e.facturableLe).sort().at(-1); return u && apercu && u > apercu.jusquAu ? u : apercu?.jusquAu; };
 
     const cleApercu = apercu && voirPdf && selection.length > 0 && anomalies.length === 0 && apercu.blocages.length === 0 && !emise ? `${apercu.contrat.id}|${date}|${selection.join(',')}` : null;
@@ -351,12 +358,29 @@ function Facturation() {
                             </div>
                         </div>
                         {anomalies.length > 0 && selection.length > 0 && <p className="text-sm text-destructive">{anomalies.join(' ')}</p>}
+                        {alertes.length > 0 && (
+                            <div className="space-y-2 rounded-md border p-3" data-bloc="controle-emission">
+                                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Contrôle avant émission</p>
+                                <ul className="space-y-1.5 text-sm">
+                                    {alertes.map(a => (
+                                        <li key={a.id} className={`flex items-start gap-2 ${a.gravite === 'forte' ? 'text-destructive' : a.gravite === 'attention' ? 'text-amber-700' : 'text-muted-foreground'}`}>
+                                            {a.gravite === 'info' ? <Info className="mt-0.5 h-4 w-4 shrink-0" /> : <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />}<span>{a.texte}</span>
+                                        </li>
+                                    ))}
+                                </ul>
+                                {aConfirmer && (
+                                    <label className="flex cursor-pointer items-center gap-2 text-sm font-medium">
+                                        <Checkbox checked={verifie} onCheckedChange={v => setConfirme(v === true ? cleAlertes : '')} />J'ai vérifié : cet écart est justifié
+                                    </label>
+                                )}
+                            </div>
+                        )}
                         <div className="flex flex-wrap items-center justify-end gap-2">
                             <Button variant="ghost" size="sm" className="mr-auto" onClick={() => setVoirPdf(v => !v)}>
                                 {voirPdf ? <EyeOff className="mr-2 h-4 w-4" /> : <Eye className="mr-2 h-4 w-4" />}{voirPdf ? "Masquer l'aperçu" : "Afficher l'aperçu"}
                             </Button>
                             <Button variant="outline" disabled={bloque} onClick={() => emettre(true)}>{envoi === 'proforma' ? 'Création…' : 'Créer un proforma'}</Button>
-                            <Button disabled={bloque} onClick={() => emettre(false)}>{envoi === 'facture' ? 'Émission…' : `Émettre la facture — ${eur(totaux.total)}`}</Button>
+                            <Button disabled={bloque || !verifie} title={verifie ? undefined : "Confirmez d'abord l'écart signalé"} onClick={() => emettre(false)}>{envoi === 'facture' ? 'Émission…' : `Émettre la facture — ${eur(totaux.total)}`}</Button>
                         </div>
                     </CardContent>
                 </Card>

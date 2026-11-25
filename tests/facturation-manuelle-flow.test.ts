@@ -58,6 +58,10 @@ test('émission : seules les échéances cochées sont facturées, le reste deme
     const suite = await apercuFacturation('fman-k', '2031-04-01');
     assert.deepEqual(suite.echeances.map(e => [e.activite, e.debut]), [['P3M', '2031-01-01'], ['P3M', '2031-04-01']]);
     assert.equal(suite.echeances[0].id, p3t1);
+    // Contrôle avant émission : ce qui a été facturé sert de référence.
+    assert.equal(suite.precedent.nombre, 1);
+    assert.deepEqual([suite.precedent.derniere?.numero, suite.precedent.derniere?.totalHT], [emise.invoiceNumber, 4200]);
+    assert.deepEqual(Object.values(suite.precedent.parCle).map(l => [l.montant, l.jours, l.fin]), [[4200, 181, '2031-06-30']]);
     // D'avance : l'horizon élargi propose l'échéance suivante.
     const avance = await apercuFacturation('fman-k', '2031-07-01');
     assert.deepEqual(avance.echeances.map(e => [e.activite, e.debut]), [['P3M', '2031-01-01'], ['P3M', '2031-04-01'], ['P2M', '2031-07-01'], ['P3M', '2031-07-01']]);
