@@ -546,6 +546,29 @@ async function factures(contrats: { id: string }[]) {
 
 // --- Travaux : devis, affaires (P5 facturation directe, P6 par situations), devis complémentaire ---
 
+/**
+ * Révision des forfaits P2 et P3 : un indice de coût de la main-d'œuvre, une règle « 0,15 + 0,85 × indice », révision
+ * chaque 1er janvier sur l'indice de décembre. Base : décembre 2025 (coefficient 1 en 2026, donc sans effet sur les
+ * factures déjà émises) ; la révision du 1er janvier prochain attend l'indice de décembre, non encore publié.
+ */
+async function revisionsForfaits() {
+    const valeur = (k: number) => Math.round((128 + 0.32 * k + 0.4 * Math.sin(k / 3)) * 100) / 100;
+    await set('indices', 'demo-ix-ICHT', { code: 'ICHT-IME', label: 'Coût horaire du travail, industries mécaniques et électriques (démo)', unit: 'indice', active: true });
+    const b = adminDb.batch();
+    const periodes: string[] = [];
+    for (let k = 0, y = 2023, m = 1; `${y}-${String(m).padStart(2, '0')}` <= '2026-10'; k++, m === 12 ? (y++, m = 1) : m++) {
+        const period = `${y}-${String(m).padStart(2, '0')}`;
+        periodes.push(period);
+        b.set(adminDb.collection('indexValues').doc(`demo-ix-ICHT_${period}`), { indexId: 'demo-ix-ICHT', period, value: valeur(k), source: 'démo' });
+    }
+    await b.commit();
+    const base = { indexId: 'demo-ix-ICHT', value: valeur(periodes.indexOf('2025-12')), period: '2025-12' };
+    await set('revisionRules', 'demo-rev-forfait', { code: 'REV-MO', name: 'Forfaits : 15 % fixe, 85 % main-d\'œuvre', type: 'PONDERE_A_B', nbMonths: 1, lagMonths: 1, paramA: 0.15, paramB: 0.85, indices: [{ indexId: 'demo-ix-ICHT', coefficient: 1 }] });
+    const prestations = await adminDb.collection('services').where('activityId', 'in', ['demo-p2', 'demo-p3']).get();
+    for (const d of prestations.docs) await d.ref.update({ revisionRuleId: 'demo-rev-forfait', revisionMonths: 12, revisionAnchor: '01-01', initialIndexValues: [base] });
+    console.log(`Révisions : ${prestations.size} forfaits P2/P3 révisés chaque 1er janvier sur l'indice ICHT-IME (base décembre 2025).`);
+}
+
 async function travaux(codesClients: string[], contrats: { id: string }[]) {
     const pricing: QuotePricing = { coefficient: 1.35, laborRate: 68, laborCost: 42, defaultVatRate: 20 };
     const client = async (code: string) => (await adminDb.collection('clients').where('externalCode', '==', code).limit(1).get()).docs[0];
@@ -691,6 +714,7 @@ async function heuresDemo(affaires: { circulateur: string; chaufferie: string },
     // Analytique : un contrat suivi par un code externe (outil comptable), les autres par le code généré.
     await adminDb.collection('contracts').doc(contrats[6].id).update({ analyticExternal: '68W2/V080912-1' });
     await factures(contrats);
+    await revisionsForfaits();
     const affaires = await travaux(codesClients, contrats);
     await achats(affaires, contrats);
     await heuresDemo(affaires, contrats);

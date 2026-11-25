@@ -6,6 +6,7 @@ import { ajouterCommentaire, definirResponsable, alertesCompteurs, historiqueCom
 import type { CommentaireSuivi } from '@/lib/pilotage/tcd';
 import type { Alerte } from '@/lib/pilotage/alertes-compteurs';
 import { previsionnelFacturation, type Previsionnel } from '@/services/previsionnel-admin';
+import { simulationRevision, type SimulationRevision } from '@/services/simulation-revision-admin';
 
 type Result<T> = { success: true; data: T } | { success: false; error: string };
 const fail = (e: unknown): { success: false; error: string } => ({ success: false, error: e instanceof Error ? e.message : 'Calcul impossible.' });
@@ -57,5 +58,16 @@ export async function previsionnelFacturationAction(nbMois = 12): Promise<Result
         const lignes = p.lignes.filter(l => visibles.has(l.clientId));
         const contratsEnErreur = p.contratsEnErreur.filter(c => visibles.has(c.clientId));
         return { success: true, data: { ...p, lignes, contratsEnErreur, contrats: new Set(lignes.map(l => l.contractId)).size } };
+    } catch (e) { return fail(e); }
+}
+
+/** Simulation de révision (variation des indices en %), limitée aux clients du périmètre de l'utilisateur. */
+export async function simulationRevisionAction(hypotheses: Record<string, number>): Promise<Result<SimulationRevision>> {
+    try {
+        const garde = gardePerimetre(await requireUser());
+        const s = await simulationRevision(hypotheses);
+        const visibles = await garde.clients();
+        if (!visibles) return { success: true, data: s };
+        return { success: true, data: { ...s, lignes: s.lignes.filter(l => visibles.has(l.clientId)), revisions: s.revisions.filter(r => visibles.has(r.clientId)), nonSimulables: s.nonSimulables.filter(n => visibles.has(n.clientId)) } };
     } catch (e) { return fail(e); }
 }
