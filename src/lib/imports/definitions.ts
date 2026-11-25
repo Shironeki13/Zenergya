@@ -265,7 +265,7 @@ const BASE: Record<ImportEntityKey, Omit<ImportEntity, 'groupe' | 'resume' | 'us
             { key: 'meter', label: 'Compteur', type: 'text', example: '', help: 'P1 : code du compteur (CPT-…) ou réf. externe, du même site.' },
             {
                 key: 'p1Type', label: 'Type P1', type: 'enum',
-                options: [{ value: 'CHAUFFAGE', label: 'Chauffage' }, { value: 'ECS', label: 'ECS' }, { value: 'EAU_FROIDE', label: 'Eau froide' }, { value: 'AUTRE', label: 'Autre' }],
+                options: [{ value: 'CHAUFFAGE', label: 'Chauffage' }, { value: 'ECS', label: 'ECS' }, { value: 'ABONNEMENT', label: 'Abonnement' }, { value: 'REFACTURATION', label: 'Refacturation' }, { value: 'EAU_FROIDE', label: 'Eau froide' }, { value: 'AUTRE', label: 'Autre' }],
             },
             {
                 key: 'energyType', label: 'Énergie', type: 'enum',

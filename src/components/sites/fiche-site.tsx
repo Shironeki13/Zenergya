@@ -1,5 +1,6 @@
 'use client';
 
+import { libelleFamilleP1 } from '@/lib/p1/familles';
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { AlertTriangle, BookOpen, CheckCircle2, ChevronRight, Edit, Gauge, Loader2, Plus, Trash2 } from 'lucide-react';
@@ -44,6 +45,8 @@ export function enVigueur(s: Service, today = new Date().toISOString().slice(0, 
 export function manquesPrestation(s: Service): string[] {
     const m: string[] = [];
     if (!s.vatRateId) m.push('TVA');
+    // Refacturation à l'euro l'euro : ni périodicité, ni terme, ni montant (une ligne par facture du fournisseur).
+    if (s.type === 'P1' && s.p1Type === 'REFACTURATION') return m;
     if (!s.scheduleId) m.push('périodicité');
     if (!s.billingTermId) m.push('terme');
     if (!(Number(s.price) > 0) && !(s.type === 'P1' && (s.p1Mode === 'acompte' || s.p1Mode === 'releve' || s.p1Mode === 'dju'))) m.push('montant');
@@ -52,7 +55,7 @@ export function manquesPrestation(s: Service): string[] {
 
 export function libellePrestation(s: Service, activities: Activity[]): string {
     const a = activities.find(x => x.id === s.activityId);
-    const p1 = s.type === 'P1' && s.p1Type ? ({ ECS: 'ECS', CHAUFFAGE: 'Chauffage', EAU_FROIDE: 'Eau froide', AUTRE: 'Autre' } as Record<string, string>)[s.p1Type] : '';
+    const p1 = s.type === 'P1' ? libelleFamilleP1(s.p1Type) : '';
     return [s.label || a?.label || a?.code || s.type, p1].filter(Boolean).join(' — ');
 }
 

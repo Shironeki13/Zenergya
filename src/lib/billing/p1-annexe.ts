@@ -21,7 +21,7 @@ export type RevisionAnnexe = {
     termes: { terme: string; indice: string | null; base: number | null; valeur: number | null }[];
     coefficient: number | null;
 };
-export type TypeAnnexe = 'compteur-chauffage' | 'compteur-ecs' | 'dju' | 'acompte' | 'decompte' | 'regularisation';
+export type TypeAnnexe = 'compteur-chauffage' | 'compteur-ecs' | 'dju' | 'acompte' | 'decompte' | 'regularisation' | 'refacturation';
 export type AnnexeP1 = {
     type: TypeAnnexe;
     titre: string;
@@ -92,7 +92,7 @@ function revisions(entrees: { mois: string; site: string; indices?: Indices; coe
 
 /** Le document a-t-il une annexe P1 (au moins une ligne P1 détaillée) ? */
 export const aAnnexeP1 = (lineItems: InvoiceLineItem[] | undefined): boolean =>
-    (lineItems ?? []).some(l => l.p1Releve?.detail || l.p1Dju || l.p1Acompte || (l.p1Regul && 'mois' in l.p1Regul));
+    (lineItems ?? []).some(l => l.p1Releve?.detail || l.p1Dju || l.p1Acompte || l.refacturation || (l.p1Regul && 'mois' in l.p1Regul));
 
 /** Annexes P1 d'un document, dans l'ordre : chauffage au compteur, ECS au compteur, MTI au DJU, acomptes, décompte, régularisation. */
 export function annexesP1(lineItems: InvoiceLineItem[], sites?: Record<string, string>): AnnexeP1[] {
@@ -239,6 +239,29 @@ export function annexesP1(lineItems: InvoiceLineItem[], sites?: Record<string, s
             type: 'regularisation', titre: 'Régularisation P1', formule: 'Régularisation = P1 réel de la période − acomptes facturés', references: [], revisions: [],
             colonnes: [C('site', 'Site', 'texte', 24), C('usage', 'Usage', 'texte', 9), C('periode', 'Période', 'texte', 13), C('reel', 'P1 réel', 'eur', 11), C('acomptes', 'Acomptes facturés', 'eur', 11), { ...FIN[0], libelle: 'Régularisation HT' }, ...FIN.slice(1)],
             lignes, totaux: fermer(lignes), notes: [],
+        });
+    }
+    // Refacturation à l'euro l'euro : une ligne par facture du fournisseur.
+    const refacs = lineItems.filter(l => l.refacturation);
+    if (refacs.length) {
+        const avecFrais = refacs.some(l => l.refacturation!.frais > 0);
+        const jour = (d?: string) => (d ? d.split('-').reverse().join('/') : '');
+        const lignes: LigneAnnexe[] = refacs.map(l => {
+            const r = l.refacturation!;
+            return { valeurs: {
+                site: site(l), fournisseur: r.fournisseur, numero: r.numero, date: jour(r.date), periode: r.debut && r.fin ? `${jour(r.debut)} → ${jour(r.fin)}` : '',
+                montantFournisseur: r.montantFournisseur, ...(avecFrais && { frais: r.frais }), ht: l.total, tauxTva: l.vatRate ?? 0,
+            } };
+        });
+        annexes.push({
+            type: 'refacturation', titre: "Refacturation à l'euro l'euro",
+            formule: avecFrais ? 'Montant refacturé = montant HT de la facture du fournisseur × (1 + frais de gestion)' : 'Montant refacturé = montant HT de la facture du fournisseur',
+            references: [['Factures du fournisseur', String(refacs.length)]], revisions: [],
+            colonnes: [
+                C('site', 'Site', 'texte', 18), C('fournisseur', 'Fournisseur', 'texte', 14), C('numero', 'N° de facture', 'texte', 11), C('date', 'Date', 'texte', 8), C('periode', 'Consommation', 'texte', 15),
+                C('montantFournisseur', 'Montant fournisseur HT', 'eur', 12), ...(avecFrais ? [C('frais', 'Frais de gestion', 'pct', 8)] : []), { ...FIN[0], libelle: 'Refacturé HT' }, ...FIN.slice(1),
+            ],
+            lignes, totaux: fermer(lignes), notes: ['Les factures du fournisseur sont tenues à votre disposition sur demande.'],
         });
     }
     return annexes;

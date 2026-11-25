@@ -289,7 +289,7 @@ function Facturation() {
                                                 <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
                                                 <div className="min-w-0 flex-1">
                                                     <div className="flex flex-wrap items-center gap-2 text-sm font-medium">
-                                                        <Badge variant="secondary">{e.activite}</Badge><span>{e.libelle}</span><Badge variant="destructive">bloquée</Badge>
+                                                        <Badge variant="secondary">{e.famille ?? e.activite}</Badge><span>{e.libelle}</span><Badge variant="destructive">bloquée</Badge>
                                                     </div>
                                                     <div className="text-xs text-muted-foreground">{e.site} — du {frDay(e.debut)} au {frDay(e.fin)}</div>
                                                     <div className="mt-1 text-xs text-destructive">{e.blocage.message}</div>
@@ -305,7 +305,7 @@ function Facturation() {
                                             <Checkbox className="mt-0.5" disabled={!libre} checked={selection.includes(e.id)} onCheckedChange={v => setSelection(s => basculer(dues, s, e.id, v === true))} aria-label={`${e.activite} ${e.site} du ${frDay(e.debut)} au ${frDay(e.fin)}`} />
                                             <div className="min-w-0 flex-1">
                                                 <div className="flex flex-wrap items-center gap-2 text-sm font-medium">
-                                                    <Badge variant="secondary">{e.activite}</Badge>
+                                                    <Badge variant="secondary">{e.famille ?? e.activite}</Badge>
                                                     <span>{e.libelle}</span>
                                                     {e.revise && <Badge variant="outline">révisé</Badge>}
                                                     {e.prorata && <Badge variant="outline">prorata</Badge>}

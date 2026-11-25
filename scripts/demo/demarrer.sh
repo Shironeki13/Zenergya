@@ -19,7 +19,7 @@ fi
 
 PROJET=demo-zenergya
 export FIREBASE_PROJECT_ID=$PROJET GCLOUD_PROJECT=$PROJET
-export FIRESTORE_EMULATOR_HOST=127.0.0.1:8080 FIREBASE_AUTH_EMULATOR_HOST=127.0.0.1:9099 FIREBASE_STORAGE_EMULATOR_HOST=127.0.0.1:9199
+export FIREBASE_STORAGE_BUCKET=$PROJET.appspot.com FIRESTORE_EMULATOR_HOST=127.0.0.1:8080 FIREBASE_AUTH_EMULATOR_HOST=127.0.0.1:9099 FIREBASE_STORAGE_EMULATOR_HOST=127.0.0.1:9199
 # Configuration web Firebase : servie à l'exécution par /api/firebase-config, JAMAIS intégrée au build (sinon le
 # navigateur peut démarrer avec la configuration intégrée, sans le mode émulateur, et appeler les vrais serveurs Google).
 CONFIG_WEB=(NEXT_PUBLIC_FIREBASE_API_KEY=demo-key NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=$PROJET.firebaseapp.com NEXT_PUBLIC_FIREBASE_PROJECT_ID=$PROJET

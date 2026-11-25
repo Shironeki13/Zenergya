@@ -90,6 +90,8 @@ export type BillingService = {
     revisionRuleId?: string; initialIndexValues?: ServiceInitialIndexValue[]; revisionMonths?: number; revisionAnchor?: string; revisionFromStart?: boolean;
     p1Mode?: 'forfait' | 'acompte' | 'releve' | 'dju';
     p1Type?: string;
+    /** Refacturation à l'euro l'euro : frais de gestion ajoutés au montant du fournisseur, en % (absent : aucun). */
+    refacFrais?: number | null;
     p1PrixSource?: 'p1' | 'prestation';
     coefficientPrix?: number;
     unitPrice?: number;
@@ -153,6 +155,14 @@ export type BillingActivity = { id: string; code: string; label: string; vatRate
 export type BillingVatRate = { id: string; code: string; rate: number };
 export type NamedRef = { id: string; name: string };
 
+/** Facture d'un fournisseur d'énergie à refacturer à l'euro l'euro (prestation P1 de type « refacturation »). */
+export type FactureEnergie = {
+    id: string; siteId: string; serviceId?: string | null; fournisseur: string; numero: string;
+    /** Date de la facture du fournisseur, et période de consommation qu'elle couvre (AAAA-MM-JJ). */
+    date: string; debut?: string | null; fin?: string | null;
+    montantHT: number;
+};
+
 export type BillingInput = {
     contract: BillingContract;
     sites: BillingSite[];
@@ -171,6 +181,8 @@ export type BillingInput = {
     releves?: P1ReleveSource;
     /** MTI au DJU : sans source, une prestation au DJU ne peut pas être facturée. */
     p1Dju?: P1DjuSource;
+    /** Factures des fournisseurs d'énergie à refacturer (prestations €€). */
+    facturesEnergie?: FactureEnergie[];
 };
 
 /** Élément facturable : une prestation, ou un montant saisi d'un site sans prestation. */
@@ -196,6 +208,10 @@ export type BillingItem = {
     /** P1 au compteur : consommation relevée chaque mois × prix (paramétrage P1 ou prestation révisée) × coefficient de gestion. */
     /** MTI au DJU : P1 annuel de base (montant de la prestation) × C/C0 du mois × DJU chauffés / DJU contractuels. */
     p1Dju?: boolean;
+    /** Famille du P1 (type de la prestation) : libellés. */
+    p1Famille?: string;
+    /** €€ : pas d'échéancier ; une ligne par facture du fournisseur non encore refacturée, majorée des frais (%). */
+    refacturation?: { frais: number };
     p1Releve?: {
         meterId?: string; usage: UsageCompteur; prixSource: 'p1' | 'prestation'; unitPrice: number | null;
         coefficient: number | null; coefGestion: SourceCoefGestion; prorata: MethodeProrata; repartition: RepartitionCompteur; horsSaison: HorsSaison;
@@ -222,7 +238,7 @@ export type BilledInvoice = {
     status?: string;
     cancelledByCreditNoteId?: string;
     periodEndDate?: unknown;
-    lineItems?: Partial<Pick<InvoiceLineItem, 'itemKey' | 'itemKeys' | 'periodEndDate' | 'siteId' | 'activityCode' | 'revision' | 'p1Regul' | 'p1Releve'>>[];
+    lineItems?: Partial<Pick<InvoiceLineItem, 'itemKey' | 'itemKeys' | 'periodEndDate' | 'siteId' | 'activityCode' | 'revision' | 'p1Regul' | 'p1Releve' | 'refacturation'>>[];
 };
 
 // --- Éléments facturables ---
@@ -261,7 +277,20 @@ export function billingItems(input: BillingInput): { items: BillingItem[]; error
                 const acompte = s.p1Mode === 'acompte';
                 const releve = s.p1Mode === 'releve';
                 const auDju = s.p1Mode === 'dju';
-                if (!a || !contract.activityIds.includes(a.id) || (!acompte && !releve && !Number(s.price))) continue;
+                const refac = s.p1Type === 'REFACTURATION';
+                if (!a || !contract.activityIds.includes(a.id) || (!acompte && !releve && !refac && !Number(s.price))) continue;
+                if (refac) {
+                    // €€ : ni échéancier ni prix ; les lignes viennent des factures du fournisseur (dueInvoiceLines).
+                    if (s.p1Mode && s.p1Mode !== 'forfait') { errors.push(`${a.code} sur le site ${site.name} : une refacturation à l'euro l'euro ne se facture ni en acompte, ni au compteur, ni au DJU.`); continue; }
+                    items.push({
+                        refacturation: { frais: typeof s.refacFrais === 'number' && s.refacFrais > 0 ? s.refacFrais : 0 }, p1Famille: 'REFACTURATION',
+                        key: `svc:${s.id}`, serviceId: s.id, site, activity: a, label: s.label, annual: 0,
+                        from: maxDay(contractStart, toDay(s.startDate)), to: minDay(contractEnd, toDay(s.endDate)),
+                        months: 1, scheduleLabel: '', terme: 'echu', vatRateId: s.vatRateId || a.vatRateId,
+                    });
+                    continue;
+                }
+                if (s.p1Type === 'ABONNEMENT' && s.p1Mode && s.p1Mode !== 'forfait') { errors.push(`${a.code} sur le site ${site.name} : un abonnement P1 se facture au forfait.`); continue; }
                 if (auDju && s.p1Type && s.p1Type !== 'CHAUFFAGE') { errors.push(`${a.code} sur le site ${site.name} : MTI au DJU pour une prestation P1 chauffage seulement (type ${s.p1Type}).`); continue; }
                 if (releve && !['CHAUFFAGE', 'ECS'].includes(s.p1Type ?? '')) { errors.push(`${a.code} sur le site ${site.name} : facturation au compteur pour une prestation P1 de type chauffage ou ECS (type ${s.p1Type || 'non renseigné'}).`); continue; }
                 if (acompte && s.p1Type && !['CHAUFFAGE', 'ECS'].includes(s.p1Type)) {
@@ -282,6 +311,7 @@ export function billingItems(input: BillingInput): { items: BillingItem[]; error
                     ...(revision && { revision }),
                     ...(acompte && { p1Acompte: true, p1Usage: s.p1Type === 'ECS' ? 'ecs' as const : 'chauffage' as const }),
                     ...(auDju && { p1Dju: true }),
+                    ...(s.p1Type && { p1Famille: s.p1Type }),
                     ...(releve && {
                         p1Releve: {
                             ...(s.meterId && { meterId: s.meterId }), usage: s.p1Type === 'ECS' ? 'ecs' as const : 'chauffage' as const, prixSource: s.p1PrixSource ?? 'p1',
@@ -361,6 +391,8 @@ export function nominalPeriod(contractStart: string, months: number, day: string
 /** Échéances d'un élément, du lendemain du dernier facturé jusqu'à `until` (date de facturation possible). */
 export function echeancesOf(item: BillingItem, contractStart: string, last: string | null, until: string, max = 400): Echeance[] {
     const out: Echeance[] = [];
+    // Refacturation à l'euro l'euro : pas d'échéancier (une ligne par facture du fournisseur).
+    if (item.refacturation) return out;
     let cursor = last ? maxDay(addDays(last, 1), item.from) : item.from;
     // Au compteur : périodes calées sur les mois civils (la consommation se relève par mois), dès le mois du début du contrat.
     const anchor = item.p1Releve || item.p1Dju ? `${contractStart.slice(0, 7)}-01` : contractStart;
@@ -508,13 +540,42 @@ export function dueInvoiceLines(input: BillingInput, invoices: BilledInvoice[], 
             if (rate === undefined) continue;
             const item = p.e.item;
             lines.push({
-                description: `${p.p1 ? 'Acompte ' : p.releve ? `P1 au compteur (${p.releve.usage === 'ecs' ? 'ECS' : 'chauffage'}) — ` : p.dju ? 'P1 MTI au DJU — ' : ''}${item.activity.label}${item.label ? ` — ${item.label}` : ''} (${item.scheduleLabel}, ${TERME_LABEL[item.terme]}) — Site : ${item.site.name} — ${period(p)}${prorata(p)}${p1Text(p)}${releveText(p)}${djuText(p)}${revised(p)}`,
+                description: `${item.p1Famille === 'ABONNEMENT' ? 'P1A Abonnement — ' : ''}${p.p1 ? 'Acompte ' : p.releve ? `P1 au compteur (${p.releve.usage === 'ecs' ? 'ECS' : 'chauffage'}) — ` : p.dju ? 'P1 MTI au DJU — ' : ''}${item.activity.label}${item.label ? ` — ${item.label}` : ''} (${item.scheduleLabel}, ${TERME_LABEL[item.terme]}) — Site : ${item.site.name} — ${period(p)}${prorata(p)}${p1Text(p)}${releveText(p)}${djuText(p)}${revised(p)}`,
                 quantity: 1, unitPrice: p.amount, total: p.amount, siteId: item.site.id, activityCode: item.activity.code, vatRate: rate,
                 itemKey: item.key, ...(item.serviceId && { serviceId: item.serviceId }), periodStartDate: p.start, periodEndDate: p.end,
                 ...(p.revision && { baseAmount: p.base, revision: p.revision }),
                 ...(p.p1 && { p1Acompte: { siteId: item.site.id, usage: item.p1Usage ?? 'chauffage', mois: p.p1 } }),
                 ...(p.releve && { p1Releve: p.releve }),
                 ...(p.dju && { p1Dju: p.dju }),
+            });
+        }
+    }
+    // Refacturation à l'euro l'euro : une ligne par facture du fournisseur datée au plus tard de `until` et pas encore
+    // refacturée (une facture annulée par avoir la libère). Chaque facture est une échéance à part, cochable seule.
+    const dejaRefacturees = new Set<string>();
+    for (const inv of invoices) {
+        if (inv.status === 'cancelled' || inv.cancelledByCreditNoteId) continue;
+        for (const line of inv.lineItems ?? []) if (line.refacturation?.factureId) dejaRefacturees.add(line.refacturation.factureId);
+    }
+    for (const item of items) {
+        if (!item.refacturation) continue;
+        const premiere = items.find(i => i.refacturation && i.site.id === item.site.id) === item;
+        for (const f of input.facturesEnergie ?? []) {
+            if (f.siteId !== item.site.id || (f.serviceId ? f.serviceId !== item.serviceId : !premiere)) continue;
+            if (dejaRefacturees.has(f.id) || f.date > until || f.date < item.from || f.date > item.to || !f.montantHT) continue;
+            const start = f.debut && f.fin && f.debut <= f.fin ? f.debut : f.date;
+            const end = f.debut && f.fin && f.debut <= f.fin ? f.fin : f.date;
+            const frais = item.refacturation.frais;
+            const total = roundCents(f.montantHT * (1 + frais / 100));
+            const e: Echeance = { item: { ...item, key: `${item.key}#${f.id}` }, start, end, nominalStart: start, nominalEnd: end, days: daysIn(start, end), nominalDays: daysIn(start, end), billableOn: f.date, amount: total };
+            echeances.push(e);
+            const rate = rateOf(e);
+            if (rate === undefined) continue;
+            lines.push({
+                description: `Refacturation à l'euro l'euro (€€) — ${f.fournisseur}, facture n° ${f.numero} du ${frDay(f.date)}${start !== end ? `, consommation du ${frDay(start)} au ${frDay(end)}` : ''} — Site : ${item.site.name}${frais ? ` — frais de gestion ${frais.toLocaleString('fr-FR')} %` : ''}`,
+                quantity: 1, unitPrice: total, total, siteId: item.site.id, activityCode: item.activity.code, vatRate: rate,
+                itemKey: e.item.key, ...(item.serviceId && { serviceId: item.serviceId }), periodStartDate: start, periodEndDate: end,
+                refacturation: { factureId: f.id, siteId: item.site.id, fournisseur: f.fournisseur, numero: f.numero, date: f.date, ...(start !== end && { debut: start, fin: end }), montantFournisseur: f.montantHT, frais },
             });
         }
     }

@@ -673,6 +673,8 @@ export type InvoiceLineItem = {
     /** Régularisation P1 : site et mois régularisés (réel − acomptes, décompte MTI, ou prix annuel de l'exercice), ou intéressement facturé. */
     p1Regul?: { siteId: string; usage?: 'chauffage' | 'ecs' | 'total'; mois: string[]; reel: number; acomptes: number; decompte?: import('@/lib/billing/p1-decompte').DecompteSaison[]; prixAnnuel?: import('@/lib/billing/p1-prix-annuel').PrixAnnuel[] } | { siteId: string; interestId: string };
     revision?: { date: string; coefficient: number; rule: string; indices: { code: string; periods: string[]; value: number; base: number; basePeriod: string }[] };
+    /** Refacturation à l'euro l'euro (€€) : facture du fournisseur refacturée, son montant et les frais de gestion (%). */
+    refacturation?: { factureId: string; siteId: string; fournisseur: string; numero: string; date: string; debut?: string; fin?: string; montantFournisseur: number; frais: number };
 };
 
 /** Ventilation de la TVA par taux (rate en %). Absente : TVA unique (`taxRate`). */
@@ -1095,7 +1097,9 @@ export type Service = {
 
     // Typage
     energyType?: 'GAZ' | 'ELEC' | 'EAU' | 'AUTRE' | 'Gaz' | 'Electricité' | 'Réseau de chaleur' | 'Fioul' | 'Biomasse'; // type_energie
-    p1Type?: 'ECS' | 'CHAUFFAGE' | 'EAU_FROIDE' | 'AUTRE'; // type_p1 (si P1)
+    p1Type?: 'ECS' | 'CHAUFFAGE' | 'ABONNEMENT' | 'REFACTURATION' | 'EAU_FROIDE' | 'AUTRE'; // famille du P1 (lib/p1/familles)
+    /** Refacturation à l'euro l'euro : frais de gestion ajoutés au montant du fournisseur, en %. */
+    refacFrais?: number | null;
 
     // Tarification
     unitPrice?: number; // prix_base / unit_price

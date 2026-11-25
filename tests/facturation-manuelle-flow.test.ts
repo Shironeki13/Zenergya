@@ -5,6 +5,7 @@ import { Timestamp } from 'firebase-admin/firestore';
 import { adminDb } from '../src/lib/firebase-admin';
 import { apercuFacturation, prepareContractInvoice, previewBatchBilling } from '../src/services/contract-billing-admin';
 import { apercuPdf } from '../src/services/document-archive';
+import { creerFactureEnergie, facturesEnergieDuSite, modifierFactureEnergie, supprimerFactureEnergie } from '../src/services/factures-energie-admin';
 import { createInvoice } from '../src/services/firestore-admin';
 
 if (!process.env.FIRESTORE_EMULATOR_HOST) throw new Error('À lancer via « npm run test:billing » (émulateur requis).');
@@ -98,4 +99,40 @@ test('file de travail : retard compté depuis la plus ancienne échéance réell
     const k2 = lignes.find(l => l.contractId === 'fman-k2')!;
     assert.match(k2.error ?? '', /TVA non renseignée/);
     assert.equal(k2.dueSince, '2031-01-01');
+});
+
+test('refacturation à l\'euro l\'euro : facture du fournisseur saisie, proposée une fois, refacturée, puis verrouillée', async () => {
+    await set('activities', 'fman-p1e', { code: 'P1RM', label: 'Énergie refacturée', type: 'P1', vatRateId: 'fman-20' });
+    await set('contracts', 'fman-k3', {
+        contractNumber: 'CTN-09933', clientId: 'fman-cli', clientName: 'Client Manuel', companyId: 'fman-co', status: 'Actif',
+        startDate: paris('2031-01-01'), endDate: paris('2033-12-31'), billingSchedule: 'Trimestriel', siteIds: ['fman-s3'], activityIds: ['fman-p1e'], invoicingType: 'multi-site',
+    });
+    await set('sites', 'fman-s3', { code: 'SIT-09933', name: 'Chaufferie refacturée', contractId: 'fman-k3', amountsSource: 'services', amounts: [] });
+    await set('services', 'fman-ee', { siteId: 'fman-s3', contractId: 'fman-k3', activityId: 'fman-p1e', type: 'P1', p1Type: 'REFACTURATION', startDate: paris('2031-01-01'), isActive: true });
+
+    const f1 = await creerFactureEnergie('fman-s3', { fournisseur: 'Gaz du Sud', numero: 'G-501', date: '2031-02-10', debut: '2031-01-01', fin: '2031-01-31', montantHT: 1254.3 }, 'adv@v.fr');
+    const f2 = await creerFactureEnergie('fman-s3', { fournisseur: 'Gaz du Sud', numero: 'G-502', date: '2031-03-10', montantHT: 980 }, 'adv@v.fr');
+    await assert.rejects(creerFactureEnergie('fman-s3', { fournisseur: 'gaz du sud', numero: 'G-501', date: '2031-02-11', montantHT: 1 }, 'adv@v.fr'), /déjà saisie sur ce site/);
+    await assert.rejects(creerFactureEnergie('fman-s3', { fournisseur: '', numero: '', date: '', montantHT: 0 }, 'adv@v.fr'), /Fournisseur obligatoire/);
+
+    // Au 28/02 : seule la facture de février est proposée, au montant exact.
+    const a = await apercuFacturation('fman-k3', '2031-02-28');
+    assert.deepEqual(a.echeances.map(e => [e.activite, e.montant, e.debut, e.fin]), [['P1RM', 1254.3, '2031-01-01', '2031-01-31']]);
+    const p = await prepareContractInvoice('fman-k3', '2031-02-28', { isProforma: false, selection: [a.echeances[0].id] });
+    assert.equal(p.invoice.lineItems[0].refacturation?.factureId, f1);
+    assert.deepEqual([p.invoice.subtotal, p.invoice.tax, p.invoice.total], [1254.3, 250.86, 1505.16]);
+    const emise = await createInvoice(p.invoice, p.company, { contractId: 'fman-k3', billingVersion: p.billingVersion });
+
+    // Suivi sur le site : la première est refacturée et verrouillée, la seconde reste à refacturer et modifiable.
+    const suivi = await facturesEnergieDuSite('fman-s3');
+    assert.deepEqual(suivi.map(f => [f.numero, f.refacturee?.numero ?? null]), [['G-502', null], ['G-501', emise.invoiceNumber]]);
+    await assert.rejects(modifierFactureEnergie(f1, { fournisseur: 'Gaz du Sud', numero: 'G-501', date: '2031-02-10', montantHT: 1 }, 'adv@v.fr'), /refacturée sur la facture/);
+    await assert.rejects(supprimerFactureEnergie(f1), /refacturée sur la facture/);
+    await modifierFactureEnergie(f2, { fournisseur: 'Gaz du Sud', numero: 'G-502', date: '2031-03-10', montantHT: 990 }, 'adv@v.fr');
+
+    // Elle n'est plus proposée ; la suivante l'est, au montant corrigé.
+    const suite = await apercuFacturation('fman-k3', '2031-03-31');
+    assert.deepEqual(suite.echeances.map(e => e.montant), [990]);
+    await supprimerFactureEnergie(f2);
+    assert.deepEqual((await apercuFacturation('fman-k3', '2031-03-31')).echeances, []);
 });

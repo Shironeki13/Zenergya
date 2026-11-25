@@ -30,7 +30,7 @@ const jours = (a: string, b: string) => Math.round((Date.parse(`${b}T00:00:00Z`)
 const eur = (n: number) => `${n.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).replace(/[  ]/g, ' ')} €`;
 const pct = (r: number) => `${r > 0 ? '+' : '−'}${Math.abs(Math.round(r * 100))} %`;
 export const cleDe = (cles: string[]) => [...cles].sort().join('+');
-const saisonnier = (e: EcheanceDue) => e.lignes.some(l => l.p1Releve || l.p1Dju || l.p1Acompte);
+const saisonnier = (e: EcheanceDue) => e.lignes.some(l => l.p1Releve || l.p1Dju || l.p1Acompte || l.refacturation);
 
 export function controlesEmission(dues: EcheanceDue[], selection: string[], precedent: Precedent, aujourdhui: string): Alerte[] {
     const retenues = dues.filter(e => selection.includes(e.id));

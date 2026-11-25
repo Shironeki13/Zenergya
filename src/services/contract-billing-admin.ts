@@ -8,6 +8,7 @@ import {
 import { precedentDe, type Precedent } from '@/lib/billing/controle';
 import { controleSelection, echeancesDues, lignesRetenues, type EcheanceDue } from '@/lib/billing/selection';
 import { toDay } from '@/lib/services/site-amounts';
+import { facturesEnergieDesSites } from '@/services/factures-energie-admin';
 import {
     getActivities, getClient, getContract, getIndexValues, getIndices, getInvoicesByContract, resolveIssuingCompany, resolvePaymentTerm,
 } from '@/services/firestore-admin';
@@ -64,12 +65,14 @@ export async function loadBillingInput(contract: Contract): Promise<BillingInput
             adminDb.collection('saisonsChauffe').where('siteId', 'in', siteIds.slice(i * 30, i * 30 + 30)).get()))).flatMap(x => x.docs.map(d => ({ id: d.id, ...d.data() }) as SaisonChauffe));
         p1Dju = { coefficient: p1.coefficient!, djuReference: p1.djuReference!, dju: releves.dju, saisons: siteId => saisons.filter(x => x.siteId === siteId) };
     }
+    // Refacturation à l'euro l'euro : factures des fournisseurs d'énergie saisies sur les sites.
+    const facturesEnergie = services.some(x => x.p1Type === 'REFACTURATION') ? await facturesEnergieDesSites(siteIds) : undefined;
     return {
         contract: {
             id: contract.id, siteIds, activityIds: contract.activityIds ?? [], invoicingType: contract.invoicingType,
             startDate: contract.startDate, endDate: contract.endDate, billingSchedule: contract.billingSchedule,
         },
-        sites, services, activities: activities as Activity[], vatRates, schedules, terms, revisionRules, indices, indexValues, ...(p1 && { p1 }), ...(releves && { releves }), ...(p1Dju && { p1Dju }),
+        sites, services, activities: activities as Activity[], vatRates, schedules, terms, revisionRules, indices, indexValues, ...(p1 && { p1 }), ...(releves && { releves }), ...(p1Dju && { p1Dju }), ...(facturesEnergie && { facturesEnergie }),
     };
 }
 

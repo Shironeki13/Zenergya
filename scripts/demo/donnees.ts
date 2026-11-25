@@ -5,6 +5,7 @@
 //   npm run demo:donnees            (remet les émulateurs à zéro puis les remplit)
 // Garde-fou : refuse de tourner hors émulateurs ou sur un projet dont l'identifiant ne commence pas par « demo- ».
 import { Timestamp } from 'firebase-admin/firestore';
+import { creerFactureEnergie } from '../../src/services/factures-energie-admin';
 import { getStorage } from 'firebase-admin/storage';
 import { adminAuth, adminDb } from '../../src/lib/firebase-admin';
 import { applyImport, type ImportReport } from '../../src/services/imports-admin';
@@ -569,6 +570,27 @@ async function revisionsForfaits() {
     console.log(`Révisions : ${prestations.size} forfaits P2/P3 révisés chaque 1er janvier sur l'indice ICHT-IME (base décembre 2025).`);
 }
 
+/**
+ * Familles du P1 sur la copropriété Square Voltaire : un abonnement (P1A, forfait mensuel depuis octobre) et une
+ * refacturation à l'euro l'euro (€€) avec trois factures du fournisseur de gaz, dont une déjà datée de ce mois.
+ */
+async function abonnementEtRefacturation() {
+    // Le contrat de la chaufferie (celui qui porte le P1), pas son contrat de périmètre ECS.
+    const k = (await adminDb.collection('contracts').where('clientName', '==', 'Copropriété Square Voltaire').get()).docs.find(d => ((d.get('activityIds') ?? []) as string[]).includes('demo-p1'));
+    if (!k) return;
+    const siteId = (k.get('siteIds') as string[])[0];
+    const modele = (await adminDb.collection('services').where('siteId', '==', siteId).where('activityId', '==', 'demo-p2').limit(1).get()).docs[0]?.data() ?? {};
+    const { revisionRuleId: _r, initialIndexValues: _i, revisionMonths: _m, revisionAnchor: _a, externalRef: _e, code: _c, ...base } = modele;
+    const mensuel = (await adminDb.collection('schedules').get()).docs.find(d => /mensuel/i.test(String(d.get('name'))))?.id;
+    const debut = Timestamp.fromDate(new Date('2026-10-01T10:00:00Z'));
+    await adminDb.collection('services').add({ ...base, siteId, contractId: k.id, activityId: 'demo-p1', type: 'P1', p1Type: 'ABONNEMENT', p1Mode: 'forfait', label: 'Abonnement gaz', price: 2400, vatRateId: 'demo-tva55', ...(mensuel && { scheduleId: mensuel }), startDate: debut, isActive: true });
+    await adminDb.collection('services').add({ ...base, siteId, contractId: k.id, activityId: 'demo-p1', type: 'P1', p1Type: 'REFACTURATION', p1Mode: 'forfait', label: 'Gaz refacturé', price: 0, vatRateId: 'demo-tva20', refacFrais: 0, startDate: debut, isActive: true });
+    for (const [numero, date, debutConso, fin, montantHT] of [['GDS-2026-10458', '2026-10-06', '2026-09-01', '2026-09-30', 1840.6], ['GDS-2026-11732', '2026-11-05', '2026-10-01', '2026-10-31', 3215.48], ['GDS-2026-12011', '2026-11-20', '2026-11-01', '2026-11-15', 1502.1]] as const) {
+        await creerFactureEnergie(siteId, { fournisseur: 'Gaz du Sud (démo)', numero, date, debut: debutConso, fin, montantHT }, 'adv@example.com');
+    }
+    console.log('Familles du P1 : abonnement P1A et refacturation €€ (3 factures du fournisseur) sur la copropriété Square Voltaire.');
+}
+
 async function travaux(codesClients: string[], contrats: { id: string }[]) {
     const pricing: QuotePricing = { coefficient: 1.35, laborRate: 68, laborCost: 42, defaultVatRate: 20 };
     const client = async (code: string) => (await adminDb.collection('clients').where('externalCode', '==', code).limit(1).get()).docs[0];
@@ -715,6 +737,7 @@ async function heuresDemo(affaires: { circulateur: string; chaufferie: string },
     await adminDb.collection('contracts').doc(contrats[6].id).update({ analyticExternal: '68W2/V080912-1' });
     await factures(contrats);
     await revisionsForfaits();
+    await abonnementEtRefacturation();
     const affaires = await travaux(codesClients, contrats);
     await achats(affaires, contrats);
     await heuresDemo(affaires, contrats);

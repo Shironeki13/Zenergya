@@ -1,5 +1,7 @@
 'use client';
 
+import { TYPES_P1, libelleFamilleP1 } from '@/lib/p1/familles';
+import { FacturesEnergie } from '@/components/sites/factures-energie';
 import { lireServeur } from '@/services/lecture';
 import { useConfirm } from '@/components/confirm-provider';
 import Link from 'next/link';
@@ -84,6 +86,7 @@ export default function SiteDetailsPage() {
     const [revisionAnchor, setRevisionAnchor] = useState<string>('');
     const [revisionFromStart, setRevisionFromStart] = useState<boolean>(false);
     const [p1Mode, setP1Mode] = useState<'forfait' | 'acompte' | 'releve' | 'dju'>('forfait');
+    const [refacFrais, setRefacFrais] = useState('');
     const [p1PrixSource, setP1PrixSource] = useState<'p1' | 'prestation'>('p1');
     const [coefficientPrix, setCoefficientPrix] = useState<string>('');
     const [p1Prorata, setP1Prorata] = useState<MethodeProrata>('releve_jours');
@@ -233,6 +236,7 @@ export default function SiteDetailsPage() {
         setRevisionAnchor('');
         setRevisionFromStart(false);
         setP1Mode('forfait');
+        setRefacFrais('');
         setP1PrixSource('p1');
         setCoefficientPrix('');
         setP1Prorata('releve_jours'); setP1Repartition('releve'); setP1HorsSaison('facture');
@@ -335,6 +339,7 @@ export default function SiteDetailsPage() {
         setRevisionAnchor(service.revisionAnchor ?? '');
         setRevisionFromStart(!!service.revisionFromStart);
         setP1Mode(service.p1Mode ?? 'forfait');
+        setRefacFrais(service.refacFrais ? String(service.refacFrais) : '');
         setP1PrixSource(service.p1PrixSource ?? 'p1');
         setCoefficientPrix(service.coefficientPrix ? String(service.coefficientPrix) : '');
         setP1Prorata(service.p1Prorata ?? 'releve_jours');
@@ -398,7 +403,8 @@ export default function SiteDetailsPage() {
             scheduleId,
             pricingRuleId,
             revisionRuleId,
-            ...(selectedType === 'P1' && { p1Mode }),
+            // Abonnement et refacturation : toujours au forfait (pas d'acompte, de compteur ni de DJU).
+            ...(selectedType === 'P1' && { p1Mode: p1Type === 'ABONNEMENT' || p1Type === 'REFACTURATION' ? 'forfait' as const : p1Mode }),
             ...(selectedType === 'P1' && p1Mode === 'releve' && {
                 p1PrixSource, p1Prorata, p1Repartition, p1HorsSaison, p1CoefGestion,
                 ...(p1CoefGestion === 'prestation' && Number(coefficientPrix.replace(',', '.')) > 0 ? { coefficientPrix: Number(coefficientPrix.replace(',', '.')) } : {}),
@@ -421,6 +427,7 @@ export default function SiteDetailsPage() {
             vatRateId,
             energyType: energyType as any,
             p1Type: p1Type as any,
+            refacFrais: selectedType === 'P1' && p1Type === 'REFACTURATION' ? Number(refacFrais) || 0 : undefined,
             isActive,
             comment,
             moleculePrice: selectedType === 'P1' && isFixedPrice ? Number(moleculePrice) : undefined,
@@ -1398,7 +1405,8 @@ export default function SiteDetailsPage() {
                     <P1ParametragePanel siteId={siteId} defaultOpen />
                 </TabsContent>
 
-                <TabsContent value="factures" className="mt-4">
+                <TabsContent value="factures" className="mt-4 space-y-6">
+                    {services.some(x => x.siteId === siteId && x.p1Type === 'REFACTURATION' && x.isActive !== false) && <FacturesEnergie siteId={siteId} contractId={contract?.id} />}
                     <FacturesDuSite factures={facturesSite} />
                 </TabsContent>
             </Tabs>
@@ -1514,12 +1522,10 @@ export default function SiteDetailsPage() {
                                         <Select value={p1Type} onValueChange={setP1Type}>
                                             <SelectTrigger><SelectValue placeholder="Sélectionner" /></SelectTrigger>
                                             <SelectContent>
-                                                <SelectItem value="CHAUFFAGE">Chauffage</SelectItem>
-                                                <SelectItem value="ECS">ECS</SelectItem>
-                                                <SelectItem value="EAU_FROIDE">Eau Froide</SelectItem>
-                                                <SelectItem value="AUTRE">Autre</SelectItem>
+                                                {TYPES_P1.map(t => <SelectItem key={t} value={t}>{libelleFamilleP1(t)}</SelectItem>)}
                                             </SelectContent>
                                         </Select>
+                                        {p1Type === 'ABONNEMENT' && <p className="text-xs text-muted-foreground">Part fixe du P1 : facturée au forfait, selon la périodicité et le terme de la prestation.</p>}
                                     </div>
                                     <div className="space-y-2">
                                         <Label>Prix fixe</Label>
@@ -1543,7 +1549,21 @@ export default function SiteDetailsPage() {
                             </div>
                         )}
 
-                        {selectedType === 'P1' && (
+                        {selectedType === 'P1' && p1Type === 'REFACTURATION' && (
+                            <div className="space-y-2 border p-4 rounded-md mt-4" data-bloc="refacturation">
+                                <Label>Refacturation à l'euro l'euro (€€)</Label>
+                                <p className="text-sm text-muted-foreground">Pas de montant ni d'échéancier : chaque facture du fournisseur d'énergie saisie sur ce site (onglet Factures) est refacturée telle quelle, une seule fois, avec la TVA de cette prestation.</p>
+                                <div className="flex items-end gap-2">
+                                    <div className="space-y-1">
+                                        <Label htmlFor="refac-frais" className="text-xs">Frais de gestion (%)</Label>
+                                        <Input id="refac-frais" type="number" step="0.01" min="0" className="w-32" value={refacFrais} onChange={e => setRefacFrais(e.target.value)} placeholder="0" />
+                                    </div>
+                                    <p className="pb-2 text-xs text-muted-foreground">Vide ou 0 : refacturation au montant exact du fournisseur.</p>
+                                </div>
+                            </div>
+                        )}
+
+                        {selectedType === 'P1' && p1Type !== 'REFACTURATION' && p1Type !== 'ABONNEMENT' && (
                             <div className="space-y-2 border p-4 rounded-md mt-4">
                                 <Label>Facturation du P1</Label>
                                 <Select value={p1Mode} onValueChange={v => setP1Mode(v as 'forfait' | 'acompte' | 'releve' | 'dju')}>

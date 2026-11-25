@@ -7,6 +7,7 @@
  * Module sans dépendance serveur.
  */
 import type { InvoiceLineItem } from '@/lib/types';
+import { familleP1 } from '@/lib/p1/familles';
 import { lineItemKeys, type DueResult, type Echeance, type NatureBlocage } from './contract-billing';
 
 export type EcheanceDue = {
@@ -14,6 +15,8 @@ export type EcheanceDue = {
     /** Éléments facturables couverts (ordre de facturation). */
     cles: string[];
     activite: string;
+    /** Famille du P1 quand elle a son code (P1C, P1E, P1A, €€). */
+    famille?: string;
     libelle: string;
     /** Site, ou nombre de sites en facturation globale. */
     site: string;
@@ -57,6 +60,8 @@ export function echeancesDues(due: Pick<DueResult, 'echeances' | 'lines' | 'bloq
         // Bloquée : rien n'est facturé pour l'échéance, même si une partie a pu être calculée.
         const lignes = motif ? [] : [...new Set(membres.flatMap(i => lignesDe[i]))];
         const e = es[0];
+        const famille = es.length === 1 ? familleP1(e.item.p1Famille) : null;
+        const refac = lignes[0]?.refacturation;
         const sites = [...new Set(es.map(x => x.item.site.name))];
         const debut = es.map(x => x.start).sort()[0];
         const fin = es.map(x => x.end).sort().at(-1)!;
@@ -64,7 +69,10 @@ export function echeancesDues(due: Pick<DueResult, 'echeances' | 'lines' | 'bloq
             id: `${es.map(x => x.item.key).sort().join('+')}|${debut}`,
             cles: es.map(x => x.item.key),
             activite: e.item.activity.code,
-            libelle: [e.item.activity.label, es.length === 1 ? e.item.label : undefined].filter(Boolean).join(' — '),
+            ...(famille && famille.code !== 'P1' && { famille: famille.code }),
+            // Refacturation : la facture du fournisseur ; sinon l'activité et le libellé de la prestation.
+            libelle: refac ? `${refac.fournisseur}, facture n° ${refac.numero} du ${refac.date.split('-').reverse().join('/')}`
+                : [e.item.activity.label, es.length === 1 ? e.item.label : undefined].filter(Boolean).join(' — '),
             site: sites.length === 1 ? sites[0] : `${sites.length} sites`,
             debut, fin,
             facturableLe: es.map(x => x.billableOn).sort().at(-1)!,
