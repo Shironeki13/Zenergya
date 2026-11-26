@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { AlertTriangle, Loader2, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { PastilleActivite } from '@/components/ui/pastilles';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { croiser } from '@/lib/billing/previsionnel';
@@ -113,7 +114,7 @@ export default function PrevisionnelPage() {
                                     <tbody>
                                         {tableau.lignes.map(r => (
                                             <tr key={r.cle} className="border-b last:border-0">
-                                                <td className="py-2 pr-3 font-medium">{r.cle}</td>
+                                                <td className="py-2 pr-3 font-medium">{axe === 'activite' ? <PastilleActivite code={r.cle} /> : r.cle}</td>
                                                 <td className={`px-2 text-right ${r.retard ? 'text-amber-700' : 'text-muted-foreground'}`}>{r.retard ? eur0(r.retard) : '—'}</td>
                                                 {r.parMois.map((v, i) => <td key={i} className={`px-2 text-right ${v ? '' : 'text-muted-foreground'}`}>{v ? eur0(v) : '—'}</td>)}
                                                 <td className="pl-3 text-right font-semibold">{eur0(r.total)}</td>

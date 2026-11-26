@@ -2,6 +2,7 @@
 
 import { AccesRefuse, useHorsPerimetre } from '@/components/perimetre/acces';
 import { VieContrat } from '@/components/contracts/vie-contrat';
+import { PointDocument } from '@/components/ui/pastilles';
 import { ControleCible, type CibleValidation } from '@/components/contracts/validation/bouton-validation';
 import type { MailContrat } from '@/lib/notifications/trace';
 import { lireServeur } from '@/services/lecture';
@@ -624,11 +625,11 @@ export default function ContractDetailPage() {
           )}
       <Tabs value={ongletDocuments} onValueChange={setOngletDocuments} className="w-full scroll-mt-20" id="documents-contrat">
         <TabsList>
-          <TabsTrigger value="amendments">Avenants ({amendments.length})</TabsTrigger>
-          <TabsTrigger value="terminations">Résiliations ({terminations.length})</TabsTrigger>
-          <TabsTrigger value="renewals">Reconductions ({renewals.length})</TabsTrigger>
-          <TabsTrigger value="trustee">Chgts Syndic ({trusteeChanges.length})</TabsTrigger>
-          <TabsTrigger value="be">Chgts BE ({beChanges.length})</TabsTrigger>
+          <TabsTrigger value="amendments" className="gap-1.5"><PointDocument type="avenant" />Avenants ({amendments.length})</TabsTrigger>
+          <TabsTrigger value="terminations" className="gap-1.5"><PointDocument type="resiliation" />Résiliations ({terminations.length})</TabsTrigger>
+          <TabsTrigger value="renewals" className="gap-1.5"><PointDocument type="reconduction" />Reconductions ({renewals.length})</TabsTrigger>
+          <TabsTrigger value="trustee" className="gap-1.5"><PointDocument type="syndic" />Chgts Syndic ({trusteeChanges.length})</TabsTrigger>
+          <TabsTrigger value="be" className="gap-1.5"><PointDocument type="be" />Chgts BE ({beChanges.length})</TabsTrigger>
         </TabsList>
         <TabsContent value="amendments">
           <Card>

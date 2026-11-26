@@ -94,7 +94,7 @@ export function TableauSites({ sites, services, contrats, onAjouter, onImporter,
                                         <TableCell>
                                             {e.prestations.length === 0 ? <Badge variant="destructive">Sans prestation</Badge>
                                                 : e.incompletes.length ? <Link href={`/sites/${site.id}?onglet=prestations`}><Badge variant="destructive">{e.incompletes.length} incomplète(s)</Badge></Link>
-                                                : <Badge variant="secondary">Complet</Badge>}
+                                                : <Badge variant="outline" className="border-emerald-300 bg-emerald-50 text-emerald-800">Complet</Badge>}
                                         </TableCell>
                                         {(onModifier || onSupprimer) && (
                                             <TableCell className="whitespace-nowrap text-right">

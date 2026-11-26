@@ -6,6 +6,7 @@ import { useSearchParams } from 'next/navigation';
 import { AlertTriangle, CalendarPlus, CheckCircle2, ExternalLink, Info, Eye, EyeOff, FileText, Loader2, Receipt, Maximize2, RefreshCw, RotateCcw, SkipForward } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
+import { PastilleActivite } from '@/components/ui/pastilles';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -289,7 +290,7 @@ function Facturation() {
                                                 <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
                                                 <div className="min-w-0 flex-1">
                                                     <div className="flex flex-wrap items-center gap-2 text-sm font-medium">
-                                                        <Badge variant="secondary">{e.famille ?? e.activite}</Badge><span>{e.libelle}</span><Badge variant="destructive">bloquée</Badge>
+                                                        <PastilleActivite code={e.famille ?? e.activite} /><span>{e.libelle}</span><Badge variant="destructive">bloquée</Badge>
                                                     </div>
                                                     <div className="text-xs text-muted-foreground">{e.site} — du {frDay(e.debut)} au {frDay(e.fin)}</div>
                                                     <div className="mt-1 text-xs text-destructive">{e.blocage.message}</div>
@@ -305,7 +306,7 @@ function Facturation() {
                                             <Checkbox className="mt-0.5" disabled={!libre} checked={selection.includes(e.id)} onCheckedChange={v => setSelection(s => basculer(dues, s, e.id, v === true))} aria-label={`${e.activite} ${e.site} du ${frDay(e.debut)} au ${frDay(e.fin)}`} />
                                             <div className="min-w-0 flex-1">
                                                 <div className="flex flex-wrap items-center gap-2 text-sm font-medium">
-                                                    <Badge variant="secondary">{e.famille ?? e.activite}</Badge>
+                                                    <PastilleActivite code={e.famille ?? e.activite} />
                                                     <span>{e.libelle}</span>
                                                     {e.revise && <Badge variant="outline">révisé</Badge>}
                                                     {e.prorata && <Badge variant="outline">prorata</Badge>}

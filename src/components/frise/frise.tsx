@@ -33,6 +33,8 @@ export type PointFrise = {
     infobulle?: ReactNode;
     /** Repère non cliquable (ex. « aujourd'hui »). */
     repere?: boolean;
+    /** Couleur du type d'étape (classe de fond du point devant le titre) : l'état reste porté par le rond. */
+    accent?: string;
 };
 
 export const dateFr = (d: string | null) => (d ? d.split('-').reverse().join('/') : 'à venir');
@@ -67,7 +69,7 @@ export function Frise({ points, ouvert, onOuvrir, label }: { points: PointFrise[
                                         </TooltipContent>
                                     </Tooltip>
                                 )}
-                                <span className={cn('mt-1.5 text-sm font-medium leading-tight', p.etat === 'annule' && 'text-muted-foreground line-through', p.repere && 'text-xs uppercase tracking-wide')}>{p.titre}</span>
+                                <span className={cn('mt-1.5 text-sm font-medium leading-tight', p.etat === 'annule' && 'text-muted-foreground line-through', p.repere && 'text-xs uppercase tracking-wide')}>{p.accent && <span aria-hidden className={cn('mr-1.5 inline-block h-2 w-2 rounded-full align-middle', p.accent)} />}{p.titre}</span>
                                 {p.lignes}
                             </li>
                         );

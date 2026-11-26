@@ -11,6 +11,7 @@ import { vieContrat, type DocumentsContrat, type EtapeVie, type TypeVie } from '
 import { LIBELLE_EVENEMENT } from '@/lib/notifications/modeles';
 import { LIBELLE_STATUT_MAIL, mailsParEtape, type MailContrat } from '@/lib/notifications/trace';
 import type { Contract } from '@/lib/types';
+import { PointDocument, tonDocument } from '@/components/ui/pastilles';
 import { BoutonValidation, type CibleValidation } from '@/components/contracts/validation/bouton-validation';
 import type { TypeValidation } from '@/lib/validations';
 
@@ -64,7 +65,7 @@ function Detail({ e, mails, onClose, onVoirDocuments, cible, onTraite }: { e: Et
         <div className="rounded-lg border bg-muted/20 p-4" role="region" aria-label={`Détail : ${e.titre}`}>
             <div className="flex items-start justify-between gap-3">
                 <div>
-                    <p className="font-semibold">{e.titre} <span className={cn('ml-1 text-xs font-normal', ton.texte)}>{v ? VALIDATION[v.etat] : ton.libelle}</span></p>
+                    <p className="font-semibold"><PointDocument type={e.type} className="mr-1.5 align-middle" />{e.titre} <span className={cn('ml-1 text-xs font-normal', ton.texte)}>{v ? VALIDATION[v.etat] : ton.libelle}</span></p>
                     <p className="text-sm text-muted-foreground">{fr(e.date)}{e.resume ? ` — ${e.resume}` : ''}</p>
                 </div>
                 <button type="button" onClick={onClose} className="rounded p-1 text-muted-foreground hover:bg-muted" aria-label="Fermer le détail"><X className="h-4 w-4" /></button>
@@ -122,7 +123,7 @@ export function VieContrat({ contract, documents, mails = [], onVoirDocuments, o
     const [tousMails, setTousMails] = useState(false);
 
     const points: PointFrise[] = vie.etapes.map(e => ({
-        cle: e.id, date: e.date, etat: e.etat, icone: e.type === 'validation' && e.etat === 'fait' ? FileCheck2 : ICONE[e.type], titre: e.titre, repere: e.type === 'aujourdhui',
+        cle: e.id, date: e.date, etat: e.etat, icone: e.type === 'validation' && e.etat === 'fait' ? FileCheck2 : ICONE[e.type], titre: e.titre, repere: e.type === 'aujourdhui', ...(tonDocument(e.type) && { accent: tonDocument(e.type)!.point }),
         lignes: e.type === 'aujourdhui' ? null : <>
             {e.resume && <span className="line-clamp-2 text-xs text-muted-foreground" title={e.resume}>{e.resume}</span>}
             {e.validation && e.validation.etat !== 'valide' && <span className={cn('text-xs font-medium', e.validation.etat === 'refuse' ? 'text-red-700' : 'text-blue-700')}>{VALIDATION[e.validation.etat].toLowerCase()}</span>}

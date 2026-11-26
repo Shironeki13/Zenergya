@@ -1,6 +1,7 @@
 'use client';
 
-import { TYPES_P1, libelleFamilleP1 } from '@/lib/p1/familles';
+import { TYPES_P1, familleP1, libelleFamilleP1 } from '@/lib/p1/familles';
+import { PastilleActivite } from '@/components/ui/pastilles';
 import { FacturesEnergie } from '@/components/sites/factures-energie';
 import { MargeP1Site } from '@/components/sites/marge-p1';
 import { lireServeur } from '@/services/lecture';
@@ -832,7 +833,7 @@ export default function SiteDetailsPage() {
                                 <h2 className="flex items-center gap-2 text-xl font-semibold">
                                     {activeService ? (
                                         <>
-                                            <Badge variant="outline">{activeService.type}</Badge>
+                                            <PastilleActivite code={activeService.type === 'P1' ? familleP1(activeService.p1Type)?.code ?? activeService.type : activeService.type} type={activeService.type} />
                                             {activeService.p1Type === 'ECS' && <Droplets className="h-5 w-5 text-blue-500" />}
                                             {activeService.p1Type === 'CHAUFFAGE' && <Flame className="h-5 w-5 text-red-500" />}
                                             {libellePrestation(activeService, activities)}

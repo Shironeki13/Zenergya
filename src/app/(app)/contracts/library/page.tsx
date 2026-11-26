@@ -13,6 +13,7 @@ import { BoutonValidation, type CibleValidation } from '@/components/contracts/v
 import type { TypeValidation } from '@/lib/validations';
 import { lireServeur } from '@/services/lecture';
 import { cn } from '@/lib/utils';
+import { PointDocument, tonDocument } from '@/components/ui/pastilles';
 import { LIBELLE_NATURE, LIBELLE_SUIVI, NATURES_DOCUMENT, suiviContratheque, type DocumentSuivi, type Gravite, type LigneSuivi, type TypeSuivi } from '@/lib/contrats/suivi';
 
 /**
@@ -157,7 +158,7 @@ export default function ContrathequePage() {
                                     <Button size="sm" variant={nature === null ? 'secondary' : 'ghost'} className="h-7 px-2.5 text-xs" aria-pressed={nature === null} onClick={() => setNature(null)}>Tous ({duFiltre.length})</Button>
                                     {NATURES_DOCUMENT.map(n => {
                                         const nb = duFiltre.filter(l => l.document === n).length;
-                                        return <Button key={n} size="sm" variant={nature === n ? 'secondary' : 'ghost'} className="h-7 px-2.5 text-xs" disabled={nb === 0} aria-pressed={nature === n} onClick={() => setNature(nature === n ? null : n)}>{LIBELLE_NATURE[n]} ({nb})</Button>;
+                                        return <Button key={n} size="sm" variant={nature === n ? 'secondary' : 'ghost'} className="h-7 px-2.5 text-xs" disabled={nb === 0} aria-pressed={nature === n} onClick={() => setNature(nature === n ? null : n)}><PointDocument type={n} className="mr-1.5" />{LIBELLE_NATURE[n]} ({nb})</Button>;
                                     })}
                                 </div>
                             )}
@@ -174,6 +175,7 @@ export default function ContrathequePage() {
                                                         <p className="text-sm"><span className="font-mono text-xs">{l.contrat}</span> <span className="font-medium">{l.client}</span></p>
                                                         <p className="text-sm text-muted-foreground">{l.texte}</p>
                                                     </div>
+                                                    {l.document && <Badge variant="outline" className={cn('shrink-0', tonDocument(l.document)?.pastille)}>{LIBELLE_NATURE[l.document]}</Badge>}
                                                     <Badge variant="outline" className="shrink-0 gap-1"><Icone className="h-3 w-3" />{LIBELLE_SUIVI[l.type]}</Badge>
                                                     <span className="w-20 shrink-0 text-right text-xs tabular-nums text-muted-foreground">{fr(l.date)}</span>
                                                 </Link>

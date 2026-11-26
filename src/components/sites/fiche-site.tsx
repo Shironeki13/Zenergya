@@ -1,6 +1,7 @@
 'use client';
 
-import { libelleFamilleP1 } from '@/lib/p1/familles';
+import { familleP1, libelleFamilleP1 } from '@/lib/p1/familles';
+import { PastilleActivite, TON_POSITIF } from '@/components/ui/pastilles';
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { AlertTriangle, BookOpen, CheckCircle2, ChevronRight, Edit, Gauge, Loader2, Plus, Trash2 } from 'lucide-react';
@@ -84,7 +85,7 @@ export function TableauPrestations({ services, activities, schedules, onOuvrir, 
                                 const actif = enVigueur(s);
                                 return (
                                     <TableRow key={s.id} className="cursor-pointer" onClick={() => onOuvrir(s)}>
-                                        <TableCell><Badge variant="outline">{s.type}</Badge></TableCell>
+                                        <TableCell><PastilleActivite code={s.type === 'P1' ? familleP1(s.p1Type)?.code ?? s.type : s.type} type={s.type} /></TableCell>
                                         <TableCell className="font-medium">{libellePrestation(s, activities)}</TableCell>
                                         <TableCell className="text-right">
                                             {s.type === 'P1' && (s.p1Mode === 'acompte' || s.p1Mode === 'releve' || s.p1Mode === 'dju')
@@ -95,7 +96,7 @@ export function TableauPrestations({ services, activities, schedules, onOuvrir, 
                                         <TableCell className="whitespace-nowrap text-sm">{jour(s.startDate)} → {s.endDate ? jour(s.endDate) : '…'}</TableCell>
                                         <TableCell>
                                             {manques.length ? <Badge variant="destructive" title={`Manque : ${manques.join(', ')}`}>Incomplète</Badge>
-                                                : actif ? <Badge variant="secondary">En vigueur</Badge> : <Badge variant="outline">Hors période</Badge>}
+                                                : actif ? <Badge variant="outline" className={TON_POSITIF}>En vigueur</Badge> : <Badge variant="outline">Hors période</Badge>}
                                         </TableCell>
                                     </TableRow>
                                 );
@@ -121,7 +122,7 @@ export function ListePrestations({ services, activities, selection, onSelection,
                     return (
                         <div key={type} className="space-y-1">
                             <div className="flex items-center justify-between px-1">
-                                <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{libelle}</span>
+                                <span className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground"><PastilleActivite code={type} className="px-1.5 py-0 text-[10px]" />{libelle.replace(/^P\d — /, '')}</span>
                                 <Button size="sm" variant="ghost" className="h-6 px-2 text-xs" onClick={() => onAjouter(type)} title={`Ajouter une prestation ${type}`}><Plus className="h-3 w-3" /></Button>
                             </div>
                             {liste.length === 0 && <p className="px-1 text-xs text-muted-foreground">Aucune.</p>}
@@ -131,7 +132,11 @@ export function ListePrestations({ services, activities, selection, onSelection,
                                     <button key={s.id} type="button" onClick={() => onSelection(s)}
                                         className={cn('flex w-full items-center justify-between gap-2 rounded-md border px-2 py-1.5 text-left text-sm transition-colors hover:bg-muted/50',
                                             selection === s.id && 'border-primary bg-primary/5')}>
-                                        <span className="min-w-0 truncate">{libellePrestation(s, activities)}</span>
+                                        {/* P1 : la famille (P1C, P1E, P1A, €€) en pastille, plutôt qu'en fin de libellé tronqué. */}
+                                        <span className="flex min-w-0 items-center gap-1.5">
+                                            {type === 'P1' && familleP1(s.p1Type) && familleP1(s.p1Type)!.code !== 'P1' && <PastilleActivite code={familleP1(s.p1Type)!.code} className="shrink-0 px-1.5 py-0 text-[10px]" />}
+                                            <span className="min-w-0 truncate" title={libellePrestation(s, activities)}>{type === 'P1' ? s.label || activities.find(x => x.id === s.activityId)?.label || s.type : libellePrestation(s, activities)}</span>
+                                        </span>
                                         {manques.length > 0 ? <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-destructive" aria-label={`Incomplète : ${manques.join(', ')}`} />
                                             : !enVigueur(s) && <span className="shrink-0 text-[10px] text-muted-foreground">hors période</span>}
                                     </button>
@@ -180,7 +185,7 @@ export function CompteursDuSite({ meters, derniersReleves, onAjouter, onModifier
                                         <TableCell className={cn('text-sm', ancien && 'font-medium text-amber-700')}>
                                             {dernier ? jour(dernier) : 'Jamais relevé'}{ancien && dernier && ` (> ${JOURS_SANS_RELEVE} j)`}
                                         </TableCell>
-                                        <TableCell><Badge variant={m.status === 'off' ? 'outline' : 'secondary'}>{m.status === 'off' ? 'Hors service' : 'En service'}</Badge></TableCell>
+                                        <TableCell><Badge variant="outline" className={m.status === 'off' ? '' : TON_POSITIF}>{m.status === 'off' ? 'Hors service' : 'En service'}</Badge></TableCell>
                                         <TableCell className="whitespace-nowrap text-right">
                                             <MeterReadingsDialog meter={m} trigger={<Button variant="ghost" size="icon" className="h-8 w-8" title="Relevés" aria-label="Relevés"><BookOpen className="h-4 w-4" /></Button>} />
                                             <P1CompteurDialog meterId={m.id} trigger={<Button variant="ghost" size="icon" className="h-8 w-8" title="Paramétrage P1" aria-label="Paramétrage P1"><Gauge className="h-4 w-4" /></Button>} />

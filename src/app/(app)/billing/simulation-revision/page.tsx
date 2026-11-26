@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { AlertTriangle, Loader2, Play, RotateCcw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { PastilleActivite } from '@/components/ui/pastilles';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -135,7 +136,7 @@ export default function SimulationRevisionPage() {
                                 <table className="w-full max-w-xl text-sm tabular-nums" data-tableau="activites">
                                     <thead><tr className="border-b text-xs text-muted-foreground"><th className="py-2 text-left font-medium">Activité</th><th className="px-2 text-right font-medium">Indices constants</th><th className="px-2 text-right font-medium">Hypothèse</th><th className="pl-2 text-right font-medium">Écart</th></tr></thead>
                                     <tbody>{parActivite.map(a => (
-                                        <tr key={a.activite} className="border-b last:border-0"><td className="py-2 font-medium">{a.activite}</td><td className="px-2 text-right">{eur0(a.base)}</td><td className="px-2 text-right">{eur0(a.simule)}</td><td className={`pl-2 text-right ${a.simule > a.base ? 'text-emerald-700' : a.simule < a.base ? 'text-red-700' : 'text-muted-foreground'}`}>{a.simule !== a.base ? signe(a.simule - a.base) : '—'}</td></tr>
+                                        <tr key={a.activite} className="border-b last:border-0"><td className="py-2"><PastilleActivite code={a.activite} /></td><td className="px-2 text-right">{eur0(a.base)}</td><td className="px-2 text-right">{eur0(a.simule)}</td><td className={`pl-2 text-right ${a.simule > a.base ? 'text-emerald-700' : a.simule < a.base ? 'text-red-700' : 'text-muted-foreground'}`}>{a.simule !== a.base ? signe(a.simule - a.base) : '—'}</td></tr>
                                     ))}</tbody>
                                 </table>
                             </CardContent>
@@ -160,7 +161,7 @@ export default function SimulationRevisionPage() {
                                             <tr key={`${r.cle}|${r.date}`} className="border-b last:border-0">
                                                 <td className="py-2 pr-2">{jourFr(r.date)}</td>
                                                 <td className="px-2"><Link href={`/contracts/${r.contractId}`} className="font-mono text-xs underline">{r.contractNumber}</Link> <span className="text-muted-foreground">{r.clientName}</span></td>
-                                                <td className="px-2">{r.activite} <span className="text-muted-foreground">{r.site}</span></td>
+                                                <td className="px-2"><PastilleActivite code={r.activite} /> <span className="text-muted-foreground">{r.site}</span></td>
                                                 <td className="px-2 text-right">{eur0(r.annuel)}</td>
                                                 <td className="px-2 text-right text-muted-foreground">{coef(r.avant)}</td>
                                                 <td className="px-2 text-right">{coef(r.constant)}</td>

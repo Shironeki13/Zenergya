@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { AlertTriangle, CheckCircle2, Link2, Loader2, Plus, RefreshCw, Trash2, Upload } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
+import { PastilleEnergie } from '@/components/ui/pastilles';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -71,7 +72,7 @@ export default function ContratsEnergiePage() {
         { id: 'site', label: 'Site', tri: r => r.site, cell: r => r.siteId ? <Link href={`/sites/${r.siteId}`} className="block max-w-[240px] truncate text-primary hover:underline" title={r.siteNom ?? r.site} onClick={e => e.stopPropagation()}>{r.siteNom ?? r.site}</Link>
             : <span className="block max-w-[240px] truncate text-muted-foreground" title={`${r.site} — à rattacher à un site`}>{r.site}</span>, exporter: r => r.siteNom ?? r.site },
         { id: 'pdl', label: 'PDL / PCE', tri: r => r.pdl, cell: r => <span className="font-mono text-xs">{r.pdl}</span>, exporter: r => r.pdl },
-        { id: 'energie', label: 'Énergie', tri: r => r.energie, cell: r => LIBELLE_ENERGIE[r.energie], exporter: r => LIBELLE_ENERGIE[r.energie] },
+        { id: 'energie', label: 'Énergie', tri: r => r.energie, cell: r => <PastilleEnergie energie={r.energie} libelle={LIBELLE_ENERGIE[r.energie]} />, exporter: r => LIBELLE_ENERGIE[r.energie] },
         { id: 'fournisseur', label: 'Fournisseur', tri: r => r.fournisseur, cell: r => <span>{r.fournisseur || '—'}<span className="block max-w-[180px] truncate text-xs text-muted-foreground" title={r.numeroContrat}>{r.numeroContrat}</span></span>, exporter: r => `${r.fournisseur} ${r.numeroContrat}`.trim() },
         { id: 'fin', label: 'Couvert jusqu\'au', tri: r => r.finCouverture ?? '', cell: r => <span>{fr(r.finCouverture)}{r.jours !== null && r.statut === 'a_renouveler' ? <span className="block text-xs text-amber-700">dans {r.jours} jour{r.jours > 1 ? 's' : ''}</span> : r.suivant ? <span className="block text-xs text-muted-foreground">{r.suivant}</span> : null}</span>, exporter: r => r.finCouverture ?? '' },
         { id: 'agence', label: 'Agence', tri: r => r.agence, cell: r => r.agence || '—', exporter: r => r.agence },
@@ -158,7 +159,7 @@ export default function ContratsEnergiePage() {
                                     <table className="w-full min-w-[700px] text-sm tabular-nums" data-tableau="synthese">
                                         <thead><tr className="border-b text-xs text-muted-foreground"><th className="py-2 text-left font-medium">Énergie</th><th className="px-2 text-left font-medium">Agence</th><th className="px-2 text-left font-medium">Client</th>{base.synthese.annees.map(a => <th key={a} className="px-2 text-right font-medium">{a}</th>)}</tr></thead>
                                         <tbody>{base.synthese.lignes.map((l, i) => (
-                                            <tr key={i} className="border-b last:border-0"><td className="py-1.5">{LIBELLE_ENERGIE[l.energie]}</td><td className="px-2">{l.agence || '—'}</td><td className="px-2">{l.client}</td>{l.parAnnee.map((n, j) => <td key={j} className={`px-2 text-right ${n ? '' : 'text-muted-foreground'}`}>{n || '—'}</td>)}</tr>
+                                            <tr key={i} className="border-b last:border-0"><td className="py-1.5"><PastilleEnergie energie={l.energie} libelle={LIBELLE_ENERGIE[l.energie]} /></td><td className="px-2">{l.agence || '—'}</td><td className="px-2">{l.client}</td>{l.parAnnee.map((n, j) => <td key={j} className={`px-2 text-right ${n ? '' : 'text-muted-foreground'}`}>{n || '—'}</td>)}</tr>
                                         ))}</tbody>
                                         <tfoot><tr className="border-t font-semibold"><td className="py-2" colSpan={3}>Total</td>{base.synthese.totaux.map((n, j) => <td key={j} className="px-2 text-right">{n}</td>)}</tr></tfoot>
                                     </table>
