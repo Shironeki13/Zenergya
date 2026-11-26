@@ -2,7 +2,7 @@
 
 import { AccesRefuse, useHorsPerimetre } from '@/components/perimetre/acces';
 import { VieContrat } from '@/components/contracts/vie-contrat';
-import { PointDocument } from '@/components/ui/pastilles';
+import { PastilleMarche, PointDocument } from '@/components/ui/pastilles';
 import { ControleCible, type CibleValidation } from '@/components/contracts/validation/bouton-validation';
 import type { MailContrat } from '@/lib/notifications/trace';
 import { lireServeur } from '@/services/lecture';
@@ -521,7 +521,7 @@ export default function ContractDetailPage() {
               <CardContent className="space-y-5 text-sm">
                 <BlocInfos titre="Le contrat" icone={<FileText className="h-4 w-4" />}>
                   <LigneInfo libelle="Libellé">{contract.label || <Vide />}</LigneInfo>
-                  {contract.marketType && <LigneInfo libelle="Type de marché">{contract.marketType}</LigneInfo>}
+                  {contract.marketType && <LigneInfo libelle="Type de marché"><PastilleMarche type={contract.marketType} /></LigneInfo>}
                   <LigneInfo libelle="Période">
                     du {new Date(contract.startDate).toLocaleDateString('fr-FR', PARIS)} au {new Date(contract.endDate).toLocaleDateString('fr-FR', PARIS)}
                     <span className="text-muted-foreground"> ({dureeContrat(contract.startDate, contract.endDate)})</span>

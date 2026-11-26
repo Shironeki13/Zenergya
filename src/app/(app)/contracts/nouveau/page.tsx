@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Check, ChevronLeft, ChevronRight, Loader2, RotateCcw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { PastilleMarche } from '@/components/ui/pastilles';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
 import { useData } from '@/context/data-context';
@@ -239,7 +240,7 @@ function Recapitulatif({ b, refs, erreurs, onModifier }: { b: Brouillon; refs: R
             </Bloc>
             <Bloc e="contrat">
                 « {c.label || '—'} », du {c.startDate ? new Date(c.startDate).toLocaleDateString('fr-FR') : '—'} au {c.endDate ? new Date(c.endDate).toLocaleDateString('fr-FR') : '—'}
-                {c.marketType && <> · {c.marketType}</>} · activités : {c.activityIds.map(id => refs.activities.find(a => a.id === id)?.code).filter(Boolean).join(', ') || '—'}
+                {c.marketType && <> · <PastilleMarche type={c.marketType} /></>} · activités : {c.activityIds.map(id => refs.activities.find(a => a.id === id)?.code).filter(Boolean).join(', ') || '—'}
                 {' '}· facturation {c.invoicingType === 'global' ? 'globale' : 'par site'}{c.scheduleId && <>, {nom(c.scheduleId, refs.schedules).toLowerCase()}</>}
                 {c.billingManagerId && <> · responsable : {(() => { const u = refs.users.find(x => x.id === c.billingManagerId); return u ? [u.firstName, u.name].filter(Boolean).join(' ') : '—'; })()}</>}
             </Bloc>

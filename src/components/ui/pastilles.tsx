@@ -62,3 +62,34 @@ export function PastilleEnergie({ energie, libelle, className }: { energie: stri
 
 /** État favorable (en vigueur, complet, en service) : pastille verte. */
 export const TON_POSITIF = 'border-emerald-300 bg-emerald-50 text-emerald-800';
+
+/** Type de marché : une couleur par famille (comptage, température, combustible et prestation, forfait), public ou privé. */
+const TON_MARCHE: Record<string, string> = {
+    MC: 'border-sky-300 bg-sky-50 text-sky-800', MCI: 'border-sky-300 bg-sky-50 text-sky-800',
+    MT: 'border-violet-300 bg-violet-50 text-violet-800', MTI: 'border-violet-300 bg-violet-50 text-violet-800',
+    CP: 'border-teal-300 bg-teal-50 text-teal-800', CPI: 'border-teal-300 bg-teal-50 text-teal-800',
+    PF: 'border-rose-300 bg-rose-50 text-rose-800', PFI: 'border-rose-300 bg-rose-50 text-rose-800',
+    MF: 'border-lime-300 bg-lime-50 text-lime-800',
+    PUBLIC: 'border-indigo-300 bg-indigo-50 text-indigo-800', PRIVE: 'border-amber-300 bg-amber-50 text-amber-800',
+};
+const cleMarche = (type: string) => {
+    const t = type.normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase().trim();
+    if (t.includes('PUBLIC')) return 'PUBLIC';
+    if (t.includes('PRIVE')) return 'PRIVE';
+    return t.split(/\s+/)[0];   // « CP révisé » se colore comme CP
+};
+export function PastilleMarche({ type, className }: { type?: string | null; className?: string }) {
+    if (!type?.trim()) return null;
+    return <Badge variant="outline" className={cn('whitespace-nowrap', TON_MARCHE[cleMarche(type)] ?? 'border-slate-300 bg-slate-50 text-slate-700', className)}>{type}</Badge>;
+}
+
+const CONTACTS: Record<string, { libelle: string; ton: string }> = {
+    principal: { libelle: 'Principal', ton: 'border-blue-300 bg-blue-50 text-blue-800' },
+    technique: { libelle: 'Technique', ton: 'border-orange-300 bg-orange-50 text-orange-800' },
+    facturation: { libelle: 'Facturation', ton: 'border-emerald-300 bg-emerald-50 text-emerald-800' },
+    autre: { libelle: 'Autre', ton: 'border-slate-300 bg-slate-50 text-slate-700' },
+};
+export function PastilleContact({ type, className }: { type?: string | null; className?: string }) {
+    const c = CONTACTS[type ?? ''] ?? { libelle: type || 'Autre', ton: CONTACTS.autre.ton };
+    return <Badge variant="outline" className={cn('whitespace-nowrap', c.ton, className)}>{c.libelle}</Badge>;
+}

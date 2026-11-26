@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { AlertTriangle, CheckCircle2, Link2, Loader2, Plus, RefreshCw, Trash2, Upload } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
-import { PastilleEnergie } from '@/components/ui/pastilles';
+import { PastilleEnergie, PastilleMarche } from '@/components/ui/pastilles';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -76,7 +76,7 @@ export default function ContratsEnergiePage() {
         { id: 'fournisseur', label: 'Fournisseur', tri: r => r.fournisseur, cell: r => <span>{r.fournisseur || '—'}<span className="block max-w-[180px] truncate text-xs text-muted-foreground" title={r.numeroContrat}>{r.numeroContrat}</span></span>, exporter: r => `${r.fournisseur} ${r.numeroContrat}`.trim() },
         { id: 'fin', label: 'Couvert jusqu\'au', tri: r => r.finCouverture ?? '', cell: r => <span>{fr(r.finCouverture)}{r.jours !== null && r.statut === 'a_renouveler' ? <span className="block text-xs text-amber-700">dans {r.jours} jour{r.jours > 1 ? 's' : ''}</span> : r.suivant ? <span className="block text-xs text-muted-foreground">{r.suivant}</span> : null}</span>, exporter: r => r.finCouverture ?? '' },
         { id: 'agence', label: 'Agence', tri: r => r.agence, cell: r => r.agence || '—', exporter: r => r.agence },
-        { id: 'marche', label: 'Marché', masquee: true, tri: r => r.typeMarche, cell: r => r.typeMarche || '—', exporter: r => r.typeMarche },
+        { id: 'marche', label: 'Marché', masquee: true, tri: r => r.typeMarche, cell: r => r.typeMarche ? <PastilleMarche type={r.typeMarche} /> : '—', exporter: r => r.typeMarche },
         { id: 'indexation', label: 'Indexation achat', masquee: true, tri: r => r.indexationAchat, cell: r => r.indexationAchat || '—', exporter: r => r.indexationAchat },
         { id: 'prix', label: 'Prix molécule', align: 'right', masquee: true, tri: r => r.prixMolecule ?? 0, cell: r => (r.prixMolecule !== null ? `${eur(r.prixMolecule)}/MWh` : '—'), exporter: r => r.prixMolecule ?? '' },
         { id: 'centre', label: 'Centre de coût', masquee: true, tri: r => r.centreCout, cell: r => <span className="font-mono text-xs">{r.centreCout || '—'}</span>, exporter: r => r.centreCout },
@@ -261,7 +261,7 @@ function FichePoint({ id, aujourdhui, onClose, onChange }: { id: string | null; 
                         <div className="grid gap-x-6 gap-y-1 sm:grid-cols-2">
                             {([['Agence', p.agence], ['Type de marché', p.typeMarche], ['Centre de coût', p.centreCout], ['Société', p.societe], ['Profil', p.profil], ['Tarif / segment', p.segment],
                                 ['CAR / puissance', p.car != null ? p.car.toLocaleString('fr-FR') : ''], ['Contrat client', p.debutClient || p.finClient ? `${fr(p.debutClient)} → ${fr(p.finClient)}` : '']] as [string, string | undefined][])
-                                .filter(([, v]) => v).map(([l, v]) => <div key={l} className="flex justify-between gap-3"><span className="text-muted-foreground">{l}</span><span className="text-right font-medium">{v}</span></div>)}
+                                .filter(([, v]) => v).map(([l, v]) => <div key={l} className="flex justify-between gap-3"><span className="text-muted-foreground">{l}</span><span className="text-right font-medium">{l === 'Type de marché' ? <PastilleMarche type={v} /> : v}</span></div>)}
                         </div>
 
                         <div className="rounded-md border p-3" data-bloc="rattachement">

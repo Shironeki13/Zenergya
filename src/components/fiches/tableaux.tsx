@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { Edit, Mail, Phone, PlusCircle, Trash2, Upload, User } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
+import { PastilleContact } from '@/components/ui/pastilles';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -11,8 +12,6 @@ import { enVigueur, manquesPrestation } from '@/components/sites/fiche-site';
 import type { Contact, Contract, Invoice, Service, Site, User as Utilisateur } from '@/lib/types';
 
 /** Tableaux des fiches contrat et client : sites, factures, contrats, contacts. */
-
-const TYPES_CONTACT: Record<string, string> = { principal: 'Principal', technique: 'Technique', facturation: 'Facturation', autre: 'Autre' };
 
 export function CarteContacts({ contacts, lienClient }: { contacts: Contact[]; lienClient?: string }) {
     return (
@@ -30,7 +29,7 @@ export function CarteContacts({ contacts, lienClient }: { contacts: Contact[]; l
                         <div className="flex flex-wrap items-center gap-1.5">
                             <User className="h-3.5 w-3.5 text-muted-foreground" />
                             <span className="font-medium">{c.name || '—'}</span>
-                            <Badge variant={c.type === 'facturation' ? 'secondary' : 'outline'} className="py-0 text-[10px]">{TYPES_CONTACT[c.type] ?? c.type}</Badge>
+                            <PastilleContact type={c.type} className="py-0 text-[10px]" />
                             {c.role && <span className="text-xs text-muted-foreground">· {c.role}</span>}
                         </div>
                         {c.email && <p className="flex items-center gap-1.5 pl-5 text-xs text-muted-foreground"><Mail className="h-3 w-3" /><a href={`mailto:${c.email}`} className="hover:underline">{c.email}</a></p>}

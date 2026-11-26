@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { AlertTriangle, CheckCircle2, ChevronDown, ChevronUp, ExternalLink, History, Loader2, Plus } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
+import { PastilleMarche } from '@/components/ui/pastilles';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -140,7 +141,7 @@ export function P1ParametragePanel({ siteId, defaultOpen = false }: { siteId: st
                 <CardTitle className="flex items-center justify-between text-base">
                     <span>Paramétrage P1</span>
                     <span className="flex items-center gap-2">
-                        {reste.typeMarche ? <Badge variant="outline">{reste.typeMarche}</Badge> : null}
+                        <PastilleMarche type={reste.typeMarche} />
                         {!reste.suivi ? <Badge variant="secondary">Hors suivi P1</Badge>
                             : reste.calculable ? <Badge className="gap-1"><CheckCircle2 className="h-3 w-3" />Calculable</Badge>
                             : <Badge variant="destructive" className="gap-1"><AlertTriangle className="h-3 w-3" />{reste.manque.length} à renseigner</Badge>}
