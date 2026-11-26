@@ -1,4 +1,6 @@
 import 'server-only';
+import { manquesAdressage } from '@/lib/billing/adressage';
+import { listerTiers } from './tiers-admin';
 import { FieldPath } from 'firebase-admin/firestore';
 import { adminDb } from '@/lib/firebase-admin';
 import {
@@ -322,6 +324,8 @@ export type ApercuFacturation = {
     paiement: string | null;
     /** Ce qui a déjà été facturé sur le contrat : base du contrôle avant émission. */
     precedent: Precedent;
+    /** Adressage incomplet (représentant ou payeur sans adresse connue) : à regarder avant d'émettre. */
+    adressage?: string[];
 };
 
 export async function apercuFacturation(contractId: string, jusquAu?: string): Promise<ApercuFacturation> {
@@ -344,6 +348,7 @@ export async function apercuFacturation(contractId: string, jusquAu?: string): P
         contrat, jusquAu: until, prochaine, echeances: echeancesDues(due), blocages: (due.bloquees ?? []).length ? [] : due.errors, avertissements: due.warnings,
         paiement: (term as { deadline?: string } | null)?.deadline?.trim() || null,
         precedent: precedentDe(invoices as Parameters<typeof precedentDe>[0]),
+        ...(client && (client.representedBy?.trim() || client.payer?.trim()) && { adressage: manquesAdressage(client, await listerTiers()) }),
     };
 }
 

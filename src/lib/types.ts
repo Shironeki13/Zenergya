@@ -494,6 +494,10 @@ export type TrusteeChange = ValidationDocument & {
     createdBy: string;
     currentRepresentative?: string;
     newRepresentative: string;
+    /** Adresse du nouveau syndic : celle où partiront les factures (reportée dans l'annuaire des tiers à la validation). */
+    newAddress?: string;
+    newPostalCode?: string;
+    newCity?: string;
     contactEmail?: string;
     effectiveDate: string;
     documentUrl?: string;

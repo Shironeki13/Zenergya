@@ -6,6 +6,7 @@ import {
     valeursDocument, type ElementAValider, type TypeValidation, type ValeurChamp,
 } from '@/lib/validations';
 import { repriseP1Contrat } from '@/services/p1-reprise-admin';
+import { completerTiers } from '@/services/tiers-admin';
 import { notifierDocument } from '@/services/notifications-contrats';
 import type { SessionUser } from '@/lib/auth/server';
 
@@ -84,6 +85,7 @@ export async function traiterValidation(type: TypeValidation, id: string, choix:
     const ref = adminDb.collection(coll).doc(String(id));
     const maintenant = new Date().toISOString();
     let contratValide: string | null = null;
+    let syndicValide: Record<string, ValeurChamp> | null = null;
     await adminDb.runTransaction(async tx => {
         const snap = await tx.get(ref);
         if (!snap.exists) throw new Error('Document introuvable.');
@@ -139,6 +141,7 @@ export async function traiterValidation(type: TypeValidation, id: string, choix:
         if ((type === 'avenant' || type === 'os') && v.impactsDuration && v.newEndDate) tx.update(contractRef, { endDate: Timestamp.fromDate(new Date(String(v.newEndDate))) });
         if (type === 'reconduction' && v.newEndDate) tx.update(contractRef, { endDate: Timestamp.fromDate(new Date(String(v.newEndDate))) });
         if (type === 'resiliation') tx.update(contractRef, { status: 'Résilié', terminationDate: new Date(String(v.effectiveDate)).toISOString() });
+        if (type === 'syndic') syndicValide = v;
         if (type === 'syndic' || type === 'be') {
             const clientRef = adminDb.collection('clients').doc(String(contrat.get('clientId')));
             tx.update(clientRef, type === 'syndic'
@@ -147,6 +150,13 @@ export async function traiterValidation(type: TypeValidation, id: string, choix:
         }
         tx.update(ref, commun);
     });
+    // Nouveau syndic : sa fiche de tiers est créée ou complétée (adresse d'envoi des factures), sans rien écraser.
+    if (syndicValide) {
+        const s = syndicValide as Record<string, ValeurChamp>;
+        const t = (k: string) => (typeof s[k] === 'string' ? (s[k] as string) : '');
+        await completerTiers({ name: t('newRepresentative'), quality: 'syndic', address: t('newAddress'), postalCode: t('newPostalCode'), city: t('newCity'), email: t('contactEmail') }, user.email)
+            .catch(e => console.error('[validation] fiche du syndic non mise à jour', e));
+    }
     // Contrat validé : valeurs P1 de la création reprises dans le paramétrage daté de ses sites.
     if (contratValide) await repriseP1Contrat(contratValide, user.email);
     // Décision notifiée (déposant, responsable de facturation…) ; une résiliation validée a aussi sa propre alerte.

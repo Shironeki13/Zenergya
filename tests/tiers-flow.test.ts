@@ -48,3 +48,25 @@ test('renommage reporté sur les clients ; suppression refusée tant qu\'un clie
     await supprimerTiers(syndicId);
     assert.deepEqual(await listerTiers(), []);
 });
+
+test('changement de syndic validé : la fiche est créée, puis complétée sans écraser une adresse déjà saisie', async () => {
+    const { completerTiers, annuaireTiers } = await import('../src/services/tiers-admin');
+    assert.equal(await completerTiers({ name: ' ' }, 't@x'), null);
+    const cree = await completerTiers({ name: 'Nouveau Syndic Test', quality: 'syndic', email: 'a@example.com' }, 't@x');
+    assert.equal(cree?.address, '');
+    // Complément : l'adresse arrive d'un bloc, l'e-mail déjà connu est gardé.
+    const complete = await completerTiers({ name: 'nouveau syndic test', address: '5 rue A', postalCode: '69001', city: 'Lyon', email: 'b@example.com' }, 't@x');
+    assert.deepEqual([complete?.id, complete?.address, complete?.city, complete?.email], [cree!.id, '5 rue A', 'Lyon', 'a@example.com']);
+    const inchange = await completerTiers({ name: 'Nouveau Syndic Test', address: '9 rue Z', postalCode: '75001', city: 'Paris' }, 't@x');
+    assert.deepEqual([inchange?.address, inchange?.city], ['5 rue A', 'Lyon']);
+
+    // Annuaire : noms cités sans fiche en tête, comptés dans le périmètre demandé.
+    await adminDb.collection('clients').doc('tiers-c1').update({ representedBy: 'Nouveau Syndic Test' });
+    await adminDb.collection('clients').doc('tiers-c3').set({ name: 'SDC Tiers Trois', representedBy: 'Syndic Sans Fiche Test' });
+    const tous = (await annuaireTiers(null)).filter(l => /Test$/.test(l.name));
+    assert.deepEqual(tous.map(l => [l.name, !!l.tiers, l.complet, l.representes, l.payes]), [
+        ['Payeur Tiers Test', false, false, 0, 1], ['Syndic Sans Fiche Test', false, false, 1, 0], ['Nouveau Syndic Test', true, true, 1, 0],
+    ]);
+    const restreint = (await annuaireTiers(new Set(['tiers-c1']))).filter(l => /Test$/.test(l.name));
+    assert.deepEqual(restreint.map(l => [l.name, l.representes, l.clients.map(c => c.name)]), [['Nouveau Syndic Test', 1, ['SDC Tiers Test']]]);
+});

@@ -98,6 +98,9 @@ export const CHAMPS_VALIDATION: Record<TypeValidation, DefChamp[]> = {
     syndic: [
         { cle: 'currentRepresentative', libelle: 'Syndic sortant', type: 'texte' },
         { cle: 'newRepresentative', libelle: 'Nouveau syndic', type: 'texte', requis: true },
+        { cle: 'newAddress', libelle: 'Adresse du nouveau syndic', type: 'texte' },
+        { cle: 'newPostalCode', libelle: 'Code postal du syndic', type: 'texte' },
+        { cle: 'newCity', libelle: 'Ville du syndic', type: 'texte' },
         { cle: 'contactEmail', libelle: 'E-mail de contact', type: 'email' },
         { cle: 'effectiveDate', libelle: "Date d'effet", type: 'date', requis: true },
     ],

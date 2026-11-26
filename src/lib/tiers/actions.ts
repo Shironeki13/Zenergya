@@ -2,7 +2,8 @@
 
 import { requireUser } from '@/lib/auth/server';
 import type { Tiers } from '@/lib/billing/adressage';
-import { enregistrerTiers, listerTiers, supprimerTiers, type SaisieTiers } from '@/services/tiers-admin';
+import { gardePerimetre } from '@/lib/auth/perimetre-server';
+import { annuaireTiers, enregistrerTiers, listerTiers, supprimerTiers, type LigneAnnuaire, type SaisieTiers } from '@/services/tiers-admin';
 
 /** Tiers d'adressage des factures (syndics, payeurs) : un annuaire commun à tous les utilisateurs connectés. */
 
@@ -15,3 +16,5 @@ const run = async <T,>(f: (u: Awaited<ReturnType<typeof requireUser>>) => Promis
 export const listerTiersAction = async (): Promise<Result<Tiers[]>> => run(() => listerTiers());
 export const enregistrerTiersAction = async (id: string | null, saisie: SaisieTiers): Promise<Result<Tiers>> => run(u => enregistrerTiers(id, saisie, u.email));
 export const supprimerTiersAction = async (id: string): Promise<Result<null>> => run(async () => { await supprimerTiers(id); return null; });
+/** Annuaire avec, pour chaque tiers, les clients du périmètre de l'utilisateur qui le citent. */
+export const annuaireTiersAction = async (): Promise<Result<LigneAnnuaire[]>> => run(async u => annuaireTiers(await gardePerimetre(u).clients()));

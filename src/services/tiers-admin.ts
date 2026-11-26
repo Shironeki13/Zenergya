@@ -63,3 +63,57 @@ export async function supprimerTiers(id: string): Promise<void> {
     if (cite.length) throw new Error(`Ce tiers est cité par ${cite.length} client(s), dont « ${cite[0].get('name')} ».`);
     await ref.delete();
 }
+
+/**
+ * Crée la fiche d'un tiers cité (nouveau syndic d'un changement validé) ou complète celle qui existe : seuls les
+ * champs encore vides sont renseignés, une adresse déjà saisie n'est jamais écrasée.
+ */
+export async function completerTiers(saisie: SaisieTiers, par: string): Promise<Tiers | null> {
+    const name = texte(saisie.name);
+    if (name.length < 2) return null;
+    const existant = (await listerTiers()).find(t => cleTiers(t.name) === cleTiers(name));
+    if (!existant) return enregistrerTiers(null, { ...saisie, name }, par);
+    const { id, ...actuel } = existant;
+    // L'adresse se complète d'un bloc : pas de ville d'une source sous la rue d'une autre.
+    const adresse = !texte(actuel.address) && !texte(actuel.city) && texte(saisie.address) && texte(saisie.city)
+        ? { address: texte(saisie.address), postalCode: texte(saisie.postalCode), city: texte(saisie.city) } : {};
+    const autres = Object.fromEntries((['quality', 'email', 'phone', 'siret'] as const).filter(k => !texte(actuel[k]) && texte(saisie[k])).map(k => [k, texte(saisie[k])]));
+    if (!Object.keys(adresse).length && !Object.keys(autres).length) return existant;
+    return enregistrerTiers(id, { ...actuel, ...adresse, ...autres }, par);
+}
+
+export type LigneAnnuaire = {
+    /** Fiche du tiers ; absente pour un nom cité par des clients sans fiche. */
+    tiers: Tiers | null;
+    name: string;
+    representes: number;
+    payes: number;
+    /** Quelques clients qui le citent (les premiers par ordre alphabétique). */
+    clients: { id: string; name: string }[];
+    complet: boolean;
+};
+
+/**
+ * Annuaire : les tiers enregistrés et les noms cités par des clients sans fiche, avec le nombre de clients concernés.
+ * `visibles` restreint les clients comptés et nommés au périmètre de l'utilisateur (null : tous).
+ */
+export async function annuaireTiers(visibles: Set<string> | null): Promise<LigneAnnuaire[]> {
+    const [tiers, clients] = await Promise.all([listerTiers(), adminDb.collection('clients').select('name', 'representedBy', 'payer').get()]);
+    const lignes = new Map<string, LigneAnnuaire>();
+    for (const t of tiers) lignes.set(cleTiers(t.name), { tiers: t, name: t.name, representes: 0, payes: 0, clients: [], complet: !!(t.address && t.city) });
+    const cites = clients.docs.filter(c => !visibles || visibles.has(c.id)).map(c => ({ id: c.id, name: texte(c.get('name')), representedBy: texte(c.get('representedBy')), payer: texte(c.get('payer')) }))
+        .sort((a, b) => a.name.localeCompare(b.name, 'fr'));
+    for (const c of cites) {
+        for (const [champ, compteur] of [['representedBy', 'representes'], ['payer', 'payes']] as const) {
+            const nom = c[champ];
+            if (!nom) continue;
+            const k = cleTiers(nom);
+            const l = lignes.get(k) ?? { tiers: null, name: nom, representes: 0, payes: 0, clients: [], complet: false };
+            l[compteur]++;
+            if (l.clients.length < 5 && !l.clients.some(x => x.id === c.id)) l.clients.push({ id: c.id, name: c.name });
+            lignes.set(k, l);
+        }
+    }
+    // À compléter d'abord (les plus cités en tête), puis l'annuaire par ordre alphabétique.
+    return [...lignes.values()].sort((a, b) => Number(a.complet) - Number(b.complet) || (a.complet ? 0 : (b.representes + b.payes) - (a.representes + a.payes)) || a.name.localeCompare(b.name, 'fr'));
+}

@@ -103,7 +103,10 @@ function Facturation() {
     const bloquees = dues.filter(e => e.blocage).length;
     const prochain = file.contrats ? suivant(file.contrats, contratId) : null;
     // Contrôle avant émission : écarts avec ce qui a déjà été facturé. Une alerte forte demande une confirmation.
-    const alertes = useMemo(() => (apercu ? controlesEmission(dues, selection, apercu.precedent, aujourdhui()) : []), [apercu, dues, selection]);
+    const alertes = useMemo(() => (apercu ? [
+        ...controlesEmission(dues, selection, apercu.precedent, aujourdhui()),
+        ...(selection.length ? (apercu.adressage ?? []).map((texte, i) => ({ id: `adressage-${i}`, gravite: 'attention' as const, texte })) : []),
+    ] : []), [apercu, dues, selection]);
     const aConfirmer = alertes.some(a => a.gravite === 'forte');
     const cleAlertes = alertes.filter(a => a.gravite === 'forte').map(a => a.id).join('|');
     const [confirme, setConfirme] = useState('');

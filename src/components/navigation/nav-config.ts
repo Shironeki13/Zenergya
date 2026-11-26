@@ -1,7 +1,7 @@
 import {
     AlertTriangle, Building, Calculator, CircleDollarSign, Copy, FileSignature, FileText, Gauge, Home, KeyRound, LayoutDashboard,
     Library, ListChecks, MapPin, MessageSquareQuote, MinusCircle, Scale, Send, Settings, ShieldCheck, Store, TrendingUp, Upload, Users,
-    Network, ShoppingCart, Clock, BellRing, type LucideIcon,
+    Network, ShoppingCart, Clock, BellRing, Contact, type LucideIcon,
 } from 'lucide-react';
 
 import { accesRoute } from '@/lib/perimetre';
@@ -27,6 +27,7 @@ export const NAV_GROUPS: NavGroup[] = [
     {
         id: 'clients', label: 'Clients et contrats', icon: Building, ton: 'blue', items: [
             { href: '/clients', label: 'Clients', icon: Building, keywords: 'prospects fiches' },
+            { href: '/clients/tiers', label: 'Syndics et payeurs', icon: Contact, keywords: 'tiers représentant syndic payeur adressage adresse facture annuaire' },
             { href: '/contracts', label: 'Contrats', icon: FileSignature },
             { href: '/sites', label: 'Sites', icon: MapPin },
             { href: '/contracts/library', label: 'Contrathèque', icon: Library, keywords: 'documents avenants résiliations reconductions' },

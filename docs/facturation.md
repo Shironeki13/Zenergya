@@ -154,6 +154,12 @@ l'adresse du client : la fiche client le signale.
 
 L'adressage est résolu à la génération du PDF (`clientBlock`, `src/services/document-archive.ts`) : il est donc figé
 dans la copie archivée à l'émission, et un changement de syndic ne modifie pas les factures déjà émises.
+**Annuaire** (Clients et contrats › Syndics et payeurs) : les tiers enregistrés et les noms cités par des clients
+sans fiche, ceux sans adresse en tête avec le nombre de clients concernés ; on y renseigne une adresse pour tous les
+clients d'un coup. **Changement de syndic** : le dépôt propose les syndics connus et demande l'adresse d'un nouveau ;
+à la validation, la fiche du tiers est créée ou complétée (une adresse déjà saisie n'est jamais écrasée).
+**Avant émission** : la facturation manuelle signale un représentant ou un payeur sans adresse connue.
+
 Calcul : `src/lib/billing/adressage.ts`. Non couvert : l'adresse de facturation électronique (celle du client) et les
 relances, qui restent adressées au client.
 

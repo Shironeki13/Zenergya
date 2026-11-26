@@ -78,8 +78,11 @@ test('corrections : appliquées, tracées (avant, après, auteur), effets calcul
     assert.ok(av.controledFields.includes('impactP1'));
     assert.equal((await get('contracts', 'va-k')).endDate.toDate().toISOString().slice(0, 10), '2028-09-30');
     // Syndic corrigé : le client reçoit la valeur corrigée.
-    await valider('syndic', 'va-sy', { corrections: { newRepresentative: 'Foncia Lyon' } });
+    await valider('syndic', 'va-sy', { corrections: { newRepresentative: 'Foncia Lyon', newAddress: '10 rue du Syndic', newPostalCode: '69002', newCity: 'Lyon' } });
     assert.equal((await get('clients', 'va-c')).representedBy, 'Foncia Lyon');
+    // Sa fiche de tiers est créée avec l'adresse : c'est là que partiront les factures.
+    const fiche = (await adminDb.collection('tiers').where('name', '==', 'Foncia Lyon').get()).docs.map(d => d.data());
+    assert.deepEqual(fiche.map(t => [t.quality, t.address, t.postalCode, t.city]), [['syndic', '10 rue du Syndic', '69002', 'Lyon']]);
 });
 
 test('validation sans correction : effets sur le contrat et le client ; pas deux fois', async () => {

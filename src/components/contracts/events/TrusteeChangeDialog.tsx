@@ -15,9 +15,14 @@ import { createTrusteeChange } from "@/services/firestore";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2 } from "lucide-react";
 import { useData } from "@/context/data-context";
+import { trouverTiers, type Tiers } from "@/lib/billing/adressage";
+import { listerTiersAction } from "@/lib/tiers/actions";
 
 const formSchema = z.object({
     newRepresentative: z.string().min(1, "Nouveau syndic requis"),
+    newAddress: z.string().optional(),
+    newPostalCode: z.string().optional(),
+    newCity: z.string().optional(),
     contactEmail: z.string().email("Email invalide").optional().or(z.literal('')),
     effectiveDate: z.string().min(1, "Date requise"),
 });
@@ -52,10 +57,20 @@ export function TrusteeChangeDialog({ contractId, open, onOpenChange, onSuccess 
         resolver: zodResolver(formSchema),
         defaultValues: {
             newRepresentative: "",
+            newAddress: "", newPostalCode: "", newCity: "",
             contactEmail: "",
             effectiveDate: new Date().toISOString().split('T')[0],
         },
     });
+
+    // Annuaire des tiers : un syndic déjà connu apporte son adresse.
+    const [tiers, setTiers] = useState<Tiers[]>([]);
+    useEffect(() => { if (open) void listerTiersAction().then(r => { if (r.success) setTiers(r.data); }); }, [open]);
+    const nomSaisi = form.watch('newRepresentative');
+    const connu = trouverTiers(tiers, nomSaisi);
+    const adresseConnue = !!(connu?.address && connu?.city);
+    const contratChoisi = contracts.find(c => c.id === selectedContractId);
+    const sortant = clients.find(c => c.id === contratChoisi?.clientId)?.representedBy?.trim() ?? '';
 
     async function onSubmit(values: z.infer<typeof formSchema>) {
         if (!selectedContractId) return;
@@ -67,12 +82,13 @@ export function TrusteeChangeDialog({ contractId, open, onOpenChange, onSuccess 
             const document = await deposerPiece(piece, selectedContractId, 'changements-syndic');
             await createTrusteeChange({
                 contractId: selectedContractId,
-                newRepresentative: values.newRepresentative,
+                newRepresentative: connu?.name ?? values.newRepresentative.trim(),
+                ...(values.newAddress?.trim() && values.newCity?.trim() && { newAddress: values.newAddress.trim(), newPostalCode: values.newPostalCode?.trim() ?? '', newCity: values.newCity.trim() }),
                 contactEmail: values.contactEmail,
                 effectiveDate: values.effectiveDate,
                 createdAt: new Date().toISOString(),
                 createdBy: currentUser?.email ?? 'inconnu', ...document, validationStatus: 'pending_validation',
-                currentRepresentative: "Ancien Syndic", // TODO: Fetch current
+                ...(sortant && { currentRepresentative: sortant }),
             });
             toast({ title: "Changement de syndic enregistré", description: "Enregistré, en attente de validation par un administrateur." });
             form.reset();
@@ -91,7 +107,7 @@ export function TrusteeChangeDialog({ contractId, open, onOpenChange, onSuccess 
 
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
-            <DialogContent className="sm:max-w-[500px]">
+            <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-[500px]">
                 <DialogHeader>
                     <DialogTitle>Changement de Syndic</DialogTitle>
                 </DialogHeader>
@@ -133,12 +149,34 @@ export function TrusteeChangeDialog({ contractId, open, onOpenChange, onSuccess 
                                     <FormItem>
                                         <FormLabel>Nouveau Syndic</FormLabel>
                                         <FormControl>
-                                            <Input placeholder="Nom du syndic" {...field} />
+                                            <Input placeholder="Nom du syndic" list="syndics-connus" autoComplete="off" {...field} />
                                         </FormControl>
+                                        <datalist id="syndics-connus">{tiers.map(t => <option key={t.id} value={t.name}>{[t.quality, t.city].filter(Boolean).join(' · ')}</option>)}</datalist>
+                                        {sortant && <p className="text-xs text-muted-foreground">Syndic actuel : {sortant}</p>}
                                         <FormMessage />
                                     </FormItem>
                                 )}
                             />
+                            {adresseConnue ? (
+                                <p data-syndic="connu" className="rounded-md border border-emerald-300 bg-emerald-50 px-2.5 py-1.5 text-xs text-emerald-900">
+                                    Syndic connu : les factures partiront au {[connu!.address, `${connu!.postalCode ?? ''} ${connu!.city}`.trim()].join(', ')}.
+                                </p>
+                            ) : (
+                                <div className="space-y-2 rounded-md border p-3" data-syndic="adresse">
+                                    <p className="text-xs text-muted-foreground">Adresse du nouveau syndic : c&apos;est là que partiront les factures. Sans elle, elles restent adressées à la copropriété.</p>
+                                    <FormField control={form.control} name="newAddress" render={({ field }) => (
+                                        <FormItem><FormLabel>Adresse</FormLabel><FormControl><Input placeholder="12 rue de la République" {...field} /></FormControl><FormMessage /></FormItem>
+                                    )} />
+                                    <div className="grid grid-cols-3 gap-2">
+                                        <FormField control={form.control} name="newPostalCode" render={({ field }) => (
+                                            <FormItem><FormLabel>Code postal</FormLabel><FormControl><Input placeholder="69002" {...field} /></FormControl><FormMessage /></FormItem>
+                                        )} />
+                                        <FormField control={form.control} name="newCity" render={({ field }) => (
+                                            <FormItem className="col-span-2"><FormLabel>Ville</FormLabel><FormControl><Input placeholder="Lyon" {...field} /></FormControl><FormMessage /></FormItem>
+                                        )} />
+                                    </div>
+                                </div>
+                            )}
                             <FormField
                                 control={form.control}
                                 name="contactEmail"

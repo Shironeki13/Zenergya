@@ -63,7 +63,7 @@ export function ClientAdressageFields() {
 
 const VIDE = { name: '', quality: '', address: '', postalCode: '', city: '', siret: '', email: '', phone: '' };
 
-function DialogueTiers({ edition, onClose, onSaved }: { edition: Partial<Tiers> | null; onClose: () => void; onSaved: (t: Tiers) => void | Promise<void> }) {
+export function DialogueTiers({ edition, onClose, onSaved }: { edition: Partial<Tiers> | null; onClose: () => void; onSaved: (t: Tiers) => void | Promise<void> }) {
     const { toast } = useToast();
     const [s, setS] = useState(VIDE);
     const [envoi, setEnvoi] = useState(false);
