@@ -739,6 +739,10 @@ export type ArchivedPdf = {
 export type CreditNote = {
     id: string;
     creditNoteNumber: string;
+    /** Motif typé (lib/billing/avoirs) ; le texte imprimé est dans `reason`. Absent : avoir antérieur ou de régularisation. */
+    motif?: string;
+    /** Interne : annule une facture rejetée par la plateforme, jamais transmis. */
+    nature?: 'interne' | 'standard';
     originalInvoiceIds: string[];
     /** Numéros des factures annulées (ajoutés par le serveur à la lecture des avoirs d'une période). */
     originalInvoiceNumbers?: string[];

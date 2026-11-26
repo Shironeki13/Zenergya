@@ -3,6 +3,7 @@ import { createHash } from 'crypto';
 import { adminBucket, adminDb } from '@/lib/firebase-admin';
 import { renderAccountingPdf, renderAnnexePdf, type AccountingDocumentData } from '@/lib/pdf/accounting-document';
 import { annexesP1 } from '@/lib/billing/p1-annexe';
+import { creditNoteAmounts } from '@/lib/credit-notes';
 import { annexeXlsx } from '@/lib/billing/p1-annexe-xlsx';
 import { lieuxExecution, natureOperation, type Adresse } from '@/lib/billing/mentions';
 import { adressageClient, adresseEnvoi } from '@/lib/billing/adressage';
@@ -155,6 +156,7 @@ async function load(kind: ArchivedKind, id: string): Promise<Loaded> {
             total: creditNote.total,
             references: originals.map(inv => inv.invoiceNumber || inv.id),
             reason: creditNote.reason,
+            ...(creditNote.nature === 'interne' && { interne: true }),
             ...(await mentions(creditNote, bloc)),
             ...(creditNote.vatBreakdown && { vatBreakdown: creditNote.vatBreakdown }),
             // Avoir d'annulation : ses lignes reprennent (inversées) celles de la facture, dont l'annexe fait foi ;
@@ -276,4 +278,25 @@ export async function getDocumentAnnexe(kind: ArchivedKind, id: string, format: 
         return { buffer: await annexeXlsx(loaded.data), filename: `${nom}.xlsx`, contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' };
     }
     return { buffer: (await renderAnnexePdf(loaded.data))!, filename: `${nom}.pdf`, contentType: 'application/pdf' };
+}
+
+/**
+ * Aperçu de l'avoir qui annulerait une facture : même mise en page et mêmes montants que l'avoir, sans numéro,
+ * marqué « sans valeur comptable ». Rien n'est écrit ni archivé.
+ */
+export async function apercuAvoirPdf(invoiceId: string, reason: string, interne: boolean): Promise<Buffer> {
+    const invoice = await getInvoice(invoiceId);
+    if (!invoice) throw new Error('Facture introuvable.');
+    const client = await getClient(invoice.clientId);
+    const company = await issuingCompany(invoice.companyId, invoice.contractId, client);
+    const bloc = await clientBlock(client, invoice.clientName);
+    const montants = creditNoteAmounts([invoice]);
+    const fictif = { ...invoice, lineItems: montants.lineItems } as unknown as CreditNote;
+    return renderAccountingPdf({
+        kind: 'creditNote', apercu: true, date: new Date().toISOString(), company, client: bloc,
+        lineItems: montants.lineItems, subtotal: montants.subtotal, tax: montants.tax, total: montants.total,
+        ...(montants.vatBreakdown.length > 0 && { vatBreakdown: montants.vatBreakdown }),
+        references: [invoice.invoiceNumber || invoice.id], reason, ...(interne && { interne: true }),
+        ...(await mentions(fictif, bloc)),
+    });
 }

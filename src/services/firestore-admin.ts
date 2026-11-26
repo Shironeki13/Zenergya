@@ -382,6 +382,7 @@ type NewCreditNote = Omit<CreditNote, 'id' | 'creditNoteNumber' | 'companyId' | 
 export async function createCreditNote(
     invoiceIds: string[],
     build: (invoices: Invoice[]) => NewCreditNote,
+    options: { interne?: boolean } = {},
 ): Promise<{ id: string; creditNoteNumber: string }> {
     const uniqueIds = [...new Set(invoiceIds)];
     if (uniqueIds.length === 0) throw new Error('Aucun ID de facture fourni.');
@@ -399,9 +400,13 @@ export async function createCreditNote(
     const refs = uniqueIds.map(id => adminDb.collection('invoices').doc(id));
     const issuedAt = new Date();
     const series = await prepareSeries('creditNote', company.code, issuedAt);
-    const einvoicing = await computeEInvoicingState({
+    const calcule = await computeEInvoicingState({
         clientId: first.clientId, contractId: first.contractId, company, documentDate: issuedAt.toISOString(),
     });
+    // Avoir interne : annule une facture que le client n'a jamais reçue (rejet de la plateforme) ; jamais transmis.
+    const einvoicing = options.interne && calcule
+        ? { ...calcule, status: 'not_applicable' as const, blocking: [], comment: 'Avoir interne : facture d\'origine rejetée par la plateforme, non transmis.' }
+        : calcule;
 
     const creditNoteNumber = await adminDb.runTransaction(async (tx) => {
         const snaps = await tx.getAll(...refs);

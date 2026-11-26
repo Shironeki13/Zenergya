@@ -49,6 +49,10 @@ export type AccountingDocumentData = {
     /** Avoir : numéros des factures annulées et motif. */
     references?: string[];
     reason?: string;
+    /** Avoir interne (facture d'origine rejetée par la plateforme) : non transmis. */
+    interne?: boolean;
+    /** Aperçu avant émission : sans numéro, sans valeur comptable. */
+    apercu?: boolean;
     /** TVA par taux (factures multi-taux). Absente : une seule ligne de TVA. */
     vatBreakdown?: VatBreakdown;
     /** Facture issue d'un devis (acompte, solde, totalité). */
@@ -346,7 +350,7 @@ export function AccountingDocumentPdf({ data }: { data: AccountingDocumentData }
     const { kind, company, client } = data;
     const logo = supportedLogo(company.logoUrl);
     const title = kind === 'invoice' && data.situation ? `FACTURE DE SITUATION N° ${data.situation.number}`
-        : kind === 'invoice' && data.quote?.billingKind === 'acompte' ? "FACTURE D'ACOMPTE" : TITLES[kind];
+        : kind === 'invoice' && data.quote?.billingKind === 'acompte' ? "FACTURE D'ACOMPTE" : kind === 'creditNote' && data.interne ? 'AVOIR INTERNE' : TITLES[kind];
     const period = (p: string) => `${p.slice(5, 7)}/${p.slice(0, 4)}`;
     const pct = (rate: number) => `${rate.toLocaleString('fr-FR')} %`;
 
@@ -471,6 +475,8 @@ export function AccountingDocumentPdf({ data }: { data: AccountingDocumentData }
 
                 <View style={styles.notes} wrap={false}>
                     {kind === 'creditNote' && data.reason && <Text>Motif : {data.reason}</Text>}
+                    {kind === 'creditNote' && data.interne && <Text>{pdfTexte("Avoir interne : il annule une facture rejetée par la plateforme de facturation électronique, que le client n'a pas reçue ; il n'est pas transmis.")}</Text>}
+                    {data.apercu && <Text>{pdfTexte('Aperçu avant émission : document sans numéro et sans valeur comptable.')}</Text>}
                     {data.operationNature && <Text>Nature de l'opération : {data.operationNature}.</Text>}
                     {data.places && data.places.length > 0 && (
                         <Text>{`${data.places.length > 1 ? "Lieux d'exécution" : "Lieu d'exécution"} : ${data.places.join(' ; ')}.`}</Text>

@@ -18,7 +18,8 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { ChevronLeft, Mail, FileDown, FileSpreadsheet, Loader2 } from 'lucide-react';
+import { ChevronLeft, Mail, FileDown, FileSpreadsheet, Loader2, MinusCircle } from 'lucide-react';
+import { EmissionAvoirs } from '@/components/billing/emission-avoirs';
 import { aAnnexeP1 } from '@/lib/billing/p1-annexe';
 import { Logo } from '@/components/logo';
 import { Separator } from '@/components/ui/separator';
@@ -31,6 +32,8 @@ export default function InvoiceDetailPage() {
   const [client, setClient] = useState<Client | null>(null);
   const [company, setCompany] = useState<Company | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [avoirOuvert, setAvoirOuvert] = useState(false);
+  const [version, setVersion] = useState(0);
 
   useEffect(() => {
     async function fetchData() {
@@ -72,7 +75,7 @@ export default function InvoiceDetailPage() {
       }
     }
     fetchData();
-  }, [invoiceId]);
+  }, [invoiceId, version]);
   
   // PDF officiel : copie archivée à l'émission (généré à la demande pour un proforma).
   const handleOpenPdf = () => {
@@ -182,6 +185,12 @@ export default function InvoiceDetailPage() {
               <a href={`/api/documents/invoices/${invoice.id}/annexe?format=xlsx`}><FileSpreadsheet className="h-4 w-4 mr-2" />Annexe (tableur)</a>
             </Button>
           </>)}
+          {invoice.status !== 'proforma' && invoice.status !== 'cancelled' && !invoice.cancelledByCreditNoteId && invoice.invoiceNumber && (
+            <Button variant="outline" size="sm" onClick={() => setAvoirOuvert(true)}>
+              <MinusCircle className="h-4 w-4 mr-2" />
+              Annuler par avoir
+            </Button>
+          )}
           <Button size="sm" onClick={handleOpenPdf}>
             <FileDown className="h-4 w-4 mr-2" />
             PDF
@@ -309,6 +318,7 @@ export default function InvoiceDetailPage() {
             }
         </footer>
       </div>
+      <EmissionAvoirs factures={[invoice]} open={avoirOuvert} onOpenChange={setAvoirOuvert} onDone={() => setVersion(v => v + 1)} />
     </div>
   );
 }

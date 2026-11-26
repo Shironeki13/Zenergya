@@ -13,11 +13,11 @@ import {
 import { DataTable, type Colonne } from '@/components/data-table/data-table';
 import type { FiltreTable } from '@/components/data-table/logique';
 import { STATUTS_FACTURE, StatutFacture, eur0 } from '@/components/fiches/fiche';
-import { useConfirm, usePrompt } from '@/components/confirm-provider';
+import { useConfirm } from '@/components/confirm-provider';
 import type { Invoice } from '@/lib/types';
 import { useData } from '@/context/data-context';
 import { useToast } from '@/hooks/use-toast';
-import { generateCreditNote } from '@/ai/flows/generate-credit-note-flow';
+import { EmissionAvoirs } from '@/components/billing/emission-avoirs';
 import { deleteProformaInvoice, updateInvoiceStatus } from '@/services/firestore';
 import { convertProforma } from '@/lib/billing/actions';
 import { Badge } from '@/components/ui/badge';
@@ -39,7 +39,6 @@ const moisFr = (m: string) => new Date(`${m}-01T12:00:00`).toLocaleDateString('f
 
 export default function InvoicesPage() {
   const confirmer = useConfirm();
-  const demander = usePrompt();
   const { contracts, clients, isLoading: chargementBase } = useData();
   // Annuaire des tiers : donne au payeur ou au représentant son nom exact.
   const [tiers, setTiers] = useState<Tiers[]>([]);
@@ -50,7 +49,6 @@ export default function InvoicesPage() {
   const isLoading = chargementBase || chargement;
   const reloadData = recharger;   // après un enregistrement : la liste se relit au serveur
   const { toast } = useToast();
-  const [isGenerating, setIsGenerating] = useState(false);
 
   const lignes: Ligne[] = useMemo(() => {
     const contrat = new Map(contracts.map(c => [c.id, c.contractNumber ?? '']));
@@ -108,29 +106,8 @@ export default function InvoicesPage() {
     valeurs: (r: Ligne) => [r.invoiceNumber, r.clientName, r.payeur, r.contrat, r.id],
   }), []);
 
-  const annulerParAvoir = async (selection: Ligne[], vider: () => void) => {
-    const motif = await demander({
-      title: `Annuler ${selection.length} facture(s) par un avoir`,
-      description: `${selection.map(f => f.invoiceNumber).join(', ')}. Le motif figure sur l'avoir (document légal, numéroté et archivé).`,
-      label: "Motif de l'avoir", required: true, multiline: true, placeholder: 'Erreur de période, double facturation…', confirmLabel: "Générer l'avoir",
-    });
-    if (motif === null) return;
-    setIsGenerating(true);
-    try {
-      const result = await generateCreditNote({ invoiceIds: selection.map(f => f.id), reason: motif, creditNoteDate: new Date().toISOString() });
-      if (result.success && result.creditNoteId) {
-        toast({ title: "Avoir généré", description: `L'avoir ${result.creditNoteNumber || result.creditNoteId} a été créé.` });
-        vider();
-        await reloadData();
-      } else {
-        throw new Error(result.error || "Une erreur inconnue est survenue lors de la création de l'avoir.");
-      }
-    } catch (error) {
-      toast({ title: "Erreur de génération", description: error instanceof Error ? error.message : String(error), variant: 'destructive', duration: 10000 });
-    } finally {
-      setIsGenerating(false);
-    }
-  };
+  // Avoirs : la sélection ouvre l'écran d'émission (un avoir par facture).
+  const [avoirs, setAvoirs] = useState<{ factures: Ligne[]; vider: () => void } | null>(null);
 
   const marquerPayee = async (invoice: Ligne) => {
     if (!(await confirmer({ title: `Marquer ${invoice.invoiceNumber} comme payée ?`, description: `${eur0(Number(invoice.total) || 0)} TTC, ${invoice.clientName}.`, confirmLabel: 'Marquer payée' }))) return;
@@ -189,9 +166,9 @@ export default function InvoicesPage() {
         selection={{
           possible: r => r.status !== 'proforma' && r.status !== 'cancelled',
           actions: (selection, vider) => (
-            <Button size="sm" className="h-8 gap-1" onClick={() => annulerParAvoir(selection as Ligne[], vider)} disabled={isGenerating}>
-              {isGenerating ? <Loader2 className="h-4 w-4 animate-spin" /> : <MinusCircle className="h-4 w-4" />}
-              Annuler par un avoir
+            <Button size="sm" className="h-8 gap-1" onClick={() => setAvoirs({ factures: selection as Ligne[], vider })}>
+              <MinusCircle className="h-4 w-4" />
+              Annuler par avoir ({selection.length})
             </Button>
           ),
         }}
@@ -216,6 +193,7 @@ export default function InvoicesPage() {
           </DropdownMenu>
         )}
       />
+      <EmissionAvoirs factures={avoirs?.factures ?? []} open={!!avoirs} onOpenChange={o => { if (!o) setAvoirs(null); }} onDone={() => { avoirs?.vider(); void reloadData(); }} />
     </div>
   );
 }

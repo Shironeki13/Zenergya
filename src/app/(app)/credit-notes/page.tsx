@@ -1,5 +1,7 @@
 'use client';
 
+import { Badge } from '@/components/ui/badge';
+import { libelleMotif } from '@/lib/billing/avoirs';
 import { SelecteurPeriode } from '@/components/periode/selecteur-periode';
 import { useLecturePeriode, usePeriode } from '@/hooks/use-lecture-periode';
 import { useMemo } from 'react';
@@ -39,6 +41,12 @@ export default function CreditNotesPage() {
     { id: 'numero', label: "N° d'avoir", fixe: true, tri: r => r.creditNoteNumber, exporter: r => r.creditNoteNumber, cell: r => <span className="font-mono text-xs font-medium">{r.creditNoteNumber}</span> },
     { id: 'client', label: 'Client', tri: r => r.clientName, exporter: r => r.clientName, cell: r => r.clientName },
     { id: 'factures', label: 'Factures annulées', tri: r => r.factures, exporter: r => r.factures, cell: r => <span className="font-mono text-xs">{r.factures || '—'}</span> },
+    {
+      id: 'nature', label: 'Nature', tri: r => r.nature ?? 'standard', exporter: r => (r.nature === 'interne' ? 'Interne' : 'Standard'),
+      cell: r => r.nature === 'interne'
+        ? <Badge variant="outline" className="border-amber-300 bg-amber-50 py-0 text-[10px] text-amber-800" title="Annule une facture rejetée par la plateforme ; non transmis">interne</Badge>
+        : <span className="text-xs text-muted-foreground">standard</span>,
+    },
     { id: 'motif', label: 'Motif', tri: r => r.reason, exporter: r => r.reason, cell: r => <span className="line-clamp-1 max-w-[320px]" title={r.reason}>{r.reason || '—'}</span> },
     { id: 'date', label: 'Date', tri: r => (jourIso(r.date) ? new Date(r.date) : null), exporter: r => jourIso(r.date), cell: r => (jourIso(r.date) ? new Date(r.date).toLocaleDateString('fr-FR') : '—') },
     { id: 'ttc', label: 'TTC', align: 'right', tri: r => Number(r.total) || 0, exporter: r => r.total, cell: r => <span className="font-medium text-destructive">{eur0(Number(r.total) || 0)}</span> },
@@ -46,6 +54,8 @@ export default function CreditNotesPage() {
 
   const filtres: FiltreTable<Ligne>[] = useMemo(() => [
     { id: 'client', label: 'Client', valeur: r => r.clientName },
+    { id: 'nature', label: 'Nature', valeur: r => (r.nature === 'interne' ? 'Interne' : 'Standard') },
+    { id: 'typeMotif', label: 'Motif', valeur: r => libelleMotif(r.motif) || 'Non typé' },
     { id: 'mois', label: 'Mois', valeur: r => r.mois, libelle: moisFr },
   ], []);
 
@@ -58,7 +68,7 @@ export default function CreditNotesPage() {
     <div className="flex flex-col gap-4">
       <div>
         <h1 className="text-2xl font-bold tracking-tight">Avoirs</h1>
-        <p className="text-muted-foreground">Avoirs émis. Pour en créer un : sélectionnez les factures à annuler dans la liste des factures.</p>
+        <p className="text-muted-foreground">Avoirs émis. Pour en créer : sélectionnez les factures à annuler dans la liste des factures, ou ouvrez une facture (un avoir par facture).</p>
       </div>
       <SelecteurPeriode periode={periode} onChange={setPeriode} />
       <DataTable

@@ -221,8 +221,19 @@ Elle est enregistrée sur la facture (`companyId`) et utilisée pour l'affichage
 ## Annulation : avoir, jamais de suppression
 
 - Une facture émise ne peut pas être supprimée (règles Firestore, y compris pour un administrateur).
-- Pour l'annuler : *Factures* → sélectionner → *Générer un avoir*. L'avoir et le passage des factures à « annulée »
-  sont écrits dans la même transaction ; une facture déjà annulée ne peut pas recevoir un second avoir.
+- Pour l'annuler : *Factures* → sélectionner une ou plusieurs factures → *Annuler par avoir*, ou bouton *Annuler par
+  avoir* de la fiche facture. **Un avoir par facture**, qui l'annule entièrement ; motif choisi dans une liste
+  (erreur de montant, de période, de client, double facturation, rejet de la plateforme, résiliation, geste
+  commercial, autre) plus un commentaire, imprimés sur l'avoir. Aperçu PDF avant émission pour une facture seule.
+- L'avoir et le passage de sa facture à « annulée » sont écrits dans la même transaction ; une facture déjà annulée ne
+  peut pas recevoir un second avoir. En nombre, chaque facture est traitée à part : un refus (déjà annulée, hors
+  périmètre) n'empêche pas les autres et figure au compte rendu, avec les contrats à refacturer.
+- **Avoir interne** : une facture **rejetée par la plateforme** (statut RFE « Rejetée ») n'a pas été reçue par le
+  client. Son avoir est interne : titre « AVOIR INTERNE », mention sur le PDF, statut de transmission « non concernée »
+  (jamais transmis), colonne *Nature* de la liste des avoirs. Même série de numérotation que les autres avoirs. Les
+  autres avoirs suivent le canal du client (plateforme, Chorus Pro, ou envoi au client). À confirmer avec la plateforme
+  agréée et l'expert-comptable (traitement en e-reporting de l'avoir interne). Règles : `src/lib/billing/avoirs.ts`.
+- Pas d'avoir partiel depuis cet écran (les avoirs de régularisation P1 restent à part).
 - La période d'une facture annulée peut être refacturée.
 - Seuls les proformas peuvent être supprimés.
 - Depuis le navigateur, seul le statut d'encaissement d'une facture peut être modifié (due ↔ en retard ↔ payée).
