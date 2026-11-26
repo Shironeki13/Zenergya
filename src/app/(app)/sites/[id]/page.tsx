@@ -37,6 +37,7 @@ import type { Site, Contract, Service, Meter, MeterReading, Invoice, RevisionRul
 import { MeterReadingsDialog } from '@/components/meter-readings-dialog';
 import { Separator } from '@/components/ui/separator';
 import { Switch } from '@/components/ui/switch';
+import { TvaPrestation, depuisSaisie, versSaisie, type QuotePartSaisie } from '@/components/sites/tva-prestation';
 import { Textarea } from '@/components/ui/textarea';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
@@ -106,6 +107,7 @@ export default function SiteDetailsPage() {
     const [unitPrice, setUnitPrice] = useState<number>(0);
     const [unit, setUnit] = useState<string>('');
     const [vatRateId, setVatRateId] = useState<string>('');
+    const [vatSplit, setVatSplit] = useState<QuotePartSaisie[]>([]);
     const [energyType, setEnergyType] = useState<string>('');
     const [p1Type, setP1Type] = useState<string>('');
     const [isActive, setIsActive] = useState<boolean>(true);
@@ -244,6 +246,8 @@ export default function SiteDetailsPage() {
         setP1Prorata('releve_jours'); setP1Repartition('releve'); setP1HorsSaison('facture');
         setP1CoefGestion('aucun');
         setPrice(0);
+        setVatRateId('');
+        setVatSplit([]);
         setMeterId('');
         setStartDate(contract?.startDate || new Date().toISOString().split('T')[0]);
         setEndDate(contract?.endDate || '');
@@ -358,6 +362,7 @@ export default function SiteDetailsPage() {
         setUnitPrice(service.unitPrice || 0);
         setUnit(service.unit || '');
         setVatRateId(service.vatRateId || '');
+        setVatSplit(versSaisie(service.vatSplit));
         setEnergyType(service.energyType || '');
         setP1Type(service.p1Type || '');
         setIsActive(service.isActive !== undefined ? service.isActive : true);
@@ -384,6 +389,9 @@ export default function SiteDetailsPage() {
 
         setIsServiceDialogOpen(true);
     };
+
+    // Ventilation de TVA : forfaits seulement (pas le P1 calculé, ni la refacturation €€, une ligne par facture du fournisseur).
+    const ventilable = !(selectedType === 'P1' && (p1Type === 'REFACTURATION' || (p1Type !== 'ABONNEMENT' && p1Mode !== 'forfait')));
 
     const handleSaveService = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -427,6 +435,8 @@ export default function SiteDetailsPage() {
             unitPrice: Number(unitPrice),
             unit,
             vatRateId,
+            // Ventilation : forfaits seulement ; vide, elle est retirée.
+            vatSplit: ventilable ? depuisSaisie(vatSplit) : [],
             energyType: energyType as any,
             p1Type: p1Type as any,
             refacFrais: selectedType === 'P1' && p1Type === 'REFACTURATION' ? Number(refacFrais) || 0 : undefined,
@@ -904,7 +914,9 @@ export default function SiteDetailsPage() {
                                                     <div className="grid gap-2">
                                                         <Label className="text-xs text-muted-foreground">TVA</Label>
                                                         <div className="p-2 border rounded-md bg-muted/20 text-sm font-medium text-center">
-                                                            {activeService.billingLines && activeService.billingLines.length > 0
+                                                            {activeService.vatSplit?.length
+                                                                ? <span data-ventilation="fiche">{activeService.vatSplit.map(q => `${(vatRates.find(v => v.id === q.vatRateId)?.rate ?? '?').toLocaleString('fr-FR')} % sur ${q.part.toLocaleString('fr-FR', { maximumFractionDigits: 2 })} %${q.libelle ? ` (${q.libelle})` : ''}`).join(' · ')}</span>
+                                                                : activeService.billingLines && activeService.billingLines.length > 0
                                                                 ? activeService.billingLines.map(l => vatRates.find(v => v.id === l.vatRateId)?.rate).filter(Boolean).join(' / ') + ' %'
                                                                 : activeVatRate ? `${activeVatRate.rate} %` : '-'}
                                                         </div>
@@ -1706,6 +1718,9 @@ export default function SiteDetailsPage() {
                                 </div>
                             )
                         )}
+
+                        <TvaPrestation vatRates={vatRates} vatRateId={vatRateId} onVatRateId={setVatRateId} ventilation={vatSplit} onVentilation={setVatSplit}
+                            ventilable={ventilable} montantAnnuel={Number(price) || 0} />
 
                         <div className="grid grid-cols-2 gap-4">
                             <div className="space-y-2">

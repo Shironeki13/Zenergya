@@ -45,7 +45,7 @@ export function enVigueur(s: Service, today = new Date().toISOString().slice(0, 
 /** Ce qui manque à une prestation pour être facturée. */
 export function manquesPrestation(s: Service): string[] {
     const m: string[] = [];
-    if (!s.vatRateId) m.push('TVA');
+    if (!s.vatRateId && !s.vatSplit?.length) m.push('TVA');
     // Refacturation à l'euro l'euro : ni périodicité, ni terme, ni montant (une ligne par facture du fournisseur).
     if (s.type === 'P1' && s.p1Type === 'REFACTURATION') return m;
     if (!s.scheduleId) m.push('périodicité');

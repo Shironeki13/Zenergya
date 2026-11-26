@@ -575,6 +575,11 @@ async function revisionsForfaits() {
     const prestations = await adminDb.collection('services').where('activityId', 'in', ['demo-p2', 'demo-p3']).get();
     for (const d of prestations.docs) await d.ref.update({ revisionRuleId: 'demo-rev-forfait', revisionMonths: 12, revisionAnchor: '01-01', initialIndexValues: [base] });
     console.log(`Révisions : ${prestations.size} forfaits P2/P3 révisés chaque 1er janvier sur l'indice ICHT-IME (base décembre 2025).`);
+    // Immeuble mixte au prix global : le P2 des Hauts de Bercy est ventilé, 70 % habitation à 10 %, 30 % commerces à 20 %.
+    const bercy = (await adminDb.collection('sites').where('name', '==', 'Hauts de Bercy - Chaufferie').limit(1).get()).docs[0];
+    const p2Bercy = bercy ? (await adminDb.collection('services').where('siteId', '==', bercy.id).where('activityId', '==', 'demo-p2').get()).docs : [];
+    for (const d of p2Bercy) await d.ref.update({ vatSplit: [{ vatRateId: 'demo-tva10', part: 70, libelle: 'habitation' }, { vatRateId: 'demo-tva20', part: 30, libelle: 'commerces' }] });
+    if (p2Bercy.length) console.log('Ventilation de TVA : P2 des Hauts de Bercy en quote-parts (70 % à 10 %, 30 % à 20 %).');
 }
 
 /**

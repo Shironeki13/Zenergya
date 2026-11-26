@@ -103,13 +103,17 @@ export function precedentDe(factures: FactureEmise[]): Precedent {
     const parCle: Precedent['parCle'] = {};
     for (const f of emises) {
         // Lignes d'une même prestation et d'une même facture cumulées (échéance coupée par une révision).
+        // Une même période n'est comptée qu'une fois : les quote-parts d'une ventilation de TVA en sont plusieurs lignes.
         const cumul = new Map<string, DerniereLigne>();
+        const periodes = new Set<string>();
         for (const l of f.lineItems ?? []) {
             const cles = l.itemKeys?.length ? l.itemKeys : l.itemKey ? [l.itemKey] : [];
             const debut = String(l.periodStartDate ?? '').slice(0, 10), fin = String(l.periodEndDate ?? '').slice(0, 10);
             if (!cles.length || !debut || !fin) continue;
             const cle = cleDe(cles), c = cumul.get(cle);
-            cumul.set(cle, { montant: (c?.montant ?? 0) + (l.total ?? 0), jours: (c?.jours ?? 0) + jours(debut, fin), fin: c && c.fin > fin ? c.fin : fin, numero: String(f.invoiceNumber) });
+            const nouvelle = !periodes.has(`${cle}|${debut}|${fin}`);
+            periodes.add(`${cle}|${debut}|${fin}`);
+            cumul.set(cle, { montant: (c?.montant ?? 0) + (l.total ?? 0), jours: (c?.jours ?? 0) + (nouvelle ? jours(debut, fin) : 0), fin: c && c.fin > fin ? c.fin : fin, numero: String(f.invoiceNumber) });
         }
         for (const [cle, c] of cumul) if (!parCle[cle] || parCle[cle].fin <= c.fin) parCle[cle] = c;
     }

@@ -1,4 +1,5 @@
 import 'server-only';
+import { controlerVentilation, lireVentilation } from '@/lib/billing/ventilation-tva';
 import { majDerniersReleves } from '@/services/readings-admin';
 import { controleChangement } from '@/lib/releves';
 import { FieldValue, Timestamp } from 'firebase-admin/firestore';
@@ -833,6 +834,16 @@ function planService(ctx: Context, row: ParsedRow, pending: Map<string, { line: 
         const vat = ctx.vatRates.find(t => norm(t.code) === norm(v.vatRate));
         if (!vat) item.messages.push(`TVA « ${v.vatRate} » inconnue.`);
         else data.vatRateId = vat.id;
+    }
+    if (v.vatSplit) {
+        if (norm(v.vatSplit) === norm('aucune')) data.vatSplit = [];
+        else {
+            const lu = lireVentilation(String(v.vatSplit), new Map(ctx.vatRates.map(t => [t.code.trim().toLowerCase(), t.id])));
+            const anomalies = [...lu.erreurs, ...(lu.erreurs.length ? [] : controlerVentilation(lu.parts, ctx.vatRates))];
+            if (anomalies.length) item.messages.push(`Ventilation TVA : ${anomalies.join(' ; ')}.`);
+            else if (['acompte', 'releve', 'dju'].includes(String(v.p1Mode ?? existing?.p1Mode ?? ''))) item.messages.push('Ventilation TVA : réservée aux prestations au forfait.');
+            else data.vatSplit = lu.parts;
+        }
     }
     if (v.meter) {
         const meter = findMeter(ctx, v.meter);

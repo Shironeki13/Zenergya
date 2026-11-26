@@ -262,6 +262,10 @@ const BASE: Record<ImportEntityKey, Omit<ImportEntity, 'groupe' | 'resume' | 'us
             { key: 'schedule', label: 'Périodicité', type: 'text', refList: 'schedules', example: 'Trimestriel', help: 'Mensuel, trimestriel, semestriel, annuel (vide : celle du site, sinon du contrat).' },
             { key: 'term', label: 'Terme', type: 'text', refList: 'terms', example: 'À échoir', help: 'À échoir (facturé en début de période) ou échu (après la période). Vide : à échoir.' },
             { key: 'vatRate', label: 'TVA', type: 'text', refList: 'vatRates', example: 'TVA20', help: 'Code du taux de TVA (paramétrage).' },
+            {
+                key: 'vatSplit', label: 'Ventilation TVA', type: 'text', example: '', aliases: ['ventilation', 'quote-parts tva'],
+                help: 'Immeuble mixte, prix global : quote-parts en % par taux, séparées par « ; », libellé facultatif entre parenthèses (ex. TVA10=66,67 (habitation); TVA20=33,33 (commerces)). Total 100 %. Remplace la colonne TVA. « aucune » : retire la ventilation.',
+            },
             { key: 'meter', label: 'Compteur', type: 'text', example: '', help: 'P1 : code du compteur (CPT-…) ou réf. externe, du même site.' },
             {
                 key: 'p1Type', label: 'Type P1', type: 'enum',

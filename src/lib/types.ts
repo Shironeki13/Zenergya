@@ -1064,6 +1064,8 @@ export type Service = {
     scheduleId?: string; // Link to Schedule (Echéancier)
     pricingRuleId?: string; // Link to PricingRule
     revisionRuleId?: string; // Link to RevisionRule (sans règle : prix ferme)
+    /** Ventilation de TVA en quote-parts (forfaits, immeuble mixte) ; renseignée, elle remplace `vatRateId` (lib/billing/ventilation-tva). */
+    vatSplit?: { vatRateId: string; part: number; libelle?: string }[];
     revisionMonths?: number; // Révision tous les N mois (1, 3, 6, 12 ; 12 par défaut)
     revisionAnchor?: string; // Date anniversaire de révision « MM-JJ » (défaut : jour du début du contrat)
     revisionFromStart?: boolean; // Révisé dès le début du contrat (sinon prix de base jusqu'à la première révision)

@@ -1,4 +1,5 @@
 import { roundCents, sumCents } from '@/lib/money';
+import { controlerVentilation, repartir, type QuotePartTva } from './ventilation-tva';
 import { partieChauffee, saisonDe, type SaisonChauffe } from '@/lib/p1/saisons';
 import { toDay } from '@/lib/services/site-amounts';
 import { type HorsSaison, type RepartitionCompteur,
@@ -87,6 +88,8 @@ export type BillingSite = {
 export type BillingService = {
     id?: string; siteId: string; contractId: string; activityId: string; price?: number | null; startDate?: unknown; endDate?: unknown;
     isActive?: boolean; vatRateId?: string; label?: string; scheduleId?: string; billingTermId?: string;
+    /** Ventilation de TVA en quote-parts (forfaits) ; renseignée, elle remplace `vatRateId`. */
+    vatSplit?: QuotePartTva[];
     revisionRuleId?: string; initialIndexValues?: ServiceInitialIndexValue[]; revisionMonths?: number; revisionAnchor?: string; revisionFromStart?: boolean;
     p1Mode?: 'forfait' | 'acompte' | 'releve' | 'dju';
     p1Type?: string;
@@ -199,6 +202,8 @@ export type BillingItem = {
     scheduleLabel: string;
     terme: Terme;
     vatRateId?: string;
+    /** Ventilation de TVA : une ligne par quote-part (forfaits seulement). */
+    vatSplit?: QuotePartTva[];
     /** Révision des prix ; absente : prix ferme. */
     revision?: RevisionConfig;
     /** Acompte P1 : montant calculé par mois (paramétrage P1), le prix de la prestation est ignoré. */
@@ -307,6 +312,13 @@ export function billingItems(input: BillingInput): { items: BillingItem[]; error
                 const prixP1 = acompte || auDju || (releve && (s.p1PrixSource ?? 'p1') === 'p1');
                 const revision = prixP1 ? null : revisionConfig(s, contractStart, input.revisionRules ?? []);
                 if (revision && 'error' in revision) { errors.push(`${where} : ${revision.error}.`); continue; }
+                // Ventilation de TVA : forfaits seulement (le P1 calculé a ses propres règles de TVA).
+                const ventilation = (s.vatSplit ?? []).filter(p => p && p.vatRateId);
+                if (ventilation.length) {
+                    if (acompte || auDju || releve) { errors.push(`${where} : ventilation de TVA réservée aux prestations au forfait.`); continue; }
+                    const anomalies = controlerVentilation(ventilation, input.vatRates);
+                    if (anomalies.length) { errors.push(`${where} : ventilation de TVA invalide (${anomalies.join(' ; ')}).`); continue; }
+                }
                 items.push({
                     ...(revision && { revision }),
                     ...(acompte && { p1Acompte: true, p1Usage: s.p1Type === 'ECS' ? 'ecs' as const : 'chauffage' as const }),
@@ -325,6 +337,7 @@ export function billingItems(input: BillingInput): { items: BillingItem[]; error
                     from: maxDay(contractStart, toDay(s.startDate)), to: minDay(contractEnd, toDay(s.endDate)),
                     months: sched.months, scheduleLabel: sched.label, terme: termeFor(where, s.billingTermId, site.termId),
                     vatRateId: s.vatRateId || a.vatRateId,
+                    ...(ventilation.length && { vatSplit: ventilation }),
                 });
             }
         } else {
@@ -446,6 +459,21 @@ export function dueInvoiceLines(input: BillingInput, invoices: BilledInvoice[], 
         if (!v) bloquer(e, 'tva', `TVA non renseignée : ${e.item.activity.code} sur le site ${e.item.site.name} (à définir sur la prestation ou sur l'activité, dans le paramétrage).`);
         return v?.rate;
     };
+    /**
+     * Parts d'un morceau facturé, une par taux : le morceau entier au taux de la prestation, ou ses quote-parts
+     * (ventilation de TVA), réparties au centime sur le montant et sur la base avant révision.
+     */
+    const partsTva = <P extends { e: Echeance; amount: number; base: number }>(p: P): { rate: number; amount: number; base: number; quotePart?: { part: number; libelle?: string } }[] | null => {
+        const ventilation = p.e.item.vatSplit;
+        if (!ventilation?.length) {
+            const rate = rateOf(p.e);
+            return rate === undefined ? null : [{ rate, amount: p.amount, base: p.base }];
+        }
+        const amounts = repartir(p.amount, ventilation), bases = repartir(p.base, ventilation);
+        return ventilation.map((q, i) => ({ rate: vat.get(q.vatRateId)!.rate, amount: amounts[i], base: bases[i], quotePart: { part: q.part, ...(q.libelle && { libelle: q.libelle }) } }));
+    };
+    const texteQuotePart = (q: { part: number; libelle?: string } | undefined, rate: number) =>
+        (q ? ` — quote-part ${q.libelle ? `${q.libelle} ` : ''}${q.part.toLocaleString('fr-FR', { maximumFractionDigits: 2 })} % (TVA ${rate.toLocaleString('fr-FR')} %)` : '');
 
     // Morceaux facturés : l'échéance, coupée à chaque date de révision, au coefficient de la révision en vigueur.
     type Piece = { e: Echeance; start: string; end: string; days: number; base: number; amount: number; revision?: RevisionSnapshot; p1?: P1Mois[]; releve?: NonNullable<InvoiceLineItem['p1Releve']>; dju?: NonNullable<InvoiceLineItem['p1Dju']> };
@@ -513,10 +541,10 @@ export function dueInvoiceLines(input: BillingInput, invoices: BilledInvoice[], 
 
     if (input.contract.invoicingType === 'global') {
         // Une ligne par activité, taux, période et révision ; le détail par élément reste dans `itemKeys` (suivi du facturé).
-        const groups = new Map<string, { p: Piece; rate: number; amounts: number[]; bases: number[]; keys: string[] }>();
-        for (const p of pieces) {
-            const rate = rateOf(p.e);
-            if (rate === undefined) continue;
+        const groups = new Map<string, { p: Piece & { quotePart?: { part: number; libelle?: string } }; rate: number; amounts: number[]; bases: number[]; keys: string[] }>();
+        for (const piece of pieces) for (const t of partsTva(piece) ?? []) {
+            const p = { ...piece, amount: t.amount, base: t.base, quotePart: t.quotePart };
+            const rate = t.rate;
             if (p.p1 || p.releve || p.dju) { bloquer(p.e, 'global', `${p.p1 ? 'Acompte P1' : p.dju ? 'MTI au DJU' : 'P1 au compteur'} : facturation globale non prise en charge (site ${p.e.item.site.name}) ; passez le contrat en multi-site.`); continue; }
             const key = `${p.e.item.activity.id}|${rate}|${p.start}|${p.end}|${p.revision ? `${p.revision.rule}@${p.revision.date}=${p.revision.coefficient}` : ''}`;
             if (!groups.has(key)) groups.set(key, { p, rate, amounts: [], bases: [], keys: [] });
@@ -528,19 +556,19 @@ export function dueInvoiceLines(input: BillingInput, invoices: BilledInvoice[], 
         for (const g of groups.values()) {
             const total = sumCents(g.amounts);
             lines.push({
-                description: `${g.p.e.item.activity.label} (${g.p.e.item.scheduleLabel}, ${TERME_LABEL[g.p.e.item.terme]}) — ${period(g.p)}${prorata(g.p)}${revised(g.p)}`,
+                description: `${g.p.e.item.activity.label} (${g.p.e.item.scheduleLabel}, ${TERME_LABEL[g.p.e.item.terme]}) — ${period(g.p)}${prorata(g.p)}${g.keys.length === 1 ? texteQuotePart(g.p.quotePart, g.rate) : ''}${revised(g.p)}`,
                 quantity: 1, unitPrice: total, total, activityCode: g.p.e.item.activity.code, vatRate: g.rate,
                 periodStartDate: g.p.start, periodEndDate: g.p.end, itemKeys: g.keys,
                 ...(g.p.revision && { baseAmount: sumCents(g.bases), revision: g.p.revision }),
             });
         }
     } else {
-        for (const p of pieces) {
-            const rate = rateOf(p.e);
-            if (rate === undefined) continue;
+        for (const piece of pieces) for (const t of partsTva(piece) ?? []) {
+            const p = { ...piece, amount: t.amount, base: t.base };
+            const rate = t.rate;
             const item = p.e.item;
             lines.push({
-                description: `${item.p1Famille === 'ABONNEMENT' ? 'P1A Abonnement — ' : ''}${p.p1 ? 'Acompte ' : p.releve ? `P1 au compteur (${p.releve.usage === 'ecs' ? 'ECS' : 'chauffage'}) — ` : p.dju ? 'P1 MTI au DJU — ' : ''}${item.activity.label}${item.label ? ` — ${item.label}` : ''} (${item.scheduleLabel}, ${TERME_LABEL[item.terme]}) — Site : ${item.site.name} — ${period(p)}${prorata(p)}${p1Text(p)}${releveText(p)}${djuText(p)}${revised(p)}`,
+                description: `${item.p1Famille === 'ABONNEMENT' ? 'P1A Abonnement — ' : ''}${p.p1 ? 'Acompte ' : p.releve ? `P1 au compteur (${p.releve.usage === 'ecs' ? 'ECS' : 'chauffage'}) — ` : p.dju ? 'P1 MTI au DJU — ' : ''}${item.activity.label}${item.label ? ` — ${item.label}` : ''} (${item.scheduleLabel}, ${TERME_LABEL[item.terme]}) — Site : ${item.site.name} — ${period(p)}${prorata(p)}${texteQuotePart(t.quotePart, rate)}${p1Text(p)}${releveText(p)}${djuText(p)}${revised(p)}`,
                 quantity: 1, unitPrice: p.amount, total: p.amount, siteId: item.site.id, activityCode: item.activity.code, vatRate: rate,
                 itemKey: item.key, ...(item.serviceId && { serviceId: item.serviceId }), periodStartDate: p.start, periodEndDate: p.end,
                 ...(p.revision && { baseAmount: p.base, revision: p.revision }),

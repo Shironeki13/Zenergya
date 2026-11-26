@@ -37,6 +37,25 @@ la fiche site) ; préparation : `src/services/contract-billing-admin.ts`.
 les prestations leur périodicité et leur terme (fiche site ou import des prestations, colonnes « Périodicité » et
 « Terme »).
 
+### Ventilation de TVA (immeuble mixte)
+
+Une prestation au forfait peut répartir son prix global en **quote-parts** soumises à des taux différents, par exemple
+70 % « habitation » à 10 % et 30 % « commerces » à 20 % (fiche site › prestation › TVA › « Ventiler en quote-parts », ou
+colonne « Ventilation TVA » de l'import : `TVA10=70 (habitation); TVA20=30 (commerces)`). Renseignée, elle remplace le
+taux simple.
+
+- Au moins deux quote-parts, deux décimales au plus, total de 100 %, taux connus et distincts ; sinon la prestation
+  est refusée à la facturation avec le motif.
+- Chaque échéance est calculée comme d'habitude (prorata, révision), puis répartie : une ligne de facture par
+  quote-part, avec la quote-part dans le libellé. L'arrondi est calé (plus grands restes) pour que la somme des lignes
+  soit exactement l'échéance.
+- En facturation multi-site, une quote-part rejoint la ligne du même taux et de la même activité des autres sites.
+- L'échéance reste une seule échéance à cocher ; le suivi du facturé et le contrôle avant émission la comptent une fois.
+- Réservée aux forfaits : pas sur le P1 calculé (acompte, compteur, DJU) ni sur la refacturation €€.
+- Un changement de quote-part s'applique aux échéances restant à facturer ; les factures émises ne changent pas.
+
+Calcul : `src/lib/billing/ventilation-tva.ts`.
+
 ### Révision des prix
 
 Calcul : `src/lib/billing/revision.ts`.

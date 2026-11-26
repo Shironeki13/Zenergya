@@ -131,3 +131,21 @@ test('site déplacé vers un contrat sans prestation : plus aucun montant factur
     const s1 = await site('sv-s1');
     assert.deepEqual([s1.contractId, s1.amounts, s1.amountsSource], ['sv-k2', [], 'services']);
 });
+
+test('ventilation TVA : lue et contrôlée à l\'import, retirée par « aucune »', async () => {
+    await set('vatRates', 'sv-v10', { code: 'TVA10S', rate: 10 });
+    await set('sites', 'sv-s4', { code: 'SIT-07704', name: 'Immeuble mixte S', clientId: 'sv-cli', contractId: 'sv-k1' });
+    const H = ['Site', 'Activité', 'Date de début', 'Montant annuel HT', 'Ventilation TVA'];
+    const refus = await planImport('services', [H, ['SIT-07704', 'P2S', current, '9000', 'TVA10S=60; TVA20S=30']]);
+    assert.match(JSON.stringify(refus), /Ventilation TVA : les quote-parts totalisent 90 % au lieu de 100 %/);
+    const inconnu = await planImport('services', [H, ['SIT-07704', 'P2S', current, '9000', 'TVA99=50; TVA20S=50']]);
+    assert.match(JSON.stringify(inconnu), /TVA « TVA99 » inconnue/);
+
+    const report = await run([H, ['SIT-07704', 'P2S', current, '9000', 'TVA10S=66,67 (habitation); tva20s=33,33']]);
+    assert.deepEqual([report.created, report.errors.length], [1, 0], JSON.stringify(report.errors));
+    const lire = async () => (await adminDb.collection('services').where('siteId', '==', 'sv-s4').get()).docs[0].data();
+    assert.deepEqual((await lire()).vatSplit, [{ vatRateId: 'sv-v10', part: 66.67, libelle: 'habitation' }, { vatRateId: 'sv-v', part: 33.33 }]);
+    const retrait = await run([H, ['SIT-07704', 'P2S', current, '9000', 'aucune']]);
+    assert.deepEqual([retrait.updated, retrait.errors.length], [1, 0], JSON.stringify(retrait.errors));
+    assert.deepEqual((await lire()).vatSplit, []);
+});
