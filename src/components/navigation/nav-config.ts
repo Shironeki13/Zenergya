@@ -1,7 +1,7 @@
 import {
     AlertTriangle, Building, Calculator, CircleDollarSign, Copy, FileSignature, FileText, Gauge, Home, KeyRound, LayoutDashboard,
     Library, ListChecks, MapPin, MessageSquareQuote, MinusCircle, Scale, Send, Settings, ShieldCheck, Store, TrendingUp, Upload, Users,
-    Network, ShoppingCart, Clock, BellRing, Contact, type LucideIcon,
+    Network, ShoppingCart, Clock, BellRing, Contact, HandCoins, type LucideIcon,
 } from 'lucide-react';
 
 import { accesRoute } from '@/lib/perimetre';
@@ -41,6 +41,7 @@ export const NAV_GROUPS: NavGroup[] = [
             { href: '/billing/batch', label: 'Facturation groupée', icon: Copy, keywords: 'lot masse' },
             { href: '/invoices', label: 'Factures', icon: FileText },
             { href: '/credit-notes', label: 'Avoirs', icon: MinusCircle },
+            { href: '/billing/encours', label: 'Encours et relances', icon: HandCoins, keywords: 'impayés retard paiement payeur syndic encaissement relance relevé' },
             { href: '/billing/rfe', label: 'Facturation électronique', icon: Send, keywords: 'chorus rfe pdp' },
             { href: '/billing/p1', label: 'Régularisation P1', icon: Scale, keywords: 'acomptes réel dû décompte prix annuel régulariser' },
             { href: '/billing/analytique', label: 'Suivi analytique', icon: Network, keywords: 'ventes marge code projet axe société agence secteur' },

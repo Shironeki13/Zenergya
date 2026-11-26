@@ -160,8 +160,17 @@ clients d'un coup. **Changement de syndic** : le dépôt propose les syndics con
 à la validation, la fiche du tiers est créée ou complétée (une adresse déjà saisie n'est jamais écrasée).
 **Avant émission** : la facturation manuelle signale un représentant ou un payeur sans adresse connue.
 
-Calcul : `src/lib/billing/adressage.ts`. Non couvert : l'adresse de facturation électronique (celle du client) et les
-relances, qui restent adressées au client.
+Calcul : `src/lib/billing/adressage.ts`. Non couvert : l'adresse de facturation électronique (celle du client).
+
+### Encours et relances (Facturation › Encours et relances)
+
+Les factures émises non payées sont regroupées par **interlocuteur de paiement** : le payeur du client s'il en a
+un, sinon son représentant, sinon le client (avec son contact de facturation). Un syndic ou un payeur commun à
+plusieurs clients n'a qu'une ligne, avec l'encours, la part échue et le retard le plus ancien. Par interlocuteur :
+le détail des factures, **Copier le relevé** (texte à coller dans un message de relance ; le logiciel n'envoie pas de
+mail aux clients) et l'**encaissement** de plusieurs factures d'un coup (tout ou rien, dans le périmètre, seulement
+des factures encore à payer). L'interlocuteur est celui d'aujourd'hui, pas celui du jour de la facture : après un
+changement de syndic, on relance le nouveau. Calcul : `src/lib/billing/encours.ts`.
 
 ## Numérotation (factures et avoirs)
 
