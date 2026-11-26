@@ -71,7 +71,7 @@ Comptes (mot de passe Demo-Zenergya-2026) :
   adv@example.com            ADV (Claire Martin)
   adv2@example.com           ADV (Julien Petit)
   contratheque@example.com   Contrathèque : validation des documents
-  admin@example.com          Administrateur (sans le droit contrathèque)
+  admin@example.com          Administrateur (valide aussi les documents)
   technicien@example.com     Commandes d'achat (demandeur), saisie de ses heures
   technicienne@example.com   Saisie de ses heures
   responsable@example.com    Validation N+1      directeur@example.com   Validation N+2

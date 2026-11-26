@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { DataTable, type Colonne } from '@/components/data-table/data-table';
 import { ControleDocument } from '@/components/contracts/validation/controle-document';
+import { TON_VALIDATION } from '@/components/contracts/validation/tons';
 import { useOngletUrl } from '@/components/fiches/fiche';
 import { useData } from '@/context/data-context';
 import { useToast } from '@/hooks/use-toast';
@@ -45,7 +46,7 @@ export default function ValidationsPage() {
     const lignes = useMemo(() => (file ?? []).filter(e => onglet === 'tout' || e.type === onglet), [file, onglet]);
 
     const colonnes: Colonne<ElementAValider>[] = useMemo(() => [
-        ...(onglet === 'tout' ? [{ id: 'type', label: 'Type', tri: (r: ElementAValider) => LIBELLE_UNITAIRE[r.type], cell: (r: ElementAValider) => <Badge variant="outline">{LIBELLE_UNITAIRE[r.type]}</Badge> }] : []),
+        ...(onglet === 'tout' ? [{ id: 'type', label: 'Type', tri: (r: ElementAValider) => LIBELLE_UNITAIRE[r.type], cell: (r: ElementAValider) => <Badge variant="outline" className={`whitespace-nowrap ${TON_VALIDATION[r.type].pastille}`}>{LIBELLE_UNITAIRE[r.type].replace(/^./, c => c.toUpperCase())}</Badge> }] : []),
         { id: 'contrat', label: 'Contrat', fixe: true, tri: r => r.contractNumber, cell: r => <Link href={`/contracts/${r.contractId}`} className="font-mono text-xs underline">{r.contractNumber}</Link> },
         { id: 'client', label: 'Client', tri: r => r.clientName, cell: r => <span className="block max-w-[200px] truncate" title={r.clientName}>{r.clientName}</span> },
         { id: 'details', label: 'Objet', cell: r => <span className="line-clamp-2 max-w-[320px] text-sm" title={r.details}>{r.details || '—'}</span> },
@@ -77,6 +78,7 @@ export default function ValidationsPage() {
                     <TabsTrigger value="tout" className="gap-1.5">Tout <Badge variant="secondary" className="h-5 px-1.5 text-[10px]">{file?.length ?? 0}</Badge></TabsTrigger>
                     {TYPES_VALIDATION.map(t => (
                         <TabsTrigger key={t} value={t} className="gap-1.5">
+                            <span className={`h-2 w-2 rounded-full ${TON_VALIDATION[t].point}`} aria-hidden />
                             {LIBELLES_VALIDATION[t]}
                             {compte[t] > 0 && <Badge variant="destructive" className="h-5 px-1.5 text-[10px]">{compte[t]}</Badge>}
                         </TabsTrigger>
