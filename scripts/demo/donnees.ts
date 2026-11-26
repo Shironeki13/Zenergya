@@ -203,6 +203,12 @@ async function clientsEtContacts(): Promise<string[]> {
             ...(i % 5 === 3 ? [] : [[code, 'Facturation', `Service comptable ${i + 1}`, `factures${i + 1}@example.com`, '', 'Comptabilité fournisseurs']]),
         ]),
     ]);
+    // Adressage des factures : un syndic avec son adresse (les factures de ses copropriétés lui sont adressées), l'autre
+    // syndic sans fiche (signalé sur la fiche client), et un payeur distinct pour un client public.
+    await set('tiers', 'demo-tiers-syndic', { name: 'Syndic Démo Immobilier', quality: 'syndic', address: '25 rue de la Gestion-Démo', postalCode: '69003', city: 'Lyon', email: 'copro@example.com', phone: '04 72 00 99 00', siret: '', createdAt: new Date().toISOString(), createdBy: 'démo' });
+    await set('tiers', 'demo-tiers-payeur', { name: 'Trésorerie de Paris (démo)', quality: 'comptable public', address: '94 rue de la Finance-Démo', postalCode: '75002', city: 'Paris', email: '', phone: '', siret: siretFictif(1999), createdAt: new Date().toISOString(), createdBy: 'démo' });
+    const scolaire = await adminDb.collection('clients').where('name', '==', 'Groupe scolaire Jules-Exemple').limit(1).get();
+    if (!scolaire.empty) await scolaire.docs[0].ref.update({ payer: 'Trésorerie de Paris (démo)' });
     return codes;
 }
 

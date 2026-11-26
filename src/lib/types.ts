@@ -157,6 +157,7 @@ export const ClientBaseSchema = z.object({
     agencyId: z.string({ required_error: "L'agence est requise." }).min(1, "L'agence est requise."),
     sectorId: z.string({ required_error: "Le secteur est requis." }).min(1, "Le secteur est requis."),
     representedBy: z.string().optional(),
+    payer: z.string().optional(), // Payeur distinct du facturé (ex. l'État pour un ministère) ; nom d'un tiers
     externalCode: z.string().optional(),
     externalRef: z.string().optional(), // Réf. externe (ancienne codification) ; externalCode porte le code client CLI
     paymentTermId: z.string().optional(), // Conditions de paiement (vide : 30 jours)

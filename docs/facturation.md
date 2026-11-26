@@ -136,6 +136,27 @@ Facturation → Régularisation P1.
   un mois déjà régularisé ne se régularise pas deux fois ; les mois régularisés ne sont plus facturés en acompte.
 - L'aperçu de la facturation groupée est calculé au serveur, exactement comme la facture (acomptes compris).
 
+## Adressage : facturé, représentant, payeur
+
+Le **facturé** est toujours le client : son nom, son SIRET et sa TVA figurent sur la facture, et c'est lui qui porte
+le compte client, la numérotation et l'analytique. Deux champs de sa fiche changent l'adressage :
+
+- **Représenté par** (syndic d'une copropriété, mandataire) : la facture cite le représentant et part à **son
+  adresse** ; l'adresse de la copropriété reste imprimée en lieu d'exécution.
+- **Payeur** (quand un autre que le client règle, par exemple un comptable public) : il est mentionné sur la
+  facture, avec son adresse et son SIRET. L'adresse du facturé ne change pas.
+
+Ces champs portent un **nom** ; l'adresse vient de l'annuaire des **tiers** (collection `tiers`, serveur seulement),
+rapproché par le nom sans tenir compte de la casse, des accents et de la ponctuation. Un tiers se saisit une fois et
+sert à tous les clients qui le citent ; son renommage est reporté sur ces clients, et il ne peut pas être supprimé
+tant qu'un client le cite. Un représentant sans fiche (ou sans adresse) est cité sur la facture, qui part alors à
+l'adresse du client : la fiche client le signale.
+
+L'adressage est résolu à la génération du PDF (`clientBlock`, `src/services/document-archive.ts`) : il est donc figé
+dans la copie archivée à l'émission, et un changement de syndic ne modifie pas les factures déjà émises.
+Calcul : `src/lib/billing/adressage.ts`. Non couvert : l'adresse de facturation électronique (celle du client) et les
+relances, qui restent adressées au client.
+
 ## Numérotation (factures et avoirs)
 
 Exigence légale (CGI, annexe II, art. 242 nonies A) : numéros uniques, chronologiques et continus, par société émettrice.

@@ -32,6 +32,7 @@ import { Separator } from "@/components/ui/separator"
 import type { Typology, Company, Agency, Sector } from "@/lib/types"
 import { ClientSchema } from "@/lib/types"
 import { ClientEInvoicingFields } from "@/components/clients/einvoicing-fields"
+import { ClientAdressageFields } from "@/components/clients/adressage-fields"
 import { CompanyLookupDialog } from "@/components/clients/company-lookup"
 import { entrepriseToClientFields, type EntrepriseResult } from "@/lib/entreprises"
 import { useData } from "@/context/data-context"
@@ -69,6 +70,7 @@ export default function NewClientPage() {
       city: "",
       clientType: "private",
       representedBy: "",
+      payer: "",
       externalCode: "",
       externalRef: "",
       paymentTermId: "",
@@ -119,7 +121,6 @@ export default function NewClientPage() {
     typologies.find(t => t.id === watchTypologyId),
     [typologies, watchTypologyId]
   );
-  const showRepresentedBy = selectedTypology?.name === 'Copropriété';
 
   const filteredAgencies = React.useMemo(() =>
     watchCompanyId ? agencies.filter(a => a.companyId === watchCompanyId) : agencies,
@@ -278,13 +279,7 @@ export default function NewClientPage() {
                     <FormMessage />
                   </FormItem>
                 )} />
-                {showRepresentedBy && <FormField control={form.control} name="representedBy" render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Représenté par</FormLabel>
-                    <FormControl><Input placeholder="Syndic de copropriété" {...field} /></FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )} />}
+                <ClientAdressageFields />
                 <FormField control={form.control} name="paymentTermId" render={({ field }) => (
                   <FormItem>
                     <FormLabel>Conditions de paiement</FormLabel>

@@ -36,6 +36,7 @@ import { ClientSchema } from "@/lib/types"
 import { CompanyLookupDialog } from "@/components/clients/company-lookup"
 import { entrepriseToClientFields, type EntrepriseResult } from "@/lib/entreprises"
 import { ClientEInvoicingFields } from "@/components/clients/einvoicing-fields"
+import { ClientAdressageFields } from "@/components/clients/adressage-fields"
 import { AttachContractDialog } from "@/components/attach-contract-dialog"
 
 type ClientFormValues = z.infer<typeof ClientSchema>
@@ -61,6 +62,7 @@ export default function EditClientPage() {
       city: "",
       clientType: "private",
       representedBy: "",
+      payer: "",
       externalCode: "",
       externalRef: "",
       paymentTermId: "",
@@ -136,6 +138,8 @@ export default function EditClientPage() {
           chorusServiceCodeRequired: clientData.chorusServiceCodeRequired ?? false,
           relation: clientData.relation ?? 'client',
           externalRef: clientData.externalRef ?? '',
+          representedBy: clientData.representedBy ?? '',
+          payer: clientData.payer ?? '',
           paymentTermId: clientData.paymentTermId ?? '',
           quoteCoefficient: clientData.quoteCoefficient ?? null,
           quoteLaborRate: clientData.quoteLaborRate ?? null,
@@ -161,7 +165,6 @@ export default function EditClientPage() {
     typologies.find(t => t.id === watchTypologyId),
     [typologies, watchTypologyId]
   );
-  const showRepresentedBy = selectedTypology?.name === 'Copropriété';
 
 
   async function onSubmit(data: ClientFormValues) {
@@ -274,13 +277,7 @@ export default function EditClientPage() {
                   <FormMessage />
                 </FormItem>
               )} />
-              {showRepresentedBy && <FormField control={form.control} name="representedBy" render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Représenté par</FormLabel>
-                  <FormControl><Input placeholder="Syndic de copropriété" {...field} /></FormControl>
-                  <FormMessage />
-                </FormItem>
-              )} />}
+              <ClientAdressageFields />
               <FormItem>
                 <FormLabel>Code client</FormLabel>
                 <Input value={form.watch('externalCode') ?? ''} readOnly disabled className="font-mono" />

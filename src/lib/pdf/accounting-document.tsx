@@ -5,6 +5,7 @@ import { Document, Page, View, Text, Image, StyleSheet, renderToBuffer } from '@
 import type { Client, Company, InvoiceLineItem, InvoiceQuoteLink, VatBreakdown } from '@/lib/types';
 import type { SituationSnapshot } from '@/lib/projects/types';
 import { afficher, etapesFormule, syntheseAnnexe, type AnnexeP1 } from '@/lib/billing/p1-annexe';
+import { libellePartie, type Adressage } from '@/lib/billing/adressage';
 import { conditionsPaiement, identiteLegale, mentionEscompte, mentionPenalites, MENTION_DEBITS } from '@/lib/billing/mentions';
 
 /**
@@ -32,7 +33,8 @@ export type AccountingDocumentData = {
     periodStartDate?: string;
     periodEndDate?: string;
     company: Company;
-    client: Pick<Client, 'name' | 'address' | 'postalCode' | 'city'> & { siret?: string; vatNumber?: string };
+    /** Facturé. Avec un représentant dont l'adresse est connue, `address`, `postalCode` et `city` sont les siens. */
+    client: Pick<Client, 'name' | 'address' | 'postalCode' | 'city'> & { siret?: string; vatNumber?: string } & Adressage;
     /** Mentions légales résolues à la génération : conditions de paiement, nature, lieux, références de l'acheteur. */
     paymentTerms?: string;
     operationNature?: string;
@@ -384,10 +386,19 @@ export function AccountingDocumentPdf({ data }: { data: AccountingDocumentData }
                     <View style={styles.box}>
                         <Text style={styles.label}>{kind === 'creditNote' ? 'AVOIR ÉMIS AU NOM DE' : 'FACTURÉ À'}</Text>
                         <Text style={styles.clientName}>{client.name}</Text>
+                        {client.representative && <Text>{pdfTexte(`Représentant : ${libellePartie(client.representative)}`)}</Text>}
                         {client.address && <Text>{client.address}</Text>}
                         <Text>{`${client.postalCode ?? ''} ${client.city ?? ''}`.trim()}</Text>
                         {client.siret && <Text style={styles.muted}>SIRET {client.siret}</Text>}
                         {client.vatNumber && <Text style={styles.muted}>TVA intracommunautaire {client.vatNumber}</Text>}
+                        {client.payer && (
+                            <View style={{ marginTop: 5 }}>
+                                <Text style={styles.label}>PAYEUR</Text>
+                                <Text>{pdfTexte(libellePartie(client.payer))}</Text>
+                                {client.payer.address && <Text style={styles.muted}>{pdfTexte(`${client.payer.address}, ${`${client.payer.postalCode ?? ''} ${client.payer.city ?? ''}`.trim()}`)}</Text>}
+                                {client.payer.siret && <Text style={styles.muted}>SIRET {client.payer.siret}</Text>}
+                            </View>
+                        )}
                     </View>
                     <View style={styles.box}>
                         <View style={styles.infoRow}><Text style={styles.infoLabel}>Date d'émission :</Text><Text>{formatDate(data.date)}</Text></View>

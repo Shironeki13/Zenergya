@@ -20,6 +20,7 @@ import { AttachContractDialog } from '@/components/attach-contract-dialog';
 import { useData } from '@/context/data-context';
 import { SireneCheckPanel } from '@/components/clients/sirene-check';
 import { AFaire, Indicateur, eur0, CompteurAFaire, useOngletUrl, type PointAFaire } from '@/components/fiches/fiche';
+import { LignesAdressage } from '@/components/clients/adressage-fields';
 import { CarteContacts, TableauContrats, TableauFactures, TableauSites, etatSite } from '@/components/fiches/tableaux';
 
 /** Fiche client : bandeau, indicateurs, « à faire », onglets (synthèse, contrats, sites, factures). */
@@ -166,7 +167,7 @@ export default function ClientDetailPage() {
                   <dt className="text-muted-foreground">Agence</dt><dd>{agencyName}</dd>
                   <dt className="text-muted-foreground">Secteur</dt><dd>{sectorName}</dd>
                   <dt className="text-muted-foreground">Typologie</dt><dd>{typologyName}</dd>
-                  {client.representedBy && <><dt className="text-muted-foreground">Représenté par</dt><dd>{client.representedBy}</dd></>}
+                  <LignesAdressage client={client} />
                   <dt className="text-muted-foreground">SIRET</dt><dd className="font-mono">{client.siret || '—'}</dd>
                   <dt className="text-muted-foreground">Chorus Pro</dt><dd>{client.useChorus ? <span className="font-medium text-green-700">Activé</span> : 'Non'}</dd>
                   {client.isBe && <><dt className="text-muted-foreground">Bureau d&apos;études</dt><dd>{client.beName || 'Oui'}</dd></>}
