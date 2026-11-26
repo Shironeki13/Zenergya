@@ -37,6 +37,8 @@ export type PointEnergieMail = { pdl: string; client: string; site: string; four
 export type EnergieMail = { lignes: PointEnergieMail[]; sansContrat?: number };
 export type HeuresMail = { salarie?: string; lignes: LigneHeures[]; decidePar?: string; motif?: string };
 
+export type DeriveMail = { client: string; site: string; taux: number | null; tauxN1: number | null; tauxBudget: number | null; gravite: 'forte' | 'attention'; cause: string | null; nouveau: boolean };
+
 export type ContexteMail = {
     /** `montants` : montants annuels HT du contrat par prestation (base marché). */
     contrat: { id: string; numero: string; client: string; montants?: MontantsPrestation };
@@ -57,6 +59,8 @@ export type ContexteMail = {
     heures?: HeuresMail;
     /** Contrats de fourniture d'énergie : points de livraison à renouveler (récapitulatif). */
     energie?: EnergieMail;
+    /** Sites en dérive de marge P1 (récapitulatif) ; `nouveaux` : entrés en dérive depuis le dernier envoi. */
+    derives?: { lignes: DeriveMail[] };
     urlApplication: string;
     /** Jour de composition (AAAA-MM-JJ) ; à défaut, aujourd'hui. */
     aujourdhui?: string;
@@ -83,6 +87,7 @@ const sansFin = (s?: string) => (s ?? '').trim().replace(/[.\s]+$/, '');
 export type Balise = { nom: string; groupe: GroupeBalise; aide: string; valeur: (c: ContexteMail) => string };
 
 /** Balises disponibles, dans l'ordre où l'écran les propose. */
+const pctMail = (n: number | null) => (n === null ? '—' : `${n.toLocaleString('fr-FR')} %`);
 export const BALISES: Balise[] = [
     { nom: 'Numéro du contrat', groupe: 'Contrat', aide: 'CTN-00003', valeur: c => c.contrat.numero },
     { nom: 'Client', groupe: 'Contrat', aide: 'Nom du client du contrat', valeur: c => c.contrat.client },
@@ -137,6 +142,12 @@ export const BALISES: Balise[] = [
         valeur: c => (c.energie?.lignes ?? []).map(l => `- ${fr(l.fin)} (${l.jours} jour${l.jours > 1 ? 's' : ''}) — ${l.client}, ${l.site} — PDL ${l.pdl}${l.fournisseur ? ` — ${l.fournisseur}${l.numeroContrat ? ` ${l.numeroContrat}` : ''}` : ''}`).join('\n'),
     },
     { nom: 'Points sans contrat en cours', groupe: 'Énergie', aide: 'Nombre de points de livraison sans fourniture en cours alors que le contrat client est actif ; vide s\'il n\'y en a pas', valeur: c => (c.energie?.sansContrat ? String(c.energie.sansContrat) : '') },
+    { nom: 'Nombre de sites en dérive', groupe: 'Énergie', aide: 'Nombre de sites dont la marge P1 passe sous les seuils', valeur: c => (c.derives ? String(c.derives.lignes.length) : '') },
+    {
+        nom: 'Liste des sites en dérive', groupe: 'Énergie', aide: 'Une ligne par site : client, site, marge P1, an dernier, budget, cause probable ; « nouveau » pour un site entré en dérive depuis le dernier envoi',
+        valeur: c => (c.derives?.lignes ?? []).map(l => `- ${l.nouveau ? '[nouveau] ' : ''}${l.client}, ${l.site} — marge ${pctMail(l.taux)} (an dernier ${pctMail(l.tauxN1)}, budget ${pctMail(l.tauxBudget)})${l.gravite === 'forte' ? ' — dérive forte' : ''}${l.cause ? ` — ${l.cause}` : ''}`).join('\n'),
+    },
+    { nom: 'Lien vers les dérives P1', groupe: 'Énergie', aide: 'Adresse de l\'écran des dérives P1 (cliquable dans le mail)', valeur: c => (c.urlApplication ? `${c.urlApplication.replace(/\/+$/, '')}/billing/derives-p1` : '') },
     { nom: 'Lien vers les contrats d\'énergie', groupe: 'Énergie', aide: 'Adresse de la base des contrats d\'énergie (cliquable dans le mail)', valeur: c => (c.urlApplication ? `${c.urlApplication.replace(/\/+$/, '')}/purchases/energie` : '') },
 ];
 

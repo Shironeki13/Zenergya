@@ -623,6 +623,39 @@ async function revisionsForfaits() {
         n++;
     }
     console.log(`Budgets ${annee} : ${n} autres contrats budgétés.`);
+    // Dérives P1 : factures du fournisseur sur deux ans pour quelques sites P1 (un sain, un prix d'achat en hausse, une
+    // consommation en hausse), d'après le P1 facturé mois par mois (prix de référence 80 €/MWh).
+    const codesP1 = new Set([...codesAct].filter(([id]) => ['demo-p1', 'demo-p1e'].includes(id)).map(([, c]) => c));
+    const moisDe = (j: string) => j.slice(0, 7);
+    const scenarios: [string, (an: number) => { part: number; prix: number }][] = [
+        ['sain', () => ({ part: 0.6, prix: 80 })],
+        ['prix', an => (an === annee ? { part: 0.88, prix: 117 } : { part: 0.62, prix: 80 })],
+        ['conso', an => (an === annee ? { part: 0.82, prix: 80 } : { part: 0.6, prix: 80 })],
+    ];
+    const ventesSite = new Map<string, Map<string, number>>();
+    for (const f of (await adminDb.collection('invoices').get()).docs) {
+        if (!f.get('invoiceNumber') || f.get('status') === 'cancelled') continue;
+        for (const l of (f.get('lineItems') ?? []) as { siteId?: string; activityCode?: string; total?: number; periodStartDate?: string; periodEndDate?: string }[]) {
+            if (!l.siteId || !codesP1.has(String(l.activityCode)) || !l.periodStartDate || !l.total) continue;
+            const m = ventesSite.get(l.siteId) ?? new Map<string, number>();
+            m.set(moisDe(String(l.periodStartDate)), (m.get(moisDe(String(l.periodStartDate))) ?? 0) + Number(l.total));
+            ventesSite.set(l.siteId, m);
+        }
+    }
+    const dejaSaisis = new Set((await adminDb.collection('facturesEnergie').get()).docs.map(d => String(d.get('siteId'))));
+    const candidats = [...ventesSite].filter(([s, m]) => !dejaSaisis.has(s) && [...m.keys()].some(x => x.startsWith(String(annee - 1))) && [...m.keys()].some(x => x.startsWith(String(annee)))).slice(0, scenarios.length);
+    for (const [k, [siteId, mois]] of candidats.entries()) {
+        const [nom, regle] = scenarios[k];
+        for (const [m, ventes] of mois) {
+            const an = Number(m.slice(0, 4));
+            if (an < annee - 1) continue;
+            const { part, prix } = regle(an);
+            const montantHT = Math.round(ventes * part * 100) / 100;
+            const fin = new Date(Date.UTC(an, Number(m.slice(5, 7)), 0)).toISOString().slice(0, 10);
+            await set('facturesEnergie', `demo-fe-${siteId}-${m}`, { siteId, numero: `DEMO-${nom.toUpperCase()}-${m}`, fournisseur: 'Gaz du Sud (démo)', date: fin, debut: `${m}-01`, fin, montantHT, quantite: Math.round((montantHT / prix) * 1000) / 1000, saisiPar: 'démo', saisiLe: new Date().toISOString() });
+        }
+    }
+    console.log(`Dérives P1 : factures du fournisseur sur deux ans pour ${candidats.length} site(s) (sain, prix en hausse, consommation en hausse).`);
 }
 
 /**

@@ -6,6 +6,8 @@ import { etapeEnCours, libelleEtape, type Commande } from '@/lib/commandes';
 import type { LigneHeures } from '@/lib/notifications/balises';
 import type { SaisieHeures } from '@/lib/heures';
 import { notifierSansBloquer, type DemandeNotification } from '@/services/notifications-admin';
+import { derivesP1, etatPrecedent, memoriserEtat } from '@/services/derives-p1-admin';
+import { nouveauxEnDerive } from '@/lib/energie/derives';
 
 /**
  * Notifications des commandes d'achat et des heures : qui valide, qui est prévenu de la décision. Jamais bloquant :
@@ -134,5 +136,27 @@ export async function rappelsEnergie(today: string, dernierPassage: string | nul
     return [{
         evenement: 'energie_a_renouveler', cle: `energie/a-renouveler/${today}`, libelle: "Fournitures d'énergie à renouveler", annuaire: { acheteurs },
         contexte: { contrat: SANS_CONTRAT, energie: { lignes, ...(sansContrat && { sansContrat }) }, aujourdhui: today },
+    }];
+}
+
+/**
+ * Récapitulatif des sites en dérive de marge P1 : un mail aux acheteurs et aux administrateurs le jour où un site
+ * entre en dérive (absent du passage précédent), listant tous les sites en dérive. L'état est mémorisé à chaque passage.
+ */
+export async function rappelsDerivesP1(today: string): Promise<DemandeNotification[]> {
+    const [d, precedents] = await Promise.all([derivesP1(null, today), etatPrecedent()]);
+    const enDerive = d.sites.filter(s => s.analyse.gravite);
+    await memoriserEtat(enDerive.map(s => s.siteId), today);
+    const nouveaux = new Set(nouveauxEnDerive(enDerive.map(s => s.siteId), precedents));
+    if (!nouveaux.size) return [];
+    const [roles, users] = await Promise.all([adminDb.collection('roles').where('isAcheteur', '==', true).get(), adminDb.collection('users').get()]);
+    const idsRoles = new Set(roles.docs.map(r => r.id));
+    const acheteurs = users.docs.filter(u => idsRoles.has(String(u.get('roleId') ?? ''))).map(u => String(u.get('email') ?? '').trim()).filter(Boolean);
+    return [{
+        evenement: 'derive_p1', cle: `energie/derive-p1/${today}`, libelle: 'Sites en dérive de marge P1', annuaire: { acheteurs },
+        contexte: {
+            contrat: SANS_CONTRAT, aujourdhui: today,
+            derives: { lignes: enDerive.map(s => ({ client: s.client, site: s.siteNom, taux: s.analyse.taux, tauxN1: s.analyse.tauxN1, tauxBudget: s.analyse.tauxBudget, gravite: s.analyse.gravite!, cause: s.analyse.cause, nouveau: nouveaux.has(s.siteId) })) },
+        },
     }];
 }

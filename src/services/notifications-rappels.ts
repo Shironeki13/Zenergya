@@ -4,7 +4,7 @@ import { rappelsDuJour, type AttenteRappel, type ContratRappel } from '@/lib/not
 import type { Evenement, NatureDocument } from '@/lib/notifications/modeles';
 import type { MontantsPrestation } from '@/lib/notifications/balises';
 import { notifier, reglagesNotifications, type DemandeNotification } from '@/services/notifications-admin';
-import { rappelsEnergie, rappelsHeures } from '@/services/notifications-metier';
+import { rappelsDerivesP1, rappelsEnergie, rappelsHeures } from '@/services/notifications-metier';
 
 /**
  * Rappels programmés : une fois par jour (fonction planifiée) ou à la demande (administrateur), relit les contrats
@@ -78,7 +78,7 @@ export async function lancerRappels(opts: { declencheur: PassageRappels['declenc
         const dernierJour = precedent ? new Date(precedent.le).toLocaleDateString('en-CA', { timeZone: 'Europe/Paris' }) : null;
         const dernier = opts.dernierPassage !== undefined ? opts.dernierPassage : dernierJour;
         // Rappels des contrats, puis récapitulatif des heures à valider (un mail par responsable).
-        const dus: DemandeNotification[] = [...rappelsDuJour(contrats, attentes, today, reglages.rappels, dernier), ...(await rappelsHeures(today, dernier)), ...(await rappelsEnergie(today, dernier))];
+        const dus: DemandeNotification[] = [...rappelsDuJour(contrats, attentes, today, reglages.rappels, dernier), ...(await rappelsHeures(today, dernier)), ...(await rappelsEnergie(today, dernier)), ...(await rappelsDerivesP1(today).catch(e => { console.error('[rappels] dérives P1 non calculées', e); return []; }))];
         passage.dus = dus.length;
         for (const r of dus) {
             try {

@@ -24,12 +24,12 @@ function periode(l: Ligne): { debut: string; fin: string } | null {
     return mois.length ? { debut: `${mois[0]}-01`, fin: finDeMois(mois[mois.length - 1]) } : null;
 }
 
-async function codesP1(): Promise<Set<string>> {
+export async function codesP1(): Promise<Set<string>> {
     return new Set((await adminDb.collection('activities').where('type', '==', 'P1').get()).docs.map(d => String(d.get('code'))));
 }
 
 /** Ventes P1 d'un site : lignes des factures émises du contrat, moins les avoirs qui ne sont pas des annulations. */
-async function ventesP1(siteId: string, contractId: string, p1: Set<string>): Promise<Vente[]> {
+export async function ventesP1(siteId: string, contractId: string, p1: Set<string>): Promise<Vente[]> {
     const [factures, avoirs] = await Promise.all([adminDb.collection('invoices').where('contractId', '==', contractId).get(), adminDb.collection('creditNotes').where('contractId', '==', contractId).get()]);
     const ventes: Vente[] = [];
     const ajouter = (lignes: Ligne[], signe: 1 | -1) => {
@@ -101,4 +101,14 @@ export async function margesP1(garde: GardePerimetre): Promise<MargeSite[]> {
 export async function achatsEnergieSite(siteId: string): Promise<Achat[]> {
     const points = await adminDb.collection('pointsLivraison').where('siteId', '==', siteId).get();
     return achatsDuSite(siteId, points.docs.map(d => pdlNorme(String(d.get('pdl') ?? ''))));
+}
+
+/** Sites dont la marge P1 est calculable : une facture du fournisseur saisie, ou (flux BigQuery actif) un point rattaché. */
+export async function sitesAvecAchats(visibles: Set<string> | null): Promise<{ siteId: string; pdls: string[] }[]> {
+    const [saisies, points] = await Promise.all([adminDb.collection('facturesEnergie').get(), adminDb.collection('pointsLivraison').get()]);
+    const pdls = new Map<string, string[]>();
+    for (const d of points.docs) { const s = d.get('siteId') as string | undefined; if (s) pdls.set(s, [...(pdls.get(s) ?? []), pdlNorme(String(d.get('pdl') ?? ''))]); }
+    const sites = new Set(saisies.docs.map(d => String(d.get('siteId') ?? '')).filter(Boolean));
+    if (bigQueryActif()) for (const s of pdls.keys()) sites.add(s);
+    return [...sites].filter(s => !visibles || visibles.has(s)).map(siteId => ({ siteId, pdls: pdls.get(siteId) ?? [] }));
 }

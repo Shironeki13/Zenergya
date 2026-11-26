@@ -58,3 +58,23 @@ Une variable de vue laissée vide retire cette vue de la lecture.
 - Marge P1 : achats réels face au P1 facturé.
 - Contrôles : facture hors contrat, fournisseur différent, et molécule facturée face au prix fixe du contrat (à 5 %
   près ; un prix indexé n'est qu'indiqué).
+
+## Dérives P1 (Pilotage › Dérives P1)
+
+Pour chaque site dont les achats d'énergie sont connus, la **marge P1** sur les douze derniers mois (P1 facturé face aux
+factures du fournisseur, sur les mois complets), comparée à **la même période un an plus tôt** et au **taux de marge
+budgété** (ligne P1 du budget de l'année du contrat : CA − énergie).
+
+- **Seuils** (réglés par un administrateur, bouton « Seuils ») : marge sous 10 %, perte de plus de 10 points sur un
+  an, plus de 5 points sous le budget ; au moins 3 mois complets pour juger. Un seuil franchi : « à surveiller » ;
+  deux, ou une marge négative : « forte ».
+- **Pourquoi** : variation du prix moyen d'achat (€ par unité facturée par le fournisseur), de la quantité achetée et
+  du P1 facturé contre l'an dernier, et la cause la plus probable en clair. Le détail mois par mois des deux années
+  se déplie ; liens vers le site, ses compteurs, les contrats d'énergie et le budget du contrat.
+- **Mail récapitulatif** (événement « Sites en dérive de marge P1 », famille Contrats d'énergie, acheteurs et
+  administrateurs par défaut) : au passage quotidien des rappels, le jour où un site **entre** en dérive ; il liste
+  tous les sites en dérive, les nouveaux marqués. L'état du passage est gardé dans `derivesP1/etat`.
+- Non pris en compte : les DJU (une hausse de consommation due à un hiver plus froid apparaît comme une hausse de
+  consommation) ; à lire avec les relevés du site.
+
+Calcul : `src/lib/energie/derives.ts`, `src/services/derives-p1-admin.ts`.

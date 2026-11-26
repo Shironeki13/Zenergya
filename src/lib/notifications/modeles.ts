@@ -11,13 +11,13 @@ import { RAPPELS_DEFAUT, type ReglagesRappels } from './rappels';
 export type { ContexteMail, Famille, Mail, ModeleMail, NatureDocument } from './balises';
 
 export type Evenement = 'document_depose' | 'document_valide' | 'document_refuse' | 'document_en_attente' | 'preavis' | 'echeance' | 'echeance_depassee' | 'resiliation_validee'
-    | 'commande_a_valider' | 'commande_validee' | 'commande_refusee' | 'heures_a_valider' | 'heures_refusees' | 'energie_a_renouveler';
+    | 'commande_a_valider' | 'commande_validee' | 'commande_refusee' | 'heures_a_valider' | 'heures_refusees' | 'energie_a_renouveler' | 'derive_p1';
 export const EVENEMENTS: Evenement[] = ['document_depose', 'document_valide', 'document_refuse', 'document_en_attente', 'preavis', 'echeance', 'echeance_depassee', 'resiliation_validee',
-    'commande_a_valider', 'commande_validee', 'commande_refusee', 'heures_a_valider', 'heures_refusees', 'energie_a_renouveler'];
+    'commande_a_valider', 'commande_validee', 'commande_refusee', 'heures_a_valider', 'heures_refusees', 'energie_a_renouveler', 'derive_p1'];
 /** Domaine de chaque événement : contrats, commandes d'achat, heures. */
 export const FAMILLE_EVENEMENT: Record<Evenement, Famille> = {
     document_depose: 'contrat', document_valide: 'contrat', document_refuse: 'contrat', document_en_attente: 'contrat', preavis: 'contrat', echeance: 'contrat', echeance_depassee: 'contrat', resiliation_validee: 'contrat',
-    commande_a_valider: 'commande', commande_validee: 'commande', commande_refusee: 'commande', heures_a_valider: 'heures', heures_refusees: 'heures', energie_a_renouveler: 'energie',
+    commande_a_valider: 'commande', commande_validee: 'commande', commande_refusee: 'commande', heures_a_valider: 'heures', heures_refusees: 'heures', energie_a_renouveler: 'energie', derive_p1: 'energie',
 };
 export const LIBELLE_FAMILLE: Record<Famille, string> = { contrat: 'Contrats', commande: 'Commandes d\'achat', heures: 'Heures', energie: "Contrats d'énergie" };
 export const LIBELLE_EVENEMENT: Record<Evenement, string> = {
@@ -26,6 +26,7 @@ export const LIBELLE_EVENEMENT: Record<Evenement, string> = {
     commande_a_valider: 'Commande à valider', commande_validee: 'Commande validée', commande_refusee: 'Commande refusée',
     heures_a_valider: 'Heures à valider (récapitulatif)', heures_refusees: 'Heures refusées',
     energie_a_renouveler: "Fournitures d'énergie à renouveler (récapitulatif)",
+    derive_p1: 'Sites en dérive de marge P1 (récapitulatif)',
 };
 
 export type RoleDestinataire = 'deposant' | 'contratheque' | 'responsable_facturation' | 'n1_responsable' | 'valideur' | 'demandeur' | 'acheteurs' | 'administrateurs';
@@ -55,6 +56,7 @@ export const REGLES_DEFAUT: Record<Evenement, Regle> = {
     heures_a_valider: { actif: true, roles: ['valideur'], adresses: [] },
     heures_refusees: { actif: true, roles: ['demandeur'], adresses: [] },
     energie_a_renouveler: { actif: true, roles: ['acheteurs', 'administrateurs'], adresses: [] },
+    derive_p1: { actif: true, roles: ['acheteurs', 'administrateurs'], adresses: [] },
 };
 
 /** `simulation` : le mail est écrit au journal sans partir ; `messagerie` : remis à la messagerie ; `arret` : rien. */
@@ -172,6 +174,10 @@ export const MODELES_DEFAUT: Record<Evenement, ModeleMail> = {
         objet: '[Énergie] <<Nombre de points à renouveler>> point(s) de livraison à renouveler — première fin le <<Première fin de fourniture>>',
         corps: `Bonjour,\n\nLa fourniture d'énergie de <<Nombre de points à renouveler>> point(s) de livraison arrive à son terme sans contrat pour la suite :\n\n<<Liste des points à renouveler>>\n\n<<Points sans contrat en cours>> point(s) n'ont déjà plus de contrat en cours alors que le contrat client est actif.\n\nRenouveler, c'est ajouter la nouvelle période sur le point de livraison : <<Lien vers les contrats d'énergie>>`,
     },
+    derive_p1: {
+        objet: '[Énergie] <<Nombre de sites en dérive>> site(s) en dérive de marge P1',
+        corps: `Bonjour,\n\nLa marge P1 (P1 facturé face aux factures du fournisseur d'énergie, sur douze mois) de <<Nombre de sites en dérive>> site(s) passe sous les seuils :\n\n<<Liste des sites en dérive>>\n\nDétail, comparaison avec l'an dernier et le budget : <<Lien vers les dérives P1>>`,
+    },
 };
 
 /** Modèle en vigueur : celui du type de document s'il existe, sinon celui de l'événement, sinon celui d'origine. */
@@ -213,6 +219,10 @@ export function contexteExemple(e: Evenement, urlApplication = 'https://zenergya
     const lignes = [{ date: '2026-11-18', heures: 7.5, salarie: 'Lucas Morel', affectation: 'Affaire ZEN-AFF2026-0003 — Rénovation de chaufferie' }, { date: '2026-11-19', heures: 4, salarie: 'Lucas Morel', affectation: 'Contrat CTN-00003 — P2' }, { date: '2026-11-19', heures: 6, salarie: 'Emma Petit', affectation: 'Affaire ZEN-AFF2026-0001 — Circulateur' }];
     if (e === 'heures_a_valider') return { ...vide, heures: { lignes } };
     if (e === 'heures_refusees') return { ...vide, heures: { salarie: 'Lucas Morel', lignes: lignes.slice(0, 2), decidePar: 'Nadia Roche', motif: 'Affectation erronée : ces heures relèvent de l\'affaire, pas du contrat.' } };
+    if (e === 'derive_p1') return { ...vide, derives: { lignes: [
+        { client: 'Copropriété Les Tilleuls', site: 'Tilleuls - Bâtiment A', taux: 4.2, tauxN1: 27.5, tauxBudget: 30, gravite: 'forte', cause: "prix d'achat de l'énergie en hausse de 31 %", nouveau: true },
+        { client: 'SDC Le Belvédère', site: 'Chaufferie Belvédère', taux: 12.8, tauxN1: 24.1, tauxBudget: null, gravite: 'attention', cause: 'consommation en hausse de 14 % sans hausse équivalente des ventes', nouveau: false },
+    ] } };
     if (e === 'energie_a_renouveler') return { ...vide, energie: { sansContrat: 2, lignes: [
         { pdl: '21458100007919', client: 'Copropriété Les Tilleuls', site: 'Tilleuls - Bâtiment A', fournisseur: 'Gaz du Sud', numeroContrat: 'MULTISITES 2025/2026', fin: '2026-12-31', jours: 38 },
         { pdl: '21458100031676', client: 'Copropriété Square Voltaire', site: 'Square Voltaire - Chaufferie', fournisseur: 'Gaz du Sud', numeroContrat: 'MULTISITES 2025/2026', fin: '2026-12-31', jours: 38 },
