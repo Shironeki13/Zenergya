@@ -1,5 +1,6 @@
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
+import { familleActivite, type FamilleActivite } from '@/lib/billing/familles-activite';
 
 /**
  * Couleurs des pastilles : une couleur par type de document de contrat, par famille de prestation et par énergie, la
@@ -26,7 +27,6 @@ export function PointDocument({ type, className }: { type?: string | null; class
     return t ? <span aria-hidden className={cn('inline-block h-2 w-2 shrink-0 rounded-full', t.point, className)} /> : null;
 }
 
-type FamilleActivite = 'P1' | 'P1E' | 'P1A' | 'EE' | 'P2' | 'P3' | 'autre';
 const TON_ACTIVITE: Record<FamilleActivite, string> = {
     P1: 'border-orange-300 bg-orange-50 text-orange-800',      // chauffage, énergie
     P1E: 'border-sky-300 bg-sky-50 text-sky-800',              // eau chaude sanitaire
@@ -37,15 +37,7 @@ const TON_ACTIVITE: Record<FamilleActivite, string> = {
     autre: 'border-slate-300 bg-slate-50 text-slate-700',
 };
 
-/** Famille d'une prestation d'après son code (P1C, P1E, P1A, €€, P2, P3R…) ou, à défaut, son type. */
-export function familleActivite(code?: string | null, type?: string | null): FamilleActivite {
-    const c = String(code ?? '').toUpperCase().trim();
-    if (c.includes('€')) return 'EE';
-    if (/^P1E/.test(c)) return 'P1E';
-    if (/^P1A/.test(c)) return 'P1A';
-    for (const f of ['P1', 'P2', 'P3'] as const) if (c.startsWith(f) || (!/^P[123]/.test(c) && type === f)) return f;
-    return 'autre';
-}
+export { familleActivite };
 
 /** Pastille d'une prestation : son code (ou son type), à la couleur de sa famille. */
 export function PastilleActivite({ code, type, className }: { code?: string | null; type?: string | null; className?: string }) {

@@ -90,6 +90,12 @@ async function mentions(record: Invoice | CreditNote, facturation: Adresse): Pro
     };
 }
 
+/** Références imprimées : contrat (numéro et libellé) et code client. */
+function referencesDe(contract: Pick<Contract, 'contractNumber' | 'label' | 'name'> | null, client: Client | null): Pick<AccountingDocumentData, 'contractRef' | 'clientCode'> {
+    const contrat = [contract?.contractNumber, contract?.label || undefined].filter(Boolean).join(' - ');
+    return { ...(contrat && { contractRef: contrat }), ...(client?.externalCode && { clientCode: client.externalCode }) };
+}
+
 /** Libellé des conditions de paiement du contrat, sinon du client ; absent : délai par défaut. */
 async function libellePaiement(contract: Pick<Contract, 'paymentTermId'> | null, client: Client | null): Promise<string | undefined> {
     try { return (await resolvePaymentTerm(contract, client))?.deadline?.trim() || undefined; } catch { return undefined; }
@@ -101,7 +107,8 @@ async function load(kind: ArchivedKind, id: string): Promise<Loaded> {
         if (!invoice) throw new Error('Facture introuvable.');
         const client = await getClient(invoice.clientId);
         const company = await issuingCompany(invoice.companyId, invoice.contractId, client);
-        const paymentTerms = await libellePaiement(invoice.contractId ? await getContract(invoice.contractId) : null, client);
+        const contrat = invoice.contractId ? await getContract(invoice.contractId) : null;
+        const paymentTerms = await libellePaiement(contrat, client);
         const isProforma = invoice.status === 'proforma';
         const bloc = await clientBlock(client, invoice.clientName);
         return {
@@ -128,6 +135,7 @@ async function load(kind: ArchivedKind, id: string): Promise<Loaded> {
                 ...(invoice.situation && { situation: invoice.situation }),
                 ...annexesDe(invoice.lineItems),
                 ...(paymentTerms && { paymentTerms }),
+                ...referencesDe(contrat, client),
                 ...(await mentions(invoice, bloc)),
             },
         };
@@ -156,6 +164,7 @@ async function load(kind: ArchivedKind, id: string): Promise<Loaded> {
             total: creditNote.total,
             references: originals.map(inv => inv.invoiceNumber || inv.id),
             reason: creditNote.reason,
+            ...referencesDe(creditNote.contractId ? await getContract(creditNote.contractId) : null, client),
             ...(creditNote.nature === 'interne' && { interne: true }),
             ...(await mentions(creditNote, bloc)),
             ...(creditNote.vatBreakdown && { vatBreakdown: creditNote.vatBreakdown }),
@@ -170,7 +179,7 @@ async function load(kind: ArchivedKind, id: string): Promise<Loaded> {
  * Aperçu d'une facture avant son émission : même mise en page et mêmes mentions que la facture, sans numéro,
  * marqué « sans valeur comptable ». Rien n'est écrit ni archivé.
  */
-export async function apercuPdf(p: { invoice: Omit<Invoice, 'id' | 'invoiceNumber' | 'companyId' | 'issuedAt' | 'pdf' | 'einvoicing'>; client: Client; company: Company; contract: Pick<Contract, 'paymentTermId'> }): Promise<Buffer> {
+export async function apercuPdf(p: { invoice: Omit<Invoice, 'id' | 'invoiceNumber' | 'companyId' | 'issuedAt' | 'pdf' | 'einvoicing'>; client: Client; company: Company; contract: Pick<Contract, 'paymentTermId'> & Partial<Pick<Contract, 'contractNumber' | 'label' | 'name'>> }): Promise<Buffer> {
     const { invoice, client, company } = p;
     const paymentTerms = await libellePaiement(p.contract, client);
     const bloc = await clientBlock(client, invoice.clientName);
@@ -181,6 +190,7 @@ export async function apercuPdf(p: { invoice: Omit<Invoice, 'id' | 'invoiceNumbe
         ...(invoice.vatBreakdown && { vatBreakdown: invoice.vatBreakdown }),
         ...annexesDe(invoice.lineItems),
         ...(paymentTerms && { paymentTerms }),
+        ...referencesDe({ contractNumber: p.contract.contractNumber, label: p.contract.label, name: p.contract.name } as Contract, client),
         ...(await mentions(invoice as Invoice, bloc)),
     });
 }
@@ -297,6 +307,7 @@ export async function apercuAvoirPdf(invoiceId: string, reason: string, interne:
         lineItems: montants.lineItems, subtotal: montants.subtotal, tax: montants.tax, total: montants.total,
         ...(montants.vatBreakdown.length > 0 && { vatBreakdown: montants.vatBreakdown }),
         references: [invoice.invoiceNumber || invoice.id], reason, ...(interne && { interne: true }),
+        ...referencesDe(invoice.contractId ? await getContract(invoice.contractId) : null, client),
         ...(await mentions(fictif, bloc)),
     });
 }

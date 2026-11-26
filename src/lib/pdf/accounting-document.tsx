@@ -1,11 +1,15 @@
 /** @jsxRuntime classic */
 /** @jsx h */
 /** @jsxFrag Fragment */
-import { Document, Page, View, Text, Image, StyleSheet, renderToBuffer } from '@react-pdf/renderer';
+import { Document, Font, Page, View, Text, Image, StyleSheet, renderToBuffer } from '@react-pdf/renderer';
+
+// Pas de coupure de mots en fin de ligne (« règle-ment ») : les libellés se lisent d'un bloc.
+Font.registerHyphenationCallback(mot => [mot]);
 import type { Client, Company, InvoiceLineItem, InvoiceQuoteLink, VatBreakdown } from '@/lib/types';
 import type { SituationSnapshot } from '@/lib/projects/types';
 import { afficher, etapesFormule, syntheseAnnexe, type AnnexeP1 } from '@/lib/billing/p1-annexe';
 import { libellePartie, type Adressage } from '@/lib/billing/adressage';
+import { familleActivite, type FamilleActivite } from '@/lib/billing/familles-activite';
 import { conditionsPaiement, identiteLegale, mentionEscompte, mentionPenalites, MENTION_DEBITS } from '@/lib/billing/mentions';
 
 /**
@@ -49,6 +53,9 @@ export type AccountingDocumentData = {
     /** Avoir : numéros des factures annulées et motif. */
     references?: string[];
     reason?: string;
+    /** Références imprimées : contrat (numéro et libellé) et code client. */
+    contractRef?: string;
+    clientCode?: string;
     /** Avoir interne (facture d'origine rejetée par la plateforme) : non transmis. */
     interne?: boolean;
     /** Aperçu avant émission : sans numéro, sans valeur comptable. */
@@ -107,6 +114,72 @@ function formatRate(taxRate: number | undefined, subtotal: number, tax: number):
 function supportedLogo(url?: string): string | undefined {
     return url && /^data:image\/(png|jpe?g);base64,/i.test(url) ? url : undefined;
 }
+
+/** Couleurs de la facture (mêmes repères que l'annexe P1 et l'application). */
+const C = { nuit: '#0f2747', bleu: '#1d4ed8', bleuClair: '#93c5fd', ardoise: '#64748b', trait: '#e2e8f0', fond: '#f1f5f9', fondLeger: '#f8fafc', texte: '#0f172a' };
+const FAMILLE_PDF: Record<FamilleActivite, { fond: string; texte: string; trait: string }> = {
+    P1: { fond: '#fff7ed', texte: '#c2410c', trait: '#fdba74' },
+    P1E: { fond: '#f0f9ff', texte: '#0369a1', trait: '#7dd3fc' },
+    P1A: { fond: '#fffbeb', texte: '#b45309', trait: '#fcd34d' },
+    EE: { fond: '#fdf4ff', texte: '#a21caf', trait: '#f0abfc' },
+    P2: { fond: '#eff6ff', texte: '#1d4ed8', trait: '#93c5fd' },
+    P3: { fond: '#ecfdf5', texte: '#047857', trait: '#6ee7b7' },
+    autre: { fond: '#f8fafc', texte: '#334155', trait: '#cbd5e1' },
+};
+
+const f = StyleSheet.create({
+    page: { paddingTop: 0, paddingHorizontal: 36, paddingBottom: 60, fontSize: 8.5, fontFamily: 'Helvetica', color: C.texte },
+    bandeau: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', backgroundColor: C.nuit, marginHorizontal: -36, paddingHorizontal: 36, paddingTop: 22, paddingBottom: 18, marginBottom: 16 },
+    logoCadre: { backgroundColor: '#ffffff', borderRadius: 4, padding: 4, marginBottom: 7, alignSelf: 'flex-start' },
+    logo: { height: 32, maxWidth: 140, objectFit: 'contain' },
+    societe: { fontSize: 13, fontFamily: 'Helvetica-Bold', color: '#ffffff' },
+    societeLigne: { fontSize: 7.5, color: '#cbd5e1', marginTop: 1.5 },
+    droiteBandeau: { alignItems: 'flex-end', maxWidth: '45%' },
+    surTitre: { fontSize: 7, fontFamily: 'Helvetica-Bold', color: C.bleuClair, letterSpacing: 1.2, marginBottom: 3 },
+    titre: { fontSize: 22, fontFamily: 'Helvetica-Bold', color: '#ffffff', textAlign: 'right' },
+    numero: { fontSize: 10.5, fontFamily: 'Helvetica-Bold', color: '#ffffff', backgroundColor: C.bleu, borderRadius: 3, paddingVertical: 3, paddingHorizontal: 7, marginTop: 6 },
+    alerte: { fontSize: 7, fontFamily: 'Helvetica-Bold', color: '#92400e', backgroundColor: '#fef3c7', borderRadius: 3, paddingVertical: 2.5, paddingHorizontal: 6, marginTop: 6 },
+    tuiles: { flexDirection: 'row', marginBottom: 12 },
+    tuile: { flex: 1, backgroundColor: C.fond, borderRadius: 4, paddingVertical: 7, paddingHorizontal: 9, marginRight: 6 },
+    tuileForte: { flex: 1.25, backgroundColor: C.bleu, borderRadius: 4, paddingVertical: 7, paddingHorizontal: 9, marginRight: 6 },
+    tuileLibelle: { fontSize: 6.5, color: C.ardoise, marginBottom: 3, letterSpacing: 0.4 },
+    tuileValeur: { fontSize: 11.5, fontFamily: 'Helvetica-Bold' },
+    tuileDetail: { fontSize: 6.5, color: C.ardoise, marginTop: 2 },
+    cartes: { flexDirection: 'row', marginBottom: 14 },
+    carte: { flex: 1, borderWidth: 0.75, borderColor: C.trait, borderRadius: 4, paddingVertical: 9, paddingHorizontal: 10 },
+    carteAccent: { borderTopWidth: 2.5, borderTopColor: C.bleu },
+    section: { fontSize: 6.5, fontFamily: 'Helvetica-Bold', color: C.ardoise, letterSpacing: 1, marginBottom: 5 },
+    client: { fontSize: 10.5, fontFamily: 'Helvetica-Bold', marginBottom: 2 },
+    attenue: { color: C.ardoise },
+    petit: { fontSize: 7.5 },
+    refLigne: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 2, borderBottomWidth: 0.5, borderBottomColor: '#f1f5f9' },
+    refLibelle: { color: C.ardoise, marginRight: 8 },
+    refValeur: { fontFamily: 'Helvetica-Bold', textAlign: 'right', maxWidth: '65%' },
+    th: { flexDirection: 'row', backgroundColor: C.nuit, color: '#ffffff', fontFamily: 'Helvetica-Bold', fontSize: 7.5, paddingVertical: 5, paddingHorizontal: 6, borderTopLeftRadius: 3, borderTopRightRadius: 3 },
+    groupe: { flexDirection: 'row', alignItems: 'center', paddingVertical: 4, paddingHorizontal: 6, marginTop: 5, borderLeftWidth: 2.5 },
+    pastille: { fontSize: 7, fontFamily: 'Helvetica-Bold', borderWidth: 0.75, borderRadius: 3, paddingVertical: 1.5, paddingHorizontal: 5, marginRight: 6 },
+    groupeLibelle: { flex: 1, fontSize: 7.5, color: C.ardoise },
+    groupeTotal: { fontFamily: 'Helvetica-Bold', fontSize: 8 },
+    ligne: { flexDirection: 'row', paddingVertical: 5, paddingHorizontal: 6, borderBottomWidth: 0.5, borderBottomColor: '#eef2f7' },
+    lignePaire: { backgroundColor: C.fondLeger },
+    principal: { fontFamily: 'Helvetica-Bold', fontSize: 8.5 },
+    detail: { fontSize: 7.5, color: C.ardoise, marginTop: 1.5 },
+    colDesc: { width: '58%', paddingRight: 8 },
+    colQty: { width: '8%', textAlign: 'right' },
+    colUnit: { width: '17%', textAlign: 'right' },
+    colTotal: { width: '17%', textAlign: 'right' },
+    bas: { flexDirection: 'row', marginTop: 14, alignItems: 'flex-start' },
+    reglement: { width: '52%', marginRight: '4%', backgroundColor: C.fondLeger, borderRadius: 4, borderLeftWidth: 2.5, borderLeftColor: C.bleu, paddingVertical: 9, paddingHorizontal: 10 },
+    reglementFort: { fontSize: 10, fontFamily: 'Helvetica-Bold', marginBottom: 3 },
+    totaux: { width: '44%' },
+    totalLigne: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 3, paddingHorizontal: 8 },
+    totalFort: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: C.nuit, color: '#ffffff', borderRadius: 4, paddingVertical: 8, paddingHorizontal: 8, marginTop: 4 },
+    totalFortLibelle: { fontSize: 9, fontFamily: 'Helvetica-Bold' },
+    totalFortValeur: { fontSize: 14, fontFamily: 'Helvetica-Bold' },
+    netAPayer: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: C.bleu, color: '#ffffff', borderRadius: 4, paddingVertical: 7, paddingHorizontal: 8, marginTop: 4 },
+    mentions: { marginTop: 18, borderTopWidth: 0.75, borderTopColor: C.trait, paddingTop: 8, fontSize: 7, color: '#475569', lineHeight: 1.4 },
+    pied: { position: 'absolute', bottom: 22, left: 36, right: 36, flexDirection: 'row', justifyContent: 'space-between', fontSize: 6.5, color: C.ardoise, borderTopWidth: 1.5, borderTopColor: C.nuit, paddingTop: 6 },
+});
 
 const styles = StyleSheet.create({
     page: { padding: 40, fontSize: 9, fontFamily: 'Helvetica', color: '#111827' },
@@ -366,115 +439,171 @@ export function AccountingDocumentPdf({ data }: { data: AccountingDocumentData }
     ].filter(Boolean).join(' · ');
     const identite = identiteLegale(company);
 
+    // Désignation : l'objet en gras, puis le détail (site, période, prorata…) en plus discret.
+    const decoupe = (item: InvoiceLineItem) => {
+        // Avoir d'une seule facture : le rappel « Avoir sur facture … : » de chaque ligne est dans l'en-tête.
+        const brut = designation(item, !!data.annexes?.length);
+        const t = kind === 'creditNote' && data.references?.length === 1 ? brut.replace(/^Avoir sur facture [^:]+:\s*/, '') : brut;
+        const k = t.indexOf(' — ');
+        if (k >= 0) return { principal: t.slice(0, k), detail: t.slice(k + 3) };
+        // Ligne de travaux « Poste : avancement… » : le poste en gras, l'avancement en détail.
+        const c = t.indexOf(' : ');
+        return c > 0 && c <= 90 ? { principal: t.slice(0, c), detail: t.slice(c + 3) } : { principal: t, detail: '' };
+    };
+    const montantFort = data.situation && data.situation.retention.amount !== 0 ? data.situation.netToPay : data.total;
+    const libelleFort = kind === 'creditNote' ? "Montant de l'avoir" : data.situation && data.situation.retention.amount !== 0 ? 'Net à payer' : 'Montant TTC';
+    const references: [string, string][] = ([
+        ['Contrat', data.contractRef],
+        ['Code client', data.clientCode],
+        ['Facture(s) d\'origine', data.references?.join(', ')],
+        ['Affaire', data.situation?.projectCode],
+        ['Travaux du mois', data.situation ? period(data.situation.period) : undefined],
+        ['Devis', data.quote ? `${data.quote.number}${data.quote.version > 1 ? ` V${data.quote.version}` : ''}${data.quote.acceptedAt ? ` du ${formatDate(data.quote.acceptedAt)}` : ''}` : undefined],
+        ['Bon de commande', data.quote?.purchaseOrderNumber],
+        ['Engagement juridique', data.legalCommitment],
+        ['N° de marché', data.marketNumber],
+    ] as [string, string | undefined][]).filter((r): r is [string, string] => !!r[1]);
+
     return (
         <Document title={`${title} ${data.number ?? ''}`.trim()} author={company.name}>
-            <Page size="A4" style={styles.page}>
-                <View style={styles.header}>
-                    <View>
+            <Page size="A4" style={f.page}>
+                <View style={f.bandeau}>
+                    <View style={{ maxWidth: '55%' }}>
                         {/* eslint-disable-next-line jsx-a11y/alt-text */}
-                        {logo && <Image src={logo} style={styles.logo} />}
-                        <Text style={styles.companyName}>{company.name}</Text>
-                        {company.address && <Text style={styles.muted}>{company.address}</Text>}
-                        {(company.postalCode || company.city) && <Text style={styles.muted}>{`${company.postalCode ?? ''} ${company.city ?? ''}`.trim()}</Text>}
-                        {identite && <Text style={styles.muted}>{identite}</Text>}
-                        {legalIds && <Text style={styles.muted}>{legalIds}</Text>}
+                        {logo && <View style={f.logoCadre}><Image src={logo} style={f.logo} /></View>}
+                        <Text style={f.societe}>{company.name}</Text>
+                        {company.address && <Text style={f.societeLigne}>{company.address}</Text>}
+                        {(company.postalCode || company.city) && <Text style={f.societeLigne}>{`${company.postalCode ?? ''} ${company.city ?? ''}`.trim()}</Text>}
+                        {identite && <Text style={f.societeLigne}>{identite}</Text>}
+                        {legalIds && <Text style={f.societeLigne}>{legalIds}</Text>}
                     </View>
-                    <View>
-                        {/* Titre long (situation) : plus petit, pour ne pas empiéter sur la colonne société. */}
-                        <Text style={title.length > 16 ? [styles.title, { fontSize: 13 }] : styles.title}>{title}</Text>
-                        {data.number && <Text style={styles.number}>N° {data.number}</Text>}
+                    <View style={f.droiteBandeau}>
+                        <Text style={f.surTitre}>{kind === 'creditNote' ? 'DOCUMENT D\'ANNULATION' : kind === 'proforma' ? 'DOCUMENT PROVISOIRE' : 'DOCUMENT COMPTABLE'}</Text>
+                        {/* Titre long (situation, acompte) : plus petit, pour tenir sur une ligne. */}
+                        <Text style={title.length > 22 ? [f.titre, { fontSize: 13 }] : title.length > 16 ? [f.titre, { fontSize: 15 }] : f.titre}>{title}</Text>
+                        {data.number && <Text style={f.numero}>{`N° ${data.number}`}</Text>}
+                        {(kind === 'proforma' || data.apercu) && <Text style={f.alerte}>SANS VALEUR COMPTABLE</Text>}
+                        {kind === 'creditNote' && data.interne && <Text style={f.alerte}>NON TRANSMIS</Text>}
                     </View>
                 </View>
 
-                <View style={styles.parties}>
-                    <View style={styles.box}>
-                        <Text style={styles.label}>{kind === 'creditNote' ? 'AVOIR ÉMIS AU NOM DE' : 'FACTURÉ À'}</Text>
-                        <Text style={styles.clientName}>{client.name}</Text>
-                        {client.representative && <Text>{pdfTexte(`Représentant : ${libellePartie(client.representative)}`)}</Text>}
+                <View style={f.tuiles} wrap={false}>
+                    <View style={f.tuileForte}>
+                        <Text style={[f.tuileLibelle, { color: '#dbeafe' }]}>{libelleFort.toUpperCase()}</Text>
+                        <Text style={[f.tuileValeur, { color: '#ffffff', fontSize: 14 }]}>{formatEur(montantFort)}</Text>
+                    </View>
+                    {kind !== 'creditNote' && data.dueDate && (
+                        <View style={f.tuile}>
+                            <Text style={f.tuileLibelle}>À RÉGLER AVANT LE</Text>
+                            <Text style={f.tuileValeur}>{formatDate(data.dueDate)}</Text>
+                        </View>
+                    )}
+                    {data.periodStartDate && data.periodEndDate && (
+                        <View style={f.tuile}>
+                            <Text style={f.tuileLibelle}>PÉRIODE</Text>
+                            <Text style={[f.tuileValeur, { fontSize: 9.5 }]}>{`${formatDate(data.periodStartDate)} - ${formatDate(data.periodEndDate)}`}</Text>
+                        </View>
+                    )}
+                    <View style={[f.tuile, { marginRight: 0 }]}>
+                        <Text style={f.tuileLibelle}>{kind === 'creditNote' ? 'ÉMIS LE' : 'ÉMISE LE'}</Text>
+                        <Text style={f.tuileValeur}>{formatDate(data.date)}</Text>
+                    </View>
+                </View>
+
+                <View style={f.cartes} wrap={false}>
+                    <View style={[f.carte, f.carteAccent, { marginRight: 8 }]}>
+                        <Text style={f.section}>{kind === 'creditNote' ? 'AVOIR ÉMIS AU NOM DE' : 'FACTURÉ À'}</Text>
+                        <Text style={f.client}>{client.name}</Text>
+                        {client.representative && <Text style={{ marginBottom: 1 }}>{pdfTexte(`Représenté par ${libellePartie(client.representative)}`)}</Text>}
                         {client.address && <Text>{client.address}</Text>}
                         <Text>{`${client.postalCode ?? ''} ${client.city ?? ''}`.trim()}</Text>
-                        {client.siret && <Text style={styles.muted}>SIRET {client.siret}</Text>}
-                        {client.vatNumber && <Text style={styles.muted}>TVA intracommunautaire {client.vatNumber}</Text>}
+                        {(client.siret || client.vatNumber) && (
+                            <Text style={[f.attenue, f.petit, { marginTop: 3 }]}>{[client.siret && `SIRET ${client.siret}`, client.vatNumber && `TVA ${client.vatNumber}`].filter(Boolean).join(' · ')}</Text>
+                        )}
                         {client.payer && (
-                            <View style={{ marginTop: 5 }}>
-                                <Text style={styles.label}>PAYEUR</Text>
-                                <Text>{pdfTexte(libellePartie(client.payer))}</Text>
-                                {client.payer.address && <Text style={styles.muted}>{pdfTexte(`${client.payer.address}, ${`${client.payer.postalCode ?? ''} ${client.payer.city ?? ''}`.trim()}`)}</Text>}
-                                {client.payer.siret && <Text style={styles.muted}>SIRET {client.payer.siret}</Text>}
+                            <View style={{ marginTop: 6, paddingTop: 5, borderTopWidth: 0.5, borderTopColor: C.trait }}>
+                                <Text style={f.section}>PAYEUR</Text>
+                                <Text style={{ fontFamily: 'Helvetica-Bold' }}>{pdfTexte(libellePartie(client.payer))}</Text>
+                                {client.payer.address && <Text style={[f.attenue, f.petit]}>{pdfTexte(`${client.payer.address}, ${`${client.payer.postalCode ?? ''} ${client.payer.city ?? ''}`.trim()}`)}</Text>}
+                                {client.payer.siret && <Text style={[f.attenue, f.petit]}>SIRET {client.payer.siret}</Text>}
                             </View>
                         )}
                     </View>
-                    <View style={styles.box}>
-                        <View style={styles.infoRow}><Text style={styles.infoLabel}>Date d'émission :</Text><Text>{formatDate(data.date)}</Text></View>
-                        {kind === 'invoice' && data.dueDate && (
-                            <View style={styles.infoRow}><Text style={styles.infoLabel}>Date d'échéance :</Text><Text>{formatDate(data.dueDate)}</Text></View>
-                        )}
-                        {data.periodStartDate && data.periodEndDate && (
-                            <View style={styles.infoRow}><Text style={styles.infoLabel}>Période :</Text><Text>{`du ${formatDate(data.periodStartDate)} au ${formatDate(data.periodEndDate)}`}</Text></View>
-                        )}
-                        {data.situation && (
-                            <View style={styles.infoRow}><Text style={styles.infoLabel}>Affaire :</Text><Text>{data.situation.projectCode}</Text></View>
-                        )}
-                        {data.situation && (
-                            <View style={styles.infoRow}><Text style={styles.infoLabel}>Travaux du mois :</Text><Text>{period(data.situation.period)}</Text></View>
-                        )}
-                        {data.quote && (
-                            <View style={styles.infoRow}><Text style={styles.infoLabel}>Devis :</Text>
-                                <Text>{`${data.quote.number}${data.quote.version > 1 ? ` V${data.quote.version}` : ''}${data.quote.acceptedAt ? ` accepté le ${formatDate(data.quote.acceptedAt)}` : ''}`}</Text></View>
-                        )}
-                        {data.quote?.purchaseOrderNumber && (
-                            <View style={styles.infoRow}><Text style={styles.infoLabel}>Bon de commande :</Text><Text>{data.quote.purchaseOrderNumber}</Text></View>
-                        )}
-                        {data.legalCommitment && (
-                            <View style={styles.infoRow}><Text style={styles.infoLabel}>Engagement :</Text><Text>{data.legalCommitment}</Text></View>
-                        )}
-                        {data.marketNumber && (
-                            <View style={styles.infoRow}><Text style={styles.infoLabel}>Marché :</Text><Text>{data.marketNumber}</Text></View>
-                        )}
-                        {data.references && data.references.length > 0 && (
-                            <View style={styles.infoRow}><Text style={styles.infoLabel}>Facture(s) d'origine :</Text><Text>{data.references.join(', ')}</Text></View>
-                        )}
-                    </View>
-                </View>
-
-                <View style={styles.tableHeader} fixed>
-                    <Text style={styles.colDesc}>Désignation</Text>
-                    <Text style={styles.colQty}>Qté</Text>
-                    <Text style={styles.colUnit}>P.U. HT</Text>
-                    <Text style={styles.colTotal}>Total HT</Text>
-                </View>
-                {Object.entries(groups).map(([activityCode, items]) => (
-                    <View key={activityCode}>
-                        <Text style={styles.groupRow}>Prestations {activityCode}</Text>
-                        {items.map((item, index) => (
-                            <View key={index} style={styles.row} wrap={false}>
-                                <Text style={styles.colDesc}>{designation(item, !!data.annexes?.length)}</Text>
-                                <Text style={styles.colQty}>{String(item.quantity)}</Text>
-                                <Text style={styles.colUnit}>{formatEur(item.unitPrice)}</Text>
-                                <Text style={styles.colTotal}>{formatEur(item.total)}</Text>
-                            </View>
+                    <View style={f.carte}>
+                        <Text style={f.section}>RÉFÉRENCES</Text>
+                        {references.map(([l, v]) => (
+                            <View key={l} style={f.refLigne}><Text style={f.refLibelle}>{l}</Text><Text style={f.refValeur}>{pdfTexte(v)}</Text></View>
                         ))}
                     </View>
-                ))}
-
-                <View style={styles.totals} wrap={false}>
-                    <View style={styles.totalRow}><Text>Total HT</Text><Text>{formatEur(data.subtotal)}</Text></View>
-                    {data.vatBreakdown && data.vatBreakdown.length > 0
-                        ? data.vatBreakdown.map(v => (
-                            <View key={v.rate} style={styles.totalRow}><Text>{`TVA ${pct(v.rate)} sur ${formatEur(v.base)}`}</Text><Text>{formatEur(v.amount)}</Text></View>
-                        ))
-                        : <View style={styles.totalRow}><Text>{`TVA (${formatRate(data.taxRate, data.subtotal, data.tax)})`}</Text><Text>{formatEur(data.tax)}</Text></View>}
-                    <View style={styles.grandTotal}><Text>Total TTC</Text><Text>{formatEur(data.total)}</Text></View>
-                    {data.situation && data.situation.retention.amount !== 0 && (
-                        <>
-                            <View style={styles.totalRow}><Text>{`Retenue de garantie (${pct(data.situation.retention.pct)} du TTC)`}</Text><Text>{formatEur(-data.situation.retention.amount)}</Text></View>
-                            <View style={styles.grandTotal}><Text>Net à payer</Text><Text>{formatEur(data.situation.netToPay)}</Text></View>
-                        </>
-                    )}
                 </View>
 
-                <View style={styles.notes} wrap={false}>
-                    {kind === 'creditNote' && data.reason && <Text>Motif : {data.reason}</Text>}
+                <View style={f.th} fixed>
+                    <Text style={f.colDesc}>Désignation</Text>
+                    <Text style={f.colQty}>Qté</Text>
+                    <Text style={f.colUnit}>P.U. HT</Text>
+                    <Text style={f.colTotal}>Total HT</Text>
+                </View>
+                {Object.entries(groups).map(([activityCode, items]) => {
+                    const ton = FAMILLE_PDF[familleActivite(activityCode)];
+                    return (
+                        <View key={activityCode}>
+                            <View style={[f.groupe, { backgroundColor: ton.fond, borderLeftColor: ton.texte }]} wrap={false}>
+                                <Text style={[f.pastille, { color: ton.texte, borderColor: ton.trait, backgroundColor: '#ffffff' }]}>{pdfTexte(activityCode)}</Text>
+                                <Text style={f.groupeLibelle}>{items.length > 1 ? `${items.length} lignes` : '1 ligne'}</Text>
+                                <Text style={[f.groupeTotal, { color: ton.texte }]}>{formatEur(items.reduce((t, x) => t + x.total, 0))}</Text>
+                            </View>
+                            {items.map((item, index) => {
+                                const d = decoupe(item);
+                                return (
+                                    <View key={index} style={index % 2 ? [f.ligne, f.lignePaire] : f.ligne} wrap={false}>
+                                        <View style={f.colDesc}>
+                                            <Text style={f.principal}>{d.principal}</Text>
+                                            {d.detail && <Text style={f.detail}>{d.detail}</Text>}
+                                        </View>
+                                        <Text style={f.colQty}>{String(item.quantity)}</Text>
+                                        <Text style={f.colUnit}>{formatEur(item.unitPrice)}</Text>
+                                        <Text style={[f.colTotal, { fontFamily: 'Helvetica-Bold' }]}>{formatEur(item.total)}</Text>
+                                    </View>
+                                );
+                            })}
+                        </View>
+                    );
+                })}
+
+                <View style={f.bas} wrap={false}>
+                    <View style={f.reglement}>
+                        {kind === 'creditNote' ? (
+                            <>
+                                <Text style={f.section}>MOTIF</Text>
+                                <Text style={{ fontFamily: 'Helvetica-Bold' }}>{pdfTexte(data.reason || 'Annulation')}</Text>
+                                {data.references && data.references.length > 0 && <Text style={[f.attenue, { marginTop: 3 }]}>{`Annule ${data.references.length > 1 ? 'les factures' : 'la facture'} n° ${data.references.join(', ')}.`}</Text>}
+                            </>
+                        ) : (
+                            <>
+                                <Text style={f.section}>RÈGLEMENT</Text>
+                                {data.dueDate && <Text style={f.reglementFort}>{`${formatEur(montantFort)} avant le ${formatDate(data.dueDate)}`}</Text>}
+                                {data.number && <Text style={[f.attenue, { marginTop: 3 }]}>{`Merci de rappeler la référence ${data.number} avec votre règlement.`}</Text>}
+                            </>
+                        )}
+                    </View>
+                    <View style={f.totaux}>
+                        <View style={f.totalLigne}><Text>Total HT</Text><Text>{formatEur(data.subtotal)}</Text></View>
+                        {data.vatBreakdown && data.vatBreakdown.length > 0
+                            ? data.vatBreakdown.map(v => (
+                                <View key={v.rate} style={f.totalLigne}><Text style={f.attenue}>{`TVA ${pct(v.rate)} sur ${formatEur(v.base)}`}</Text><Text>{formatEur(v.amount)}</Text></View>
+                            ))
+                            : <View style={f.totalLigne}><Text style={f.attenue}>{`TVA (${formatRate(data.taxRate, data.subtotal, data.tax)})`}</Text><Text>{formatEur(data.tax)}</Text></View>}
+                        <View style={f.totalFort}><Text style={f.totalFortLibelle}>Total TTC</Text><Text style={f.totalFortValeur}>{formatEur(data.total)}</Text></View>
+                        {data.situation && data.situation.retention.amount !== 0 && (
+                            <>
+                                <View style={[f.totalLigne, { marginTop: 3 }]}><Text style={f.attenue}>{`Retenue de garantie (${pct(data.situation.retention.pct)} du TTC)`}</Text><Text>{formatEur(-data.situation.retention.amount)}</Text></View>
+                                <View style={f.netAPayer}><Text style={f.totalFortLibelle}>Net à payer</Text><Text style={f.totalFortValeur}>{formatEur(data.situation.netToPay)}</Text></View>
+                            </>
+                        )}
+                    </View>
+                </View>
+
+                <View style={f.mentions} wrap={false}>
                     {kind === 'creditNote' && data.interne && <Text>{pdfTexte("Avoir interne : il annule une facture rejetée par la plateforme de facturation électronique, que le client n'a pas reçue ; il n'est pas transmis.")}</Text>}
                     {data.apercu && <Text>{pdfTexte('Aperçu avant émission : document sans numéro et sans valeur comptable.')}</Text>}
                     {data.operationNature && <Text>Nature de l'opération : {data.operationNature}.</Text>}
@@ -491,9 +620,10 @@ export function AccountingDocumentPdf({ data }: { data: AccountingDocumentData }
                     {kind === 'proforma' && <Text>Document sans valeur comptable : ne constitue pas une facture.</Text>}
                 </View>
 
-                <Text style={styles.footer} fixed render={({ pageNumber, totalPages }) =>
-                    `${company.name}${identite ? ` · ${identite}` : ''}${legalIds ? ` · ${legalIds}` : ''} — Page ${pageNumber}/${totalPages}`
-                } />
+                <View style={f.pied} fixed>
+                    <Text style={{ maxWidth: '80%' }}>{`${company.name}${identite ? ` · ${identite}` : ''}${legalIds ? ` · ${legalIds}` : ''}`}</Text>
+                    <Text render={({ pageNumber, totalPages }) => `${data.number ? `${data.number} · ` : ''}Page ${pageNumber}/${totalPages}`} />
+                </View>
             </Page>
             {data.annexes && data.annexes.length > 0 && <AnnexePages data={data} />}
         </Document>
