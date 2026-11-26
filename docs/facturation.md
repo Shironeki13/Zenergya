@@ -267,6 +267,27 @@ pénalités de retard, indemnité forfaitaire de recouvrement de 40 €, absence
 **À faire valider par votre expert-comptable**, notamment le taux des pénalités de retard (repris de l'ancien modèle : 1,5 % par mois)
 et, le cas échéant, la mention « option pour le paiement de la TVA d'après les débits ».
 
+## Budget des contrats (fiche contrat › onglet Budget)
+
+Un budget par contrat, **année civile** et **activité** : chiffre d'affaires et dépenses par nature (énergie, achats,
+main-d'œuvre, sous-traitance), d'où une marge.
+
+- **Saisie** (modules Contrats ou Facturation) ; « Reprendre le CA de l'échéancier » propose le chiffre d'affaires de
+  l'année d'après les prestations (dernier coefficient de révision facturé ; P1 variable estimé sur son montant
+  annuel). **Gel** du budget initial par un administrateur, une fois ; ensuite on révise, et l'initial reste affiché.
+- **Réalisé** : factures moins avoirs, au prorata de la période facturée comprise dans l'année (une facture annulée et
+  son avoir s'écartent ensemble) ; commandes engagées affectées au contrat, à leur date (sous-traitance à part, le
+  reste en achats) ; heures validées à leur coût ; factures d'énergie des sites (saisies et flux des fournisseurs),
+  au prorata de leur période, sur l'activité P1 (chauffage d'abord). Ce qui n'a pas d'activité du contrat est en
+  « non affecté ».
+- **Atterrissage** : chiffre d'affaires réalisé + reste à facturer de l'année (échéancier) ; pour chaque nature de
+  dépense, le plus grand du budget révisé et du réalisé. Écart de marge = atterrissage − budget révisé.
+- **Alertes** : nature dépassée, dépenses sans budget, chiffre d'affaires attendu sous le budget de plus de 5 %, marge
+  en dérive (plus de 5 % du CA budgété) ou négative.
+
+Collection `budgets` (serveur seulement), un document par contrat et année. Calcul : `src/lib/budgets/budget.ts`,
+`src/services/budgets-admin.ts`.
+
 ## Pilotage
 
 ### Pilotage ADV (Facturation › Suivi, onglet « Pilotage »)

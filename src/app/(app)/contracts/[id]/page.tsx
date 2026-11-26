@@ -3,6 +3,7 @@
 import { AccesRefuse, useHorsPerimetre } from '@/components/perimetre/acces';
 import { VieContrat } from '@/components/contracts/vie-contrat';
 import { PastilleMarche, PointDocument } from '@/components/ui/pastilles';
+import { BudgetContrat } from '@/components/budgets/budget-contrat';
 import { ControleCible, type CibleValidation } from '@/components/contracts/validation/bouton-validation';
 import type { MailContrat } from '@/lib/notifications/trace';
 import { lireServeur } from '@/services/lecture';
@@ -89,7 +90,7 @@ import { BeChangeDialog } from "@/components/contracts/events/BeChangeDialog";
 import { SiteImportDialog } from "@/components/contracts/SiteImportDialog";
 import { ContractEInvoicingCard } from "@/components/contracts/EInvoicingCard";
 
-const ONGLETS_CONTRAT = ['synthese', 'sites', 'factures', 'rfe', 'p1', 'historique'] as const;
+const ONGLETS_CONTRAT = ['synthese', 'sites', 'factures', 'budget', 'rfe', 'p1', 'historique'] as const;
 type OngletContrat = typeof ONGLETS_CONTRAT[number];
 
 /** Encart « Informations » : blocs titrés, une ligne par information (libellé à gauche, valeur à droite). */
@@ -508,6 +509,7 @@ export default function ContractDetailPage() {
           </TabsTrigger>
           <TabsTrigger value="sites">Sites ({sites.length})</TabsTrigger>
           <TabsTrigger value="factures">Factures ({invoices.length})</TabsTrigger>
+          <TabsTrigger value="budget">Budget</TabsTrigger>
           <TabsTrigger value="rfe">Facturation électronique</TabsTrigger>
           {aDuP1 && <TabsTrigger value="p1">Paramétrage P1</TabsTrigger>}
           <TabsTrigger value="historique">Vie du contrat ({nbEvenements})</TabsTrigger>
@@ -592,6 +594,10 @@ export default function ContractDetailPage() {
             <P1ContratPanel contractId={contract.id} />
           </TabsContent>
         )}
+
+        <TabsContent value="budget" className="mt-4">
+          {onglet === 'budget' && <BudgetContrat contractId={id} isAdmin={isAdmin} />}
+        </TabsContent>
 
         <TabsContent value="historique" className="mt-4">
           <div className="mb-4">

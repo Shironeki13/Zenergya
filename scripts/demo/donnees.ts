@@ -580,6 +580,20 @@ async function revisionsForfaits() {
     const p2Bercy = bercy ? (await adminDb.collection('services').where('siteId', '==', bercy.id).where('activityId', '==', 'demo-p2').get()).docs : [];
     for (const d of p2Bercy) await d.ref.update({ vatSplit: [{ vatRateId: 'demo-tva10', part: 70, libelle: 'habitation' }, { vatRateId: 'demo-tva20', part: 30, libelle: 'commerces' }] });
     if (p2Bercy.length) console.log('Ventilation de TVA : P2 des Hauts de Bercy en quote-parts (70 % à 10 %, 30 % à 20 %).');
+    // Budget de l'année sur le contrat P1 de Square Voltaire : initial figé, énergie sous-estimée (dérive P1 visible).
+    const annee = new Date().getFullYear();
+    const voltaire = (await adminDb.collection('contracts').where('clientName', '==', 'Copropriété Square Voltaire').get()).docs.find(d => (d.get('activityIds') ?? []).includes('demo-p1'));
+    if (voltaire) {
+        const codes = new Map((await adminDb.collection('activities').get()).docs.map(d => [d.id, String(d.get('code'))]));
+        const montants: Record<string, [number, number, number, number, number]> = { 'demo-p1': [52000, 30000, 0, 0, 0], 'demo-p1e': [9000, 0, 0, 0, 0], 'demo-p2': [7300, 0, 1500, 2500, 0], 'demo-p3': [2900, 0, 1200, 0, 800] };
+        const lignes = ((voltaire.get('activityIds') ?? []) as string[]).filter(a => montants[a] && codes.get(a)).map(a => {
+            const [ca, energie, achats, mainOeuvre, sousTraitance] = montants[a];
+            return { activite: codes.get(a)!, ca, energie, achats, mainOeuvre, sousTraitance };
+        });
+        const le = new Date().toISOString();
+        await set('budgets', `${voltaire.id}_${annee}`, { contractId: voltaire.id, clientId: voltaire.get('clientId') ?? '', annee, lignes, majLe: le, majPar: 'admin@example.com', initial: { lignes, figeLe: le, figePar: 'admin@example.com' } });
+        console.log(`Budget ${annee} : contrat de Square Voltaire (${lignes.length} activités, initial figé).`);
+    }
 }
 
 /**

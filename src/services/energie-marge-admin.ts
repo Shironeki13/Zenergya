@@ -54,7 +54,7 @@ async function ventesP1(siteId: string, contractId: string, p1: Set<string>): Pr
 const achatDe = (d: FirebaseFirestore.QueryDocumentSnapshot): Achat & { numero: string } => ({ numero: String(d.get('numero') ?? ''), date: String(d.get('date') ?? ''), debut: d.get('debut') ?? null, fin: d.get('fin') ?? null, montantHT: Number(d.get('montantHT') ?? 0), quantite: d.get('quantite') ?? null });
 
 /** Achats d'un site : factures saisies, plus celles des flux des fournisseurs pour ses points de livraison (sans doublon de numéro). */
-async function achatsDuSite(siteId: string, pdls: string[]): Promise<Achat[]> {
+export async function achatsDuSite(siteId: string, pdls: string[]): Promise<Achat[]> {
     const saisies = (await adminDb.collection('facturesEnergie').where('siteId', '==', siteId).get()).docs.map(achatDe);
     const numeros = new Set(saisies.map(a => a.numero.trim().toUpperCase()));
     const flux = (await facturesBigQuery(pdls).catch(e => { if (e instanceof BigQueryIndisponible) return []; throw e; }))
@@ -95,4 +95,10 @@ export async function margesP1(garde: GardePerimetre): Promise<MargeSite[]> {
         try { const m = await calculer(s, pdls.get(s) ?? [], p1); if (m.marge.mois.length) out.push(m); } catch { /* site supprimé : ignoré */ }
     }
     return out.sort((x, y) => (x.marge.taux ?? Infinity) - (y.marge.taux ?? Infinity) || x.client.localeCompare(y.client, 'fr'));
+}
+
+/** Achats d'énergie d'un site (factures saisies et flux des fournisseurs de ses points de livraison). */
+export async function achatsEnergieSite(siteId: string): Promise<Achat[]> {
+    const points = await adminDb.collection('pointsLivraison').where('siteId', '==', siteId).get();
+    return achatsDuSite(siteId, points.docs.map(d => pdlNorme(String(d.get('pdl') ?? ''))));
 }
