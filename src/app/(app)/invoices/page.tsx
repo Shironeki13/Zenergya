@@ -2,7 +2,7 @@
 
 import { SelecteurPeriode } from '@/components/periode/selecteur-periode';
 import { useLecturePeriode, usePeriode } from '@/hooks/use-lecture-periode';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { Loader2, MinusCircle, MoreHorizontal } from 'lucide-react';
 import { aAnnexeP1 } from '@/lib/billing/p1-annexe';
@@ -20,13 +20,18 @@ import { useToast } from '@/hooks/use-toast';
 import { generateCreditNote } from '@/ai/flows/generate-credit-note-flow';
 import { deleteProformaInvoice, updateInvoiceStatus } from '@/services/firestore';
 import { convertProforma } from '@/lib/billing/actions';
+import { Badge } from '@/components/ui/badge';
+import type { Tiers } from '@/lib/billing/adressage';
+import { interlocuteurPaiement, type RoleInterlocuteur } from '@/lib/billing/encours';
+import { listerTiersAction } from '@/lib/tiers/actions';
 
 /**
- * Liste des factures et proformas : recherche, filtres (statut, client, mois), tri, export ; sélection des factures
+ * Liste des factures et proformas : recherche, filtres (statut, client, payeur, mois), tri, export ; sélection des factures
  * émises pour les annuler par un avoir (motif demandé) ; actions par facture (PDF, payée, proforma).
  */
 
-type Ligne = Invoice & { contrat: string; retard: boolean; mois: string };
+/** `payeur` : à qui s'adresser pour le paiement (payeur du client, sinon son représentant) ; vide : le client lui-même. */
+type Ligne = Invoice & { contrat: string; retard: boolean; mois: string; payeur: string; rolePayeur: RoleInterlocuteur };
 
 /** Jour AAAA-MM-JJ d'une date, vide si absente ou invalide (jamais d'exception). */
 const jourIso = (d: unknown) => { const t = new Date(d as string); return Number.isNaN(t.getTime()) ? '' : t.toISOString().slice(0, 10); };
@@ -35,7 +40,10 @@ const moisFr = (m: string) => new Date(`${m}-01T12:00:00`).toLocaleDateString('f
 export default function InvoicesPage() {
   const confirmer = useConfirm();
   const demander = usePrompt();
-  const { contracts, isLoading: chargementBase } = useData();
+  const { contracts, clients, isLoading: chargementBase } = useData();
+  // Annuaire des tiers : donne au payeur ou au représentant son nom exact.
+  const [tiers, setTiers] = useState<Tiers[]>([]);
+  useEffect(() => { void listerTiersAction().then(r => { if (r.success) setTiers(r.data); }); }, []);
   // Factures de la période choisie (plus les impayées et les proformas, quelle que soit leur date) : lues au serveur.
   const [periode, setPeriode] = usePeriode();
   const { donnees: invoices, chargement, recharger } = useLecturePeriode<Invoice>('facturesDePeriode', periode);
@@ -47,14 +55,17 @@ export default function InvoicesPage() {
   const lignes: Ligne[] = useMemo(() => {
     const contrat = new Map(contracts.map(c => [c.id, c.contractNumber ?? '']));
     const maintenant = Date.now();
+    const parClient = new Map(clients.map(c => [c.id, interlocuteurPaiement(c, tiers)]));
     return invoices.map(i => ({
       ...i,
+      payeur: parClient.get(i.clientId)?.role === 'client' ? '' : parClient.get(i.clientId)?.name ?? '',
+      rolePayeur: parClient.get(i.clientId)?.role ?? 'client',
       contrat: contrat.get(i.contractId) ?? '',
       // Échue et non payée : en retard (statut « overdue » ou échéance passée).
       retard: i.status === 'overdue' || (i.status === 'due' && !!i.dueDate && new Date(i.dueDate).getTime() < maintenant),
       mois: jourIso(i.date).slice(0, 7),
     }));
-  }, [invoices, contracts]);
+  }, [invoices, contracts, clients, tiers]);
 
   const colonnes: Colonne<Ligne>[] = useMemo(() => [
     {
@@ -62,6 +73,15 @@ export default function InvoicesPage() {
       cell: r => <span className="font-mono text-xs font-medium">{r.invoiceNumber || `Proforma ${r.id.substring(0, 6)}`}</span>,
     },
     { id: 'client', label: 'Client', tri: r => r.clientName, exporter: r => r.clientName, cell: r => <span className="block max-w-[240px] truncate" title={r.clientName}>{r.clientName}</span> },
+    {
+      id: 'payeur', label: 'Payeur', tri: r => r.payeur, exporter: r => r.payeur,
+      cell: r => r.payeur
+        ? <span className="flex max-w-[220px] items-center gap-1.5" title={`${r.rolePayeur === 'payeur' ? 'Payeur' : 'Représentant'} : ${r.payeur}`}>
+            <span className="truncate">{r.payeur}</span>
+            <Badge variant="outline" className={`shrink-0 py-0 text-[10px] ${r.rolePayeur === 'payeur' ? 'border-indigo-300 bg-indigo-50 text-indigo-800' : 'border-emerald-300 bg-emerald-50 text-emerald-800'}`}>{r.rolePayeur === 'payeur' ? 'payeur' : 'représentant'}</Badge>
+          </span>
+        : <span className="text-muted-foreground" title="Le client règle lui-même ses factures">Le client</span>,
+    },
     { id: 'contrat', label: 'Contrat', tri: r => r.contrat, exporter: r => r.contrat, cell: r => r.contrat ? <Link href={`/contracts/${r.contractId}`} className="font-mono text-xs hover:underline">{r.contrat}</Link> : '—' },
     {
       id: 'statut', label: 'Statut', tri: r => r.status, exporter: r => STATUTS_FACTURE[r.status] ?? r.status,
@@ -79,12 +99,13 @@ export default function InvoicesPage() {
   const filtres: FiltreTable<Ligne>[] = useMemo(() => [
     { id: 'statut', label: 'Statut', valeur: r => (r.retard && r.status === 'due' ? 'overdue' : r.status), libelle: v => STATUTS_FACTURE[v] ?? v },
     { id: 'client', label: 'Client', valeur: r => r.clientName },
+    { id: 'payeur', label: 'Payeur', valeur: r => r.payeur || 'Le client' },
     { id: 'mois', label: 'Mois', valeur: r => r.mois, libelle: moisFr },
   ], []);
 
   const recherche = useMemo(() => ({
-    placeholder: 'N° de facture, client, contrat…',
-    valeurs: (r: Ligne) => [r.invoiceNumber, r.clientName, r.contrat, r.id],
+    placeholder: 'N° de facture, client, payeur, contrat…',
+    valeurs: (r: Ligne) => [r.invoiceNumber, r.clientName, r.payeur, r.contrat, r.id],
   }), []);
 
   const annulerParAvoir = async (selection: Ligne[], vider: () => void) => {
