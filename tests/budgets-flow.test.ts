@@ -35,7 +35,7 @@ before(async () => {
 
 // Les tests suivants comptent les heures à valider et les commandes : rien de ce fichier ne doit rester.
 after(async () => {
-    for (const c of ['activities', 'schedules', 'terms', 'vatRates', 'contracts', 'sites', 'services', 'invoices', 'creditNotes', 'commandes', 'heures', 'facturesEnergie', 'budgets']) {
+    for (const c of ['activities', 'schedules', 'terms', 'vatRates', 'contracts', 'sites', 'services', 'invoices', 'creditNotes', 'commandes', 'heures', 'facturesEnergie', 'budgets', 'clients', 'agencies']) {
         for (const d of (await adminDb.collection(c).get()).docs) if (d.id.startsWith('bu-')) await d.ref.delete();
     }
     for (const a of [2026, 2027]) await adminDb.collection('budgets').doc(`bu-k_${a}`).delete();
@@ -68,4 +68,31 @@ test('saisie, gel de l\'initial, révision ; contrôles', async () => {
     // Sous-traitance 1 500 réalisée pour 1 000 budgétée : signalée, et comptée à l'atterrissage.
     assert.deepEqual([p2.atterrissage.sousTraitance, p2.alertes[0]], [1500, 'Sous-traitance : réalisé au-delà du budget (+500 €)']);
     assert.equal((await suiviBudget('bu-k', 2027)).budget, null);
+});
+
+test('pilotage et fiche client : contrats budgétés du périmètre, contrats actifs sans budget', async () => {
+    const { pilotageBudgets, budgetClient } = await import('../src/services/budgets-admin');
+    await set('contracts', 'bu-k2', { contractNumber: 'CTN-BU02', label: 'Sans budget', clientId: 'bu-c', clientName: 'Client budget', siteIds: [], activityIds: ['bu-p2'], status: 'Actif', startDate: ts('2026-01-01'), endDate: ts('2028-12-31') });
+    await set('clients', 'bu-c', { name: 'Client budget', agencyId: 'bu-ag' });
+    await set('agencies', 'bu-ag', { name: 'Agence budget' });
+    const tout = await pilotageBudgets(2026, null);
+    const k = tout.contrats.find(c => c.contractId === 'bu-k')!;
+    assert.deepEqual([k.numero, k.agence, k.aBudget, k.fige, k.total.budget.ca], ['CTN-BU01', 'Agence budget', true, true, 21000]);
+    assert.ok(tout.sansBudget.some(c => c.contractId === 'bu-k2'));
+    assert.ok(!tout.contrats.some(c => c.contractId === 'bu-k2'));
+    // Périmètre : un contrat hors périmètre n'apparaît nulle part.
+    const restreint = await pilotageBudgets(2026, new Set(['bu-k2']));
+    assert.deepEqual([restreint.contrats.length, restreint.sansBudget.map(c => c.contractId)], [0, ['bu-k2']]);
+    const client = await budgetClient('bu-c', 2026, null);
+    assert.deepEqual(client.contrats.map(c => [c.numero, c.aBudget]), [['CTN-BU01', true], ['CTN-BU02', false]]);
+    await assert.rejects(pilotageBudgets(1999, null), /Année invalide/);
+});
+
+test('travaux facturés sur le contrat : ligne P6 à part, budgétable ; « non affecté » seulement sans code', async () => {
+    await set('invoices', 'bu-f9', { invoiceNumber: 'BU-9', contractId: 'bu-k', clientId: 'bu-c', status: 'due', date: ts('2026-05-02'), situation: { number: 1 }, lineItems: [{ description: 'Chaudière : avancement 50 %', quantity: 1, unitPrice: 4000, total: 4000, activityCode: 'P6' }, { description: 'Sans code', quantity: 1, unitPrice: 10, total: 10 }] });
+    const s = await suiviBudget('bu-k', 2026);
+    assert.deepEqual(s.activites.map(a => [a.code, a.libelle]).filter(([c]) => c === 'P6'), [['P6', 'Travaux P6']]);
+    assert.deepEqual([s.lignes.find(l => l.activite === 'P6')?.realise.ca, s.lignes.find(l => l.activite === '—')?.realise.ca], [4000, 10]);
+    await enregistrerBudget('bu-k', 2026, [{ activite: 'BP2', ca: 13000 }, { activite: 'P6', ca: 5000, sousTraitance: 3000 }], 'u@x');
+    assert.equal((await suiviBudget('bu-k', 2026)).lignes.find(l => l.activite === 'P6')?.budget.ca, 5000);
 });

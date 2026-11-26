@@ -2,7 +2,7 @@
 
 import { requireUser } from '@/lib/auth/server';
 import { gardePerimetre } from '@/lib/auth/perimetre-server';
-import { enregistrerBudget, figerBudget, suiviBudget, type SuiviBudget } from '@/services/budgets-admin';
+import { budgetClient, enregistrerBudget, figerBudget, pilotageBudgets, suiviBudget, type BudgetDeContrat, type PilotageBudgets, type SuiviBudget } from '@/services/budgets-admin';
 
 /**
  * Budgets des contrats. Lecture : qui voit le contrat. Saisie : modules Contrats ou Facturation (ou administrateur).
@@ -29,4 +29,16 @@ export const figerBudgetAction = async (contractId: string, annee: number): Prom
     await gardePerimetre(u).exiger('contrat', String(contractId));
     await figerBudget(String(contractId), Number(annee), u.email);
     return null;
+});
+
+/** Pilotage des budgets : contrats du périmètre ; modules Contrats ou Facturation (ou administrateur). */
+export const pilotageBudgetsAction = async (annee: number, forcer = false): Promise<Result<PilotageBudgets>> => run(async u => {
+    if (!u.isAdmin && !u.profile.modules?.some(m => m === 'contracts' || m === 'billing')) throw new Error('Réservé aux modules Contrats et Facturation.');
+    return pilotageBudgets(Number(annee), await gardePerimetre(u).ids('contracts'), forcer === true);
+});
+
+export const budgetClientAction = async (clientId: string, annee: number): Promise<Result<{ annee: number; contrats: BudgetDeContrat[] }>> => run(async u => {
+    const garde = gardePerimetre(u);
+    await garde.exiger('client', String(clientId));
+    return budgetClient(String(clientId), Number(annee), await garde.ids('contracts'));
 });

@@ -594,6 +594,35 @@ async function revisionsForfaits() {
         await set('budgets', `${voltaire.id}_${annee}`, { contractId: voltaire.id, clientId: voltaire.get('clientId') ?? '', annee, lignes, majLe: le, majPar: 'admin@example.com', initial: { lignes, figeLe: le, figePar: 'admin@example.com' } });
         console.log(`Budget ${annee} : contrat de Square Voltaire (${lignes.length} activités, initial figé).`);
     }
+    // Autres contrats actifs : budget d'après le montant annuel des prestations (CA), dépenses à des ratios types ;
+    // un contrat sur deux a son initial figé. Les écarts viennent du réalisé de la démo.
+    const ratios: Record<string, [number, number, number, number]> = { P1: [0.62, 0, 0, 0], P1E: [0.55, 0, 0, 0], P2: [0, 0.18, 0.32, 0.05], P3: [0, 0.35, 0.1, 0.2], P3R: [0, 0.4, 0.1, 0.1] };
+    const actifs = (await adminDb.collection('contracts').where('status', '==', 'Actif').get()).docs.filter(d => d.id !== voltaire?.id);
+    const codesAct = new Map((await adminDb.collection('activities').get()).docs.map(d => [d.id, String(d.get('code'))]));
+    let n = 0;
+    for (const [i, k] of actifs.entries()) {
+        const prestations = (await adminDb.collection('services').where('contractId', '==', k.id).get()).docs;
+        const parAct = new Map<string, number>();
+        for (const sv of prestations) { const code = codesAct.get(String(sv.get('activityId'))); if (code) parAct.set(code, (parAct.get(code) ?? 0) + (Number(sv.get('price')) || 0)); }
+        // P1 au compteur ou en acompte : le prix de la prestation ne dit pas le CA ; on reprend le facturé des 12 derniers mois.
+        const factures = (await adminDb.collection('invoices').where('contractId', '==', k.id).get()).docs.filter(f => f.get('invoiceNumber') && f.get('status') !== 'cancelled');
+        const depuis = new Date(Date.now() - 365 * 86_400_000).toISOString().slice(0, 10);
+        const facture = new Map<string, number>();
+        for (const f of factures) for (const l of (f.get('lineItems') ?? []) as { activityCode?: string; total?: number; periodEndDate?: string }[]) {
+            if (l.activityCode && String(l.periodEndDate ?? '') >= depuis) facture.set(l.activityCode, (facture.get(l.activityCode) ?? 0) + (Number(l.total) || 0));
+        }
+        const ecart = [1.06, 1, 0.94][i % 3];   // budgets un peu au-dessus ou au-dessous du rythme actuel
+        const lignes = [...new Set([...parAct.keys(), ...facture.keys()])].map(activite => [activite, Math.max(parAct.get(activite) ?? 0, facture.get(activite) ?? 0) * ecart] as const)
+            .filter(([, ca]) => ca > 0).map(([activite, ca]) => {
+                const [e, a, m, st] = ratios[activite] ?? [0, 0.3, 0.2, 0];
+                return { activite, ca: Math.round(ca), energie: Math.round(ca * e), achats: Math.round(ca * a), mainOeuvre: Math.round(ca * m), sousTraitance: Math.round(ca * st) };
+            });
+        if (!lignes.length || i % 4 === 3) continue;   // quelques contrats restent sans budget
+        const le = new Date().toISOString();
+        await set('budgets', `${k.id}_${annee}`, { contractId: k.id, clientId: k.get('clientId') ?? '', annee, lignes, majLe: le, majPar: 'adv@example.com', ...(i % 2 === 0 && { initial: { lignes, figeLe: le, figePar: 'admin@example.com' } }) });
+        n++;
+    }
+    console.log(`Budgets ${annee} : ${n} autres contrats budgétés.`);
 }
 
 /**

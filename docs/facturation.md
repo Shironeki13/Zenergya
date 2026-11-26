@@ -278,12 +278,18 @@ main-d'œuvre, sous-traitance), d'où une marge.
 - **Réalisé** : factures moins avoirs, au prorata de la période facturée comprise dans l'année (une facture annulée et
   son avoir s'écartent ensemble) ; commandes engagées affectées au contrat, à leur date (sous-traitance à part, le
   reste en achats) ; heures validées à leur coût ; factures d'énergie des sites (saisies et flux des fournisseurs),
-  au prorata de leur période, sur l'activité P1 (chauffage d'abord). Ce qui n'a pas d'activité du contrat est en
-  « non affecté ».
-- **Atterrissage** : chiffre d'affaires réalisé + reste à facturer de l'année (échéancier) ; pour chaque nature de
+  au prorata de leur période, sur l'activité P1 (chauffage d'abord). Une ligne garde son activité même absente de la
+  liste du contrat (P1A, €€, travaux P5 / P6 facturés sur le contrat) ; « non affecté » : sans code d'activité.
+- **Atterrissage** : chiffre d'affaires réalisé + reste à facturer de l'année (échéancier ; P1 au compteur, au DJU ou
+  en acompte sans montant annuel : le facturé de la même période l'an dernier, ce qui suit la saison de chauffe) ; pour chaque nature de
   dépense, le plus grand du budget révisé et du réalisé. Écart de marge = atterrissage − budget révisé.
 - **Alertes** : nature dépassée, dépenses sans budget, chiffre d'affaires attendu sous le budget de plus de 5 %, marge
   en dérive (plus de 5 % du CA budgété) ou négative.
+
+**Fiche client › onglet Budget** : somme des contrats du client, par contrat ou par activité (le réalisé compte aussi
+pour les contrats sans budget). **Pilotage › Budgets** : les contrats budgétés de l'année dans le périmètre, regroupés
+par contrat, client, agence ou activité, la plus forte dérive de marge en tête ; filtres agence et recherche,
+« seulement les dérives », export CSV ; liste des contrats actifs sans budget.
 
 Collection `budgets` (serveur seulement), un document par contrat et année. Calcul : `src/lib/budgets/budget.ts`,
 `src/services/budgets-admin.ts`.

@@ -21,11 +21,12 @@ import { useData } from '@/context/data-context';
 import { SireneCheckPanel } from '@/components/clients/sirene-check';
 import { AFaire, Indicateur, eur0, CompteurAFaire, useOngletUrl, type PointAFaire } from '@/components/fiches/fiche';
 import { LignesAdressage } from '@/components/clients/adressage-fields';
+import { BudgetClient } from '@/components/budgets/budget-client';
 import { CarteContacts, TableauContrats, TableauFactures, TableauSites, etatSite } from '@/components/fiches/tableaux';
 
 /** Fiche client : bandeau, indicateurs, « à faire », onglets (synthèse, contrats, sites, factures). */
 
-const ONGLETS_CLIENT = ['synthese', 'contrats', 'sites', 'factures'] as const;
+const ONGLETS_CLIENT = ['synthese', 'contrats', 'sites', 'factures', 'budget'] as const;
 type OngletClient = typeof ONGLETS_CLIENT[number];
 
 export default function ClientDetailPage() {
@@ -152,6 +153,7 @@ export default function ClientDetailPage() {
           <TabsTrigger value="contrats">Contrats ({contracts.length})</TabsTrigger>
           <TabsTrigger value="sites">Sites ({sites.length})</TabsTrigger>
           <TabsTrigger value="factures">Factures ({facturesClient.length})</TabsTrigger>
+          <TabsTrigger value="budget">Budget</TabsTrigger>
         </TabsList>
 
         <TabsContent value="synthese" className="mt-4 space-y-6">
@@ -195,6 +197,10 @@ export default function ClientDetailPage() {
 
         <TabsContent value="factures" className="mt-4">
           <TableauFactures factures={facturesClient} contrats={contracts} description="Factures et proformas du client, tous contrats, du plus récent au plus ancien." />
+        </TabsContent>
+
+        <TabsContent value="budget" className="mt-4">
+          {onglet === 'budget' && <BudgetClient clientId={client.id} />}
         </TabsContent>
       </Tabs>
     </div>

@@ -45,3 +45,24 @@ test('sans budget : dépenses sans budget non signalées ; réalisé non affect�
     assert.equal(activiteEnergie([{ code: 'P1E', type: 'P1' }, { code: 'P1C', type: 'P1' }]), 'P1C');
     assert.equal(activiteEnergie([{ code: 'P2', type: 'P2' }]), null);
 });
+
+test('cumuls et regroupements : contrat, client, agence, activité ; plus forte dérive en tête', async () => {
+    const { cumuler, parAxe } = await import('../src/lib/budgets/budget');
+    const contrat = (contractId: string, client: string, agence: string, p1: [number, number, number], p2: [number, number, number]) => {
+        const s = synthese({
+            activites: ['P1', 'P2'],
+            budget: [{ activite: 'P1', ca: p1[0], energie: p1[1], achats: 0, mainOeuvre: 0, sousTraitance: 0 }, { activite: 'P2', ca: p2[0], energie: 0, achats: p2[1], mainOeuvre: 0, sousTraitance: 0 }],
+            initial: null, realise: { P1: { ...VIDE, energie: p1[2] }, P2: { ...VIDE, achats: p2[2] } }, resteCA: { P1: p1[0], P2: p2[0] },
+        });
+        return { contractId, numero: contractId.toUpperCase(), libelle: '', clientId: client, client, agence, aBudget: true, lignes: s.lignes, total: s.total };
+    };
+    const cs = [contrat('k1', 'A', 'Lyon', [100, 60, 90], [50, 10, 5]), contrat('k2', 'A', 'Lyon', [80, 40, 40], [20, 5, 8]), contrat('k3', 'B', 'Paris', [10, 5, 5], [10, 2, 1])];
+    // k1 : énergie dépassée de 30 ; k2 : achats dépassés de 3 ; k3 : rien.
+    assert.deepEqual(parAxe(cs, 'contrat').map(g => [g.cle, g.total.ecartMarge, g.alertes > 0]), [['k1', -30, true], ['k2', -3, true], ['k3', 0, false]]);
+    assert.deepEqual(parAxe(cs, 'client').map(g => [g.libelle, g.contrats, g.total.budget.ca, g.total.ecartMarge]), [['A', 2, 250, -33], ['B', 1, 20, 0]]);
+    assert.deepEqual(parAxe(cs, 'agence').map(g => [g.libelle, g.detail]), [['Lyon', '2 contrat(s)'], ['Paris', '1 contrat(s)']]);
+    assert.deepEqual(parAxe(cs, 'activite').map(g => [g.libelle, g.total.budget.ca, g.total.ecartMarge]), [['P1', 190, -30], ['P2', 80, -3]]);
+    assert.equal(parAxe(cs, 'contrat')[0].lien, '/contracts/k1?onglet=budget');
+    const c = cumuler([cs[0].total, cs[1].total], 'A');
+    assert.deepEqual([c.budget.ca, c.atterrissage.energie, c.marge.budget, c.marge.atterrissage, c.budgetInitial], [250, 130, 135, 102, null]);
+});

@@ -122,3 +122,47 @@ export function activiteEnergie(activites: { code: string; type?: string }[]): s
     const p1 = activites.filter(a => a.type === 'P1' || /^P1/i.test(a.code)).map(a => a.code).sort();
     return p1.find(c => /^P1C?$/i.test(c)) ?? p1.find(c => !/^P1[EA]/i.test(c) && !c.includes('€')) ?? p1[0] ?? null;
 }
+
+// --- Cumuls (fiche client, pilotage) ---
+
+const somme = (ms: Montants[]): Montants => Object.fromEntries((['ca', ...NATURES_DEPENSE] as const).map(k => [k, c2(ms.reduce((s, m) => s + m[k], 0))])) as Montants;
+
+/** Cumul de plusieurs synthèses (contrats ou activités) ; l'initial cumule ceux qui en ont un (null : aucun). */
+export function cumuler(lignes: LigneSynthese[], activite: string): LigneSynthese {
+    const initiaux = lignes.map(l => l.budgetInitial).filter((m): m is Montants => !!m);
+    const budget = somme(lignes.map(l => l.budget)), atterrissage = somme(lignes.map(l => l.atterrissage));
+    const marge = {
+        initial: initiaux.length ? c2(lignes.reduce((s, l) => s + (l.marge.initial ?? l.marge.budget), 0)) : null,
+        budget: c2(lignes.reduce((s, l) => s + l.marge.budget, 0)), realise: c2(lignes.reduce((s, l) => s + l.marge.realise, 0)),
+        atterrissage: c2(lignes.reduce((s, l) => s + l.marge.atterrissage, 0)),
+    };
+    return {
+        activite, budgetInitial: initiaux.length ? somme(initiaux) : null, budget, realise: somme(lignes.map(l => l.realise)), atterrissage,
+        resteCA: c2(lignes.reduce((s, l) => s + l.resteCA, 0)), marge, ecartMarge: c2(marge.atterrissage - marge.budget), alertes: lignes.flatMap(l => l.alertes),
+    };
+}
+
+export type AxeBudget = 'contrat' | 'client' | 'agence' | 'activite';
+export type ContratCumulable = { contractId: string; numero: string; libelle: string; clientId: string; client: string; agence: string; aBudget: boolean; lignes: LigneSynthese[]; total: LigneSynthese };
+export type GroupeBudget = { cle: string; libelle: string; detail: string; total: LigneSynthese; contrats: number; alertes: number; lien?: string };
+
+/** Regroupement par axe, la plus forte dérive de marge en tête (puis le plus gros CA budgété). */
+export function parAxe(contrats: ContratCumulable[], axe: AxeBudget): GroupeBudget[] {
+    const groupes = new Map<string, { libelle: string; detail: string; lien?: string; lignes: LigneSynthese[]; contrats: Set<string> }>();
+    const ajouter = (cle: string, libelle: string, detail: string, l: LigneSynthese, contractId: string, lien?: string) => {
+        const g = groupes.get(cle) ?? { libelle, detail, lien, lignes: [], contrats: new Set<string>() };
+        g.lignes.push(l); g.contrats.add(contractId); groupes.set(cle, g);
+    };
+    for (const c0 of contrats) {
+        // Le total d'un contrat ne porte pas d'alerte : ce sont celles de ses activités.
+        const c = { ...c0, total: { ...c0.total, alertes: c0.lignes.flatMap(l => l.alertes) } };
+        if (axe === 'activite') { for (const l of c.lignes) ajouter(l.activite, l.activite === NON_AFFECTE ? 'Non affecté' : l.activite, '', l, c.contractId); continue; }
+        if (axe === 'contrat') ajouter(c.contractId, c.numero || c.contractId, `${c.client}${c.libelle ? ` · ${c.libelle}` : ''}`, c.total, c.contractId, `/contracts/${c.contractId}?onglet=budget`);
+        if (axe === 'client') ajouter(c.clientId || c.client, c.client || 'Client inconnu', c.agence, c.total, c.contractId, c.clientId ? `/clients/${c.clientId}` : undefined);
+        if (axe === 'agence') ajouter(c.agence, c.agence, '', c.total, c.contractId);
+    }
+    return [...groupes.entries()].map(([cle, g]) => {
+        const total = cumuler(g.lignes, cle);
+        return { cle, libelle: g.libelle, detail: axe === 'contrat' || axe === 'client' ? g.detail : `${g.contrats.size} contrat(s)`, total, contrats: g.contrats.size, alertes: total.alertes.length, ...(g.lien && { lien: g.lien }) };
+    }).sort((a, b) => a.total.ecartMarge - b.total.ecartMarge || b.total.budget.ca - a.total.budget.ca || a.libelle.localeCompare(b.libelle, 'fr'));
+}

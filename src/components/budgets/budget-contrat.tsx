@@ -70,7 +70,7 @@ export function BudgetContrat({ contractId, isAdmin }: { contractId: string; isA
                 {erreur && <p className="rounded-md border border-red-300 bg-red-50 p-3 text-sm text-red-800">{erreur}</p>}
                 {chargement && !data ? <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /> : data && (
                     <>
-                        <Tuiles total={data.total} aBudget={aBudget} />
+                        <TuilesBudget total={data.total} aBudget={aBudget} />
                         {!aBudget && (
                             <p className="rounded-md border border-blue-200 bg-blue-50 p-3 text-sm text-blue-900" data-budget="vide">
                                 Pas encore de budget pour {annee}. « Saisir le budget » propose le chiffre d&apos;affaires de l&apos;échéancier ({eur(Object.values(data.caTheorique).reduce((s, v) => s + v, 0))}) ; les dépenses se saisissent par nature.
@@ -187,7 +187,7 @@ function Jauge({ part }: { part: number }) {
     );
 }
 
-function Tuiles({ total, aBudget }: { total: LigneSynthese; aBudget: boolean }) {
+export function TuilesBudget({ total, aBudget }: { total: LigneSynthese; aBudget: boolean }) {
     const t = [
         { l: "CA budget", v: eur(total.budget.ca), d: total.budgetInitial && Math.round(total.budgetInitial.ca) !== Math.round(total.budget.ca) ? `initial ${eur(total.budgetInitial.ca)}` : '' },
         { l: 'CA atterrissage', v: eur(total.atterrissage.ca), d: `dont réalisé ${eur(total.realise.ca)}` },
