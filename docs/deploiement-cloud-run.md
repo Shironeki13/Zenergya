@@ -31,6 +31,7 @@ Cloud Run → `zenergy` → Modifier et déployer une nouvelle révision :
     `NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID`, `NEXT_PUBLIC_FIREBASE_APP_ID`
     (valeurs : console Firebase → Paramètres du projet → Vos applications → application Web) ;
   - `GEMINI_API_KEY` → secret Secret Manager ;
+  - `GEMINI_MODELE` (facultatif) : modèle Gemini de lecture des contrats ; vide : `gemini-3.8-flash` (`src/ai/modeles.ts`). Les modèles Gemini sont dépréciés puis arrêtés : à revoir quand Google annonce un arrêt ;
   - `ADMIN_EMAILS` → votre email (voir `docs/securite.md`) ;
   - `CRON_SECRET` → secret Secret Manager.
 - **Ressources** : 1 Gio de mémoire conseillé ; `min-instances=1` évite le démarrage à froid (facturé en continu).

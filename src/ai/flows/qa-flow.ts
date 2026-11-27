@@ -9,6 +9,7 @@
 import { ai } from '@/ai/genkit';
 import { z } from 'genkit';
 import { requireUser } from '@/lib/auth/server';
+import { exigerCleIA, modeleIA } from '@/ai/modeles';
 
 const AskQuestionInputSchema = z.object({
   question: z.string().describe('La question à poser à lIA.'),
@@ -25,6 +26,7 @@ export async function askQuestion(
   input: AskQuestionInput
 ): Promise<AskQuestionOutput> {
   await requireUser();
+  exigerCleIA();
   return qaFlow(input);
 }
 
@@ -36,9 +38,8 @@ const qaFlow = ai.defineFlow(
     outputSchema: AskQuestionOutputSchema,
   },
   async (input) => {
-    // Utilisation du modèle 'gemini-pro', qui est un modèle standard pour le texte.
     const { text } = await ai.generate({
-      model: 'googleai/gemini-pro',
+      model: modeleIA(),
       prompt: `Réponds à la question suivante de manière concise : ${input.question}`,
     });
 

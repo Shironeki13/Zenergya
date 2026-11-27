@@ -10,10 +10,12 @@ import { ExtractContractInfoInputSchema, ExtractContractInfoOutputSchema, type E
 
 import Handlebars from 'handlebars';
 import { requireUser } from '@/lib/auth/server';
+import { exigerCleIA, modeleIA } from '@/ai/modeles';
 
 
 export async function extractContractInfo(input: ExtractContractInfoInput): Promise<ExtractContractInfoOutput> {
   await requireUser();
+  exigerCleIA();
   return extractContractInfoFlow(input);
 }
 
@@ -34,7 +36,7 @@ const extractContractInfoFlow = ai.defineFlow(
     });
 
     const { output } = await ai.generate({
-      model: 'googleai/gemini-2.5-flash',
+      model: modeleIA(),
       prompt: [
         { text: fullPrompt },
         { media: { url: documentDataUri, contentType: 'application/pdf' } }
