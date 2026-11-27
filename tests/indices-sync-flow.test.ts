@@ -61,3 +61,23 @@ test('retard : indice dont la dernière valeur est trop ancienne signalé ; sér
     // Mensuel, dernière valeur janvier 2026 : attendue février, tolérance 4 mois → 5 mois de retard en novembre.
     assert.deepEqual([par['SYN-RETARD'].statut, par['SYN-RETARD'].retardMois, par['SYN-ARRET'].statut, par['SYN-ARRET'].retardMois, r.retards], ['alerte', 5, 'ok', null, 1]);
 });
+
+test('date de publication : source si elle la donne, sinon jour de première lecture ; historique sans date ; révision datée', async () => {
+    const INSEE = (valeurs: [string, number, boolean][], publiee?: string): IndexFetcher => ({ code: 'SYN-PUB', fetch: async () => valeurs.map(([period, value, provisoire]) => ({ period, value, source: 'INSEE test', provisoire, ...(publiee && { publishedAt: publiee }) })) });
+    const lire = async (code: string) => {
+        const i = (await adminDb.collection('indices').where('code', '==', code).get()).docs[0];
+        return Object.fromEntries((await adminDb.collection('indexValues').where('indexId', '==', i.id).get()).docs.map(d => [d.get('period'), d.data()]));
+    };
+    // Premier passage : reprise de deux mois ; seul le plus récent a sa date (celle de la mise à jour de la série).
+    await synchroniserIndices({ aujourdhui: '2026-11-11', fetchers: [INSEE([['2026-08', 120, false], ['2026-09', 121, true]], '2026-11-04'), src('SYN-CEE', [['2026-10', 8.1]], { famille: 'marche' })] });
+    let v = await lire('SYN-PUB');
+    assert.deepEqual([v['2026-09'].publicationDate, v['2026-09'].publicationOrigine, v['2026-09'].provisoire, v['2026-09'].premiereLecture], ['2026-11-04', 'source', true, '2026-11-11']);
+    assert.deepEqual([v['2026-08'].publicationDate, v['2026-08'].premiereLecture], [undefined, '2026-11-11']);
+    // Source sans date (CEE) : le jour de la première lecture.
+    assert.deepEqual([(await lire('SYN-CEE'))['2026-10'].publicationDate, (await lire('SYN-CEE'))['2026-10'].publicationOrigine], ['2026-11-11', 'detection']);
+    // Passage suivant : octobre paraît, septembre est révisé (définitif) ; sa date de publication d'origine est gardée.
+    await synchroniserIndices({ aujourdhui: '2026-12-02', fetchers: [INSEE([['2026-08', 120, false], ['2026-09', 121.4, false], ['2026-10', 122, true]], '2026-12-02')] });
+    v = await lire('SYN-PUB');
+    assert.deepEqual([v['2026-10'].publicationDate, v['2026-10'].provisoire], ['2026-12-02', true]);
+    assert.deepEqual([v['2026-09'].value, v['2026-09'].publicationDate, v['2026-09'].dateRevision, v['2026-09'].provisoire], [121.4, '2026-11-04', '2026-12-02', false]);
+});

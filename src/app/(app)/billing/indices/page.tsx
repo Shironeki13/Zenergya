@@ -1,5 +1,7 @@
 'use client';
 
+import { LIBELLE_ORIGINE } from '@/lib/indices/publication';
+import { Badge } from '@/components/ui/badge';
 import { JournalSyncIndices } from '@/components/indices/journal-sync';
 import { SearchableSelect } from '@/components/ui/searchable-select';
 import { useState, useRef } from 'react';
@@ -904,8 +906,15 @@ export default function IndicesPage() {
                                             <TableRow key={val.id}>
                                                 {!selectedIndexId && <TableCell className="font-medium">{idx?.code}</TableCell>}
                                                 <TableCell>{val.period}</TableCell>
-                                                <TableCell className="font-bold">{val.value.toFixed(idx?.decimals ?? 4)} {idx?.unit}</TableCell>
-                                                <TableCell>{val.publicationDate ? format(new Date(val.publicationDate), 'dd/MM/yyyy') : '-'}</TableCell>
+                                                <TableCell className="font-bold">
+                                                    {val.value.toFixed(idx?.decimals ?? 4)} {idx?.unit}
+                                                    {val.provisoire && <Badge variant="outline" className="ml-2 border-amber-300 bg-amber-50 py-0 text-[10px] font-normal text-amber-800" title="Valeur provisoire : la source peut encore la réviser">provisoire</Badge>}
+                                                </TableCell>
+                                                <TableCell data-publication={val.period}>
+                                                    {val.publicationDate ? <span title={val.publicationOrigine ? `Date : ${LIBELLE_ORIGINE[val.publicationOrigine]}` : 'Date saisie'}>{format(new Date(`${val.publicationDate.slice(0, 10)}T12:00:00`), 'dd/MM/yyyy')}{val.publicationOrigine === 'detection' && <span className="ml-1 text-xs text-muted-foreground">(lue)</span>}</span>
+                                                        : <span className="text-muted-foreground" title={val.premiereLecture ? `Reprise d'historique le ${val.premiereLecture} : date de publication inconnue` : undefined}>-</span>}
+                                                    {val.dateRevision && <span className="block text-[10px] text-muted-foreground">révisée le {format(new Date(`${val.dateRevision}T12:00:00`), 'dd/MM/yyyy')}</span>}
+                                                </TableCell>
                                                 <TableCell className="text-muted-foreground text-sm">{val.source}</TableCell>
                                                 <TableCell className="text-right">
                                                     {(!selectedIndexId || indices.find(i => i.id === selectedIndexId)?.type !== 'calculated') && (

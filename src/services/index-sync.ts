@@ -2,6 +2,7 @@ import { adminDb } from '@/lib/firebase-admin';
 import { REGLES, controlerValeurs, retardMois, type Rejet } from '@/lib/indices/controles';
 import { indexFetchers } from '@/lib/indices/registry';
 import type { IndexFetcher } from '@/lib/indices/types';
+import { datePublication } from '@/lib/indices/publication';
 
 /**
  * Synchronisation des indices : pour chaque source (INSEE, PEG, CEE…), récupère les valeurs publiées, les contrôle
@@ -70,6 +71,8 @@ export async function synchroniserIndices(options: OptionsSync = {}): Promise<Ra
             s.recues = recues.length;
             if (recues.length === 0) throw new Error('la source ne renvoie aucune valeur (page ou format modifié ?)');
             const sourceDe = new Map(recues.map(r => [r.period, r.source]));
+            const recueDe = new Map(recues.map(r => [r.period, r]));
+            const plusRecente = [...recues.map(r => r.period)].sort().at(-1)!;
             const { acceptees, rejetees } = controlerValeurs(recues.map(r => ({ period: r.period, value: r.value })), [...connues].map(([period, v]) => ({ period, value: v.value })), regles, aujourdhui);
             s.rejetees = rejetees;
             const aCreer = acceptees.filter(v => !connues.has(v.period));
@@ -84,8 +87,25 @@ export async function synchroniserIndices(options: OptionsSync = {}): Promise<Ra
                 }
                 const maintenant = new Date().toISOString();
                 const lot = adminDb.batch();
-                for (const v of aCreer) lot.set(adminDb.collection('indexValues').doc(), { indexId, period: v.period, value: v.value, source: sourceDe.get(v.period) ?? f.code, comment: 'Synchronisation automatique', lastUpdated: maintenant });
-                for (const v of aModifier) lot.update(adminDb.collection('indexValues').doc(connues.get(v.period)!.id), { value: v.value, source: sourceDe.get(v.period) ?? f.code, lastUpdated: maintenant, comment: `Révisé par la source (${connues.get(v.period)!.value} → ${v.value})` });
+                for (const v of aCreer) {
+                    // Date de publication : celle de la source, sinon le jour où la valeur apparaît (voir lib/indices/publication).
+                    const r = recueDe.get(v.period);
+                    const pub = datePublication(v.period, plusRecente, r?.publishedAt, aujourdhui);
+                    lot.set(adminDb.collection('indexValues').doc(), {
+                        indexId, period: v.period, value: v.value, source: sourceDe.get(v.period) ?? f.code, comment: 'Synchronisation automatique', lastUpdated: maintenant,
+                        premiereLecture: aujourdhui, ...(pub && { publicationDate: pub.publicationDate, publicationOrigine: pub.origine }),
+                        ...(r?.provisoire !== undefined && { provisoire: r.provisoire }),
+                    });
+                }
+                for (const v of aModifier) {
+                    // Révision : la date de première publication est gardée ; celle de la révision s'y ajoute.
+                    const r = recueDe.get(v.period);
+                    const revise = r?.publishedAt && r.publishedAt.slice(0, 10) <= aujourdhui ? r.publishedAt.slice(0, 10) : aujourdhui;
+                    lot.update(adminDb.collection('indexValues').doc(connues.get(v.period)!.id), {
+                        value: v.value, source: sourceDe.get(v.period) ?? f.code, lastUpdated: maintenant, comment: `Révisé par la source (${connues.get(v.period)!.value} → ${v.value})`,
+                        dateRevision: revise, ...(r?.provisoire !== undefined && { provisoire: r.provisoire }),
+                    });
+                }
                 await lot.commit();
             }
             for (const v of acceptees) connues.set(v.period, { id: connues.get(v.period)?.id ?? '', value: v.value });

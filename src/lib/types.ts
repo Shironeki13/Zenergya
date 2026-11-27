@@ -1012,7 +1012,16 @@ export type IndexValue = {
     lastUpdated?: string; // ISO String
     source?: string;
     comment?: string;
-    publicationDate?: string; // DD/MM/YYYY
+    /** Date de publication par la source (AAAA-MM-JJ) : saisie, ou fixée par la synchronisation (lib/indices/publication). */
+    publicationDate?: string;
+    /** Synchronisation : d'où vient la date de publication (source, ou jour de première lecture). */
+    publicationOrigine?: 'source' | 'detection';
+    /** Synchronisation : jour où la valeur a été lue pour la première fois. */
+    premiereLecture?: string;
+    /** Valeur provisoire selon la source (INSEE : statut autre que définitif). */
+    provisoire?: boolean;
+    /** Jour de la dernière révision de la valeur par la source. */
+    dateRevision?: string;
 }
 
 

@@ -32,6 +32,21 @@ site soit vérifié normalement. S'il change, la source EMMY passera en échec :
   indice statistique, 2 pour un prix de marché) est signalé. Les séries arrêtées ne le sont pas.
 - **Source en échec** (injoignable, bloquée, page modifiée, aucune valeur) : signalée ; les autres sources continuent.
 
+## Date de publication (`src/lib/indices/publication.ts`)
+
+Les sources ne datent pas chaque valeur. La synchronisation enregistre, pour une **nouvelle** valeur :
+
+- **INSEE** : la date de dernière mise à jour de la série (`LAST_UPDATE` de l'API), qui est celle où sa valeur la
+  plus récente a paru (ex. BT40 de septembre 2026 publié le 13/11/2026). Le statut de l'observation est gardé :
+  **provisoire** (`OBS_QUAL` autre que `DEF`), affiché dans la liste des valeurs, ou définitive ;
+- **CEE, PEG** (pas de date à la source) : le **jour où la synchronisation voit la valeur** pour la première fois,
+  marqué « (lue) » ; exact à un jour près si la synchronisation passe chaque jour ;
+- une valeur **ancienne** reprise en même temps qu'une plus récente (premier passage, historique) n'a **pas** de date
+  de publication connue ; le jour de sa première lecture est gardé (`premiereLecture`).
+
+Une **révision** garde la date de première publication et ajoute `dateRevision`. Une date saisie à la main reste
+modifiable dans la fiche de la valeur.
+
 ## Journal
 
 Chaque passage est enregistré (collection `indicesSyncs`, lue par le serveur) : par source, valeurs reçues, nouvelles,

@@ -1,5 +1,6 @@
 import * as cheerio from 'cheerio';
 import { IndexFetchResult, IndexFetcher } from '../types';
+import { estProvisoire } from '../publication';
 
 /**
  * INSEE period SDMX (e.g. "2024-01", "2024-Q1", "2024-S1", "2024") to YYYY-MM
@@ -43,7 +44,8 @@ export function createInseeFetcher(code: string, idbank: string, options: { arre
         famille: 'statistique',
         ...(options.arretee && { arretee: true }),
         fetch: async (): Promise<IndexFetchResult[]> => {
-            const url = `https://bdm.insee.fr/series/sdmx/data/SERIES_BDM/${idbank}?lastNObservations=24&detail=dataonly`;
+            // Toutes les informations (pas seulement les valeurs) : date de mise à jour de la série et statut des observations.
+            const url = `https://bdm.insee.fr/series/sdmx/data/SERIES_BDM/${idbank}?lastNObservations=24`;
 
             const response = await fetch(url, {
                 headers: {
@@ -59,6 +61,9 @@ export function createInseeFetcher(code: string, idbank: string, options: { arre
             const $ = cheerio.load(xml, { xmlMode: true });
 
             const results: IndexFetchResult[] = [];
+            // Date de dernière mise à jour de la série : celle où sa valeur la plus récente a été publiée.
+            const serie = $('Series, [local-name="Series"]').first();
+            const miseAJour = serie.attr('LAST_UPDATE') || serie.attr('last_update') || undefined;
 
             // Improved parsing for SDMX XML with namespaces
             const observations = $('Obs, [local-name="Obs"]');
@@ -72,10 +77,13 @@ export function createInseeFetcher(code: string, idbank: string, options: { arre
                 if (period && valueStr) {
                     const value = parseFloat(valueStr.replace(',', '.'));
                     if (!isNaN(value)) {
+                        const qualite = $(el).attr('OBS_QUAL') || el.attribs?.OBS_QUAL;
                         results.push({
                             period: inseePeriodToMonth(period),
                             value,
-                            source: 'INSEE SDMX (bdm.insee.fr)'
+                            source: 'INSEE SDMX (bdm.insee.fr)',
+                            ...(miseAJour && { publishedAt: miseAJour }),
+                            ...(qualite && { provisoire: estProvisoire(qualite) }),
                         });
                     }
                 }
