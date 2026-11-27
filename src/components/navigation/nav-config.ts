@@ -1,7 +1,7 @@
 import {
     AlertTriangle, Building, Calculator, CircleDollarSign, Copy, FileSignature, FileText, Gauge, Home, KeyRound, LayoutDashboard,
     Library, ListChecks, MapPin, MessageSquareQuote, MinusCircle, Scale, Send, Settings, ShieldCheck, Store, TrendingUp, Upload, Users,
-    Network, ShoppingCart, Clock, BellRing, Contact, HandCoins, Wallet, TrendingDown, type LucideIcon,
+    Network, ShoppingCart, Clock, BellRing, Contact, HandCoins, Wallet, TrendingDown, Sparkles, type LucideIcon,
 } from 'lucide-react';
 
 import { accesRoute } from '@/lib/perimetre';
@@ -32,6 +32,7 @@ export const NAV_GROUPS: NavGroup[] = [
             { href: '/clients/tiers', label: 'Syndics et payeurs', icon: Contact, keywords: 'tiers représentant syndic payeur adressage adresse facture annuaire' },
             { href: '/contracts', label: 'Contrats', icon: FileSignature },
             { href: '/sites', label: 'Sites', icon: MapPin },
+            { href: '/contracts/propositions', label: 'Propositions (IA)', icon: Sparkles, keywords: 'propositions lecture ia document pdf création client contrat site import' },
             { href: '/contracts/library', label: 'Contrathèque', icon: Library, keywords: 'documents avenants résiliations reconductions' },
             { href: '/contracts/commerce', label: 'Demandes commerce', icon: Store },
             { href: '/admin/validations', label: 'Validation des documents', icon: ShieldCheck, contratheque: true, keywords: 'avenant os reconduction résiliation syndic be base marché attente' },

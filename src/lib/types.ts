@@ -1246,6 +1246,10 @@ export const ExtractContractInfoOutputSchema = z.object({
     })).optional().describe("Liste de tous les sites couverts par le contrat. Si un seul site, tableau d'un élément."),
     activityIds: z.array(z.string()).optional(),
     activitiesDetails: z.array(ActivityDetailSchema).optional(),
+    /** Justificatifs : pour chaque information lue, l'extrait du document d'où elle vient. */
+    preuves: z.array(z.object({
+        champ: z.string(), extrait: z.string(), page: z.number().optional(), confiance: z.enum(['haute', 'moyenne', 'basse']),
+    })).optional().describe("Pour chaque information lue : chemin du champ, extrait exact du document, page, confiance."),
 });
 export type ExtractContractInfoOutput = z.infer<typeof ExtractContractInfoOutputSchema>;
 

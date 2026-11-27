@@ -17,6 +17,9 @@ import {
 import { PROMPT_MARCHE_PRIVE, PROMPT_MARCHE_PUBLIC } from '@/lib/contracts/prompts-extraction';
 import { extractContractInfo } from '@/ai/flows/extract-contract-info-flow';
 import { creerContratAction } from '@/lib/contracts/assistant-actions';
+import { propositionAction } from '@/lib/contracts/propositions-actions';
+import Link from 'next/link';
+import { Sparkles } from 'lucide-react';
 import { PieceJustificative, deposerPiece } from '@/components/contracts/events/piece-justificative';
 import { EtapeClient, EtapeContrat, EtapePrestations, EtapeSites, EtapeSource, type Refs } from '@/components/contracts/assistant/etapes';
 
@@ -48,27 +51,42 @@ export default function NouveauContratPage() {
     // Contrat signé à joindre (PDF analysé, ou fichier choisi au récapitulatif) : déposé à la création.
     const [documentContrat, setDocumentContrat] = useState<File | null>(null);
     const pret = useRef(false);
+    // Création depuis une proposition (contrathèque) : brouillon lu dans le document, pas d'enregistrement local.
+    const [proposition, setProposition] = useState<{ id: string; document: string; alertes: number } | null>(null);
 
     // Démarrage : client imposé (?clientId=, depuis une fiche client) ou brouillon précédent à reprendre.
     useEffect(() => {
         const params = new URLSearchParams(window.location.search);
         const clientId = params.get('clientId');
         const source = params.get('source');
+        const propositionId = params.get('proposition');
+        if (propositionId) {
+            void propositionAction(propositionId).then(r => {
+                if (!r.success || !r.data.brouillon) { toast({ title: 'Proposition indisponible', description: r.success ? 'Elle n\'a pas de lecture à reprendre.' : r.error, variant: 'destructive' }); return; }
+                if (r.data.statut !== 'a_revoir') { toast({ title: 'Proposition déjà traitée', variant: 'destructive' }); return; }
+                setProposition({ id: r.data.id, document: r.data.document.name, alertes: (r.data.alertes ?? []).filter(a => a.gravite !== 'info').length });
+                setB(r.data.brouillon);
+                setEtape('client'); setVues(new Set(ETAPES));
+            });
+            pret.current = true;
+            return;
+        }
         let sauvegarde: Sauvegarde | null = null;
         try { sauvegarde = JSON.parse(localStorage.getItem(CLE_BROUILLON) ?? 'null'); } catch { /* stockage indisponible */ }
         if (clientId) setB(brouillonVide(clientId));
         else if (sauvegarde && brouillonEntame(sauvegarde.b)) setReprise(sauvegarde);
         if (source === 'pdf-prive' || source === 'pdf-public') setB(x => ({ ...x, source, contrat: { ...x.contrat, marketType: source === 'pdf-public' ? 'Marché Public' : 'Marché Privé' } }));
         pret.current = true;
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
     useEffect(() => { setConsignes(b.source === 'pdf-public' ? PROMPT_MARCHE_PUBLIC : PROMPT_MARCHE_PRIVE); }, [b.source]);
 
     // Enregistrement du brouillon à chaque saisie (navigateur de l'utilisateur).
     useEffect(() => {
         // Rien à enregistrer tant que rien n'est saisi (ne pas écraser un brouillon proposé à la reprise).
-        if (!pret.current || reprise || !brouillonEntame(b)) return;
+        if (!pret.current || reprise || proposition || !brouillonEntame(b)) return;
         try { localStorage.setItem(CLE_BROUILLON, JSON.stringify({ b, etape, le: new Date().toISOString() } satisfies Sauvegarde)); } catch { /* stockage indisponible */ }
-    }, [b, etape, reprise]);
+    }, [b, etape, reprise, proposition]);
 
     const maj = useCallback((f: (x: Brouillon) => Brouillon) => setB(f), []);
     const index = ETAPES.indexOf(etape);
@@ -118,7 +136,7 @@ export default function NouveauContratPage() {
             try { const d = await deposerPiece(documentContrat, 'a-rattacher', 'base-marche'); document = { name: d.documentName, url: d.documentUrl }; }
             catch { setCreation(false); toast({ title: 'Dépôt du document impossible', description: 'Réessayez, ou retirez le fichier pour créer le contrat sans document.', variant: 'destructive' }); return; }
         }
-        const r = await creerContratAction({ ...final, document });
+        const r = await creerContratAction({ ...final, document }, proposition?.id);
         setCreation(false);
         if (!r.success) { toast({ title: 'Création impossible', description: r.error, variant: 'destructive' }); return; }
         try { localStorage.removeItem(CLE_BROUILLON); } catch { /* stockage indisponible */ }
@@ -140,6 +158,13 @@ export default function NouveauContratPage() {
                     <h1 className="text-2xl font-bold tracking-tight">Nouveau contrat</h1>
                     <p className="text-muted-foreground">Client, contrat, sites et prestations en quelques étapes. La saisie est enregistrée automatiquement dans ce navigateur.</p>
                 </div>
+                {proposition && (
+                    <div className="flex w-full items-center gap-2 rounded-md border border-violet-300 bg-violet-50 px-3 py-2 text-sm text-violet-900" data-assistant="proposition">
+                        <Sparkles className="h-4 w-4 shrink-0" />
+                        <span>Proposition lue dans <strong>{proposition.document}</strong> : vérifiez chaque étape (champs « lu dans le PDF »), complétez, puis créez. {proposition.alertes > 0 && `${proposition.alertes} point(s) signalés à la lecture.`}</span>
+                        <Link href={`/contracts/propositions/${proposition.id}`} className="ml-auto whitespace-nowrap underline">Revoir le document</Link>
+                    </div>
+                )}
                 <Button variant="ghost" size="sm" onClick={recommencer}><RotateCcw className="mr-1 h-4 w-4" />Recommencer</Button>
             </div>
 
